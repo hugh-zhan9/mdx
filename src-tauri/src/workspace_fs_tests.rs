@@ -1,7 +1,10 @@
 use tempfile::tempdir;
 
 use crate::models::FileTreeNode;
-use crate::workspace_fs::{scan_workspace, scan_workspace_with_limit, trash_path};
+use crate::workspace_fs::{
+    create_markdown_file, scan_workspace, scan_workspace_with_limit, trash_path,
+    write_markdown_file,
+};
 
 fn collect_tree_names(nodes: &[FileTreeNode]) -> Vec<String> {
     let mut names = Vec::new();
@@ -64,4 +67,71 @@ fn trash_path_uses_macos_trash() {
     )
     .unwrap();
     assert!(!file.exists());
+}
+
+#[test]
+#[cfg(unix)]
+fn write_markdown_file_rejects_broken_symlink_leaf_to_outside_root() {
+    use std::os::unix::fs::symlink;
+
+    let root = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    let outside_target = outside.path().join("escaped.md");
+    let symlink_path = root.path().join("note.md");
+    symlink(&outside_target, &symlink_path).unwrap();
+
+    let err = write_markdown_file(
+        root.path().to_string_lossy().into_owned(),
+        symlink_path.to_string_lossy().into_owned(),
+        "# Escaped".to_string(),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.error_code(), "outside_workspace");
+    assert!(!outside_target.exists());
+}
+
+#[test]
+#[cfg(unix)]
+fn temporary_untitled_skips_broken_symlink_entries() {
+    use std::os::unix::fs::symlink;
+
+    let root = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    let outside_target = outside.path().join("untitled-outside.md");
+    symlink(&outside_target, root.path().join("Untitled.md")).unwrap();
+
+    let created = create_markdown_file(
+        root.path().to_string_lossy().into_owned(),
+        root.path().to_string_lossy().into_owned(),
+        None,
+        Some(true),
+    )
+    .unwrap();
+
+    assert_eq!(created.name, "Untitled1.md");
+    assert!(root.path().join("Untitled1.md").exists());
+    assert!(!outside_target.exists());
+}
+
+#[test]
+#[cfg(unix)]
+fn create_markdown_file_rejects_explicit_broken_symlink_entry() {
+    use std::os::unix::fs::symlink;
+
+    let root = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    let outside_target = outside.path().join("explicit-outside.md");
+    symlink(&outside_target, root.path().join("Pinned.md")).unwrap();
+
+    let err = create_markdown_file(
+        root.path().to_string_lossy().into_owned(),
+        root.path().to_string_lossy().into_owned(),
+        Some("Pinned.md".to_string()),
+        Some(false),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.error_code(), "already_exists");
+    assert!(!outside_target.exists());
 }

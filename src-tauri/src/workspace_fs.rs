@@ -23,7 +23,7 @@ pub fn next_untitled_name(dir: impl AsRef<Path>) -> Result<String, WorkspaceErro
             format!("Untitled{index}.md")
         };
 
-        if !dir.join(&name).exists() {
+        if !path_has_entry(&dir.join(&name))? {
             return Ok(name);
         }
     }
@@ -114,21 +114,20 @@ pub fn create_markdown_file(
     };
     let path = parent_dir.join(&name);
 
-    if path.exists() {
-        return Err(WorkspaceError::new(
-            "already_exists",
-            "target file already exists",
-        ));
-    }
+    ensure_target_available(&path)?;
 
-    fs::write(&path, "").map_err(|error| {
-        let code = if error.kind() == io::ErrorKind::PermissionDenied {
-            "permission_denied"
-        } else {
-            "write_failed"
-        };
-        WorkspaceError::from_io(code, "failed to create markdown file", &error)
-    })?;
+    fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .map_err(|error| {
+            let code = match error.kind() {
+                io::ErrorKind::AlreadyExists => "already_exists",
+                io::ErrorKind::PermissionDenied => "permission_denied",
+                _ => "write_failed",
+            };
+            WorkspaceError::from_io(code, "failed to create markdown file", &error)
+        })?;
 
     Ok(CreateMarkdownFileResult {
         path: path_to_string(&path),
@@ -148,12 +147,7 @@ pub fn create_folder(
     let name = sanitize_filename(&name)?;
     let path = parent_dir.join(&name);
 
-    if path.exists() {
-        return Err(WorkspaceError::new(
-            "already_exists",
-            "target folder already exists",
-        ));
-    }
+    ensure_target_available(&path)?;
 
     fs::create_dir(&path).map_err(|error| {
         let code = if error.kind() == io::ErrorKind::PermissionDenied {
@@ -418,8 +412,31 @@ fn resolve_write_path(
     let root = canonicalize_workspace_root(root_path)?;
     let path = resolve_candidate_path(&root, Path::new(&path));
 
-    if path.exists() {
-        return Ok((root.clone(), canonicalize_in_workspace(&root, &path)?));
+    match fs::symlink_metadata(&path) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() {
+                return Err(WorkspaceError::new(
+                    "outside_workspace",
+                    "symlink leaf targets cannot be written through workspace commands",
+                ));
+            }
+
+            return Ok((root.clone(), canonicalize_in_workspace(&root, &path)?));
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => {
+            let code = if error.kind() == io::ErrorKind::PermissionDenied {
+                "permission_denied"
+            } else {
+                "path_failed"
+            };
+
+            return Err(WorkspaceError::from_io(
+                code,
+                "failed to inspect workspace path",
+                &error,
+            ));
+        }
     }
 
     let parent = path
@@ -475,13 +492,33 @@ fn ensure_markdown_path(path: &Path) -> Result<(), WorkspaceError> {
 }
 
 fn ensure_target_available(path: &Path) -> Result<(), WorkspaceError> {
-    if path.exists() {
+    if path_has_entry(path)? {
         Err(WorkspaceError::new(
             "already_exists",
             "target path already exists",
         ))
     } else {
         Ok(())
+    }
+}
+
+fn path_has_entry(path: &Path) -> Result<bool, WorkspaceError> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(error) => {
+            let code = if error.kind() == io::ErrorKind::PermissionDenied {
+                "permission_denied"
+            } else {
+                "path_failed"
+            };
+
+            Err(WorkspaceError::from_io(
+                code,
+                format!("failed to inspect {}", path_to_string(path)),
+                &error,
+            ))
+        }
     }
 }
 
