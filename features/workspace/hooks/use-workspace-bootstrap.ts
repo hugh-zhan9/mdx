@@ -51,7 +51,10 @@ export function useWorkspaceBootstrap() {
     const [message, setMessage] = useState<string | null>(null);
     const [isTauri, setIsTauri] = useState(false);
     const appStateRef = useRef<PersistedAppState>(createDefaultAppState());
+    const workspaceRef = useRef<WorkspaceState | null>(null);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const windowResizeSaveTimerRef =
+        useRef<ReturnType<typeof setTimeout> | null>(null);
     const hasBootstrappedRef = useRef(false);
 
     const dispatch = useCallback((action: WorkspaceAction) => {
@@ -180,6 +183,10 @@ export function useWorkspaceBootstrap() {
     }, [chooseWorkspace, openWorkspace]);
 
     useEffect(() => {
+        workspaceRef.current = workspace;
+    }, [workspace]);
+
+    useEffect(() => {
         if (!workspace || !isTauri) {
             return;
         }
@@ -198,14 +205,104 @@ export function useWorkspaceBootstrap() {
             void saveAppState(nextAppState).catch((error) => {
                 setMessage(formatError(error, "Failed to save app state."));
             });
+            saveTimerRef.current = null;
         }, 350);
 
         return () => {
             if (saveTimerRef.current) {
                 clearTimeout(saveTimerRef.current);
+                saveTimerRef.current = null;
             }
         };
     }, [isTauri, workspace]);
+
+    useEffect(() => {
+        if (!isTauri) {
+            return;
+        }
+
+        let disposed = false;
+        let unlisten: (() => void) | null = null;
+
+        const clearResizeTimer = () => {
+            if (windowResizeSaveTimerRef.current) {
+                clearTimeout(windowResizeSaveTimerRef.current);
+                windowResizeSaveTimerRef.current = null;
+            }
+        };
+
+        const persistWindowSize = (windowSize: PersistedWindowSize) => {
+            const nextAppState = withWindowSize(
+                appStateRef.current,
+                workspaceRef.current,
+                windowSize,
+            );
+            appStateRef.current = nextAppState;
+            void saveAppState(nextAppState).catch((error) => {
+                setMessage(formatError(error, "Failed to save app state."));
+            });
+        };
+
+        const scheduleWindowSizeSave = (windowSize: PersistedWindowSize) => {
+            clearResizeTimer();
+            windowResizeSaveTimerRef.current = setTimeout(() => {
+                persistWindowSize(windowSize);
+                windowResizeSaveTimerRef.current = null;
+            }, 350);
+        };
+
+        const onBrowserResize = () => {
+            scheduleWindowSizeSave(
+                getCurrentWindowSize(appStateRef.current.windowSize),
+            );
+        };
+
+        async function subscribeToWindowResize() {
+            try {
+                const { getCurrentWindow } = await import(
+                    "@tauri-apps/api/window"
+                );
+                const currentWindow = getCurrentWindow();
+                const nextUnlisten = await currentWindow.onResized(
+                    ({ payload }) => {
+                        scheduleWindowSizeSave({
+                            width: payload.width,
+                            height: payload.height,
+                        });
+                    },
+                );
+
+                if (disposed) {
+                    nextUnlisten();
+                    return;
+                }
+
+                unlisten = nextUnlisten;
+            } catch (error) {
+                console.warn(
+                    "Failed to subscribe to Tauri window resize; using browser resize events.",
+                    error,
+                );
+
+                if (!disposed) {
+                    window.addEventListener("resize", onBrowserResize);
+                }
+            }
+        }
+
+        void subscribeToWindowResize();
+
+        return () => {
+            disposed = true;
+            clearResizeTimer();
+
+            if (unlisten) {
+                unlisten();
+            }
+
+            window.removeEventListener("resize", onBrowserResize);
+        };
+    }, [isTauri]);
 
     return useMemo(
         () => ({
@@ -326,6 +423,28 @@ function upsertWorkspaceState(
     };
 }
 
+function withWindowSize(
+    appState: PersistedAppState,
+    workspace: WorkspaceState | null,
+    windowSize: PersistedWindowSize,
+): PersistedAppState {
+    const normalizedWindowSize = normalizePersistedWindowSize(windowSize);
+
+    if (workspace) {
+        return upsertWorkspaceState(
+            appState,
+            workspace,
+            normalizedWindowSize,
+        );
+    }
+
+    return {
+        ...appState,
+        stateVersion: appState.stateVersion || STATE_VERSION,
+        windowSize: normalizedWindowSize,
+    };
+}
+
 function toPersistedWorkspace(
     workspace: WorkspaceState,
 ): PersistedWorkspaceState {
@@ -402,15 +521,33 @@ async function restoreTauriWindowSize(windowSize: PersistedWindowSize) {
     const restoredSize = normalizePersistedWindowSize(windowSize);
 
     try {
-        const { getCurrentWindow, PhysicalSize } = await import(
-            "@tauri-apps/api/window"
-        );
-        await getCurrentWindow().setSize(
-            new PhysicalSize(restoredSize.width, restoredSize.height),
-        );
+        await setTauriWindowSize(restoredSize);
     } catch (error) {
         console.warn("Failed to restore persisted window size.", error);
+
+        try {
+            await setTauriWindowSize(DEFAULT_WINDOW_SIZE);
+        } catch (fallbackError) {
+            console.warn(
+                "Failed to apply default window size fallback.",
+                fallbackError,
+            );
+        }
     }
+}
+
+async function setTauriWindowSize(windowSize: PersistedWindowSize) {
+    const { getCurrentWindow, PhysicalSize } = await import(
+        "@tauri-apps/api/window"
+    );
+    const normalizedWindowSize = normalizePersistedWindowSize(windowSize);
+
+    await getCurrentWindow().setSize(
+        new PhysicalSize(
+            normalizedWindowSize.width,
+            normalizedWindowSize.height,
+        ),
+    );
 }
 
 function normalizeAppState(state: PersistedAppState | null): PersistedAppState {
@@ -476,13 +613,13 @@ function normalizePanelWidth(width: number | undefined, fallback: number) {
 
 function getCurrentWindowSize(fallback: PersistedWindowSize) {
     if (typeof window === "undefined") {
-        return fallback;
+        return normalizePersistedWindowSize(fallback);
     }
 
-    return {
+    return normalizePersistedWindowSize({
         width: window.innerWidth || fallback.width,
         height: window.innerHeight || fallback.height,
-    };
+    });
 }
 
 function isTauriRuntime() {
