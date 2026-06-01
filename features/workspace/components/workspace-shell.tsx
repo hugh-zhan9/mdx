@@ -138,7 +138,20 @@ export function WorkspaceShell({
                 });
 
                 if (renamed) {
-                    await refreshTree(workspace.rootPath, dispatch);
+                    try {
+                        await refreshTree(workspace.rootPath, dispatch);
+                    } catch (refreshError) {
+                        console.warn(
+                            "File saved, but failed to refresh workspace tree.",
+                            refreshError,
+                        );
+                        window.alert(
+                            formatError(
+                                refreshError,
+                                "File saved, but failed to refresh workspace tree.",
+                            ),
+                        );
+                    }
                 }
 
                 return true;
