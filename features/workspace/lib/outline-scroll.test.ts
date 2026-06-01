@@ -1,4 +1,7 @@
+import { isValidElement, type ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { OutlinePanel } from "../components/outline-panel";
+import type { MarkdownOutlineHeading } from "./types";
 import {
     findRenderedHeadingByIndex,
     scrollRenderedHeadingIntoView,
@@ -32,6 +35,31 @@ describe("outline scroll helpers", () => {
             inline: "nearest",
         });
     });
+
+    it("calls the outline click handler with the matching heading index", () => {
+        const onHeadingClick = vi.fn();
+        const headings: MarkdownOutlineHeading[] = [
+            { id: "one", level: 1, text: "One", line: 1 },
+            { id: "two", level: 2, text: "Two", line: 2 },
+        ];
+        const tree = OutlinePanel({
+            headings,
+            collapsed: false,
+            onToggleCollapsed: () => {},
+            onHeadingClick,
+            resizeHandleProps: {} as never,
+        });
+        const headingButton = collectButtons(tree).find(
+            (button) => button.props.title === "Two",
+        );
+
+        expect(headingButton).toBeTruthy();
+
+        headingButton?.props.onClick();
+
+        expect(onHeadingClick).toHaveBeenCalledTimes(1);
+        expect(onHeadingClick).toHaveBeenCalledWith(headings[1], 1);
+    });
 });
 
 function createHeading(text: string) {
@@ -45,4 +73,24 @@ function createHeadingRoot(headings: HTMLElement[]) {
     return {
         querySelectorAll: vi.fn(() => headings),
     } as unknown as ParentNode;
+}
+
+function collectButtons(
+    node: ReactElement | null,
+): ReactElement<Record<string, unknown>>[] {
+    if (!node || !isValidElement(node)) {
+        return [];
+    }
+
+    const props = node.props as Record<string, unknown>;
+    const children = props.children;
+    const directChildren = Array.isArray(children) ? children : [children];
+    const nestedButtons = directChildren.flatMap((child) =>
+        isValidElement(child) ? collectButtons(child) : [],
+    );
+
+    return [
+        ...(node.type === "button" ? [node as ReactElement<Record<string, unknown>>] : []),
+        ...nestedButtons,
+    ];
 }
