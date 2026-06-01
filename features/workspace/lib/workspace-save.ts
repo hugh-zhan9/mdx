@@ -19,7 +19,7 @@ export interface SaveTabEnvironment {
     promptName: (title: string) => string | null;
     alert: (message: string) => void;
     warn: (message: string, error: unknown) => void;
-    refreshTree: () => Promise<void>;
+    refreshTree: (rootPath: string) => Promise<void>;
 }
 
 export interface SaveQueue {
@@ -167,9 +167,12 @@ export async function performSaveTab(
             markdown,
         });
 
-        if (renamed) {
+        if (
+            renamed &&
+            environment.getWorkspace().rootPath === writePlan.rootPath
+        ) {
             try {
-                await environment.refreshTree();
+                await environment.refreshTree(writePlan.rootPath);
             } catch (refreshError) {
                 environment.warn(
                     "File saved, but failed to refresh workspace tree.",

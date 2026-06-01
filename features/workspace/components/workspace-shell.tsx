@@ -40,6 +40,7 @@ export function WorkspaceShell({
 }: WorkspaceShellProps) {
     const workspaceRef = useRef(workspace);
     const saveQueueRef = useRef<SaveQueue | null>(null);
+    const workspaceRootRef = useRef(workspace.rootPath);
     const tabs = workspace.tabOrder
         .map((tabId) => workspace.tabs[tabId])
         .filter((tab): tab is WorkspaceTab => Boolean(tab));
@@ -49,6 +50,10 @@ export function WorkspaceShell({
 
     useEffect(() => {
         workspaceRef.current = workspace;
+        if (workspaceRootRef.current !== workspace.rootPath) {
+            workspaceRootRef.current = workspace.rootPath;
+            saveQueueRef.current = null;
+        }
     }, [workspace]);
 
     const dispatchAndMirror = useCallback(
@@ -84,9 +89,10 @@ export function WorkspaceShell({
                 promptName: (title) => window.prompt("File name", title),
                 alert: (text) => window.alert(text),
                 warn: (text, error) => console.warn(text, error),
-                refreshTree: () =>
+                refreshTree: (rootPath) =>
                     refreshTree(
-                        workspaceRef.current.rootPath,
+                        rootPath,
+                        () => workspaceRef.current.rootPath,
                         dispatchAndMirror,
                     ),
             });
@@ -220,6 +226,7 @@ export function WorkspaceShell({
 
 async function refreshTree(
     rootPath: string,
+    getCurrentRootPath: () => string,
     dispatch: (action: WorkspaceAction) => void,
 ) {
     const { invoke } = await tauriCore();
@@ -230,6 +237,10 @@ async function refreshTree(
 
     if (!built.ok) {
         throw new Error(built.error.message);
+    }
+
+    if (getCurrentRootPath() !== rootPath) {
+        return;
     }
 
     dispatch({

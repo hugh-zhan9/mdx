@@ -91,6 +91,85 @@ describe("workspace save coordination", () => {
         expect(workspace.tabs["tab-1"].dirty).toBe(false);
         expect(workspace.tabs["tab-1"].markdown).toBe("second");
     });
+
+    it("refreshes the original root after a first-save rename", async () => {
+        let workspace = withTab(
+            createWorkspaceState("/tmp/ws"),
+            createTab({
+                path: "/tmp/ws/Untitled.md",
+                title: "Untitled.md",
+                markdown: "body",
+                needsRenameOnFirstSave: true,
+            }),
+        );
+        const refreshTree = vi.fn(async () => {});
+        const queue = createTabSaveQueue({
+            getWorkspace: () => workspace,
+            dispatch: (action) => {
+                workspace = workspaceReducer(workspace, action);
+            },
+            invoke: vi.fn(async (command) => {
+                if (command === "rename_path") {
+                    return {
+                        oldPath: "/tmp/ws/Untitled.md",
+                        newPath: "/tmp/ws/Notes.md",
+                    };
+                }
+
+                return undefined;
+            }),
+            promptName: () => "Notes.md",
+            alert: vi.fn(),
+            warn: vi.fn(),
+            refreshTree,
+        });
+
+        await expect(queue.saveTab("tab-1")).resolves.toBe(true);
+        expect(refreshTree).toHaveBeenCalledWith("/tmp/ws");
+    });
+
+    it("skips refresh when the workspace root changes during save", async () => {
+        let workspace = withTab(
+            createWorkspaceState("/tmp/ws"),
+            createTab({
+                path: "/tmp/ws/Untitled.md",
+                title: "Untitled.md",
+                markdown: "body",
+                needsRenameOnFirstSave: true,
+            }),
+        );
+        let afterWrite = false;
+        const refreshTree = vi.fn(async () => {});
+        const queue = createTabSaveQueue({
+            getWorkspace: () => workspace,
+            dispatch: (action) => {
+                workspace = workspaceReducer(workspace, action);
+            },
+            invoke: vi.fn(async (command) => {
+                if (command === "rename_path") {
+                    return {
+                        oldPath: "/tmp/ws/Untitled.md",
+                        newPath: "/tmp/ws/Notes.md",
+                    };
+                }
+
+                if (command === "write_markdown_file") {
+                    afterWrite = true;
+                    workspace = createWorkspaceState("/tmp/other");
+                }
+
+                return undefined;
+            }),
+            promptName: () => "Notes.md",
+            alert: vi.fn(),
+            warn: vi.fn(),
+            refreshTree,
+        });
+
+        await expect(queue.saveTab("tab-1")).resolves.toBe(false);
+        expect(afterWrite).toBe(true);
+        expect(refreshTree).not.toHaveBeenCalled();
+    });
 });
 
 function createTab(patch: Partial<WorkspaceTab> = {}): WorkspaceTab {
