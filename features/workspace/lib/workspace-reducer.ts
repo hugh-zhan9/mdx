@@ -16,6 +16,8 @@ const DEFAULT_PANEL_STATE = {
     rightCollapsed: false,
     rightWidth: 240,
 };
+const MIN_PANEL_WIDTH = 160;
+const MAX_PANEL_WIDTH = 640;
 
 export function createWorkspaceState(
     rootPath: string,
@@ -84,11 +86,9 @@ export function workspaceReducer(
 
 function openTab(state: WorkspaceState, tab: WorkspaceTab): WorkspaceState {
     const nextTab = normalizeTab(tab);
-    const existingTabId = state.tabOrder.find(
-        (tabId) => state.tabs[tabId]?.path === nextTab.path,
-    );
+    const existingTabId = findTabIdByPath(state, nextTab.path);
 
-    if (existingTabId) {
+    if (existingTabId && existingTabId !== nextTab.tabId) {
         return {
             ...state,
             activeTabId: existingTabId,
@@ -105,7 +105,7 @@ function openTab(state: WorkspaceState, tab: WorkspaceTab): WorkspaceState {
             ...state.tabs,
             [nextTab.tabId]: nextTab,
         },
-        tabOrder: [...state.tabOrder, nextTab.tabId],
+        tabOrder: ensureSingleTabOrderEntry(state.tabOrder, nextTab.tabId),
         activeTabId: nextTab.tabId,
     };
 }
@@ -182,9 +182,24 @@ function renameTab(
     action: Extract<WorkspaceAction, { type: "tab/renamed" }>,
 ): WorkspaceState {
     const path = normalizeWorkspacePath(action.path);
+    const sourceTab = state.tabs[action.tabId];
 
-    if (!isPathInsideRoot(state.rootPath, path)) {
+    if (!sourceTab || !isPathInsideRoot(state.rootPath, path)) {
         return state;
+    }
+
+    const targetTabId = findTabIdByPath(state, path);
+
+    if (targetTabId && targetTabId !== action.tabId) {
+        const nextTabs = { ...state.tabs };
+        delete nextTabs[action.tabId];
+
+        return {
+            ...state,
+            tabs: nextTabs,
+            tabOrder: state.tabOrder.filter((tabId) => tabId !== action.tabId),
+            activeTabId: targetTabId,
+        };
     }
 
     return updateTab(state, action.tabId, {
@@ -201,13 +216,19 @@ function resizePanel(
     side: WorkspacePanelSide,
     width: number,
 ): WorkspaceState {
+    const nextWidth = normalizePanelWidth(width);
+
+    if (nextWidth === null) {
+        return state;
+    }
+
     const key = side === "left" ? "leftWidth" : "rightWidth";
 
     return {
         ...state,
         panel: {
             ...state.panel,
-            [key]: width,
+            [key]: nextWidth,
         },
     };
 }
@@ -233,4 +254,45 @@ function normalizeTab(tab: WorkspaceTab): WorkspaceTab {
         ...tab,
         path: normalizeWorkspacePath(tab.path),
     };
+}
+
+function findTabIdByPath(state: WorkspaceState, path: string) {
+    const normalizedPath = normalizeWorkspacePath(path);
+
+    return state.tabOrder.find(
+        (tabId) =>
+            state.tabs[tabId] &&
+            normalizeWorkspacePath(state.tabs[tabId].path) === normalizedPath,
+    );
+}
+
+function ensureSingleTabOrderEntry(tabOrder: string[], tabId: string) {
+    const nextTabOrder: string[] = [];
+    let found = false;
+
+    for (const existingTabId of tabOrder) {
+        if (existingTabId !== tabId) {
+            nextTabOrder.push(existingTabId);
+            continue;
+        }
+
+        if (!found) {
+            nextTabOrder.push(existingTabId);
+            found = true;
+        }
+    }
+
+    if (!found) {
+        nextTabOrder.push(tabId);
+    }
+
+    return nextTabOrder;
+}
+
+function normalizePanelWidth(width: number) {
+    if (!Number.isFinite(width) || width < 0) {
+        return null;
+    }
+
+    return Math.min(Math.max(width, MIN_PANEL_WIDTH), MAX_PANEL_WIDTH);
 }

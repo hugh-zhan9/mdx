@@ -15,4 +15,11 @@ describe("parseMarkdownOutline", () => {
         expect(headings.map((h) => h.text)).toEqual(["One", "Six"]);
         expect(headings.map((h) => h.level)).toEqual([1, 6]);
     });
+
+    it("keeps headings inside unmatched shorter fences hidden", () => {
+        const headings = parseMarkdownOutline(
+            "````\n```\n# Hidden\n```\n````\n# Visible",
+        );
+        expect(headings.map((h) => h.text)).toEqual(["Visible"]);
+    });
 });

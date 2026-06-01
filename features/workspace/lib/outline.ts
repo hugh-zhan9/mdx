@@ -3,27 +3,24 @@ import type { MarkdownOutlineHeading } from "./types";
 export function parseMarkdownOutline(markdown: string): MarkdownOutlineHeading[] {
     const headings: MarkdownOutlineHeading[] = [];
     const slugCounts = new Map<string, number>();
-    let inFence = false;
-    let fenceMarker: string | null = null;
+    let fence: { char: "`" | "~"; length: number } | null = null;
 
     markdown.split(/\r?\n/).forEach((line, index) => {
-        const fenceMatch = line.match(/^\s{0,3}(`{3,}|~{3,})/);
-
-        if (fenceMatch) {
-            const marker = fenceMatch[1][0];
-
-            if (!inFence) {
-                inFence = true;
-                fenceMarker = marker;
-            } else if (fenceMarker === marker) {
-                inFence = false;
-                fenceMarker = null;
+        if (fence) {
+            if (isClosingFence(line, fence)) {
+                fence = null;
             }
 
             return;
         }
 
-        if (inFence) {
+        const fenceMatch = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+
+        if (fenceMatch) {
+            fence = {
+                char: fenceMatch[1][0] as "`" | "~",
+                length: fenceMatch[1].length,
+            };
             return;
         }
 
@@ -50,6 +47,17 @@ export function parseMarkdownOutline(markdown: string): MarkdownOutlineHeading[]
     return headings;
 }
 
+function isClosingFence(
+    line: string,
+    fence: { char: "`" | "~"; length: number },
+) {
+    const pattern = new RegExp(
+        `^ {0,3}${escapeForRegExp(fence.char)}{${fence.length},}[ \\t]*$`,
+    );
+
+    return pattern.test(line);
+}
+
 function createHeadingId(text: string, slugCounts: Map<string, number>) {
     const base =
         text
@@ -61,4 +69,8 @@ function createHeadingId(text: string, slugCounts: Map<string, number>) {
     slugCounts.set(base, count + 1);
 
     return count === 0 ? base : `${base}-${count}`;
+}
+
+function escapeForRegExp(value: string) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
