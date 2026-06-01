@@ -13,6 +13,11 @@ export {
     normalizeWorkspacePath,
 } from "./lib/path";
 export { filterTreeByName } from "./lib/tree-filter";
+export {
+    DEFAULT_WINDOW_SIZE,
+    MIN_WINDOW_SIZE,
+    normalizePersistedWindowSize,
+} from "./lib/window-size";
 export { createWorkspaceState, workspaceReducer } from "./lib/workspace-reducer";
 export type {
     FileTreeNode,

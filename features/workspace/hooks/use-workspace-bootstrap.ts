@@ -17,6 +17,10 @@ import {
     isPathInsideRoot,
     normalizeWorkspacePath,
 } from "../lib/path";
+import {
+    DEFAULT_WINDOW_SIZE,
+    normalizePersistedWindowSize,
+} from "../lib/window-size";
 
 type BootstrapStatus = "loading" | "ready" | "empty" | "error";
 
@@ -34,10 +38,6 @@ interface BootstrapWorkspaceResult {
 }
 
 const STATE_VERSION = 1;
-const DEFAULT_WINDOW_SIZE: PersistedWindowSize = {
-    width: 900,
-    height: 700,
-};
 const DEFAULT_PANEL_STATE: WorkspacePanelState = {
     leftCollapsed: false,
     leftWidth: 280,
@@ -147,7 +147,13 @@ export function useWorkspaceBootstrap() {
                     return;
                 }
 
-                appStateRef.current = normalizeAppState(appState);
+                await restoreTauriWindowSize(appState.windowSize);
+
+                if (cancelled) {
+                    return;
+                }
+
+                appStateRef.current = appState;
 
                 if (appStateRef.current.recentWorkspaceRoot) {
                     await openWorkspace(appStateRef.current.recentWorkspaceRoot);
@@ -392,6 +398,21 @@ async function chooseWorkspaceRoot() {
     return selected;
 }
 
+async function restoreTauriWindowSize(windowSize: PersistedWindowSize) {
+    const restoredSize = normalizePersistedWindowSize(windowSize);
+
+    try {
+        const { getCurrentWindow, PhysicalSize } = await import(
+            "@tauri-apps/api/window"
+        );
+        await getCurrentWindow().setSize(
+            new PhysicalSize(restoredSize.width, restoredSize.height),
+        );
+    } catch (error) {
+        console.warn("Failed to restore persisted window size.", error);
+    }
+}
+
 function normalizeAppState(state: PersistedAppState | null): PersistedAppState {
     if (!state) {
         return createDefaultAppState();
@@ -414,7 +435,7 @@ function normalizeAppState(state: PersistedAppState | null): PersistedAppState {
                       panels: normalizePanelState(workspace.panels),
                   }))
             : [],
-        windowSize: normalizeWindowSize(state.windowSize),
+        windowSize: normalizePersistedWindowSize(state.windowSize),
     };
 }
 
@@ -451,20 +472,6 @@ function normalizePanelWidth(width: number | undefined, fallback: number) {
     }
 
     return Math.min(Math.max(width, 160), 640);
-}
-
-function normalizeWindowSize(
-    windowSize: PersistedWindowSize | undefined,
-): PersistedWindowSize {
-    if (
-        !windowSize ||
-        !Number.isFinite(windowSize.width) ||
-        !Number.isFinite(windowSize.height)
-    ) {
-        return DEFAULT_WINDOW_SIZE;
-    }
-
-    return windowSize;
 }
 
 function getCurrentWindowSize(fallback: PersistedWindowSize) {
