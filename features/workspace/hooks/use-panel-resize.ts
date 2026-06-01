@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type {
     WorkspaceAction,
@@ -22,6 +22,7 @@ export function usePanelResize({
     panel,
     dispatch,
 }: UsePanelResizeOptions) {
+    const dragCleanupRef = useRef<(() => void) | null>(null);
     const width = side === "left" ? panel.leftWidth : panel.rightWidth;
     const isCollapsed =
         side === "left" ? panel.leftCollapsed : panel.rightCollapsed;
@@ -48,6 +49,7 @@ export function usePanelResize({
             }
 
             event.preventDefault();
+            dragCleanupRef.current?.();
             const startX = event.clientX;
             const startWidth = width;
 
@@ -63,16 +65,30 @@ export function usePanelResize({
                 });
             };
 
-            const onPointerUp = () => {
+            const cleanupDrag = () => {
                 window.removeEventListener("pointermove", onPointerMove);
-                window.removeEventListener("pointerup", onPointerUp);
+                window.removeEventListener("pointerup", cleanupDrag);
+                window.removeEventListener("pointercancel", cleanupDrag);
+                window.removeEventListener("blur", cleanupDrag);
+                dragCleanupRef.current = null;
             };
+            dragCleanupRef.current = cleanupDrag;
 
             window.addEventListener("pointermove", onPointerMove);
-            window.addEventListener("pointerup", onPointerUp, { once: true });
+            window.addEventListener("pointerup", cleanupDrag, { once: true });
+            window.addEventListener("pointercancel", cleanupDrag, {
+                once: true,
+            });
+            window.addEventListener("blur", cleanupDrag, { once: true });
         },
         [dispatch, isCollapsed, side, width],
     );
+
+    useEffect(() => {
+        return () => {
+            dragCleanupRef.current?.();
+        };
+    }, []);
 
     return {
         width,

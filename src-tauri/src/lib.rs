@@ -22,7 +22,7 @@ fn new_workspace_window(app: &AppHandle) -> tauri::Result<()> {
     let label = format!("w{}", WIN_ID.fetch_add(1, Ordering::SeqCst));
     let window = WebviewWindowBuilder::new(app, &label, WebviewUrl::App("/".into()))
         .title("MDX")
-        .inner_size(1100.0, 720.0)
+        .inner_size(900.0, 700.0)
         .resizable(true)
         .build()?;
     let _ = window.set_focus();

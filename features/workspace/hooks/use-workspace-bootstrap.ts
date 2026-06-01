@@ -21,6 +21,7 @@ import {
     DEFAULT_WINDOW_SIZE,
     normalizePersistedWindowSize,
 } from "../lib/window-size";
+import { findPersistedWorkspaceForRoot } from "../lib/persisted-workspace";
 
 type BootstrapStatus = "loading" | "ready" | "empty" | "error";
 
@@ -322,9 +323,13 @@ async function bootstrapWorkspace(
     rootPath: string,
     appState: PersistedAppState,
 ): Promise<BootstrapWorkspaceResult> {
-    const persistedWorkspace = findPersistedWorkspace(appState, rootPath);
     const scanned = await scanWorkspace(rootPath);
     const restoredRootPath = normalizeWorkspacePath(scanned.rootPath || rootPath);
+    const persistedWorkspace = findPersistedWorkspaceForRoot(
+        appState,
+        rootPath,
+        restoredRootPath,
+    );
     const workspace = applyPersistedWorkspace(
         createWorkspaceState(restoredRootPath, scanned.nodes),
         persistedWorkspace,
@@ -471,18 +476,6 @@ function toPersistedWorkspace(
         activeTabId: workspace.activeTabId,
         panels: workspace.panel,
     };
-}
-
-function findPersistedWorkspace(
-    appState: PersistedAppState,
-    rootPath: string,
-) {
-    const normalizedRootPath = normalizeWorkspacePath(rootPath);
-
-    return appState.workspaces.find(
-        (workspace) =>
-            normalizeWorkspacePath(workspace.rootPath) === normalizedRootPath,
-    );
 }
 
 async function loadAppState() {

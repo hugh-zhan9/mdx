@@ -13,6 +13,7 @@ export {
     normalizeWorkspacePath,
 } from "./lib/path";
 export { filterTreeByName } from "./lib/tree-filter";
+export { findPersistedWorkspaceForRoot } from "./lib/persisted-workspace";
 export {
     DEFAULT_WINDOW_SIZE,
     MIN_WINDOW_SIZE,

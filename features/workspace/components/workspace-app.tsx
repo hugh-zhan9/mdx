@@ -55,14 +55,20 @@ function WorkspaceEmptyState({
         <div className="grid h-full min-h-0 grid-rows-[44px_minmax(0,1fr)]">
             <header className="flex items-center justify-between border-b border-base-300 bg-base-200 px-3">
                 <div className="text-sm font-semibold">MDX</div>
-                <button
-                    type="button"
-                    className="h-7 px-2 text-xs text-base-content/70 hover:bg-base-300 disabled:text-base-content/30"
-                    onClick={onChooseWorkspace}
-                    disabled={!canChooseWorkspace || isLoading}
-                >
-                    Open Folder
-                </button>
+                {canChooseWorkspace ? (
+                    <button
+                        type="button"
+                        className="h-7 px-2 text-xs text-base-content/70 hover:bg-base-300 disabled:text-base-content/30"
+                        onClick={onChooseWorkspace}
+                        disabled={isLoading}
+                    >
+                        Open Folder
+                    </button>
+                ) : (
+                    <div className="text-xs text-base-content/50">
+                        Desktop app required
+                    </div>
+                )}
             </header>
 
             <section className="flex min-h-0 items-center justify-center px-6">
@@ -73,7 +79,10 @@ function WorkspaceEmptyState({
                             : "No workspace open"}
                     </div>
                     <div className="mt-2 text-sm text-base-content/55">
-                        {message ?? "Choose a folder to open a workspace."}
+                        {message ??
+                            (canChooseWorkspace
+                                ? "Choose a folder to open a workspace."
+                                : "Open the desktop app to choose and restore a workspace folder.")}
                     </div>
                 </div>
             </section>

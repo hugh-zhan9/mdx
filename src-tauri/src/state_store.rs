@@ -99,8 +99,8 @@ pub struct PersistedWindowSize {
 impl Default for PersistedWindowSize {
     fn default() -> Self {
         Self {
-            width: 1100.0,
-            height: 720.0,
+            width: 900.0,
+            height: 700.0,
         }
     }
 }

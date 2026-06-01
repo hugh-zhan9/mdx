@@ -14,6 +14,8 @@ fn loads_empty_state_when_state_file_is_missing() {
     assert_eq!(state.state_version, 1);
     assert!(state.recent_workspace_root.is_none());
     assert!(state.workspaces.is_empty());
+    assert_eq!(state.window_size.width, 900.0);
+    assert_eq!(state.window_size.height, 700.0);
 }
 
 #[test]
