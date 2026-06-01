@@ -2,18 +2,17 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { tauriCore } from "@/common/lib/tauri";
-import { planFirstSave } from "@/features/editor/lib/tab-save";
 import { usePanelResize } from "../hooks/use-panel-resize";
 import { buildFileTree } from "../lib/file-tree";
-import { normalizeWorkspacePath } from "../lib/path";
+import { createTabSaveQueue } from "../lib/workspace-save";
 import { workspaceReducer } from "../lib/workspace-reducer";
 import type {
     FileTreeNode,
-    PathChangeResult,
     WorkspaceAction,
     WorkspaceState,
     WorkspaceTab,
 } from "../lib/types";
+import type { SaveQueue } from "../lib/workspace-save";
 import { EditorStage } from "./editor-stage";
 import { FileTreePanel } from "./file-tree-panel";
 import { OutlinePanel } from "./outline-panel";
@@ -40,6 +39,7 @@ export function WorkspaceShell({
     message,
 }: WorkspaceShellProps) {
     const workspaceRef = useRef(workspace);
+    const saveQueueRef = useRef<SaveQueue | null>(null);
     const tabs = workspace.tabOrder
         .map((tabId) => workspace.tabs[tabId])
         .filter((tab): tab is WorkspaceTab => Boolean(tab));
@@ -73,117 +73,27 @@ export function WorkspaceShell({
         dispatch: dispatchAndMirror,
     });
     const saveTab = useCallback(
-        async (tabId: string) => {
-            const tab = workspace.tabs[tabId];
+        (tabId: string) => {
+            saveQueueRef.current ??= createTabSaveQueue({
+                getWorkspace: () => workspaceRef.current,
+                dispatch: dispatchAndMirror,
+                invoke: async (command, args) => {
+                    const { invoke } = await tauriCore();
+                    return invoke(command, args);
+                },
+                promptName: (title) => window.prompt("File name", title),
+                alert: (text) => window.alert(text),
+                warn: (text, error) => console.warn(text, error),
+                refreshTree: () =>
+                    refreshTree(
+                        workspaceRef.current.rootPath,
+                        dispatchAndMirror,
+                    ),
+            });
 
-            if (!tab) {
-                return false;
-            }
-
-            try {
-                const { invoke } = await tauriCore();
-                let path = tab.path;
-                const markdown =
-                    tab.markdown ??
-                    (await invoke<string>("read_markdown_file", {
-                        rootPath: workspace.rootPath,
-                        path,
-                    }));
-                let renamed = false;
-
-                if (tab.needsRenameOnFirstSave) {
-                    const requestedName = window.prompt(
-                        "File name",
-                        suggestedFormalName(tab.title),
-                    );
-
-                    if (!requestedName) {
-                        return false;
-                    }
-
-                    const plan = planFirstSave({
-                        currentPath: tab.path,
-                        requestedName,
-                        existingNames: collectSiblingNames(
-                            workspace.fileTree,
-                            dirname(tab.path),
-                        ),
-                        needsRenameOnFirstSave: true,
-                    });
-
-                    if (plan.kind === "invalid_name") {
-                        window.alert(plan.reason);
-                        return false;
-                    }
-
-                    if (plan.kind === "name_conflict") {
-                        window.alert(`"${plan.name}" already exists.`);
-                        return false;
-                    }
-
-                    if (plan.kind === "rename_then_save") {
-                        const renameResult = await invoke<PathChangeResult>(
-                            "rename_path",
-                            {
-                                rootPath: workspace.rootPath,
-                                fromPath: tab.path,
-                                newName: basename(plan.newPath),
-                            },
-                        );
-                        path = renameResult.newPath;
-                        renamed = true;
-                        dispatchAndMirror({
-                            type: "tab/renamed",
-                            tabId,
-                            path,
-                            title: basename(path),
-                            needsRenameOnFirstSave: false,
-                        });
-                    } else {
-                        path = plan.path;
-                    }
-                }
-
-                await invoke("write_markdown_file", {
-                    rootPath: workspace.rootPath,
-                    path,
-                    content: markdown,
-                });
-                const savedStillCurrent =
-                    workspaceRef.current.tabs[tabId]?.markdown === markdown;
-                dispatchAndMirror({
-                    type: "tab/savedIfUnchanged",
-                    tabId,
-                    markdown,
-                });
-
-                if (renamed) {
-                    try {
-                        await refreshTree(
-                            workspace.rootPath,
-                            dispatchAndMirror,
-                        );
-                    } catch (refreshError) {
-                        console.warn(
-                            "File saved, but failed to refresh workspace tree.",
-                            refreshError,
-                        );
-                        window.alert(
-                            formatError(
-                                refreshError,
-                                "File saved, but failed to refresh workspace tree.",
-                            ),
-                        );
-                    }
-                }
-
-                return savedStillCurrent;
-            } catch (error) {
-                window.alert(formatError(error, "Failed to save file."));
-                return false;
-            }
+            return saveQueueRef.current.saveTab(tabId);
         },
-        [dispatchAndMirror, workspace],
+        [dispatchAndMirror],
     );
     const gridTemplateColumns = [
         leftPanel.isCollapsed ? "0px" : `${leftPanel.width}px`,
@@ -326,80 +236,4 @@ async function refreshTree(
         type: "tree/loaded",
         fileTree: built.nodes,
     });
-}
-
-function collectSiblingNames(nodes: FileTreeNode[], parentPath: string) {
-    const normalizedParentPath = normalizeWorkspacePath(parentPath);
-
-    if (!normalizedParentPath) {
-        return nodes.map((node) => node.name);
-    }
-
-    const found = findFolderChildren(nodes, normalizedParentPath);
-
-    return (found ?? nodes).map((node) => node.name);
-}
-
-function findFolderChildren(
-    nodes: FileTreeNode[],
-    folderPath: string,
-): FileTreeNode[] | null {
-    for (const node of nodes) {
-        if (node.kind === "folder") {
-            if (normalizeWorkspacePath(node.path) === folderPath) {
-                return node.children;
-            }
-
-            const childNames = findFolderChildren(node.children, folderPath);
-
-            if (childNames) {
-                return childNames;
-            }
-        }
-    }
-
-    return null;
-}
-
-function suggestedFormalName(title: string) {
-    return /^Untitled\d*\.md$/i.test(title) ? "" : title;
-}
-
-function basename(path: string) {
-    const normalized = normalizeWorkspacePath(path);
-    return normalized.split("/").filter(Boolean).at(-1) ?? normalized;
-}
-
-function dirname(path: string) {
-    const normalized = normalizeWorkspacePath(path);
-    const parts = normalized.split("/").filter(Boolean);
-
-    if (parts.length <= 1) {
-        return normalized.startsWith("/") ? "/" : "";
-    }
-
-    const parent = parts.slice(0, -1).join("/");
-    return normalized.startsWith("/") ? `/${parent}` : parent;
-}
-
-function formatError(error: unknown, fallback: string) {
-    if (error instanceof Error && error.message) {
-        return `${fallback} ${error.message}`;
-    }
-
-    if (typeof error === "string" && error.length > 0) {
-        return `${fallback} ${error}`;
-    }
-
-    if (
-        error &&
-        typeof error === "object" &&
-        "message" in error &&
-        typeof error.message === "string" &&
-        error.message.length > 0
-    ) {
-        return `${fallback} ${error.message}`;
-    }
-
-    return fallback;
 }
