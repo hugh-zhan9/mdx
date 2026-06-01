@@ -105,7 +105,7 @@ fn load_image_asset_impl(
         WorkspaceError::from_io(code, "failed to resolve image asset", &error)
     })?;
 
-    if !path_is_allowed_image_location(&image_path, root.as_deref(), global_assets_dir) {
+    if !path_is_allowed_image_location(&image_path, root.as_deref(), global_assets_dir)? {
         return Err(WorkspaceError::new(
             "outside_workspace",
             "image asset is outside the workspace and global assets directory",
@@ -155,10 +155,7 @@ fn save_global_asset(
     bytes: &[u8],
     global_assets_dir: Option<&Path>,
 ) -> Result<SaveImageAssetResult, WorkspaceError> {
-    let assets_dir = match global_assets_dir {
-        Some(path) => path.to_path_buf(),
-        None => mdx_home_dir()?.join("assets"),
-    };
+    let assets_dir = ensure_global_assets_dir(global_assets_dir, true)?;
     let stored_path = write_deduped_asset(&assets_dir, filename, bytes)?;
     let stored_path = path_to_string(&stored_path);
 
@@ -216,6 +213,90 @@ fn ensure_workspace_assets_dir(root: &Path) -> Result<PathBuf, WorkspaceError> {
         return Err(WorkspaceError::new(
             "outside_workspace",
             "workspace assets directory escapes the workspace root",
+        ));
+    }
+
+    Ok(assets_dir)
+}
+
+fn ensure_global_assets_dir(
+    global_assets_dir: Option<&Path>,
+    create: bool,
+) -> Result<PathBuf, WorkspaceError> {
+    let assets_dir = match global_assets_dir {
+        Some(path) => path.to_path_buf(),
+        None => mdx_home_dir()?.join("assets"),
+    };
+    let mdx_home = assets_dir.parent().ok_or_else(|| {
+        WorkspaceError::new("asset_path_failed", "global assets directory has no parent")
+    })?;
+
+    fs::create_dir_all(mdx_home).map_err(|error| {
+        WorkspaceError::from_io(
+            "asset_write_failed",
+            "failed to create global assets parent directory",
+            &error,
+        )
+    })?;
+    let mdx_home = fs::canonicalize(mdx_home).map_err(|error| {
+        WorkspaceError::from_io(
+            "asset_path_failed",
+            "failed to resolve global assets parent directory",
+            &error,
+        )
+    })?;
+
+    match fs::symlink_metadata(&assets_dir) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() {
+                return Err(WorkspaceError::new(
+                    "outside_workspace",
+                    "global assets directory cannot be a symlink",
+                ));
+            }
+            if !metadata.is_dir() {
+                return Err(WorkspaceError::new(
+                    "not_directory",
+                    "global assets path is not a directory",
+                ));
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound && create => {
+            fs::create_dir(&assets_dir).map_err(|error| {
+                WorkspaceError::from_io(
+                    "asset_write_failed",
+                    "failed to create global assets directory",
+                    &error,
+                )
+            })?;
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(WorkspaceError::from_io(
+                "not_found",
+                "global assets directory does not exist",
+                &error,
+            ));
+        }
+        Err(error) => {
+            return Err(WorkspaceError::from_io(
+                "asset_path_failed",
+                "failed to inspect global assets directory",
+                &error,
+            ));
+        }
+    }
+
+    let assets_dir = fs::canonicalize(&assets_dir).map_err(|error| {
+        WorkspaceError::from_io(
+            "asset_path_failed",
+            "failed to resolve global assets directory",
+            &error,
+        )
+    })?;
+    if !assets_dir.starts_with(&mdx_home) {
+        return Err(WorkspaceError::new(
+            "outside_workspace",
+            "global assets directory escapes the .mdx directory",
         ));
     }
 
@@ -364,23 +445,18 @@ fn path_is_allowed_image_location(
     image_path: &Path,
     root: Option<&Path>,
     global_assets_dir: Option<&Path>,
-) -> bool {
+) -> Result<bool, WorkspaceError> {
     if root.is_some_and(|root| image_path.starts_with(root)) {
-        return true;
+        return Ok(true);
     }
 
-    let global_assets_dir = match global_assets_dir {
-        Some(path) => path.to_path_buf(),
-        None => match mdx_home_dir() {
-            Ok(path) => path.join("assets"),
-            Err(_) => return false,
-        },
-    };
-    let Ok(global_assets_dir) = fs::canonicalize(global_assets_dir) else {
-        return false;
+    let global_assets_dir = match ensure_global_assets_dir(global_assets_dir, false) {
+        Ok(path) => path,
+        Err(error) if error.error_code() == "not_found" => return Ok(false),
+        Err(error) => return Err(error),
     };
 
-    image_path.starts_with(global_assets_dir)
+    Ok(image_path.starts_with(global_assets_dir))
 }
 
 fn mime_type_for_extension(extension: &str) -> &'static str {

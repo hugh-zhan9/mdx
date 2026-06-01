@@ -72,9 +72,10 @@ fn falls_back_when_workspace_assets_is_a_symlink() {
     .unwrap();
 
     assert!(result.used_fallback);
+    let global_assets_dir_path = std::fs::canonicalize(global_assets_dir.path()).unwrap();
     assert!(result
         .markdown_path
-        .starts_with(global_assets_dir.path().to_string_lossy().as_ref()));
+        .starts_with(global_assets_dir_path.to_string_lossy().as_ref()));
     assert!(global_assets_dir
         .path()
         .join(result.stored_path.rsplit('/').next().unwrap())
@@ -180,4 +181,52 @@ fn loads_image_from_global_assets_directory() {
         loaded.path,
         std::fs::canonicalize(asset_path).unwrap().to_string_lossy()
     );
+}
+
+#[test]
+#[cfg(unix)]
+fn rejects_symlinked_global_assets_directory_on_save() {
+    use std::os::unix::fs::symlink;
+
+    let home = tempdir().unwrap();
+    let mdx_home = home.path().join(".mdx");
+    let outside = tempdir().unwrap();
+    std::fs::create_dir(&mdx_home).unwrap();
+    symlink(outside.path(), mdx_home.join("assets")).unwrap();
+
+    let err = save_image_asset_with_global_assets_dir(
+        None,
+        None,
+        "paste.png".to_string(),
+        vec![1, 2, 3],
+        &mdx_home.join("assets"),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.error_code(), "outside_workspace");
+    assert!(outside.path().read_dir().unwrap().next().is_none());
+}
+
+#[test]
+#[cfg(unix)]
+fn rejects_symlinked_global_assets_directory_on_load() {
+    use std::os::unix::fs::symlink;
+
+    let home = tempdir().unwrap();
+    let mdx_home = home.path().join(".mdx");
+    let outside = tempdir().unwrap();
+    std::fs::create_dir(&mdx_home).unwrap();
+    symlink(outside.path(), mdx_home.join("assets")).unwrap();
+    let symlinked_image = mdx_home.join("assets").join("abc123.png");
+    std::fs::write(outside.path().join("abc123.png"), [9, 9, 9]).unwrap();
+
+    let err = load_image_asset_with_global_assets_dir(
+        None,
+        None,
+        symlinked_image.to_string_lossy().into_owned(),
+        &mdx_home.join("assets"),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.error_code(), "outside_workspace");
 }
