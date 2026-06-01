@@ -161,7 +161,7 @@ export async function performSaveTab(
             environment.getWorkspace(),
             writePlan,
         );
-        if (environment.getWorkspace().rootPath === writePlan.rootPath) {
+        if (savedStillCurrent) {
             environment.dispatch({
                 type: "tab/savedIfUnchanged",
                 tabId,

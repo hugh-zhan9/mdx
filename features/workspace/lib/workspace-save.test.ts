@@ -175,6 +175,46 @@ describe("workspace save coordination", () => {
         ).toBe(false);
         expect(refreshTree).not.toHaveBeenCalled();
     });
+
+    it("does not clear dirty when path changes during write", async () => {
+        let workspace = withTab(
+            createWorkspaceState("/tmp/ws"),
+            createTab({
+                path: "/tmp/ws/Note.md",
+                markdown: "body",
+            }),
+        );
+        const dispatched: WorkspaceAction[] = [];
+        const queue = createTabSaveQueue({
+            getWorkspace: () => workspace,
+            dispatch: (action) => {
+                dispatched.push(action);
+                workspace = workspaceReducer(workspace, action);
+            },
+            invoke: vi.fn(async (command) => {
+                if (command === "write_markdown_file") {
+                    workspace = workspaceReducer(workspace, {
+                        type: "tab/renamed",
+                        tabId: "tab-1",
+                        path: "/tmp/ws/Moved.md",
+                    });
+                }
+
+                return undefined;
+            }),
+            promptName: () => null,
+            alert: vi.fn(),
+            warn: vi.fn(),
+            refreshTree: vi.fn(async () => {}),
+        });
+
+        await expect(queue.saveTab("tab-1")).resolves.toBe(false);
+        expect(
+            dispatched.some((action) => action.type === "tab/savedIfUnchanged"),
+        ).toBe(false);
+        expect(workspace.tabs["tab-1"].path).toBe("/tmp/ws/Moved.md");
+        expect(workspace.tabs["tab-1"].dirty).toBe(true);
+    });
 });
 
 function createTab(patch: Partial<WorkspaceTab> = {}): WorkspaceTab {
