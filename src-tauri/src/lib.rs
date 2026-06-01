@@ -3,6 +3,13 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
+mod models;
+mod path_guard;
+mod workspace_fs;
+
+#[cfg(test)]
+mod workspace_fs_tests;
+
 static WIN_ID: AtomicU32 = AtomicU32::new(0);
 
 fn new_workspace_window(app: &AppHandle) -> tauri::Result<()> {
@@ -84,6 +91,16 @@ pub fn run() {
 
             Ok(())
         })
+        .invoke_handler(tauri::generate_handler![
+            workspace_fs::scan_workspace,
+            workspace_fs::read_markdown_file,
+            workspace_fs::write_markdown_file,
+            workspace_fs::create_markdown_file,
+            workspace_fs::create_folder,
+            workspace_fs::rename_path,
+            workspace_fs::move_path,
+            workspace_fs::trash_path,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
