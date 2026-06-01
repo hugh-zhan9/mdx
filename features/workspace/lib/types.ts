@@ -22,7 +22,7 @@ export type FilteredFileTreeNode =
     | (FileTreeFileNode & {
           nameSegments: HighlightSegment[];
       })
-    | (FileTreeFolderNode & {
+    | (Omit<FileTreeFolderNode, "children"> & {
           children: FilteredFileTreeNode[];
           nameSegments: HighlightSegment[];
       });

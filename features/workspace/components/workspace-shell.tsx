@@ -122,7 +122,11 @@ export function WorkspaceShell({
                     <FileTreePanel
                         rootPath={workspace.rootPath}
                         fileTree={workspace.fileTree}
+                        searchQuery={workspace.search.query}
                         collapsed={leftPanel.isCollapsed}
+                        canChooseWorkspace={canChooseWorkspace}
+                        dispatch={dispatch}
+                        onChooseWorkspace={onChooseWorkspace}
                         onToggleCollapsed={leftPanel.toggleCollapsed}
                         resizeHandleProps={leftPanel.resizeHandleProps}
                     />

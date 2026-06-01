@@ -8,7 +8,7 @@ export function filterTreeByName(
     tree: FileTreeNode[],
     query: string,
 ): FilteredFileTreeNode[] {
-    const normalizedQuery = query.trim().toLowerCase();
+    const normalizedQuery = normalizeSearchQuery(query);
 
     return tree.flatMap((node) => filterNodeByName(node, normalizedQuery));
 }
@@ -21,7 +21,7 @@ function filterNodeByName(
         return [decorateNode(node, normalizedQuery)];
     }
 
-    const nodeMatches = node.name.toLowerCase().includes(normalizedQuery);
+    const nodeMatches = nameIncludesQuery(node.name, normalizedQuery);
 
     if (node.kind === "file") {
         return nodeMatches ? [decorateNode(node, normalizedQuery)] : [];
@@ -107,4 +107,12 @@ function buildHighlightSegments(
     }
 
     return segments.filter((segment) => segment.text.length > 0);
+}
+
+function normalizeSearchQuery(query: string) {
+    return query.trim().toLowerCase();
+}
+
+function nameIncludesQuery(name: string, normalizedQuery: string) {
+    return name.toLowerCase().includes(normalizedQuery);
 }

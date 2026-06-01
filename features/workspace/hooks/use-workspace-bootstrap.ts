@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createWorkspaceState, workspaceReducer } from "../lib/workspace-reducer";
+import { buildFileTree } from "../lib/file-tree";
 import type {
     FileTreeNode,
     PersistedAppState,
@@ -338,16 +339,26 @@ async function bootstrapWorkspace(
     appState: PersistedAppState,
 ): Promise<BootstrapWorkspaceResult> {
     const scanned = await scanWorkspace(rootPath);
+    const builtTree = buildFileTree(scanned.nodes);
+
+    if (!builtTree.ok) {
+        throw new Error(builtTree.error.message);
+    }
+
     const restoredRootPath = normalizeWorkspacePath(scanned.rootPath || rootPath);
     const persistedWorkspace = findPersistedWorkspaceForRoot(
         appState,
         rootPath,
         restoredRootPath,
     );
+    const normalizedScan = {
+        ...scanned,
+        nodes: builtTree.nodes,
+    };
     const workspace = applyPersistedWorkspace(
-        createWorkspaceState(restoredRootPath, scanned.nodes),
+        createWorkspaceState(restoredRootPath, builtTree.nodes),
         persistedWorkspace,
-        scanned,
+        normalizedScan,
     );
     const nextAppState = upsertWorkspaceState(
         appState,

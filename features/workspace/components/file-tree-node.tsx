@@ -1,0 +1,151 @@
+"use client";
+
+import type {
+    DragEvent,
+    MouseEvent as ReactMouseEvent,
+} from "react";
+import type {
+    FilteredFileTreeNode,
+    HighlightSegment,
+} from "../lib/types";
+
+interface FileTreeNodeViewProps {
+    node: FilteredFileTreeNode;
+    depth: number;
+    selectedPath: string | null;
+    expandedPaths: Set<string>;
+    searchActive: boolean;
+    onSelect: (node: FilteredFileTreeNode) => void;
+    onToggleFolder: (path: string) => void;
+    onContextMenu: (
+        node: FilteredFileTreeNode,
+        event: ReactMouseEvent<HTMLButtonElement>,
+    ) => void;
+    onDragStart: (
+        node: FilteredFileTreeNode,
+        event: DragEvent<HTMLButtonElement>,
+    ) => void;
+    onDropOnFolder: (fromPath: string, targetDir: string) => void;
+}
+
+export function FileTreeNodeView({
+    node,
+    depth,
+    selectedPath,
+    expandedPaths,
+    searchActive,
+    onSelect,
+    onToggleFolder,
+    onContextMenu,
+    onDragStart,
+    onDropOnFolder,
+}: FileTreeNodeViewProps) {
+    const isSelected = selectedPath === node.path;
+    const isFolder = node.kind === "folder";
+    const isExpanded =
+        isFolder && (searchActive || expandedPaths.has(node.path));
+    const paddingLeft = 10 + depth * 14;
+    const rowClassName = [
+        "flex h-7 w-full min-w-0 items-center gap-1 truncate pr-2 text-left text-sm outline-none",
+        isSelected
+            ? "bg-primary/10 text-base-content"
+            : "text-base-content/72 hover:bg-base-200",
+    ].join(" ");
+
+    return (
+        <div>
+            <button
+                type="button"
+                className={rowClassName}
+                style={{ paddingLeft }}
+                title={node.path}
+                draggable
+                onClick={() => {
+                    onSelect(node);
+
+                    if (node.kind === "folder") {
+                        onToggleFolder(node.path);
+                    }
+                }}
+                onContextMenu={(event) => onContextMenu(node, event)}
+                onDragStart={(event) => onDragStart(node, event)}
+                onDragOver={
+                    isFolder
+                        ? (event) => {
+                              event.preventDefault();
+                              event.dataTransfer.dropEffect = "move";
+                          }
+                        : undefined
+                }
+                onDrop={
+                    isFolder
+                        ? (event) => {
+                              event.preventDefault();
+                              const fromPath =
+                                  event.dataTransfer.getData("text/plain");
+
+                              if (fromPath) {
+                                  onDropOnFolder(fromPath, node.path);
+                              }
+                          }
+                        : undefined
+                }
+            >
+                <span className="w-4 shrink-0 text-center text-xs text-base-content/45">
+                    {node.kind === "folder" ? (isExpanded ? "v" : ">") : ""}
+                </span>
+                <span className="min-w-0 flex-1 truncate">
+                    <HighlightedName segments={node.nameSegments} />
+                </span>
+            </button>
+
+            {node.kind === "folder" && isExpanded ? (
+                node.children.length > 0 ? (
+                    <div>
+                        {node.children.map((child) => (
+                            <FileTreeNodeView
+                                key={child.path}
+                                node={child}
+                                depth={depth + 1}
+                                selectedPath={selectedPath}
+                                expandedPaths={expandedPaths}
+                                searchActive={searchActive}
+                                onSelect={onSelect}
+                                onToggleFolder={onToggleFolder}
+                                onContextMenu={onContextMenu}
+                                onDragStart={onDragStart}
+                                onDropOnFolder={onDropOnFolder}
+                            />
+                        ))}
+                    </div>
+                ) : (
+                    <div
+                        className="h-6 truncate pr-2 text-xs text-base-content/35"
+                        style={{ paddingLeft: paddingLeft + 18 }}
+                    >
+                        Empty
+                    </div>
+                )
+            ) : null}
+        </div>
+    );
+}
+
+function HighlightedName({ segments }: { segments: HighlightSegment[] }) {
+    return (
+        <>
+            {segments.map((segment, index) => (
+                <span
+                    key={`${segment.text}-${index}`}
+                    className={
+                        segment.highlighted
+                            ? "bg-warning/25 text-base-content"
+                            : undefined
+                    }
+                >
+                    {segment.text}
+                </span>
+            ))}
+        </>
+    );
+}
