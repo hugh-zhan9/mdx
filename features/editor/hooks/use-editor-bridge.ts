@@ -45,7 +45,9 @@ export function useEditorBridge({
         resetMD(editorStore, markdown);
         loadedMarkdownRef.current = markdown;
         emittedMarkdownRef.current = markdown;
-        setSelection(getSelectionState(editorStore));
+        queueMicrotask(() => {
+            setSelection(getSelectionState(editorStore));
+        });
     }, [editorStore, markdown, tabId]);
 
     useEffect(() => {

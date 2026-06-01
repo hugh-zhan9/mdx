@@ -65,7 +65,7 @@ export function WorkspaceShell({
             try {
                 const { invoke } = await tauriCore();
                 let path = tab.path;
-                let markdown =
+                const markdown =
                     tab.markdown ??
                     (await invoke<string>("read_markdown_file", {
                         rootPath: workspace.rootPath,
