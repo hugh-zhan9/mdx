@@ -31,9 +31,14 @@ pub fn run() {
             app.handle().plugin(tauri_plugin_process::init())?;
 
             let new_window_item =
-                MenuItem::with_id(app, "new-window", "New Window", true, Some("Cmd+N"))?;
-            let close_window_item =
-                MenuItem::with_id(app, "close-window", "Close Window", true, Some("Cmd+W"))?;
+                MenuItem::with_id(app, "new-window", "New Window", true, Some("CmdOrCtrl+N"))?;
+            let close_window_item = MenuItem::with_id(
+                app,
+                "close-window",
+                "Close Window",
+                true,
+                Some("CmdOrCtrl+W"),
+            )?;
             let file_menu = Submenu::with_items(
                 app,
                 "File",
