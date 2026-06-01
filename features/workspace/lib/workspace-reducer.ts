@@ -297,12 +297,7 @@ function closeTabsByPredicate(
 
     const nextActiveTabId =
         state.activeTabId && closedTabIds.has(state.activeTabId)
-            ? nextTabOrder[
-                  Math.min(
-                      state.tabOrder.indexOf(state.activeTabId),
-                      nextTabOrder.length - 1,
-                  )
-              ] ?? null
+            ? findFallbackActiveTabId(state.tabOrder, closedTabIds, state.activeTabId)
             : state.activeTabId;
 
     return {
@@ -311,6 +306,36 @@ function closeTabsByPredicate(
         tabOrder: nextTabOrder,
         activeTabId: nextActiveTabId,
     };
+}
+
+function findFallbackActiveTabId(
+    tabOrder: string[],
+    closedTabIds: Set<string>,
+    activeTabId: string,
+) {
+    const activeIndex = tabOrder.indexOf(activeTabId);
+
+    if (activeIndex === -1) {
+        return tabOrder.find((tabId) => !closedTabIds.has(tabId)) ?? null;
+    }
+
+    for (let index = activeIndex + 1; index < tabOrder.length; index += 1) {
+        const tabId = tabOrder[index];
+
+        if (!closedTabIds.has(tabId)) {
+            return tabId;
+        }
+    }
+
+    for (let index = activeIndex - 1; index >= 0; index -= 1) {
+        const tabId = tabOrder[index];
+
+        if (!closedTabIds.has(tabId)) {
+            return tabId;
+        }
+    }
+
+    return null;
 }
 
 function renameTab(

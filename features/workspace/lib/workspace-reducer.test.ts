@@ -292,6 +292,67 @@ describe("workspaceReducer", () => {
         expect(closed.activeTabId).toBe("tab-3");
     });
 
+    it("activates the next surviving tab when a prefix close removes tabs before active", () => {
+        const initialState = createWorkspaceState("/tmp/ws");
+        const opened = workspaceReducer(
+            workspaceReducer(
+                workspaceReducer(
+                    workspaceReducer(initialState, {
+                        type: "tab/opened",
+                        tab: {
+                            tabId: "tab-a",
+                            path: "/tmp/ws/Drafts/A.md",
+                            title: "A.md",
+                            dirty: false,
+                            needsRenameOnFirstSave: false,
+                        },
+                    }),
+                    {
+                        type: "tab/opened",
+                        tab: {
+                            tabId: "tab-b",
+                            path: "/tmp/ws/Drafts/B.md",
+                            title: "B.md",
+                            dirty: false,
+                            needsRenameOnFirstSave: false,
+                        },
+                    },
+                ),
+                {
+                    type: "tab/opened",
+                    tab: {
+                        tabId: "tab-c",
+                        path: "/tmp/ws/C.md",
+                        title: "C.md",
+                        dirty: false,
+                        needsRenameOnFirstSave: false,
+                    },
+                },
+            ),
+            {
+                type: "tab/opened",
+                tab: {
+                    tabId: "tab-d",
+                    path: "/tmp/ws/D.md",
+                    title: "D.md",
+                    dirty: false,
+                    needsRenameOnFirstSave: false,
+                },
+            },
+        );
+        const activated = workspaceReducer(opened, {
+            type: "tab/activated",
+            tabId: "tab-b",
+        });
+        const closed = workspaceReducer(activated, {
+            type: "tab/closedByPrefix",
+            prefix: "/tmp/ws/Drafts",
+        });
+
+        expect(closed.tabOrder).toEqual(["tab-c", "tab-d"]);
+        expect(closed.activeTabId).toBe("tab-c");
+    });
+
     it("rejects invalid panel widths and clamps finite values", () => {
         const initialState = createWorkspaceState("/tmp/ws");
         const resized = workspaceReducer(initialState, {
