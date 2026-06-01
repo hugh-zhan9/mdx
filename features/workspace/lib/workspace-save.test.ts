@@ -139,10 +139,12 @@ describe("workspace save coordination", () => {
             }),
         );
         let afterWrite = false;
+        const dispatched: WorkspaceAction[] = [];
         const refreshTree = vi.fn(async () => {});
         const queue = createTabSaveQueue({
             getWorkspace: () => workspace,
             dispatch: (action) => {
+                dispatched.push(action);
                 workspace = workspaceReducer(workspace, action);
             },
             invoke: vi.fn(async (command) => {
@@ -168,6 +170,9 @@ describe("workspace save coordination", () => {
 
         await expect(queue.saveTab("tab-1")).resolves.toBe(false);
         expect(afterWrite).toBe(true);
+        expect(
+            dispatched.some((action) => action.type === "tab/savedIfUnchanged"),
+        ).toBe(false);
         expect(refreshTree).not.toHaveBeenCalled();
     });
 });

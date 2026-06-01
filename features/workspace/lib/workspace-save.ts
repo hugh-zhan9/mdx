@@ -161,11 +161,13 @@ export async function performSaveTab(
             environment.getWorkspace(),
             writePlan,
         );
-        environment.dispatch({
-            type: "tab/savedIfUnchanged",
-            tabId,
-            markdown,
-        });
+        if (environment.getWorkspace().rootPath === writePlan.rootPath) {
+            environment.dispatch({
+                type: "tab/savedIfUnchanged",
+                tabId,
+                markdown,
+            });
+        }
 
         if (
             renamed &&
