@@ -609,34 +609,13 @@ enum WorkspaceOpenMode {
 
 #[cfg(not(unix))]
 fn open_workspace_file(
-    target: &WorkspaceFileTarget,
-    mode: WorkspaceOpenMode,
+    _target: &WorkspaceFileTarget,
+    _mode: WorkspaceOpenMode,
 ) -> Result<File, WorkspaceError> {
-    let mut options = fs::OpenOptions::new();
-    let fallback_error_code = match mode {
-        WorkspaceOpenMode::Read => {
-            options.read(true);
-            "read_failed"
-        }
-        WorkspaceOpenMode::WriteExisting => {
-            options.write(true).truncate(true);
-            "write_failed"
-        }
-        WorkspaceOpenMode::CreateNew => {
-            options.write(true).create_new(true);
-            "write_failed"
-        }
-    };
-
-    options.open(&target.path).map_err(|error| {
-        let code = match error.kind() {
-            io::ErrorKind::AlreadyExists => "already_exists",
-            io::ErrorKind::NotFound => "not_found",
-            io::ErrorKind::PermissionDenied => "permission_denied",
-            _ => fallback_error_code,
-        };
-        WorkspaceError::from_io(code, "failed to open markdown file", &error)
-    })
+    Err(WorkspaceError::new(
+        "unsupported_platform",
+        "workspace file IO is only supported on Unix/macOS in this MVP",
+    ))
 }
 
 #[cfg(unix)]
