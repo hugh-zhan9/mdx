@@ -9,7 +9,8 @@
         "dev": "next dev",
         "build": "next build",
         "lint": "eslint",
-        "test": "vitest run"
+        "test": "vitest run",
+        "test:workspace": "vitest run features/workspace/lib/*.test.ts"
     },
     "dependencies": {
         "@tauri-apps/api": "^2.10.1",
