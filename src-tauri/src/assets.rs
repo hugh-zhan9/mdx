@@ -1,6 +1,6 @@
 use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -18,6 +18,14 @@ pub struct SaveImageAssetResult {
     pub markdown_path: String,
     pub stored_path: String,
     pub used_fallback: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadImageAssetResult {
+    pub bytes: Vec<u8>,
+    pub mime_type: String,
+    pub path: String,
 }
 
 #[tauri::command]
@@ -68,10 +76,61 @@ pub fn save_image_asset_with_global_assets_dir(
 }
 
 #[tauri::command]
-pub fn read_file_bytes(path: String) -> Result<Vec<u8>, WorkspaceError> {
-    fs::read(path).map_err(|error| {
-        WorkspaceError::from_io("read_failed", "failed to read file bytes", &error)
+pub fn load_image_asset(
+    root_path: Option<String>,
+    current_file_path: Option<String>,
+    src: String,
+) -> Result<LoadImageAssetResult, WorkspaceError> {
+    load_image_asset_impl(root_path, current_file_path, src, None)
+}
+
+fn load_image_asset_impl(
+    root_path: Option<String>,
+    current_file_path: Option<String>,
+    src: String,
+    global_assets_dir: Option<&Path>,
+) -> Result<LoadImageAssetResult, WorkspaceError> {
+    let image_extension = image_extension(&src)?;
+    let root = root_path
+        .as_deref()
+        .map(canonicalize_workspace_root)
+        .transpose()?;
+    let candidate = resolve_image_candidate(root.as_deref(), current_file_path.as_deref(), &src)?;
+    let image_path = fs::canonicalize(&candidate).map_err(|error| {
+        let code = if error.kind() == std::io::ErrorKind::NotFound {
+            "not_found"
+        } else {
+            "read_failed"
+        };
+        WorkspaceError::from_io(code, "failed to resolve image asset", &error)
+    })?;
+
+    if !path_is_allowed_image_location(&image_path, root.as_deref(), global_assets_dir) {
+        return Err(WorkspaceError::new(
+            "outside_workspace",
+            "image asset is outside the workspace and global assets directory",
+        ));
+    }
+
+    let bytes = fs::read(&image_path).map_err(|error| {
+        WorkspaceError::from_io("read_failed", "failed to read image asset", &error)
+    })?;
+
+    Ok(LoadImageAssetResult {
+        bytes,
+        mime_type: mime_type_for_extension(&image_extension).to_string(),
+        path: path_to_string(&image_path),
     })
+}
+
+#[cfg(test)]
+pub fn load_image_asset_with_global_assets_dir(
+    root_path: Option<String>,
+    current_file_path: Option<String>,
+    src: String,
+    global_assets_dir: &Path,
+) -> Result<LoadImageAssetResult, WorkspaceError> {
+    load_image_asset_impl(root_path, current_file_path, src, Some(global_assets_dir))
 }
 
 fn save_workspace_asset(
@@ -80,7 +139,7 @@ fn save_workspace_asset(
     bytes: &[u8],
 ) -> Result<SaveImageAssetResult, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
-    let assets_dir = root.join(".assets");
+    let assets_dir = ensure_workspace_assets_dir(&root)?;
     let stored_path = write_deduped_asset(&assets_dir, filename, bytes)?;
     let markdown_path = format!(".assets/{filename}");
 
@@ -108,6 +167,59 @@ fn save_global_asset(
         stored_path,
         used_fallback: true,
     })
+}
+
+fn ensure_workspace_assets_dir(root: &Path) -> Result<PathBuf, WorkspaceError> {
+    let assets_dir = root.join(".assets");
+
+    match fs::symlink_metadata(&assets_dir) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() {
+                return Err(WorkspaceError::new(
+                    "outside_workspace",
+                    "workspace assets directory cannot be a symlink",
+                ));
+            }
+            if !metadata.is_dir() {
+                return Err(WorkspaceError::new(
+                    "not_directory",
+                    "workspace assets path is not a directory",
+                ));
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            fs::create_dir(&assets_dir).map_err(|error| {
+                WorkspaceError::from_io(
+                    "asset_write_failed",
+                    "failed to create workspace assets directory",
+                    &error,
+                )
+            })?;
+        }
+        Err(error) => {
+            return Err(WorkspaceError::from_io(
+                "asset_write_failed",
+                "failed to inspect workspace assets directory",
+                &error,
+            ));
+        }
+    }
+
+    let assets_dir = fs::canonicalize(&assets_dir).map_err(|error| {
+        WorkspaceError::from_io(
+            "asset_write_failed",
+            "failed to resolve workspace assets directory",
+            &error,
+        )
+    })?;
+    if !assets_dir.starts_with(root) {
+        return Err(WorkspaceError::new(
+            "outside_workspace",
+            "workspace assets directory escapes the workspace root",
+        ));
+    }
+
+    Ok(assets_dir)
 }
 
 fn write_deduped_asset(
@@ -189,6 +301,116 @@ fn image_extension(name: &str) -> Result<String, WorkspaceError> {
             "unsupported image asset extension",
         ))
     }
+}
+
+fn resolve_image_candidate(
+    root: Option<&Path>,
+    current_file_path: Option<&str>,
+    src: &str,
+) -> Result<PathBuf, WorkspaceError> {
+    let src_path = Path::new(src);
+    if src_path.is_absolute() {
+        return Ok(src_path.to_path_buf());
+    }
+
+    let root = root.ok_or_else(|| {
+        WorkspaceError::new(
+            "outside_workspace",
+            "workspace root is required for relative image assets",
+        )
+    })?;
+    let current_file_path = current_file_path.ok_or_else(|| {
+        WorkspaceError::new(
+            "outside_workspace",
+            "current file path is required for relative image assets",
+        )
+    })?;
+    let current_path = Path::new(current_file_path);
+    let current_path = if current_path.is_absolute() {
+        current_path.to_path_buf()
+    } else {
+        root.join(current_path)
+    };
+    let current_dir = current_path.parent().ok_or_else(|| {
+        WorkspaceError::new("outside_workspace", "current file path has no parent")
+    })?;
+    let current_dir = fs::canonicalize(current_dir).map_err(|error| {
+        WorkspaceError::from_io(
+            "outside_workspace",
+            "failed to resolve current file directory",
+            &error,
+        )
+    })?;
+
+    if !current_dir.starts_with(root) {
+        return Err(WorkspaceError::new(
+            "outside_workspace",
+            "current file path is outside the workspace root",
+        ));
+    }
+
+    let candidate = current_dir.join(src_path);
+    if !normalize_path_lexically(&candidate).starts_with(root) {
+        return Err(WorkspaceError::new(
+            "outside_workspace",
+            "image asset path escapes the workspace root",
+        ));
+    }
+
+    Ok(candidate)
+}
+
+fn path_is_allowed_image_location(
+    image_path: &Path,
+    root: Option<&Path>,
+    global_assets_dir: Option<&Path>,
+) -> bool {
+    if root.is_some_and(|root| image_path.starts_with(root)) {
+        return true;
+    }
+
+    let global_assets_dir = match global_assets_dir {
+        Some(path) => path.to_path_buf(),
+        None => match mdx_home_dir() {
+            Ok(path) => path.join("assets"),
+            Err(_) => return false,
+        },
+    };
+    let Ok(global_assets_dir) = fs::canonicalize(global_assets_dir) else {
+        return false;
+    };
+
+    image_path.starts_with(global_assets_dir)
+}
+
+fn mime_type_for_extension(extension: &str) -> &'static str {
+    match extension {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "bmp" => "image/bmp",
+        "avif" => "image/avif",
+        "heic" => "image/heic",
+        "tiff" => "image/tiff",
+        _ => "application/octet-stream",
+    }
+}
+
+fn normalize_path_lexically(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(_) | Component::RootDir => normalized.push(component.as_os_str()),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            Component::Normal(part) => normalized.push(part),
+        }
+    }
+    normalized
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {

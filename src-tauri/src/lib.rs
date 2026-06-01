@@ -101,7 +101,7 @@ pub fn run() {
             state_store::load_app_state,
             state_store::save_app_state,
             assets::save_image_asset,
-            assets::read_file_bytes,
+            assets::load_image_asset,
             workspace_fs::scan_workspace,
             workspace_fs::read_markdown_file,
             workspace_fs::write_markdown_file,

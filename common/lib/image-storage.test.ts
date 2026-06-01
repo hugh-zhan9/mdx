@@ -1,5 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
-import { storeImageForWorkspace } from "./image-storage";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { loadImage, storeImageForWorkspace } from "./image-storage";
+
+afterEach(() => {
+    vi.restoreAllMocks();
+});
 
 describe("storeImage", () => {
     it("uses workspace .assets first and falls back to ~/.mdx/assets", async () => {
@@ -51,5 +55,50 @@ describe("storeImage", () => {
             storedPath: "/Users/test/.mdx/assets/abc123.png",
             usedFallback: true,
         });
+    });
+
+    it("returns URLs unchanged and invokes Rust for local image paths", async () => {
+        const invoke = vi.fn(async () => ({
+            bytes: [1, 2, 3],
+            mimeType: "image/png",
+            path: "/tmp/ws/.assets/abc123.png",
+        }));
+        const createObjectURL = vi
+            .spyOn(URL, "createObjectURL")
+            .mockReturnValue("blob:mock");
+
+        await expect(loadImage("https://example.com/image.png")).resolves.toBe(
+            "https://example.com/image.png",
+        );
+        await expect(loadImage("data:image/png;base64,AAAA")).resolves.toBe(
+            "data:image/png;base64,AAAA",
+        );
+
+        await expect(
+            loadImage(".assets/abc123.png", {
+                rootPath: "/tmp/ws",
+                currentFilePath: "/tmp/ws/doc.md",
+                invoke,
+            }),
+        ).resolves.toBe("blob:mock");
+        await expect(
+            loadImage("images/abc123.png", {
+                rootPath: "/tmp/ws",
+                currentFilePath: "/tmp/ws/doc.md",
+                invoke,
+            }),
+        ).resolves.toBe("blob:mock");
+
+        expect(invoke).toHaveBeenCalledWith("load_image_asset", {
+            rootPath: "/tmp/ws",
+            currentFilePath: "/tmp/ws/doc.md",
+            src: ".assets/abc123.png",
+        });
+        expect(invoke).toHaveBeenCalledWith("load_image_asset", {
+            rootPath: "/tmp/ws",
+            currentFilePath: "/tmp/ws/doc.md",
+            src: "images/abc123.png",
+        });
+        expect(createObjectURL).toHaveBeenCalledTimes(2);
     });
 });

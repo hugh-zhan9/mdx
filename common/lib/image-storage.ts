@@ -14,19 +14,6 @@ const MIME_TO_EXT: Record<string, string> = {
     "image/tiff": "tiff",
 };
 
-const EXT_TO_MIME: Record<string, string> = {
-    png: "image/png",
-    jpg: "image/jpeg",
-    jpeg: "image/jpeg",
-    gif: "image/gif",
-    webp: "image/webp",
-    svg: "image/svg+xml",
-    bmp: "image/bmp",
-    avif: "image/avif",
-    heic: "image/heic",
-    tiff: "image/tiff",
-};
-
 export interface StoredImage {
     url: string;
     altText: string;
@@ -49,6 +36,12 @@ interface SaveImageAssetResponse {
     usedFallback: boolean;
 }
 
+interface LoadImageAssetResponse {
+    bytes: number[];
+    mimeType: string;
+    path: string;
+}
+
 function extOf(file: File | Blob, nameHint?: string): string {
     const name = (file instanceof File ? file.name : nameHint) || "";
     const dot = name.lastIndexOf(".");
@@ -58,40 +51,8 @@ function extOf(file: File | Blob, nameHint?: string): string {
     return MIME_TO_EXT[file.type] || "bin";
 }
 
-function mimeFromPath(path: string): string {
-    const dot = path.lastIndexOf(".");
-    if (dot < 0) return "application/octet-stream";
-    return (
-        EXT_TO_MIME[path.slice(dot + 1).toLowerCase()] ||
-        "application/octet-stream"
-    );
-}
-
-function dirname(path: string): string {
-    const normalized = path.replace(/\\/g, "/");
-    const index = normalized.lastIndexOf("/");
-    return index >= 0 ? normalized.slice(0, index) : "";
-}
-
-function resolveRelative(baseDir: string, rel: string): string {
-    const parts = baseDir.replace(/\\/g, "/").split("/").filter(Boolean);
-    for (const segment of rel.replace(/\\/g, "/").split("/")) {
-        if (!segment || segment === ".") continue;
-        if (segment === "..") {
-            parts.pop();
-            continue;
-        }
-        parts.push(segment);
-    }
-    return parts.length > 0 ? `/${parts.join("/")}` : "/";
-}
-
-function isAbsoluteFsPath(path: string): boolean {
-    return path.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(path);
-}
-
-function isUrlScheme(path: string): boolean {
-    return /^[a-z][a-z0-9+.-]*:/i.test(path);
+function isPassthroughImageUrl(src: string): boolean {
+    return src.startsWith("//") || /^(https?:|data:|blob:)/i.test(src);
 }
 
 export async function storeImageForWorkspace(
@@ -137,26 +98,27 @@ export async function storeImage(file: File): Promise<StoredWorkspaceImage> {
 
 export async function loadImage(
     src: string,
-    options: { rootPath?: string; currentFilePath?: string } = {},
+    options: {
+        rootPath?: string | null;
+        currentFilePath?: string | null;
+        invoke?: <T>(cmd: string, args: Record<string, unknown>) => Promise<T>;
+    } = {},
 ): Promise<string> {
-    if (isUrlScheme(src) || src.startsWith("data:")) {
+    if (isPassthroughImageUrl(src)) {
         return src;
     }
 
-    let absPath: string | null = null;
-    if (isAbsoluteFsPath(src)) {
-        absPath = src;
-    } else if (src.startsWith(".assets/") && options.rootPath) {
-        absPath = resolveRelative(options.rootPath, src);
-    } else if (!isUrlScheme(src) && options.currentFilePath) {
-        absPath = resolveRelative(dirname(options.currentFilePath), src);
-    }
-
-    if (absPath && isTauri()) {
-        const { invoke } = await tauriCore();
-        const bytes = await invoke<number[]>("read_file_bytes", { path: absPath });
-        const blob = new Blob([new Uint8Array(bytes)], {
-            type: mimeFromPath(absPath),
+    if (options.invoke || isTauri()) {
+        const { invoke } = options.invoke
+            ? { invoke: options.invoke }
+            : await tauriCore();
+        const image = await invoke<LoadImageAssetResponse>("load_image_asset", {
+            rootPath: options.rootPath ?? null,
+            currentFilePath: options.currentFilePath ?? null,
+            src,
+        });
+        const blob = new Blob([new Uint8Array(image.bytes)], {
+            type: image.mimeType,
         });
         return URL.createObjectURL(blob);
     }
