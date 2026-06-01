@@ -3,7 +3,7 @@ import type { MarkdownOutlineHeading } from "./types";
 export function parseMarkdownOutline(markdown: string): MarkdownOutlineHeading[] {
     const headings: MarkdownOutlineHeading[] = [];
     const slugCounts = new Map<string, number>();
-    let fence: { char: "`" | "~"; length: number } | null = null;
+    let fence: { length: number } | null = null;
 
     markdown.split(/\r?\n/).forEach((line, index) => {
         if (fence) {
@@ -14,11 +14,10 @@ export function parseMarkdownOutline(markdown: string): MarkdownOutlineHeading[]
             return;
         }
 
-        const fenceMatch = line.match(/^(`{3,}|~{3,})(.*)$/);
+        const fenceMatch = line.match(/^(`{3,})(.*)$/);
 
         if (fenceMatch) {
             fence = {
-                char: fenceMatch[1][0] as "`" | "~",
                 length: fenceMatch[1].length,
             };
             return;
@@ -47,13 +46,8 @@ export function parseMarkdownOutline(markdown: string): MarkdownOutlineHeading[]
     return headings;
 }
 
-function isClosingFence(
-    line: string,
-    fence: { char: "`" | "~"; length: number },
-) {
-    const pattern = new RegExp(
-        `^${escapeForRegExp(fence.char)}{${fence.length},}[ \\t]*$`,
-    );
+function isClosingFence(line: string, fence: { length: number }) {
+    const pattern = new RegExp(`^\`{${fence.length},}[ \\t]*$`);
 
     return pattern.test(line);
 }
@@ -69,8 +63,4 @@ function createHeadingId(text: string, slugCounts: Map<string, number>) {
     slugCounts.set(base, count + 1);
 
     return count === 0 ? base : `${base}-${count}`;
-}
-
-function escapeForRegExp(value: string) {
-    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
