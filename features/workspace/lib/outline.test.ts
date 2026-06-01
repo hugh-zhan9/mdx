@@ -31,10 +31,8 @@ describe("parseMarkdownOutline", () => {
         expect(headings.map((h) => h.text)).toEqual(["Hidden", "Visible"]);
     });
 
-    it("keeps headings inside unmatched shorter fences hidden", () => {
-        const headings = parseMarkdownOutline(
-            "````\n```\n# Hidden\n```\n````\n# Visible",
-        );
+    it("does not require a matching fence length", () => {
+        const headings = parseMarkdownOutline("````\n# Hidden\n```\n# Visible");
         expect(headings.map((h) => h.text)).toEqual(["Visible"]);
     });
 });

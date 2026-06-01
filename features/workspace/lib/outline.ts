@@ -3,23 +3,19 @@ import type { MarkdownOutlineHeading } from "./types";
 export function parseMarkdownOutline(markdown: string): MarkdownOutlineHeading[] {
     const headings: MarkdownOutlineHeading[] = [];
     const slugCounts = new Map<string, number>();
-    let fence: { length: number } | null = null;
+    let inFence = false;
 
     markdown.split(/\r?\n/).forEach((line, index) => {
-        if (fence) {
-            if (isClosingFence(line, fence)) {
-                fence = null;
+        if (inFence) {
+            if (isClosingFence(line)) {
+                inFence = false;
             }
 
             return;
         }
 
-        const fenceMatch = line.match(/^(`{3,})(.*)$/);
-
-        if (fenceMatch) {
-            fence = {
-                length: fenceMatch[1].length,
-            };
+        if (line.startsWith("```")) {
+            inFence = true;
             return;
         }
 
@@ -46,10 +42,8 @@ export function parseMarkdownOutline(markdown: string): MarkdownOutlineHeading[]
     return headings;
 }
 
-function isClosingFence(line: string, fence: { length: number }) {
-    const pattern = new RegExp(`^\`{${fence.length},}[ \\t]*$`);
-
-    return pattern.test(line);
+function isClosingFence(line: string) {
+    return line.startsWith("```");
 }
 
 function createHeadingId(text: string, slugCounts: Map<string, number>) {
