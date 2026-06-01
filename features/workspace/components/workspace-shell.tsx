@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { tauriCore } from "@/common/lib/tauri";
 import { usePanelResize } from "../hooks/use-panel-resize";
 import { buildFileTree } from "../lib/file-tree";
+import { parseMarkdownOutline } from "../lib/outline";
+import { scrollRenderedHeadingIntoView } from "../lib/outline-scroll";
 import { createTabSaveQueue } from "../lib/workspace-save";
 import { workspaceReducer } from "../lib/workspace-reducer";
 import type {
@@ -41,12 +43,20 @@ export function WorkspaceShell({
     const workspaceRef = useRef(workspace);
     const saveQueueRef = useRef<SaveQueue | null>(null);
     const workspaceRootRef = useRef(workspace.rootPath);
+    const editorViewportRef = useRef<HTMLDivElement | null>(null);
     const tabs = workspace.tabOrder
         .map((tabId) => workspace.tabs[tabId])
         .filter((tab): tab is WorkspaceTab => Boolean(tab));
     const activeTab = workspace.activeTabId
         ? workspace.tabs[workspace.activeTabId] ?? null
         : null;
+    const activeHeadings = useMemo(
+        () =>
+            activeTab?.markdown === undefined
+                ? []
+                : parseMarkdownOutline(activeTab.markdown),
+        [activeTab?.markdown],
+    );
 
     useEffect(() => {
         workspaceRef.current = workspace;
@@ -101,6 +111,9 @@ export function WorkspaceShell({
         },
         [dispatchAndMirror],
     );
+    const scrollToHeading = useCallback((_: unknown, index: number) => {
+        scrollRenderedHeadingIntoView(editorViewportRef.current, index);
+    }, []);
     const gridTemplateColumns = [
         leftPanel.isCollapsed ? "0px" : `${leftPanel.width}px`,
         "minmax(0, 1fr)",
@@ -206,6 +219,7 @@ export function WorkspaceShell({
                         activeTab={activeTab}
                         dispatch={dispatchAndMirror}
                         onSaveTab={saveTab}
+                        editorViewportRef={editorViewportRef}
                     />
                 </main>
 
@@ -214,8 +228,10 @@ export function WorkspaceShell({
                     style={{ gridColumn: 3 }}
                 >
                     <OutlinePanel
+                        headings={activeHeadings}
                         collapsed={rightPanel.isCollapsed}
                         onToggleCollapsed={rightPanel.toggleCollapsed}
+                        onHeadingClick={scrollToHeading}
                         resizeHandleProps={rightPanel.resizeHandleProps}
                     />
                 </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import type { RefObject } from "react";
 import { tauriCore } from "@/common/lib/tauri";
 import { EditorPane } from "@/features/editor/components/editor-pane";
 import type { WorkspaceAction, WorkspaceTab } from "../lib/types";
@@ -10,6 +11,7 @@ interface EditorStageProps {
     activeTab: WorkspaceTab | null;
     dispatch: (action: WorkspaceAction) => void;
     onSaveTab: (tabId: string) => Promise<boolean>;
+    editorViewportRef?: RefObject<HTMLDivElement | null>;
 }
 
 export function EditorStage({
@@ -17,6 +19,7 @@ export function EditorStage({
     activeTab,
     dispatch,
     onSaveTab,
+    editorViewportRef,
 }: EditorStageProps) {
     const [message, setMessage] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
@@ -138,6 +141,7 @@ export function EditorStage({
                         rootPath={rootPath}
                         tab={activeTab}
                         onMarkdownChange={handleMarkdownChange}
+                        editorViewportRef={editorViewportRef}
                     />
                 )}
             </div>

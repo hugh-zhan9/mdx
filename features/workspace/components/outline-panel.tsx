@@ -7,6 +7,7 @@ interface OutlinePanelProps {
     headings?: MarkdownOutlineHeading[];
     collapsed: boolean;
     onToggleCollapsed: () => void;
+    onHeadingClick?: (heading: MarkdownOutlineHeading, index: number) => void;
     resizeHandleProps: HTMLAttributes<HTMLDivElement>;
 }
 
@@ -14,6 +15,7 @@ export function OutlinePanel({
     headings = [],
     collapsed,
     onToggleCollapsed,
+    onHeadingClick,
     resizeHandleProps,
 }: OutlinePanelProps) {
     if (collapsed) {
@@ -43,13 +45,14 @@ export function OutlinePanel({
                         No headings
                     </div>
                 ) : (
-                    headings.map((heading) => (
+                    headings.map((heading, index) => (
                         <button
                             key={heading.id}
                             type="button"
                             className="block w-full truncate py-1 pr-3 text-left text-base-content/70 hover:bg-base-200"
                             style={{ paddingLeft: 10 + heading.level * 10 }}
                             title={heading.text}
+                            onClick={() => onHeadingClick?.(heading, index)}
                         >
                             {heading.text}
                         </button>

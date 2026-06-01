@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import type { RefObject } from "react";
 import { loadImage } from "@/common/lib/image-storage";
 import { tokenize } from "@/common/lib/prism";
 import type { WorkspaceTab } from "@/features/workspace/lib/types";
@@ -14,12 +15,14 @@ interface EditorPaneProps {
     rootPath: string;
     tab: WorkspaceTab;
     onMarkdownChange: (tabId: string, markdown: string) => void;
+    editorViewportRef?: RefObject<HTMLDivElement | null>;
 }
 
 export function EditorPane({
     rootPath,
     tab,
     onMarkdownChange,
+    editorViewportRef,
 }: EditorPaneProps) {
     const initMd = tab.markdown ?? "";
 
@@ -37,7 +40,11 @@ export function EditorPane({
             }
             codeTokenizer={(code, lang) => tokenize(code, lang)}
         >
-            <EditorPaneInner tab={tab} onMarkdownChange={onMarkdownChange} />
+            <EditorPaneInner
+                tab={tab}
+                onMarkdownChange={onMarkdownChange}
+                editorViewportRef={editorViewportRef}
+            />
         </DOMDProvider>
     );
 }
@@ -45,9 +52,11 @@ export function EditorPane({
 function EditorPaneInner({
     tab,
     onMarkdownChange,
+    editorViewportRef,
 }: {
     tab: WorkspaceTab;
     onMarkdownChange: (tabId: string, markdown: string) => void;
+    editorViewportRef?: RefObject<HTMLDivElement | null>;
 }) {
     const bridge = useEditorBridge({
         tabId: tab.tabId,
@@ -71,7 +80,10 @@ function EditorPaneInner({
                 <div className="truncate">{statusText}</div>
                 <div className="truncate">{selectionText}</div>
             </div>
-            <div className="min-h-0 flex-1 overflow-auto bg-base-100">
+            <div
+                ref={editorViewportRef}
+                className="min-h-0 flex-1 overflow-auto bg-base-100"
+            >
                 <DOMD />
             </div>
         </div>
