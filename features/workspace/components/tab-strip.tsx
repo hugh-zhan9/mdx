@@ -6,9 +6,52 @@ interface TabStripProps {
     tabs: WorkspaceTab[];
     activeTabId: string | null;
     dispatch: (action: WorkspaceAction) => void;
+    onSaveTab: (tabId: string) => Promise<boolean>;
 }
 
-export function TabStrip({ tabs, activeTabId, dispatch }: TabStripProps) {
+export function TabStrip({
+    tabs,
+    activeTabId,
+    dispatch,
+    onSaveTab,
+}: TabStripProps) {
+    const closeTab = async (tab: WorkspaceTab) => {
+        if (!tab.dirty) {
+            dispatch({
+                type: "tab/closed",
+                tabId: tab.tabId,
+            });
+            return;
+        }
+
+        const choice = window.prompt(
+            `"${tab.title}" has unsaved changes. Type save, discard, or cancel.`,
+            "save",
+        );
+        const normalizedChoice = choice?.trim().toLowerCase();
+
+        if (normalizedChoice === "discard") {
+            dispatch({
+                type: "tab/closed",
+                tabId: tab.tabId,
+            });
+            return;
+        }
+
+        if (normalizedChoice !== "save") {
+            return;
+        }
+
+        const saved = await onSaveTab(tab.tabId);
+
+        if (saved) {
+            dispatch({
+                type: "tab/closed",
+                tabId: tab.tabId,
+            });
+        }
+    };
+
     return (
         <div className="flex h-10 min-w-0 items-stretch overflow-hidden border-b border-base-300 bg-base-100">
             {tabs.length === 0 ? (
@@ -46,12 +89,7 @@ export function TabStrip({ tabs, activeTabId, dispatch }: TabStripProps) {
                                 className="h-full px-2 text-base-content/45 hover:bg-base-300 hover:text-base-content"
                                 aria-label={`Close ${tab.title}`}
                                 title="Close tab"
-                                onClick={() =>
-                                    dispatch({
-                                        type: "tab/closed",
-                                        tabId: tab.tabId,
-                                    })
-                                }
+                                onClick={() => void closeTab(tab)}
                             >
                                 x
                             </button>

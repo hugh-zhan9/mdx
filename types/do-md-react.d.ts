@@ -2,7 +2,7 @@
 //
 // The published bundle ships only index.js / index.cjs / style.css — no .d.ts.
 // This file declares the public surface that this app actually consumes.
-// Keep it minimal: only expose what callers in apps/domd actually use.
+// Keep it minimal: only expose what the MDX editor-kernel adapter consumes.
 
 declare module "@do-md/react" {
     import type { ReactNode } from "react";

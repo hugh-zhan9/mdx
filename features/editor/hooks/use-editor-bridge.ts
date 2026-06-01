@@ -1,0 +1,108 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+    getSelectionState,
+    insertImage,
+    insertText,
+    resetMD,
+    toMarkdown,
+    useEditor,
+    useEditorStoreApi,
+    useRenderData,
+} from "../components/editor-kernel-adapter";
+import type { EditorBridgeState } from "../lib/editor-types";
+
+export interface UseEditorBridgeOptions {
+    tabId: string;
+    markdown?: string;
+    onMarkdownChange: (tabId: string, markdown: string) => void;
+}
+
+export function useEditorBridge({
+    tabId,
+    markdown,
+    onMarkdownChange,
+}: UseEditorBridgeOptions) {
+    const editor = useEditor();
+    const editorStore = useEditorStoreApi();
+    const renderData = useRenderData();
+    const [selection, setSelection] = useState<EditorBridgeState["selection"]>(
+        null,
+    );
+    const loadedMarkdownRef = useRef<string | null>(null);
+    const emittedMarkdownRef = useRef<string>("");
+
+    useEffect(() => {
+        if (!editorStore || markdown === undefined) {
+            return;
+        }
+
+        if (loadedMarkdownRef.current === markdown) {
+            return;
+        }
+
+        resetMD(editorStore, markdown);
+        loadedMarkdownRef.current = markdown;
+        emittedMarkdownRef.current = markdown;
+        setSelection(getSelectionState(editorStore));
+    }, [editorStore, markdown, tabId]);
+
+    useEffect(() => {
+        if (!editorStore) {
+            return;
+        }
+
+        const syncSelection = () => {
+            setSelection(getSelectionState(editorStore));
+        };
+
+        syncSelection();
+
+        return editorStore.subscribe(() => {
+            syncSelection();
+        });
+    }, [editorStore]);
+
+    const currentMarkdown = useMemo(
+        () => toMarkdown(renderData) ?? "",
+        [renderData],
+    );
+
+    useEffect(() => {
+        if (!editorStore || currentMarkdown === emittedMarkdownRef.current) {
+            return;
+        }
+
+        emittedMarkdownRef.current = currentMarkdown;
+        onMarkdownChange(tabId, currentMarkdown);
+    }, [currentMarkdown, editorStore, onMarkdownChange, tabId]);
+
+    const focus = useCallback(() => {
+        editor?.focus();
+    }, [editor]);
+
+    const insertPlainText = useCallback(
+        (text: string) => {
+            insertText(editorStore, text);
+        },
+        [editorStore],
+    );
+
+    const insertImageAtCursor = useCallback(
+        (url: string, altText?: string) => {
+            insertImage(editorStore, url, altText);
+        },
+        [editorStore],
+    );
+
+    return {
+        editor,
+        editorStore,
+        currentMarkdown,
+        selection,
+        focus,
+        insertText: insertPlainText,
+        insertImage: insertImageAtCursor,
+    };
+}

@@ -6,6 +6,7 @@ import {
     useMemo,
     useState,
 } from "react";
+import { nanoid } from "nanoid";
 import type {
     Dispatch,
     DragEvent,
@@ -53,6 +54,7 @@ interface ScanWorkspaceResult {
 interface CreateNodeResult {
     path: string;
     name: string;
+    needsRenameOnFirstSave?: boolean;
 }
 
 interface ContextMenuState {
@@ -169,30 +171,36 @@ export function FileTreePanel({
 
     const createMarkdownFile = useCallback(
         async (parentDir: string) => {
-            const name = window.prompt("Markdown file name", "Untitled.md");
-
-            if (!name?.trim()) {
-                return;
-            }
-
             try {
                 const created = await invokeTauri<CreateNodeResult>(
                     "create_markdown_file",
                     {
                         rootPath,
                         parentDir,
-                        name: withMarkdownExtension(name.trim()),
+                        name: null,
+                        temporaryUntitled: true,
                     },
                 );
 
                 setSelectedPath(normalizeWorkspacePath(created.path));
                 expandPath(parentDir, setExpandedPaths);
+                dispatch({
+                    type: "tab/opened",
+                    tab: {
+                        tabId: nanoid(8),
+                        path: created.path,
+                        title: created.name,
+                        dirty: false,
+                        needsRenameOnFirstSave:
+                            created.needsRenameOnFirstSave ?? false,
+                    },
+                });
                 await refreshTree();
             } catch (error) {
                 showError(error, "Failed to create markdown file.");
             }
         },
-        [refreshTree, rootPath, showError],
+        [dispatch, refreshTree, rootPath, showError],
     );
 
     const renameNode = useCallback(
@@ -432,9 +440,22 @@ export function FileTreePanel({
                                 selectedPath={selectedPath}
                                 expandedPaths={expandedPaths}
                                 searchActive={searchActive}
-                                onSelect={(selected) =>
-                                    setSelectedPath(selected.path)
-                                }
+                                onSelect={(selected) => {
+                                    setSelectedPath(selected.path);
+
+                                    if (selected.kind === "file") {
+                                        dispatch({
+                                            type: "tab/opened",
+                                            tab: {
+                                                tabId: nanoid(8),
+                                                path: selected.path,
+                                                title: selected.name,
+                                                dirty: false,
+                                                needsRenameOnFirstSave: false,
+                                            },
+                                        });
+                                    }
+                                }}
                                 onToggleFolder={toggleFolder}
                                 onContextMenu={openContextMenu}
                                 onDragStart={handleDragStart}
