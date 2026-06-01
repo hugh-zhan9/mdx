@@ -128,6 +128,59 @@ describe("workspace save coordination", () => {
         expect(refreshTree).toHaveBeenCalledWith("/tmp/ws");
     });
 
+    it("drops stale first-save rename completion after a path change", async () => {
+        let workspace = withTab(
+            createWorkspaceState("/tmp/ws"),
+            createTab({
+                path: "/tmp/ws/Untitled.md",
+                title: "Untitled.md",
+                markdown: "body",
+                needsRenameOnFirstSave: true,
+            }),
+        );
+        const dispatched: WorkspaceAction[] = [];
+        const writes: string[] = [];
+        const queue = createTabSaveQueue({
+            getWorkspace: () => workspace,
+            dispatch: (action) => {
+                dispatched.push(action);
+                workspace = workspaceReducer(workspace, action);
+            },
+            invoke: vi.fn(async (command) => {
+                if (command === "rename_path") {
+                    workspace = workspaceReducer(workspace, {
+                        type: "tab/renamed",
+                        tabId: "tab-1",
+                        path: "/tmp/ws/Moved.md",
+                    });
+
+                    return {
+                        oldPath: "/tmp/ws/Untitled.md",
+                        newPath: "/tmp/ws/Notes.md",
+                    };
+                }
+
+                if (command === "write_markdown_file") {
+                    writes.push(command);
+                }
+
+                return undefined;
+            }),
+            promptName: () => "Notes.md",
+            alert: vi.fn(),
+            warn: vi.fn(),
+            refreshTree: vi.fn(async () => {}),
+        });
+
+        await expect(queue.saveTab("tab-1")).resolves.toBe(false);
+        expect(
+            dispatched.some((action) => action.type === "tab/renamed"),
+        ).toBe(false);
+        expect(writes).toEqual([]);
+        expect(workspace.tabs["tab-1"].path).toBe("/tmp/ws/Moved.md");
+        expect(workspace.tabs["tab-1"].dirty).toBe(true);
+    });
+
     it("skips refresh when the workspace root changes during save", async () => {
         let workspace = withTab(
             createWorkspaceState("/tmp/ws"),

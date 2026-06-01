@@ -75,6 +75,12 @@ export async function performSaveTab(
                 rootPath: initialWorkspace.rootPath,
                 path,
             }));
+        const originalSnapshot = {
+            rootPath: initialWorkspace.rootPath,
+            tabId,
+            path: initialTab.path,
+            markdown,
+        };
         let renamed = false;
 
         if (initialTab.needsRenameOnFirstSave) {
@@ -107,14 +113,7 @@ export async function performSaveTab(
             }
 
             if (plan.kind === "rename_then_save") {
-                if (
-                    !isCurrentTabSnapshot(environment.getWorkspace(), {
-                        rootPath: initialWorkspace.rootPath,
-                        tabId,
-                        path: initialTab.path,
-                        markdown,
-                    })
-                ) {
+                if (!isCurrentTabSnapshot(environment.getWorkspace(), originalSnapshot)) {
                     return false;
                 }
 
@@ -126,6 +125,11 @@ export async function performSaveTab(
                         newName: basename(plan.newPath),
                     },
                 );
+
+                if (!isCurrentTabSnapshot(environment.getWorkspace(), originalSnapshot)) {
+                    return false;
+                }
+
                 path = renameResult.newPath;
                 renamed = true;
                 environment.dispatch({
