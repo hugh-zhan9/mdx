@@ -53,10 +53,11 @@ export function useWorkspaceBootstrap() {
     const [isTauri, setIsTauri] = useState(false);
     const appStateRef = useRef<PersistedAppState>(createDefaultAppState());
     const workspaceRef = useRef<WorkspaceState | null>(null);
+    const openWorkspaceRef =
+        useRef<(rootPath: string) => Promise<void>>(async () => {});
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const windowResizeSaveTimerRef =
         useRef<ReturnType<typeof setTimeout> | null>(null);
-    const hasBootstrappedRef = useRef(false);
 
     const dispatch = useCallback((action: WorkspaceAction) => {
         setWorkspace((current) =>
@@ -120,11 +121,10 @@ export function useWorkspaceBootstrap() {
     }, [openWorkspace, workspace]);
 
     useEffect(() => {
-        if (hasBootstrappedRef.current) {
-            return;
-        }
+        openWorkspaceRef.current = openWorkspace;
+    }, [openWorkspace]);
 
-        hasBootstrappedRef.current = true;
+    useEffect(() => {
         let cancelled = false;
 
         async function load() {
@@ -160,11 +160,25 @@ export function useWorkspaceBootstrap() {
                 appStateRef.current = appState;
 
                 if (appStateRef.current.recentWorkspaceRoot) {
-                    await openWorkspace(appStateRef.current.recentWorkspaceRoot);
+                    await openWorkspaceRef.current(
+                        appStateRef.current.recentWorkspaceRoot,
+                    );
                     return;
                 }
 
-                await chooseWorkspace();
+                const selectedRoot = await chooseWorkspaceRoot();
+
+                if (cancelled) {
+                    return;
+                }
+
+                if (selectedRoot) {
+                    await openWorkspaceRef.current(selectedRoot);
+                    return;
+                }
+
+                setStatus("empty");
+                setMessage("Choose a folder to open a workspace.");
             } catch (error) {
                 if (cancelled) {
                     return;
@@ -181,7 +195,7 @@ export function useWorkspaceBootstrap() {
         return () => {
             cancelled = true;
         };
-    }, [chooseWorkspace, openWorkspace]);
+    }, []);
 
     useEffect(() => {
         workspaceRef.current = workspace;
