@@ -15,7 +15,7 @@ export function parseMarkdownOutline(markdown: string): MarkdownOutlineHeading[]
         }
 
         if (line.startsWith("```")) {
-            inFence = true;
+            inFence = !hasSameLineClosingFence(line);
             return;
         }
 
@@ -44,6 +44,10 @@ export function parseMarkdownOutline(markdown: string): MarkdownOutlineHeading[]
 
 function isClosingFence(line: string) {
     return line.startsWith("```");
+}
+
+function hasSameLineClosingFence(line: string) {
+    return line.indexOf("```", 3) !== -1;
 }
 
 function createHeadingId(text: string, slugCounts: Map<string, number>) {
