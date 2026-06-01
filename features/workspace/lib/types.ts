@@ -154,6 +154,11 @@ export type WorkspaceAction =
           markdown?: string;
       }
     | {
+          type: "tab/savedIfUnchanged";
+          tabId: string;
+          markdown: string;
+      }
+    | {
           type: "tab/renamed";
           tabId: string;
           path: string;

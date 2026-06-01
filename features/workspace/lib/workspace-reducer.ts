@@ -75,6 +75,8 @@ export function workspaceReducer(
                     ? {}
                     : { markdown: action.markdown }),
             });
+        case "tab/savedIfUnchanged":
+            return saveTabIfUnchanged(state, action.tabId, action.markdown);
         case "tab/renamed":
             return renameTab(state, action);
         case "panel/resized":
@@ -184,6 +186,22 @@ function updateTab(
             },
         },
     };
+}
+
+function saveTabIfUnchanged(
+    state: WorkspaceState,
+    tabId: string,
+    markdown: string,
+): WorkspaceState {
+    const tab = state.tabs[tabId];
+
+    if (!tab || tab.markdown !== markdown) {
+        return state;
+    }
+
+    return updateTab(state, tabId, {
+        dirty: false,
+    });
 }
 
 function remapTabPath(

@@ -32,13 +32,26 @@ export function useEditorBridge({
     );
     const loadedMarkdownRef = useRef<string | null>(null);
     const emittedMarkdownRef = useRef<string>("");
+    const disposedRef = useRef(false);
+
+    useEffect(() => {
+        disposedRef.current = false;
+
+        return () => {
+            disposedRef.current = true;
+        };
+    }, []);
 
     useEffect(() => {
         if (!editorStore || markdown === undefined) {
             return;
         }
 
-        if (loadedMarkdownRef.current === markdown) {
+        if (
+            loadedMarkdownRef.current === markdown ||
+            emittedMarkdownRef.current === markdown
+        ) {
+            loadedMarkdownRef.current = markdown;
             return;
         }
 
@@ -46,7 +59,9 @@ export function useEditorBridge({
         loadedMarkdownRef.current = markdown;
         emittedMarkdownRef.current = markdown;
         queueMicrotask(() => {
-            setSelection(getSelectionState(editorStore));
+            if (!disposedRef.current) {
+                setSelection(getSelectionState(editorStore));
+            }
         });
     }, [editorStore, markdown, tabId]);
 

@@ -22,6 +22,59 @@ describe("workspaceReducer", () => {
         expect(next.tabs["tab-1"].dirty).toBe(true);
     });
 
+    it("keeps newer dirty markdown when an older save completes", () => {
+        const initialState = createWorkspaceState("/tmp/ws");
+        const opened = workspaceReducer(initialState, {
+            type: "tab/opened",
+            tab: {
+                tabId: "tab-1",
+                path: "/tmp/ws/Drafts/Idea.md",
+                title: "Idea.md",
+                dirty: true,
+                needsRenameOnFirstSave: false,
+                markdown: "old",
+            },
+        });
+        const editedAgain = workspaceReducer(opened, {
+            type: "tab/contentChanged",
+            tabId: "tab-1",
+            markdown: "new",
+        });
+
+        const saved = workspaceReducer(editedAgain, {
+            type: "tab/savedIfUnchanged",
+            tabId: "tab-1",
+            markdown: "old",
+        });
+
+        expect(saved.tabs["tab-1"].markdown).toBe("new");
+        expect(saved.tabs["tab-1"].dirty).toBe(true);
+    });
+
+    it("clears dirty when saved markdown still matches the current tab", () => {
+        const initialState = createWorkspaceState("/tmp/ws");
+        const opened = workspaceReducer(initialState, {
+            type: "tab/opened",
+            tab: {
+                tabId: "tab-1",
+                path: "/tmp/ws/Drafts/Idea.md",
+                title: "Idea.md",
+                dirty: true,
+                needsRenameOnFirstSave: false,
+                markdown: "same",
+            },
+        });
+
+        const saved = workspaceReducer(opened, {
+            type: "tab/savedIfUnchanged",
+            tabId: "tab-1",
+            markdown: "same",
+        });
+
+        expect(saved.tabs["tab-1"].markdown).toBe("same");
+        expect(saved.tabs["tab-1"].dirty).toBe(false);
+    });
+
     it("activates existing tabs instead of duplicating paths", () => {
         const initialState = createWorkspaceState("/tmp/ws");
         const opened = workspaceReducer(initialState, {

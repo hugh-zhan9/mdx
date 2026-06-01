@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { tauriCore } from "@/common/lib/tauri";
 import { planFirstSave } from "@/features/editor/lib/tab-save";
 import { usePanelResize } from "../hooks/use-panel-resize";
 import { buildFileTree } from "../lib/file-tree";
 import { normalizeWorkspacePath } from "../lib/path";
+import { workspaceReducer } from "../lib/workspace-reducer";
 import type {
     FileTreeNode,
     PathChangeResult,
@@ -38,22 +39,39 @@ export function WorkspaceShell({
     canChooseWorkspace,
     message,
 }: WorkspaceShellProps) {
-    const leftPanel = usePanelResize({
-        side: "left",
-        panel: workspace.panel,
-        dispatch,
-    });
-    const rightPanel = usePanelResize({
-        side: "right",
-        panel: workspace.panel,
-        dispatch,
-    });
+    const workspaceRef = useRef(workspace);
     const tabs = workspace.tabOrder
         .map((tabId) => workspace.tabs[tabId])
         .filter((tab): tab is WorkspaceTab => Boolean(tab));
     const activeTab = workspace.activeTabId
         ? workspace.tabs[workspace.activeTabId] ?? null
         : null;
+
+    useEffect(() => {
+        workspaceRef.current = workspace;
+    }, [workspace]);
+
+    const dispatchAndMirror = useCallback(
+        (action: WorkspaceAction) => {
+            workspaceRef.current = workspaceReducer(
+                workspaceRef.current,
+                action,
+            );
+            dispatch(action);
+        },
+        [dispatch],
+    );
+
+    const leftPanel = usePanelResize({
+        side: "left",
+        panel: workspace.panel,
+        dispatch: dispatchAndMirror,
+    });
+    const rightPanel = usePanelResize({
+        side: "right",
+        panel: workspace.panel,
+        dispatch: dispatchAndMirror,
+    });
     const saveTab = useCallback(
         async (tabId: string) => {
             const tab = workspace.tabs[tabId];
@@ -114,7 +132,7 @@ export function WorkspaceShell({
                         );
                         path = renameResult.newPath;
                         renamed = true;
-                        dispatch({
+                        dispatchAndMirror({
                             type: "tab/renamed",
                             tabId,
                             path,
@@ -131,15 +149,20 @@ export function WorkspaceShell({
                     path,
                     content: markdown,
                 });
-                dispatch({
-                    type: "tab/saved",
+                const savedStillCurrent =
+                    workspaceRef.current.tabs[tabId]?.markdown === markdown;
+                dispatchAndMirror({
+                    type: "tab/savedIfUnchanged",
                     tabId,
                     markdown,
                 });
 
                 if (renamed) {
                     try {
-                        await refreshTree(workspace.rootPath, dispatch);
+                        await refreshTree(
+                            workspace.rootPath,
+                            dispatchAndMirror,
+                        );
                     } catch (refreshError) {
                         console.warn(
                             "File saved, but failed to refresh workspace tree.",
@@ -154,13 +177,13 @@ export function WorkspaceShell({
                     }
                 }
 
-                return true;
+                return savedStillCurrent;
             } catch (error) {
                 window.alert(formatError(error, "Failed to save file."));
                 return false;
             }
         },
-        [dispatch, workspace],
+        [dispatchAndMirror, workspace],
     );
     const gridTemplateColumns = [
         leftPanel.isCollapsed ? "0px" : `${leftPanel.width}px`,
@@ -245,7 +268,7 @@ export function WorkspaceShell({
                         searchQuery={workspace.search.query}
                         collapsed={leftPanel.isCollapsed}
                         canChooseWorkspace={canChooseWorkspace}
-                        dispatch={dispatch}
+                        dispatch={dispatchAndMirror}
                         onChooseWorkspace={onChooseWorkspace}
                         onToggleCollapsed={leftPanel.toggleCollapsed}
                         resizeHandleProps={leftPanel.resizeHandleProps}
@@ -259,13 +282,13 @@ export function WorkspaceShell({
                     <TabStrip
                         tabs={tabs}
                         activeTabId={workspace.activeTabId}
-                        dispatch={dispatch}
+                        dispatch={dispatchAndMirror}
                         onSaveTab={saveTab}
                     />
                     <EditorStage
                         rootPath={workspace.rootPath}
                         activeTab={activeTab}
-                        dispatch={dispatch}
+                        dispatch={dispatchAndMirror}
                         onSaveTab={saveTab}
                     />
                 </main>
