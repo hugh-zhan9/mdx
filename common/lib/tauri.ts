@@ -4,11 +4,11 @@
 
 import type * as Core from "@tauri-apps/api/core";
 import type * as Dialog from "@tauri-apps/plugin-dialog";
-import type * as Process from "@tauri-apps/plugin-process";
+import type * as Window from "@tauri-apps/api/window";
 
 let _core: Promise<typeof Core> | null = null;
 let _dialog: Promise<typeof Dialog> | null = null;
-let _process: Promise<typeof Process> | null = null;
+let _window: Promise<typeof Window> | null = null;
 
 export function tauriCore(): Promise<typeof Core> {
     if (!_core) {
@@ -28,11 +28,11 @@ export function tauriDialog(): Promise<typeof Dialog> {
     return _dialog;
 }
 
-export function tauriProcess(): Promise<typeof Process> {
-    if (!_process) {
-        _process = import(
-            /* webpackChunkName: "tauri-process" */ "@tauri-apps/plugin-process"
+export function tauriWindow(): Promise<typeof Window> {
+    if (!_window) {
+        _window = import(
+            /* webpackChunkName: "tauri-window" */ "@tauri-apps/api/window"
         );
     }
-    return _process;
+    return _window;
 }

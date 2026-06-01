@@ -11,7 +11,6 @@
     "core:window:allow-set-title",
     "core:window:allow-set-size",
     "core:window:allow-close",
-    "dialog:default",
-    "process:default"
+    "dialog:default"
   ]
 }

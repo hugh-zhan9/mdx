@@ -137,6 +137,19 @@ export interface WorkspacePanelState {
     rightWidth: number;
 }
 
+export interface WorkspaceFileTreeActions {
+    createFolder: () => Promise<void>;
+    createMarkdownFile: () => Promise<void>;
+    renameSelection: () => Promise<void>;
+    deleteSelection: () => Promise<void>;
+    refreshTree: () => Promise<void>;
+}
+
+export interface WorkspaceMenuActions extends WorkspaceFileTreeActions {
+    saveActiveTab: () => Promise<void>;
+    closeActiveTab: () => Promise<void>;
+}
+
 export interface WorkspaceSearchState {
     query: string;
 }

@@ -21,6 +21,8 @@ import type {
     CliTabEvent,
     FileTreeNode,
     PendingCliEditorCommand,
+    WorkspaceFileTreeActions,
+    WorkspaceMenuActions,
     WorkspaceAction,
     WorkspaceState,
     WorkspaceTab,
@@ -37,6 +39,7 @@ interface WorkspaceShellProps {
     onChooseWorkspace: () => void;
     canChooseWorkspace: boolean;
     message?: string | null;
+    onActionsChange: (actions: WorkspaceMenuActions | null) => void;
 }
 
 interface ScanWorkspaceResult {
@@ -50,12 +53,15 @@ export function WorkspaceShell({
     onChooseWorkspace,
     canChooseWorkspace,
     message,
+    onActionsChange,
 }: WorkspaceShellProps) {
     const workspaceRef = useRef(workspace);
     const saveQueueRef = useRef<SaveQueue | null>(null);
     const workspaceRootRef = useRef<string | null>(null);
     const editorViewportRef = useRef<HTMLDivElement | null>(null);
     const selectionByTabRef = useRef<Record<string, CliSelectionSnapshot | null>>({});
+    const [fileTreeActions, setFileTreeActions] =
+        useState<WorkspaceFileTreeActions | null>(null);
     const [pendingCliCommand, setPendingCliCommand] =
         useState<PendingCliEditorCommand | null>(null);
     const tabs = workspace.tabOrder
@@ -141,6 +147,82 @@ export function WorkspaceShell({
         },
         [dispatchAndMirror],
     );
+    const closeTab = useCallback(
+        async (tabId: string) => {
+            const tab = workspaceRef.current.tabs[tabId];
+
+            if (!tab) {
+                return;
+            }
+
+            if (!tab.dirty) {
+                dispatchAndMirror({
+                    type: "tab/closed",
+                    tabId,
+                });
+                return;
+            }
+
+            const choice = window.prompt(
+                `"${tab.title}" has unsaved changes. Type save, discard, or cancel.`,
+                "save",
+            );
+            const normalizedChoice = choice?.trim().toLowerCase();
+
+            if (normalizedChoice === "discard") {
+                dispatchAndMirror({
+                    type: "tab/closed",
+                    tabId,
+                });
+                return;
+            }
+
+            if (normalizedChoice !== "save") {
+                return;
+            }
+
+            const saved = await saveTab(tabId);
+
+            if (saved) {
+                dispatchAndMirror({
+                    type: "tab/closed",
+                    tabId,
+                });
+            }
+        },
+        [dispatchAndMirror, saveTab],
+    );
+    const saveActiveTab = useCallback(async () => {
+        const tabId = workspaceRef.current.activeTabId;
+
+        if (tabId) {
+            await saveTab(tabId);
+        }
+    }, [saveTab]);
+    const closeActiveTab = useCallback(async () => {
+        const tabId = workspaceRef.current.activeTabId;
+
+        if (tabId) {
+            await closeTab(tabId);
+        }
+    }, [closeTab]);
+    const workspaceActions = useMemo<WorkspaceMenuActions | null>(() => {
+        if (!fileTreeActions) {
+            return null;
+        }
+
+        return {
+            ...fileTreeActions,
+            saveActiveTab,
+            closeActiveTab,
+        };
+    }, [closeActiveTab, fileTreeActions, saveActiveTab]);
+
+    useEffect(() => {
+        onActionsChange(workspaceActions);
+
+        return () => onActionsChange(null);
+    }, [onActionsChange, workspaceActions]);
     const handleSelectionChange = useCallback(
         (tabId: string, selection: Record<string, unknown> | null) => {
             selectionByTabRef.current = {
@@ -349,6 +431,8 @@ export function WorkspaceShell({
                         dispatch={dispatchAndMirror}
                         onChooseWorkspace={onChooseWorkspace}
                         onToggleCollapsed={leftPanel.toggleCollapsed}
+                        activeTabPath={activeTab?.path ?? null}
+                        onActionsChange={setFileTreeActions}
                         resizeHandleProps={leftPanel.resizeHandleProps}
                     />
                 </div>
@@ -361,7 +445,7 @@ export function WorkspaceShell({
                         tabs={tabs}
                         activeTabId={workspace.activeTabId}
                         dispatch={dispatchAndMirror}
-                        onSaveTab={saveTab}
+                        onCloseTab={closeTab}
                     />
                     <EditorStage
                         rootPath={workspace.rootPath}

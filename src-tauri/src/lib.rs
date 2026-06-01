@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 mod assets;
 pub mod cli_protocol;
@@ -33,6 +33,18 @@ pub(crate) fn new_workspace_window(app: &AppHandle) -> tauri::Result<String> {
     Ok(label)
 }
 
+fn emit_menu_event(app: &AppHandle, event: &str) {
+    let windows = app.webview_windows();
+    let window = windows
+        .values()
+        .find(|window| window.is_focused().unwrap_or(false))
+        .or_else(|| windows.values().next());
+
+    if let Some(window) = window {
+        let _ = window.emit(event, ());
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -45,27 +57,52 @@ pub fn run() {
                 )?;
             }
             app.handle().plugin(tauri_plugin_dialog::init())?;
-            app.handle().plugin(tauri_plugin_process::init())?;
             app.manage(cli_server::CliState::default());
             cli_server::start(app.handle().clone());
 
-            let new_window_item =
-                MenuItem::with_id(app, "new-window", "New Window", true, Some("CmdOrCtrl+N"))?;
-            let close_window_item = MenuItem::with_id(
+            let open_folder_item = MenuItem::with_id(
                 app,
-                "close-window",
-                "Close Window",
+                "open-folder",
+                "Open Folder...",
                 true,
-                Some("CmdOrCtrl+W"),
+                Some("CmdOrCtrl+O"),
             )?;
+            let new_markdown_item = MenuItem::with_id(
+                app,
+                "new-markdown-file",
+                "New Markdown File",
+                true,
+                Some("CmdOrCtrl+N"),
+            )?;
+            let new_folder_item = MenuItem::with_id(
+                app,
+                "new-folder",
+                "New Folder",
+                true,
+                Some("CmdOrCtrl+Shift+N"),
+            )?;
+            let rename_item = MenuItem::with_id(app, "rename", "Rename", true, None::<&str>)?;
+            let trash_item = MenuItem::with_id(app, "trash", "Move to Trash", true, None::<&str>)?;
+            let refresh_item = MenuItem::with_id(app, "refresh", "Refresh", true, None::<&str>)?;
+            let save_item = MenuItem::with_id(app, "save", "Save", true, Some("CmdOrCtrl+S"))?;
+            let close_tab_item =
+                MenuItem::with_id(app, "close-tab", "Close Tab", true, Some("CmdOrCtrl+W"))?;
             let file_menu = Submenu::with_items(
                 app,
                 "File",
                 true,
                 &[
-                    &new_window_item,
+                    &open_folder_item,
                     &PredefinedMenuItem::separator(app)?,
-                    &close_window_item,
+                    &new_markdown_item,
+                    &new_folder_item,
+                    &PredefinedMenuItem::separator(app)?,
+                    &rename_item,
+                    &trash_item,
+                    &refresh_item,
+                    &PredefinedMenuItem::separator(app)?,
+                    &save_item,
+                    &close_tab_item,
                 ],
             )?;
 
@@ -86,18 +123,14 @@ pub fn run() {
 
             app.set_menu(Menu::with_items(app, &[&file_menu, &edit_menu])?)?;
             app.on_menu_event(|app, event| match event.id().as_ref() {
-                "new-window" => {
-                    let _ = new_workspace_window(app);
-                }
-                "close-window" => {
-                    if let Some(win) = app
-                        .webview_windows()
-                        .values()
-                        .find(|w| w.is_focused().unwrap_or(false))
-                    {
-                        let _ = win.close();
-                    }
-                }
+                "open-folder" => emit_menu_event(app, "mdx-menu-open-folder"),
+                "new-folder" => emit_menu_event(app, "mdx-menu-new-folder"),
+                "new-markdown-file" => emit_menu_event(app, "mdx-menu-new-markdown-file"),
+                "rename" => emit_menu_event(app, "mdx-menu-rename"),
+                "trash" => emit_menu_event(app, "mdx-menu-trash"),
+                "refresh" => emit_menu_event(app, "mdx-menu-refresh"),
+                "save" => emit_menu_event(app, "mdx-menu-save"),
+                "close-tab" => emit_menu_event(app, "mdx-menu-close-tab"),
                 _ => {}
             });
 

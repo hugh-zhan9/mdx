@@ -28,6 +28,7 @@ import type {
     FileTreeNode,
     FilteredFileTreeNode,
     PathChangeResult,
+    WorkspaceFileTreeActions,
     WorkspaceAction,
 } from "../lib/types";
 import { FileTreeContextMenu } from "./file-tree-context-menu";
@@ -43,6 +44,8 @@ interface FileTreePanelProps {
     dispatch: (action: WorkspaceAction) => void;
     onChooseWorkspace: () => void;
     onToggleCollapsed: () => void;
+    activeTabPath: string | null;
+    onActionsChange: (actions: WorkspaceFileTreeActions | null) => void;
     resizeHandleProps: HTMLAttributes<HTMLDivElement>;
 }
 
@@ -63,6 +66,12 @@ interface ContextMenuState {
     y: number;
 }
 
+interface ActionNode {
+    kind: FileTreeNode["kind"];
+    name: string;
+    path: string;
+}
+
 export function FileTreePanel({
     rootPath,
     fileTree,
@@ -72,6 +81,8 @@ export function FileTreePanel({
     dispatch,
     onChooseWorkspace,
     onToggleCollapsed,
+    activeTabPath,
+    onActionsChange,
     resizeHandleProps,
 }: FileTreePanelProps) {
     const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -91,6 +102,23 @@ export function FileTreePanel({
 
         return filterTreeByName(builtTree.nodes, searchQuery);
     }, [builtTree, searchQuery]);
+    const actionTargetNode = useMemo(() => {
+        if (!builtTree.ok) {
+            return null;
+        }
+
+        if (selectedPath) {
+            const selectedNode = findNodeByPath(builtTree.nodes, selectedPath);
+
+            if (selectedNode) {
+                return selectedNode;
+            }
+        }
+
+        return activeTabPath
+            ? findNodeByPath(builtTree.nodes, activeTabPath)
+            : null;
+    }, [activeTabPath, builtTree, selectedPath]);
 
     useEffect(() => {
         setContextMenu(null);
@@ -203,8 +231,16 @@ export function FileTreePanel({
         [dispatch, refreshTree, rootPath, showError],
     );
 
+    const createFolderAtSelection = useCallback(async () => {
+        await createFolder(getActionTargetDir(actionTargetNode, rootPath));
+    }, [actionTargetNode, createFolder, rootPath]);
+
+    const createMarkdownFileAtSelection = useCallback(async () => {
+        await createMarkdownFile(getActionTargetDir(actionTargetNode, rootPath));
+    }, [actionTargetNode, createMarkdownFile, rootPath]);
+
     const renameNode = useCallback(
-        async (node: FilteredFileTreeNode) => {
+        async (node: ActionNode) => {
             const name = window.prompt("New name", node.name);
 
             if (!name?.trim() || name.trim() === node.name) {
@@ -250,7 +286,7 @@ export function FileTreePanel({
     );
 
     const deleteNode = useCallback(
-        async (node: FilteredFileTreeNode) => {
+        async (node: ActionNode) => {
             const confirmed = window.confirm(
                 `Move "${node.name}" to the trash?`,
             );
@@ -285,6 +321,49 @@ export function FileTreePanel({
         },
         [dispatch, refreshTree, rootPath, showError],
     );
+
+    const renameSelection = useCallback(async () => {
+        if (!actionTargetNode) {
+            setMessage("Select a file or folder first.");
+            window.alert("Select a file or folder first.");
+            return;
+        }
+
+        await renameNode(actionTargetNode);
+    }, [actionTargetNode, renameNode]);
+
+    const deleteSelection = useCallback(async () => {
+        if (!actionTargetNode) {
+            setMessage("Select a file or folder first.");
+            window.alert("Select a file or folder first.");
+            return;
+        }
+
+        await deleteNode(actionTargetNode);
+    }, [actionTargetNode, deleteNode]);
+
+    const actions = useMemo<WorkspaceFileTreeActions>(
+        () => ({
+            createFolder: createFolderAtSelection,
+            createMarkdownFile: createMarkdownFileAtSelection,
+            renameSelection,
+            deleteSelection,
+            refreshTree,
+        }),
+        [
+            createFolderAtSelection,
+            createMarkdownFileAtSelection,
+            deleteSelection,
+            refreshTree,
+            renameSelection,
+        ],
+    );
+
+    useEffect(() => {
+        onActionsChange(actions);
+
+        return () => onActionsChange(null);
+    }, [actions, onActionsChange]);
 
     const moveNode = useCallback(
         async (fromPath: string, targetDir: string) => {
@@ -533,6 +612,21 @@ function withMarkdownExtension(name: string, fallbackName = "Untitled.md") {
     const fallbackExtensionMatch = fallbackName.match(/(\.markdown|\.md)$/i);
 
     return `${name}${fallbackExtensionMatch?.[1] ?? ".md"}`;
+}
+
+function getActionTargetDir(
+    node: FileTreeNode | null,
+    rootPath: string,
+) {
+    if (!node) {
+        return rootPath;
+    }
+
+    if (node.kind === "folder") {
+        return node.path;
+    }
+
+    return getFileTreeParentPath(node.path) || rootPath;
 }
 
 function formatError(error: unknown, fallback: string) {

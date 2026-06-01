@@ -1,4 +1,3 @@
-import { isTauri } from "./platform";
 import { tauriCore } from "./tauri";
 
 const MIME_TO_EXT: Record<string, string> = {
@@ -64,31 +63,21 @@ export async function storeImageForWorkspace(
     const altText = name;
     const bytes = new Uint8Array(await file.arrayBuffer());
 
-    if (options.invoke || isTauri()) {
-        const { invoke } = options.invoke
-            ? { invoke: options.invoke }
-            : await tauriCore();
-        const response = await invoke<SaveImageAssetResponse>("save_image_asset", {
-            rootPath: options.rootPath ?? null,
-            currentFilePath: options.currentFilePath ?? null,
-            name,
-            bytes,
-        });
+    const { invoke } = options.invoke
+        ? { invoke: options.invoke }
+        : await tauriCore();
+    const response = await invoke<SaveImageAssetResponse>("save_image_asset", {
+        rootPath: options.rootPath ?? null,
+        currentFilePath: options.currentFilePath ?? null,
+        name,
+        bytes,
+    });
 
-        return {
-            url: response.markdownPath,
-            altText,
-            storedPath: response.storedPath,
-            usedFallback: response.usedFallback,
-        };
-    }
-
-    const url = URL.createObjectURL(file);
     return {
-        url,
+        url: response.markdownPath,
         altText,
-        storedPath: url,
-        usedFallback: false,
+        storedPath: response.storedPath,
+        usedFallback: response.usedFallback,
     };
 }
 
@@ -108,22 +97,18 @@ export async function loadImage(
         return src;
     }
 
-    if (options.invoke || isTauri()) {
-        const { invoke } = options.invoke
-            ? { invoke: options.invoke }
-            : await tauriCore();
-        const image = await invoke<LoadImageAssetResponse>("load_image_asset", {
-            rootPath: options.rootPath ?? null,
-            currentFilePath: options.currentFilePath ?? null,
-            src,
-        });
-        const blob = new Blob([new Uint8Array(image.bytes)], {
-            type: image.mimeType,
-        });
-        return URL.createObjectURL(blob);
-    }
-
-    return src;
+    const { invoke } = options.invoke
+        ? { invoke: options.invoke }
+        : await tauriCore();
+    const image = await invoke<LoadImageAssetResponse>("load_image_asset", {
+        rootPath: options.rootPath ?? null,
+        currentFilePath: options.currentFilePath ?? null,
+        src,
+    });
+    const blob = new Blob([new Uint8Array(image.bytes)], {
+        type: image.mimeType,
+    });
+    return URL.createObjectURL(blob);
 }
 
 export const IMAGE_EXTENSIONS = new Set([
