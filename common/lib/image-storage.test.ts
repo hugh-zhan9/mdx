@@ -28,4 +28,28 @@ describe("storeImage", () => {
         });
         expect(calls[0].cmd).toBe("save_image_asset");
     });
+
+    it("returns the absolute global fallback path from Tauri", async () => {
+        const invoke = vi.fn(async () => ({
+            markdownPath: "/Users/test/.mdx/assets/abc123.png",
+            storedPath: "/Users/test/.mdx/assets/abc123.png",
+            usedFallback: true,
+        }));
+        const file = new File([new Uint8Array([4, 5, 6])], "fallback.png", {
+            type: "image/png",
+        });
+
+        await expect(
+            storeImageForWorkspace(file, {
+                rootPath: "/tmp/ws",
+                currentFilePath: "/tmp/ws/doc.md",
+                invoke,
+            }),
+        ).resolves.toMatchObject({
+            url: "/Users/test/.mdx/assets/abc123.png",
+            altText: "fallback.png",
+            storedPath: "/Users/test/.mdx/assets/abc123.png",
+            usedFallback: true,
+        });
+    });
 });

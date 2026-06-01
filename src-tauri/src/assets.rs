@@ -27,6 +27,16 @@ pub fn save_image_asset(
     name: String,
     bytes: Vec<u8>,
 ) -> Result<SaveImageAssetResult, WorkspaceError> {
+    save_image_asset_impl(root_path, current_file_path, name, bytes, None)
+}
+
+fn save_image_asset_impl(
+    root_path: Option<String>,
+    current_file_path: Option<String>,
+    name: String,
+    bytes: Vec<u8>,
+    global_assets_dir: Option<&Path>,
+) -> Result<SaveImageAssetResult, WorkspaceError> {
     let _ = current_file_path;
     let extension = image_extension(&name)?;
     let filename = format!("{}.{}", sha256_hex(&bytes), extension);
@@ -37,7 +47,24 @@ pub fn save_image_asset(
         }
     }
 
-    save_global_asset(&filename, &bytes)
+    save_global_asset(&filename, &bytes, global_assets_dir)
+}
+
+#[cfg(test)]
+pub fn save_image_asset_with_global_assets_dir(
+    root_path: Option<String>,
+    current_file_path: Option<String>,
+    name: String,
+    bytes: Vec<u8>,
+    global_assets_dir: &Path,
+) -> Result<SaveImageAssetResult, WorkspaceError> {
+    save_image_asset_impl(
+        root_path,
+        current_file_path,
+        name,
+        bytes,
+        Some(global_assets_dir),
+    )
 }
 
 #[tauri::command]
@@ -64,8 +91,15 @@ fn save_workspace_asset(
     })
 }
 
-fn save_global_asset(filename: &str, bytes: &[u8]) -> Result<SaveImageAssetResult, WorkspaceError> {
-    let assets_dir = mdx_home_dir()?.join("assets");
+fn save_global_asset(
+    filename: &str,
+    bytes: &[u8],
+    global_assets_dir: Option<&Path>,
+) -> Result<SaveImageAssetResult, WorkspaceError> {
+    let assets_dir = match global_assets_dir {
+        Some(path) => path.to_path_buf(),
+        None => mdx_home_dir()?.join("assets"),
+    };
     let stored_path = write_deduped_asset(&assets_dir, filename, bytes)?;
     let stored_path = path_to_string(&stored_path);
 
