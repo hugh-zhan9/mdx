@@ -65,10 +65,10 @@ pub fn scan_workspace_with_limit(
 
 #[tauri::command]
 pub fn read_markdown_file(root_path: String, path: String) -> Result<String, WorkspaceError> {
-    let path = resolve_existing_markdown_path(root_path, path)?;
-    ensure_markdown_path(&path)?;
+    let target = resolve_existing_markdown_path(root_path, path)?;
+    ensure_markdown_path(&target.path)?;
 
-    let mut file = open_markdown_file_read(&path)?;
+    let mut file = open_markdown_file_read(&target)?;
     let mut content = String::new();
     file.read_to_string(&mut content).map_err(|error| {
         WorkspaceError::from_io("read_failed", "failed to read markdown file", &error)
@@ -86,17 +86,17 @@ pub fn write_markdown_file(
     let path = resolve_workspace_file_path(root_path, path)?;
 
     match path {
-        ResolvedWorkspacePath::Existing(path) => {
-            ensure_markdown_path(&path)?;
-            let mut file = open_markdown_file_write_existing(&path)?;
+        ResolvedWorkspacePath::Existing(target) => {
+            ensure_markdown_path(&target.path)?;
+            let mut file = open_markdown_file_write_existing(&target)?;
             file.write_all(content.as_bytes()).map_err(|error| {
                 WorkspaceError::from_io("write_failed", "failed to write markdown file", &error)
             })
         }
-        ResolvedWorkspacePath::Missing(path) => {
-            ensure_markdown_path(&path)?;
-            ensure_target_available(&path)?;
-            let mut file = open_markdown_file_write_new(&path)?;
+        ResolvedWorkspacePath::Missing(target) => {
+            ensure_markdown_path(&target.path)?;
+            ensure_target_available(&target.path)?;
+            let mut file = open_markdown_file_write_new(&target)?;
             file.write_all(content.as_bytes()).map_err(|error| {
                 WorkspaceError::from_io("write_failed", "failed to write markdown file", &error)
             })
@@ -111,7 +111,8 @@ pub fn create_markdown_file(
     name: Option<String>,
     temporary_untitled: Option<bool>,
 ) -> Result<CreateMarkdownFileResult, WorkspaceError> {
-    let parent_dir = canonicalize_in_workspace(root_path, parent_dir)?;
+    let root = canonicalize_workspace_root(root_path)?;
+    let parent_dir = canonicalize_in_workspace(&root, parent_dir)?;
     ensure_directory(&parent_dir)?;
 
     let temporary_untitled = temporary_untitled.unwrap_or(false);
@@ -123,11 +124,16 @@ pub fn create_markdown_file(
     let path = parent_dir.join(&name);
 
     ensure_target_available(&path)?;
+    let target = WorkspaceFileTarget {
+        relative_path: relative_to_root(&root, &path)?,
+        path,
+        root,
+    };
 
-    let _file = open_markdown_file_write_new(&path)?;
+    let _file = open_markdown_file_write_new(&target)?;
 
     Ok(CreateMarkdownFileResult {
-        path: path_to_string(&path),
+        path: path_to_string(&target.path),
         name,
         needs_rename_on_first_save: temporary_untitled,
     })
@@ -287,6 +293,7 @@ pub fn trash_path(root_path: String, path: String) -> Result<TrashPathResult, Wo
 struct ScanState {
     max_tree_entries: usize,
     entry_count: usize,
+    raw_entry_count: usize,
     truncated: bool,
 }
 
@@ -295,6 +302,7 @@ impl ScanState {
         Self {
             max_tree_entries,
             entry_count: 0,
+            raw_entry_count: 0,
             truncated: false,
         }
     }
@@ -306,6 +314,16 @@ impl ScanState {
         }
 
         self.entry_count += 1;
+        true
+    }
+
+    fn try_visit_raw_entry(&mut self) -> bool {
+        if self.raw_entry_count >= self.max_tree_entries {
+            self.truncated = true;
+            return false;
+        }
+
+        self.raw_entry_count += 1;
         true
     }
 }
@@ -346,6 +364,10 @@ fn scan_dir(
     }
 
     for entry in fs::read_dir(dir).map_err(|error| map_scan_io_error(error, dir))? {
+        if !state.try_visit_raw_entry() {
+            break;
+        }
+
         if entries.len() >= remaining_capacity {
             state.truncated = true;
             break;
@@ -425,9 +447,12 @@ fn resolve_workspace_file_path(
                 ));
             }
 
-            return Ok(ResolvedWorkspacePath::Existing(canonicalize_in_workspace(
-                &root, &path,
-            )?));
+            let path = canonicalize_in_workspace(&root, &path)?;
+            return Ok(ResolvedWorkspacePath::Existing(WorkspaceFileTarget {
+                relative_path: relative_to_root(&root, &path)?,
+                path,
+                root,
+            }));
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => {}
         Err(error) => {
@@ -452,7 +477,12 @@ fn resolve_workspace_file_path(
     let file_name = path
         .file_name()
         .ok_or_else(|| WorkspaceError::new("invalid_name", "path has no file name"))?;
-    Ok(ResolvedWorkspacePath::Missing(parent.join(file_name)))
+    let path = parent.join(file_name);
+    Ok(ResolvedWorkspacePath::Missing(WorkspaceFileTarget {
+        relative_path: relative_to_root(&root, &path)?,
+        path,
+        root,
+    }))
 }
 
 fn ensure_path_inside_root(root: &Path, path: &Path) -> Result<(), WorkspaceError> {
@@ -529,14 +559,20 @@ fn path_has_entry(path: &Path) -> Result<bool, WorkspaceError> {
 }
 
 enum ResolvedWorkspacePath {
-    Existing(PathBuf),
-    Missing(PathBuf),
+    Existing(WorkspaceFileTarget),
+    Missing(WorkspaceFileTarget),
+}
+
+struct WorkspaceFileTarget {
+    root: PathBuf,
+    relative_path: PathBuf,
+    path: PathBuf,
 }
 
 fn resolve_existing_markdown_path(
     root_path: String,
     path: String,
-) -> Result<PathBuf, WorkspaceError> {
+) -> Result<WorkspaceFileTarget, WorkspaceError> {
     match resolve_workspace_file_path(root_path, path)? {
         ResolvedWorkspacePath::Existing(path) => Ok(path),
         ResolvedWorkspacePath::Missing(_) => Err(WorkspaceError::new(
@@ -546,35 +582,53 @@ fn resolve_existing_markdown_path(
     }
 }
 
-fn open_markdown_file_read(path: &Path) -> Result<File, WorkspaceError> {
-    open_markdown_file_with_options(path, true, false, false, false, "read_failed")
+fn relative_to_root(root: &Path, path: &Path) -> Result<PathBuf, WorkspaceError> {
+    path.strip_prefix(root)
+        .map(Path::to_path_buf)
+        .map_err(|_| WorkspaceError::new("outside_workspace", "path is outside workspace root"))
 }
 
-fn open_markdown_file_write_existing(path: &Path) -> Result<File, WorkspaceError> {
-    open_markdown_file_with_options(path, false, true, true, false, "write_failed")
+fn open_markdown_file_read(target: &WorkspaceFileTarget) -> Result<File, WorkspaceError> {
+    open_workspace_file(target, WorkspaceOpenMode::Read)
 }
 
-fn open_markdown_file_write_new(path: &Path) -> Result<File, WorkspaceError> {
-    open_markdown_file_with_options(path, false, true, false, true, "write_failed")
+fn open_markdown_file_write_existing(target: &WorkspaceFileTarget) -> Result<File, WorkspaceError> {
+    open_workspace_file(target, WorkspaceOpenMode::WriteExisting)
 }
 
-fn open_markdown_file_with_options(
-    path: &Path,
-    read: bool,
-    write: bool,
-    truncate: bool,
-    create_new: bool,
-    fallback_error_code: &'static str,
+fn open_markdown_file_write_new(target: &WorkspaceFileTarget) -> Result<File, WorkspaceError> {
+    open_workspace_file(target, WorkspaceOpenMode::CreateNew)
+}
+
+#[derive(Clone, Copy)]
+enum WorkspaceOpenMode {
+    Read,
+    WriteExisting,
+    CreateNew,
+}
+
+#[cfg(not(unix))]
+fn open_workspace_file(
+    target: &WorkspaceFileTarget,
+    mode: WorkspaceOpenMode,
 ) -> Result<File, WorkspaceError> {
     let mut options = fs::OpenOptions::new();
-    options
-        .read(read)
-        .write(write)
-        .truncate(truncate)
-        .create_new(create_new);
-    apply_no_follow(&mut options);
+    let fallback_error_code = match mode {
+        WorkspaceOpenMode::Read => {
+            options.read(true);
+            "read_failed"
+        }
+        WorkspaceOpenMode::WriteExisting => {
+            options.write(true).truncate(true);
+            "write_failed"
+        }
+        WorkspaceOpenMode::CreateNew => {
+            options.write(true).create_new(true);
+            "write_failed"
+        }
+    };
 
-    options.open(path).map_err(|error| {
+    options.open(&target.path).map_err(|error| {
         let code = match error.kind() {
             io::ErrorKind::AlreadyExists => "already_exists",
             io::ErrorKind::NotFound => "not_found",
@@ -586,14 +640,125 @@ fn open_markdown_file_with_options(
 }
 
 #[cfg(unix)]
-fn apply_no_follow(options: &mut fs::OpenOptions) {
-    use std::os::unix::fs::OpenOptionsExt;
+fn open_workspace_file(
+    target: &WorkspaceFileTarget,
+    mode: WorkspaceOpenMode,
+) -> Result<File, WorkspaceError> {
+    use std::ffi::{CString, OsStr};
+    use std::os::fd::{AsRawFd, FromRawFd};
+    use std::os::unix::ffi::OsStrExt;
+    use std::path::Component;
 
-    options.custom_flags(libc::O_NOFOLLOW);
+    fn os_str_to_cstring(value: &OsStr) -> Result<CString, WorkspaceError> {
+        CString::new(value.as_bytes()).map_err(|_| {
+            WorkspaceError::new(
+                "invalid_name",
+                "path component contains an interior NUL byte",
+            )
+        })
+    }
+
+    fn file_from_fd(fd: libc::c_int) -> Result<File, WorkspaceError> {
+        if fd < 0 {
+            Err(map_openat_error(io::Error::last_os_error(), "path_failed"))
+        } else {
+            Ok(unsafe { File::from_raw_fd(fd) })
+        }
+    }
+
+    fn open_root_dir(root: &Path) -> Result<File, WorkspaceError> {
+        let path = os_str_to_cstring(root.as_os_str())?;
+        let fd = unsafe {
+            libc::open(
+                path.as_ptr(),
+                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            )
+        };
+        file_from_fd(fd)
+    }
+
+    fn open_child_dir(parent: &File, name: &OsStr) -> Result<File, WorkspaceError> {
+        let name = os_str_to_cstring(name)?;
+        let fd = unsafe {
+            libc::openat(
+                parent.as_raw_fd(),
+                name.as_ptr(),
+                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                0,
+            )
+        };
+        file_from_fd(fd)
+    }
+
+    fn open_leaf(
+        parent: &File,
+        name: &OsStr,
+        mode: WorkspaceOpenMode,
+    ) -> Result<File, WorkspaceError> {
+        let (flags, permissions, fallback_error_code) = match mode {
+            WorkspaceOpenMode::Read => (
+                libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                0,
+                "read_failed",
+            ),
+            WorkspaceOpenMode::WriteExisting => (
+                libc::O_WRONLY | libc::O_TRUNC | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                0,
+                "write_failed",
+            ),
+            WorkspaceOpenMode::CreateNew => (
+                libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                0o644,
+                "write_failed",
+            ),
+        };
+        let name = os_str_to_cstring(name)?;
+        let fd = unsafe { libc::openat(parent.as_raw_fd(), name.as_ptr(), flags, permissions) };
+        if fd < 0 {
+            Err(map_openat_error(
+                io::Error::last_os_error(),
+                fallback_error_code,
+            ))
+        } else {
+            Ok(unsafe { File::from_raw_fd(fd) })
+        }
+    }
+
+    let mut dir = open_root_dir(&target.root)?;
+    let mut components = target.relative_path.components().peekable();
+
+    while let Some(component) = components.next() {
+        let Component::Normal(name) = component else {
+            return Err(WorkspaceError::new(
+                "outside_workspace",
+                "workspace file path contains an invalid component",
+            ));
+        };
+
+        if components.peek().is_some() {
+            dir = open_child_dir(&dir, name)?;
+        } else {
+            return open_leaf(&dir, name, mode);
+        }
+    }
+
+    Err(WorkspaceError::new(
+        "invalid_name",
+        "workspace file path has no leaf name",
+    ))
 }
 
-#[cfg(not(unix))]
-fn apply_no_follow(_options: &mut fs::OpenOptions) {}
+#[cfg(unix)]
+fn map_openat_error(error: io::Error, fallback_error_code: &'static str) -> WorkspaceError {
+    let code = match error.raw_os_error() {
+        Some(libc::EEXIST) => "already_exists",
+        Some(libc::ENOENT) => "not_found",
+        Some(libc::ELOOP) | Some(libc::ENOTDIR) => "outside_workspace",
+        _ if error.kind() == io::ErrorKind::PermissionDenied => "permission_denied",
+        _ => fallback_error_code,
+    };
+    WorkspaceError::from_io(code, "failed to open workspace file", &error)
+}
 
 fn normalize_markdown_filename(name: &str) -> Result<String, WorkspaceError> {
     let mut name = sanitize_filename(name)?;

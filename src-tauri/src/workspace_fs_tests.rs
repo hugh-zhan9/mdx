@@ -55,6 +55,19 @@ fn scan_workspace_marks_large_trees_as_truncated() {
 }
 
 #[test]
+fn scan_workspace_truncates_when_raw_entries_exceed_limit() {
+    let root = tempdir().unwrap();
+    for i in 0..6 {
+        std::fs::write(root.path().join(format!("image-{i}.png")), [1, 2, 3]).unwrap();
+    }
+
+    let scanned = scan_workspace_with_limit(root.path().to_string_lossy().into_owned(), 5).unwrap();
+    assert!(scanned.truncated);
+    assert_eq!(scanned.entry_count, 0);
+    assert!(scanned.nodes.is_empty());
+}
+
+#[test]
 #[cfg(target_os = "macos")]
 fn trash_path_uses_macos_trash() {
     let root = tempdir().unwrap();
@@ -109,6 +122,50 @@ fn write_markdown_file_rejects_broken_symlink_leaf_to_outside_root() {
 
     assert_eq!(err.error_code(), "outside_workspace");
     assert!(!outside_target.exists());
+}
+
+#[test]
+#[cfg(unix)]
+fn read_markdown_file_rejects_symlink_intermediate_to_outside_root() {
+    use std::os::unix::fs::symlink;
+
+    let root = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    let outside_file = outside.path().join("note.md");
+    std::fs::write(&outside_file, "# Outside").unwrap();
+    let symlink_dir = root.path().join("linked");
+    symlink(outside.path(), &symlink_dir).unwrap();
+
+    let err = read_markdown_file(
+        root.path().to_string_lossy().into_owned(),
+        symlink_dir.join("note.md").to_string_lossy().into_owned(),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.error_code(), "outside_workspace");
+}
+
+#[test]
+#[cfg(unix)]
+fn write_markdown_file_rejects_symlink_intermediate_to_outside_root() {
+    use std::os::unix::fs::symlink;
+
+    let root = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    let outside_file = outside.path().join("note.md");
+    std::fs::write(&outside_file, "# Outside").unwrap();
+    let symlink_dir = root.path().join("linked");
+    symlink(outside.path(), &symlink_dir).unwrap();
+
+    let err = write_markdown_file(
+        root.path().to_string_lossy().into_owned(),
+        symlink_dir.join("note.md").to_string_lossy().into_owned(),
+        "# Escaped".to_string(),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.error_code(), "outside_workspace");
+    assert_eq!(std::fs::read_to_string(outside_file).unwrap(), "# Outside");
 }
 
 #[test]
