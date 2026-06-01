@@ -32,20 +32,11 @@ pub fn canonicalize_in_workspace(
 }
 
 pub fn canonicalize_workspace_root(root: impl AsRef<Path>) -> Result<PathBuf, WorkspaceError> {
-    let root = root.as_ref();
-
-    if !root.exists() {
-        return Err(WorkspaceError::new(
-            "root_not_found",
-            "workspace root does not exist",
-        ));
-    }
-
-    let root = fs::canonicalize(root).map_err(|error| {
-        let code = if error.kind() == io::ErrorKind::PermissionDenied {
-            "permission_denied"
-        } else {
-            "scan_failed"
+    let root = fs::canonicalize(root.as_ref()).map_err(|error| {
+        let code = match error.kind() {
+            io::ErrorKind::NotFound => "root_not_found",
+            io::ErrorKind::PermissionDenied => "permission_denied",
+            _ => "scan_failed",
         };
         WorkspaceError::from_io(code, "failed to resolve workspace root", &error)
     })?;

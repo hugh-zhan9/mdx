@@ -2,8 +2,8 @@ use tempfile::tempdir;
 
 use crate::models::FileTreeNode;
 use crate::workspace_fs::{
-    create_markdown_file, scan_workspace, scan_workspace_with_limit, trash_path,
-    write_markdown_file,
+    create_markdown_file, read_markdown_file, scan_workspace, scan_workspace_with_limit,
+    trash_path, write_markdown_file,
 };
 
 fn collect_tree_names(nodes: &[FileTreeNode]) -> Vec<String> {
@@ -67,6 +67,26 @@ fn trash_path_uses_macos_trash() {
     )
     .unwrap();
     assert!(!file.exists());
+}
+
+#[test]
+#[cfg(unix)]
+fn read_markdown_file_rejects_broken_symlink_leaf() {
+    use std::os::unix::fs::symlink;
+
+    let root = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    let outside_target = outside.path().join("missing.md");
+    let symlink_path = root.path().join("note.md");
+    symlink(&outside_target, &symlink_path).unwrap();
+
+    let err = read_markdown_file(
+        root.path().to_string_lossy().into_owned(),
+        symlink_path.to_string_lossy().into_owned(),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.error_code(), "outside_workspace");
 }
 
 #[test]

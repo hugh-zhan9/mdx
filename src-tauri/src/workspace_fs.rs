@@ -1,5 +1,7 @@
 use std::fs;
+use std::fs::File;
 use std::io;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use crate::models::{
@@ -63,17 +65,16 @@ pub fn scan_workspace_with_limit(
 
 #[tauri::command]
 pub fn read_markdown_file(root_path: String, path: String) -> Result<String, WorkspaceError> {
-    let path = canonicalize_in_workspace(root_path, path)?;
+    let path = resolve_existing_markdown_path(root_path, path)?;
     ensure_markdown_path(&path)?;
 
-    fs::read_to_string(&path).map_err(|error| {
-        let code = match error.kind() {
-            io::ErrorKind::NotFound => "not_found",
-            io::ErrorKind::PermissionDenied => "permission_denied",
-            _ => "read_failed",
-        };
-        WorkspaceError::from_io(code, "failed to read markdown file", &error)
-    })
+    let mut file = open_markdown_file_read(&path)?;
+    let mut content = String::new();
+    file.read_to_string(&mut content).map_err(|error| {
+        WorkspaceError::from_io("read_failed", "failed to read markdown file", &error)
+    })?;
+
+    Ok(content)
 }
 
 #[tauri::command]
@@ -82,18 +83,25 @@ pub fn write_markdown_file(
     path: String,
     content: String,
 ) -> Result<(), WorkspaceError> {
-    let (root, path) = resolve_write_path(root_path, path)?;
-    ensure_path_inside_root(&root, &path)?;
-    ensure_markdown_path(&path)?;
+    let path = resolve_workspace_file_path(root_path, path)?;
 
-    fs::write(&path, content).map_err(|error| {
-        let code = match error.kind() {
-            io::ErrorKind::NotFound => "not_found",
-            io::ErrorKind::PermissionDenied => "permission_denied",
-            _ => "write_failed",
-        };
-        WorkspaceError::from_io(code, "failed to write markdown file", &error)
-    })
+    match path {
+        ResolvedWorkspacePath::Existing(path) => {
+            ensure_markdown_path(&path)?;
+            let mut file = open_markdown_file_write_existing(&path)?;
+            file.write_all(content.as_bytes()).map_err(|error| {
+                WorkspaceError::from_io("write_failed", "failed to write markdown file", &error)
+            })
+        }
+        ResolvedWorkspacePath::Missing(path) => {
+            ensure_markdown_path(&path)?;
+            ensure_target_available(&path)?;
+            let mut file = open_markdown_file_write_new(&path)?;
+            file.write_all(content.as_bytes()).map_err(|error| {
+                WorkspaceError::from_io("write_failed", "failed to write markdown file", &error)
+            })
+        }
+    }
 }
 
 #[tauri::command]
@@ -116,18 +124,7 @@ pub fn create_markdown_file(
 
     ensure_target_available(&path)?;
 
-    fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&path)
-        .map_err(|error| {
-            let code = match error.kind() {
-                io::ErrorKind::AlreadyExists => "already_exists",
-                io::ErrorKind::PermissionDenied => "permission_denied",
-                _ => "write_failed",
-            };
-            WorkspaceError::from_io(code, "failed to create markdown file", &error)
-        })?;
+    let _file = open_markdown_file_write_new(&path)?;
 
     Ok(CreateMarkdownFileResult {
         path: path_to_string(&path),
@@ -341,8 +338,19 @@ fn scan_dir(
     state: &mut ScanState,
 ) -> Result<Vec<FileTreeNode>, WorkspaceError> {
     let mut entries = Vec::new();
+    let remaining_capacity = state.max_tree_entries.saturating_sub(state.entry_count);
+
+    if remaining_capacity == 0 {
+        state.truncated = true;
+        return Ok(Vec::new());
+    }
 
     for entry in fs::read_dir(dir).map_err(|error| map_scan_io_error(error, dir))? {
+        if entries.len() >= remaining_capacity {
+            state.truncated = true;
+            break;
+        }
+
         let entry = entry.map_err(|error| map_scan_io_error(error, dir))?;
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().into_owned();
@@ -396,19 +404,15 @@ fn scan_dir(
                 });
             }
         }
-
-        if state.truncated {
-            break;
-        }
     }
 
     Ok(nodes)
 }
 
-fn resolve_write_path(
+fn resolve_workspace_file_path(
     root_path: String,
     path: String,
-) -> Result<(PathBuf, PathBuf), WorkspaceError> {
+) -> Result<ResolvedWorkspacePath, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
     let path = resolve_candidate_path(&root, Path::new(&path));
 
@@ -421,7 +425,9 @@ fn resolve_write_path(
                 ));
             }
 
-            return Ok((root.clone(), canonicalize_in_workspace(&root, &path)?));
+            return Ok(ResolvedWorkspacePath::Existing(canonicalize_in_workspace(
+                &root, &path,
+            )?));
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => {}
         Err(error) => {
@@ -446,7 +452,7 @@ fn resolve_write_path(
     let file_name = path
         .file_name()
         .ok_or_else(|| WorkspaceError::new("invalid_name", "path has no file name"))?;
-    Ok((root, parent.join(file_name)))
+    Ok(ResolvedWorkspacePath::Missing(parent.join(file_name)))
 }
 
 fn ensure_path_inside_root(root: &Path, path: &Path) -> Result<(), WorkspaceError> {
@@ -521,6 +527,73 @@ fn path_has_entry(path: &Path) -> Result<bool, WorkspaceError> {
         }
     }
 }
+
+enum ResolvedWorkspacePath {
+    Existing(PathBuf),
+    Missing(PathBuf),
+}
+
+fn resolve_existing_markdown_path(
+    root_path: String,
+    path: String,
+) -> Result<PathBuf, WorkspaceError> {
+    match resolve_workspace_file_path(root_path, path)? {
+        ResolvedWorkspacePath::Existing(path) => Ok(path),
+        ResolvedWorkspacePath::Missing(_) => Err(WorkspaceError::new(
+            "not_found",
+            "markdown file does not exist",
+        )),
+    }
+}
+
+fn open_markdown_file_read(path: &Path) -> Result<File, WorkspaceError> {
+    open_markdown_file_with_options(path, true, false, false, false, "read_failed")
+}
+
+fn open_markdown_file_write_existing(path: &Path) -> Result<File, WorkspaceError> {
+    open_markdown_file_with_options(path, false, true, true, false, "write_failed")
+}
+
+fn open_markdown_file_write_new(path: &Path) -> Result<File, WorkspaceError> {
+    open_markdown_file_with_options(path, false, true, false, true, "write_failed")
+}
+
+fn open_markdown_file_with_options(
+    path: &Path,
+    read: bool,
+    write: bool,
+    truncate: bool,
+    create_new: bool,
+    fallback_error_code: &'static str,
+) -> Result<File, WorkspaceError> {
+    let mut options = fs::OpenOptions::new();
+    options
+        .read(read)
+        .write(write)
+        .truncate(truncate)
+        .create_new(create_new);
+    apply_no_follow(&mut options);
+
+    options.open(path).map_err(|error| {
+        let code = match error.kind() {
+            io::ErrorKind::AlreadyExists => "already_exists",
+            io::ErrorKind::NotFound => "not_found",
+            io::ErrorKind::PermissionDenied => "permission_denied",
+            _ => fallback_error_code,
+        };
+        WorkspaceError::from_io(code, "failed to open markdown file", &error)
+    })
+}
+
+#[cfg(unix)]
+fn apply_no_follow(options: &mut fs::OpenOptions) {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    options.custom_flags(libc::O_NOFOLLOW);
+}
+
+#[cfg(not(unix))]
+fn apply_no_follow(_options: &mut fs::OpenOptions) {}
 
 fn normalize_markdown_filename(name: &str) -> Result<String, WorkspaceError> {
     let mut name = sanitize_filename(name)?;
