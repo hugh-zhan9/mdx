@@ -1,4 +1,11 @@
 export { WorkspaceApp } from "./components/workspace-app";
+export { EditorStage } from "./components/editor-stage";
+export { FileTreePanel } from "./components/file-tree-panel";
+export { OutlinePanel } from "./components/outline-panel";
+export { TabStrip } from "./components/tab-strip";
+export { WorkspaceShell } from "./components/workspace-shell";
+export { usePanelResize } from "./hooks/use-panel-resize";
+export { useWorkspaceBootstrap } from "./hooks/use-workspace-bootstrap";
 export { parseMarkdownOutline } from "./lib/outline";
 export {
     isMarkdownFilePath,
