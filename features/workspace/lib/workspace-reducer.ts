@@ -3,6 +3,7 @@ import {
     normalizeWorkspacePath,
 } from "./path";
 import type {
+    AffectedPrefix,
     FileTreeNode,
     WorkspaceAction,
     WorkspacePanelSide,
@@ -54,6 +55,14 @@ export function workspaceReducer(
             return activateTab(state, action.tabId);
         case "tab/closed":
             return closeTab(state, action.tabId);
+        case "tab/pathRemapped":
+            return remapTabPath(state, action.fromPath, action.toPath);
+        case "tab/prefixRemapped":
+            return remapTabPrefix(state, action.affectedPrefix);
+        case "tab/closedByPath":
+            return closeTabsByPath(state, action.path);
+        case "tab/closedByPrefix":
+            return closeTabsByPrefix(state, action.prefix);
         case "tab/contentChanged":
             return updateTab(state, action.tabId, {
                 dirty: true,
@@ -177,6 +186,133 @@ function updateTab(
     };
 }
 
+function remapTabPath(
+    state: WorkspaceState,
+    fromPath: string,
+    toPath: string,
+): WorkspaceState {
+    const normalizedFromPath = normalizeWorkspacePath(fromPath);
+    const normalizedToPath = normalizeWorkspacePath(toPath);
+    const nextTabs = { ...state.tabs };
+    let changed = false;
+
+    for (const tabId of state.tabOrder) {
+        const tab = nextTabs[tabId];
+
+        if (!tab || normalizeWorkspacePath(tab.path) !== normalizedFromPath) {
+            continue;
+        }
+
+        nextTabs[tabId] = {
+            ...tab,
+            path: normalizedToPath,
+            title: pathTitle(normalizedToPath),
+        };
+        changed = true;
+    }
+
+    return changed ? { ...state, tabs: nextTabs } : state;
+}
+
+function remapTabPrefix(
+    state: WorkspaceState,
+    affectedPrefix: AffectedPrefix,
+): WorkspaceState {
+    const normalizedOldPrefix = normalizeWorkspacePath(affectedPrefix.oldPrefix);
+    const normalizedNewPrefix = normalizeWorkspacePath(affectedPrefix.newPrefix);
+    const nextTabs = { ...state.tabs };
+    let changed = false;
+
+    for (const tabId of state.tabOrder) {
+        const tab = nextTabs[tabId];
+
+        if (!tab) {
+            continue;
+        }
+
+        const nextPath = remapPathPrefix(
+            tab.path,
+            normalizedOldPrefix,
+            normalizedNewPrefix,
+        );
+
+        if (nextPath === null) {
+            continue;
+        }
+
+        nextTabs[tabId] = {
+            ...tab,
+            path: nextPath,
+        };
+        changed = true;
+    }
+
+    return changed ? { ...state, tabs: nextTabs } : state;
+}
+
+function closeTabsByPath(state: WorkspaceState, path: string): WorkspaceState {
+    const normalizedPath = normalizeWorkspacePath(path);
+
+    return closeTabsByPredicate(state, (tab) => tab.path === normalizedPath);
+}
+
+function closeTabsByPrefix(
+    state: WorkspaceState,
+    prefix: string,
+): WorkspaceState {
+    const normalizedPrefix = normalizeWorkspacePath(prefix);
+
+    return closeTabsByPredicate(state, (tab) =>
+        isPathUnderPrefix(tab.path, normalizedPrefix),
+    );
+}
+
+function closeTabsByPredicate(
+    state: WorkspaceState,
+    predicate: (tab: WorkspaceTab) => boolean,
+): WorkspaceState {
+    const closedTabIds = new Set<string>();
+
+    for (const tabId of state.tabOrder) {
+        const tab = state.tabs[tabId];
+
+        if (tab && predicate(tab)) {
+            closedTabIds.add(tabId);
+        }
+    }
+
+    if (closedTabIds.size === 0) {
+        return state;
+    }
+
+    const nextTabs = { ...state.tabs };
+    const nextTabOrder = state.tabOrder.filter((tabId) => {
+        if (!closedTabIds.has(tabId)) {
+            return true;
+        }
+
+        delete nextTabs[tabId];
+        return false;
+    });
+
+    const nextActiveTabId =
+        state.activeTabId && closedTabIds.has(state.activeTabId)
+            ? nextTabOrder[
+                  Math.min(
+                      state.tabOrder.indexOf(state.activeTabId),
+                      nextTabOrder.length - 1,
+                  )
+              ] ?? null
+            : state.activeTabId;
+
+    return {
+        ...state,
+        tabs: nextTabs,
+        tabOrder: nextTabOrder,
+        activeTabId: nextActiveTabId,
+    };
+}
+
 function renameTab(
     state: WorkspaceState,
     action: Extract<WorkspaceAction, { type: "tab/renamed" }>,
@@ -254,6 +390,49 @@ function normalizeTab(tab: WorkspaceTab): WorkspaceTab {
         ...tab,
         path: normalizeWorkspacePath(tab.path),
     };
+}
+
+function remapPathPrefix(
+    path: string,
+    oldPrefix: string,
+    newPrefix: string,
+): string | null {
+    const normalizedPath = normalizeWorkspacePath(path);
+
+    if (!isPathUnderPrefix(normalizedPath, oldPrefix)) {
+        return null;
+    }
+
+    if (normalizedPath === oldPrefix) {
+        return newPrefix;
+    }
+
+    return `${newPrefix}${normalizedPath.slice(oldPrefix.length)}`;
+}
+
+function isPathUnderPrefix(path: string, prefix: string) {
+    const normalizedPath = normalizeWorkspacePath(path);
+    const normalizedPrefix = normalizeWorkspacePath(prefix);
+
+    if (normalizedPath === normalizedPrefix) {
+        return true;
+    }
+
+    if (normalizedPrefix.length === 0) {
+        return false;
+    }
+
+    const prefixWithSeparator = normalizedPrefix.endsWith("/")
+        ? normalizedPrefix
+        : `${normalizedPrefix}/`;
+
+    return normalizedPath.startsWith(prefixWithSeparator);
+}
+
+function pathTitle(path: string) {
+    const normalizedPath = normalizeWorkspacePath(path);
+
+    return normalizedPath.split("/").filter(Boolean).at(-1) ?? normalizedPath;
 }
 
 function findTabIdByPath(state: WorkspaceState, path: string) {

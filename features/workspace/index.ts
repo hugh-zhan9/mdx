@@ -21,10 +21,12 @@ export {
 } from "./lib/window-size";
 export { createWorkspaceState, workspaceReducer } from "./lib/workspace-reducer";
 export type {
+    AffectedPrefix,
     FileTreeNode,
     FilteredFileTreeNode,
     HighlightSegment,
     MarkdownOutlineHeading,
+    PathChangeResult,
     WorkspaceAction,
     WorkspacePanelSide,
     WorkspacePanelState,

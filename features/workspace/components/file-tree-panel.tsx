@@ -26,6 +26,7 @@ import { filterTreeByName } from "../lib/tree-filter";
 import type {
     FileTreeNode,
     FilteredFileTreeNode,
+    PathChangeResult,
     WorkspaceAction,
 } from "../lib/types";
 import { FileTreeContextMenu } from "./file-tree-context-menu";
@@ -52,11 +53,6 @@ interface ScanWorkspaceResult {
 interface CreateNodeResult {
     path: string;
     name: string;
-}
-
-interface PathChangeResult {
-    oldPath: string;
-    newPath: string;
 }
 
 interface ContextMenuState {
@@ -220,13 +216,29 @@ export function FileTreePanel({
                     },
                 );
 
+                dispatch(
+                    node.kind === "file"
+                        ? {
+                              type: "tab/pathRemapped",
+                              fromPath: renamed.oldPath,
+                              toPath: renamed.newPath,
+                          }
+                        : {
+                              type: "tab/prefixRemapped",
+                              affectedPrefix:
+                                  renamed.affectedPrefix ?? {
+                                      oldPrefix: renamed.oldPath,
+                                      newPrefix: renamed.newPath,
+                                  },
+                          },
+                );
                 setSelectedPath(normalizeWorkspacePath(renamed.newPath));
                 await refreshTree();
             } catch (error) {
                 showError(error, "Failed to rename path.");
             }
         },
-        [refreshTree, rootPath, showError],
+        [dispatch, refreshTree, rootPath, showError],
     );
 
     const deleteNode = useCallback(
@@ -244,6 +256,17 @@ export function FileTreePanel({
                     rootPath,
                     path: node.path,
                 });
+                dispatch(
+                    node.kind === "file"
+                        ? {
+                              type: "tab/closedByPath",
+                              path: node.path,
+                          }
+                        : {
+                              type: "tab/closedByPrefix",
+                              prefix: node.path,
+                          },
+                );
                 setSelectedPath((current) =>
                     current === node.path ? null : current,
                 );
@@ -252,7 +275,7 @@ export function FileTreePanel({
                 showError(error, "Failed to move path to trash.");
             }
         },
-        [refreshTree, rootPath, showError],
+        [dispatch, refreshTree, rootPath, showError],
     );
 
     const moveNode = useCallback(
@@ -276,6 +299,30 @@ export function FileTreePanel({
                     targetDir: normalizedTargetDir,
                 });
 
+                const movedNode = findNodeByPath(
+                    builtTree.ok ? builtTree.nodes : [],
+                    normalizedFromPath,
+                );
+                const movedFile =
+                    movedNode?.kind === "file" ||
+                    (!movedNode && !moved.affectedPrefix);
+
+                dispatch(
+                    movedFile
+                        ? {
+                              type: "tab/pathRemapped",
+                              fromPath: moved.oldPath,
+                              toPath: moved.newPath,
+                          }
+                        : {
+                              type: "tab/prefixRemapped",
+                              affectedPrefix:
+                                  moved.affectedPrefix ?? {
+                                      oldPrefix: moved.oldPath,
+                                      newPrefix: moved.newPath,
+                                  },
+                          },
+                );
                 setSelectedPath(normalizeWorkspacePath(moved.newPath));
                 expandPath(normalizedTargetDir, setExpandedPaths);
                 await refreshTree();
@@ -283,7 +330,7 @@ export function FileTreePanel({
                 showError(error, "Failed to move path.");
             }
         },
-        [refreshTree, rootPath, showError],
+        [builtTree, dispatch, refreshTree, rootPath, showError],
     );
 
     const toggleFolder = useCallback((path: string) => {
@@ -491,4 +538,22 @@ function formatError(error: unknown, fallback: string) {
 
 function clamp(value: number, min: number, max: number) {
     return Math.min(Math.max(value, min), Math.max(min, max));
+}
+
+function findNodeByPath(nodes: FileTreeNode[], path: string): FileTreeNode | null {
+    for (const node of nodes) {
+        if (node.path === path) {
+            return node;
+        }
+
+        if (node.kind === "folder") {
+            const child = findNodeByPath(node.children, path);
+
+            if (child) {
+                return child;
+            }
+        }
+    }
+
+    return null;
 }

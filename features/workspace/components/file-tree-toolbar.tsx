@@ -37,10 +37,10 @@ export function FileTreeToolbar({
                     {rootPath}
                 </button>
             </div>
-            <div className="flex min-w-0 items-center gap-1">
+            <div className="grid min-w-0 grid-cols-3 gap-1">
                 <button
                     type="button"
-                    className="h-7 px-2 text-xs text-base-content/70 hover:bg-base-200 disabled:text-base-content/30"
+                    className="min-h-8 px-1 py-1 text-[11px] leading-tight text-base-content/70 hover:bg-base-200 disabled:text-base-content/30"
                     onClick={onNewFolder}
                     title="New folder"
                 >
@@ -48,15 +48,15 @@ export function FileTreeToolbar({
                 </button>
                 <button
                     type="button"
-                    className="h-7 px-2 text-xs text-base-content/70 hover:bg-base-200 disabled:text-base-content/30"
+                    className="min-h-8 px-1 py-1 text-[11px] leading-tight text-base-content/70 hover:bg-base-200 disabled:text-base-content/30"
                     onClick={onNewMarkdownFile}
                     title="New markdown file"
                 >
-                    MD
+                    Markdown
                 </button>
                 <button
                     type="button"
-                    className="h-7 px-2 text-xs text-base-content/70 hover:bg-base-200 disabled:text-base-content/30"
+                    className="min-h-8 px-1 py-1 text-[11px] leading-tight text-base-content/70 hover:bg-base-200 disabled:text-base-content/30"
                     onClick={onRefresh}
                     title="Refresh"
                 >

@@ -43,6 +43,17 @@ export interface WorkspaceTab {
     markdown?: string;
 }
 
+export interface AffectedPrefix {
+    oldPrefix: string;
+    newPrefix: string;
+}
+
+export interface PathChangeResult {
+    oldPath: string;
+    newPath: string;
+    affectedPrefix?: AffectedPrefix | null;
+}
+
 export interface WorkspacePanelState {
     leftCollapsed: boolean;
     leftWidth: number;
@@ -114,6 +125,23 @@ export type WorkspaceAction =
     | {
           type: "tab/closed";
           tabId: string;
+      }
+    | {
+          type: "tab/pathRemapped";
+          fromPath: string;
+          toPath: string;
+      }
+    | {
+          type: "tab/prefixRemapped";
+          affectedPrefix: AffectedPrefix;
+      }
+    | {
+          type: "tab/closedByPath";
+          path: string;
+      }
+    | {
+          type: "tab/closedByPrefix";
+          prefix: string;
       }
     | {
           type: "tab/contentChanged";

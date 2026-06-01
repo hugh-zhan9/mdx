@@ -133,6 +133,165 @@ describe("workspaceReducer", () => {
         expect(renamed.activeTabId).toBe("tab-2");
     });
 
+    it("remaps a file tab path after a file rename or move", () => {
+        const initialState = createWorkspaceState("/tmp/ws");
+        const opened = workspaceReducer(initialState, {
+            type: "tab/opened",
+            tab: {
+                tabId: "tab-1",
+                path: "/tmp/ws/Drafts/Idea.md",
+                title: "Idea.md",
+                dirty: true,
+                needsRenameOnFirstSave: false,
+            },
+        });
+
+        const remapped = workspaceReducer(opened, {
+            type: "tab/pathRemapped",
+            fromPath: "/tmp/ws/Drafts/Idea.md",
+            toPath: "/tmp/ws/Drafts/Renamed.md",
+        });
+
+        expect(remapped.tabs["tab-1"].path).toBe(
+            "/tmp/ws/Drafts/Renamed.md",
+        );
+        expect(remapped.tabs["tab-1"].title).toBe("Renamed.md");
+        expect(remapped.tabs["tab-1"].dirty).toBe(true);
+    });
+
+    it("remaps every tab under a folder prefix after a directory rename or move", () => {
+        const initialState = createWorkspaceState("/tmp/ws");
+        const opened = workspaceReducer(
+            workspaceReducer(initialState, {
+                type: "tab/opened",
+                tab: {
+                    tabId: "tab-1",
+                    path: "/tmp/ws/Drafts/Idea.md",
+                    title: "Idea.md",
+                    dirty: false,
+                    needsRenameOnFirstSave: false,
+                },
+            }),
+            {
+                type: "tab/opened",
+                tab: {
+                    tabId: "tab-2",
+                    path: "/tmp/ws/Drafts/Notes/Sub.md",
+                    title: "Sub.md",
+                    dirty: false,
+                    needsRenameOnFirstSave: false,
+                },
+            },
+        );
+
+        const remapped = workspaceReducer(opened, {
+            type: "tab/prefixRemapped",
+            affectedPrefix: {
+                oldPrefix: "/tmp/ws/Drafts",
+                newPrefix: "/tmp/ws/Archive/Drafts",
+            },
+        });
+
+        expect(remapped.tabs["tab-1"].path).toBe(
+            "/tmp/ws/Archive/Drafts/Idea.md",
+        );
+        expect(remapped.tabs["tab-2"].path).toBe(
+            "/tmp/ws/Archive/Drafts/Notes/Sub.md",
+        );
+        expect(remapped.tabs["tab-1"].title).toBe("Idea.md");
+        expect(remapped.tabs["tab-2"].title).toBe("Sub.md");
+    });
+
+    it("closes a tab after trashing a file path", () => {
+        const initialState = createWorkspaceState("/tmp/ws");
+        const opened = workspaceReducer(
+            workspaceReducer(initialState, {
+                type: "tab/opened",
+                tab: {
+                    tabId: "tab-1",
+                    path: "/tmp/ws/Drafts/Idea.md",
+                    title: "Idea.md",
+                    dirty: false,
+                    needsRenameOnFirstSave: false,
+                },
+            }),
+            {
+                type: "tab/opened",
+                tab: {
+                    tabId: "tab-2",
+                    path: "/tmp/ws/Notes.md",
+                    title: "Notes.md",
+                    dirty: false,
+                    needsRenameOnFirstSave: false,
+                },
+            },
+        );
+        const activated = workspaceReducer(opened, {
+            type: "tab/activated",
+            tabId: "tab-1",
+        });
+        const closed = workspaceReducer(activated, {
+            type: "tab/closedByPath",
+            path: "/tmp/ws/Drafts/Idea.md",
+        });
+
+        expect(closed.tabs["tab-1"]).toBeUndefined();
+        expect(closed.tabOrder).toEqual(["tab-2"]);
+        expect(closed.activeTabId).toBe("tab-2");
+    });
+
+    it("closes every tab under a trashed folder prefix", () => {
+        const initialState = createWorkspaceState("/tmp/ws");
+        const opened = workspaceReducer(
+            workspaceReducer(
+                workspaceReducer(initialState, {
+                    type: "tab/opened",
+                    tab: {
+                        tabId: "tab-1",
+                        path: "/tmp/ws/Drafts/Idea.md",
+                        title: "Idea.md",
+                        dirty: false,
+                        needsRenameOnFirstSave: false,
+                    },
+                }),
+                {
+                    type: "tab/opened",
+                    tab: {
+                        tabId: "tab-2",
+                        path: "/tmp/ws/Drafts/Sub/Note.md",
+                        title: "Note.md",
+                        dirty: false,
+                        needsRenameOnFirstSave: false,
+                    },
+                },
+            ),
+            {
+                type: "tab/opened",
+                tab: {
+                    tabId: "tab-3",
+                    path: "/tmp/ws/Other.md",
+                    title: "Other.md",
+                    dirty: false,
+                    needsRenameOnFirstSave: false,
+                },
+            },
+        );
+        const activated = workspaceReducer(opened, {
+            type: "tab/activated",
+            tabId: "tab-2",
+        });
+        const closed = workspaceReducer(activated, {
+            type: "tab/closedByPrefix",
+            prefix: "/tmp/ws/Drafts",
+        });
+
+        expect(closed.tabs["tab-1"]).toBeUndefined();
+        expect(closed.tabs["tab-2"]).toBeUndefined();
+        expect(closed.tabs["tab-3"]).toBeDefined();
+        expect(closed.tabOrder).toEqual(["tab-3"]);
+        expect(closed.activeTabId).toBe("tab-3");
+    });
+
     it("rejects invalid panel widths and clamps finite values", () => {
         const initialState = createWorkspaceState("/tmp/ws");
         const resized = workspaceReducer(initialState, {
