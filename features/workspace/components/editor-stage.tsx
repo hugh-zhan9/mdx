@@ -4,7 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 import type { RefObject } from "react";
 import { tauriCore } from "@/common/lib/tauri";
 import { EditorPane } from "@/features/editor/components/editor-pane";
-import type { WorkspaceAction, WorkspaceTab } from "../lib/types";
+import type {
+    PendingCliEditorCommand,
+    WorkspaceAction,
+    WorkspaceTab,
+} from "../lib/types";
 
 interface EditorStageProps {
     rootPath: string;
@@ -12,6 +16,12 @@ interface EditorStageProps {
     dispatch: (action: WorkspaceAction) => void;
     onSaveTab: (tabId: string) => Promise<boolean>;
     editorViewportRef?: RefObject<HTMLDivElement | null>;
+    pendingCliCommand: PendingCliEditorCommand | null;
+    onPendingCliCommandHandled: (commandId: string) => void;
+    onSelectionChange: (
+        tabId: string,
+        selection: Record<string, unknown> | null,
+    ) => void;
 }
 
 export function EditorStage({
@@ -20,6 +30,9 @@ export function EditorStage({
     dispatch,
     onSaveTab,
     editorViewportRef,
+    pendingCliCommand,
+    onPendingCliCommandHandled,
+    onSelectionChange,
 }: EditorStageProps) {
     const [message, setMessage] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
@@ -142,6 +155,9 @@ export function EditorStage({
                         tab={activeTab}
                         onMarkdownChange={handleMarkdownChange}
                         editorViewportRef={editorViewportRef}
+                        pendingCliCommand={pendingCliCommand}
+                        onPendingCliCommandHandled={onPendingCliCommandHandled}
+                        onSelectionChange={onSelectionChange}
                     />
                 )}
             </div>

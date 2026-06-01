@@ -1,6 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
 import { useWorkspaceBootstrap } from "../hooks/use-workspace-bootstrap";
+import { syncCliWorkspaceSnapshot } from "../lib/cli-sync";
+import type { WorkspaceState } from "../lib/types";
 import { WorkspaceShell } from "./workspace-shell";
 
 export function WorkspaceApp() {
@@ -12,6 +15,8 @@ export function WorkspaceApp() {
         canChooseWorkspace,
         message,
     } = useWorkspaceBootstrap();
+
+    useCliWorkspaceSync(workspace);
 
     return (
         <main
@@ -35,6 +40,25 @@ export function WorkspaceApp() {
                 />
             )}
         </main>
+    );
+}
+
+function useCliWorkspaceSync(workspace: WorkspaceState | null) {
+    useEffect(() => {
+        if (!isTauriRuntime() || workspace) {
+            return;
+        }
+
+        void syncCliWorkspaceSnapshot(null).catch((error) => {
+            console.warn("Failed to sync CLI workspace snapshot.", error);
+        });
+    }, [workspace]);
+}
+
+function isTauriRuntime() {
+    return (
+        typeof window !== "undefined" &&
+        "__TAURI_INTERNALS__" in window
     );
 }
 

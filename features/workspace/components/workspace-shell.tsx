@@ -1,15 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { nanoid } from "nanoid";
 import { tauriCore } from "@/common/lib/tauri";
 import { usePanelResize } from "../hooks/use-panel-resize";
+import { syncCliWorkspaceSnapshot } from "../lib/cli-sync";
 import { buildFileTree } from "../lib/file-tree";
 import { parseMarkdownOutline } from "../lib/outline";
 import { scrollRenderedHeadingIntoView } from "../lib/outline-scroll";
 import { createTabSaveQueue } from "../lib/workspace-save";
 import { workspaceReducer } from "../lib/workspace-reducer";
 import type {
+    CliCloseEvent,
+    CliFileCreatedEvent,
+    CliFolderCreatedEvent,
+    CliInsertEvent,
+    CliOpenFileEvent,
+    CliPathRenamedEvent,
+    CliSelectionSnapshot,
+    CliTabEvent,
     FileTreeNode,
+    PendingCliEditorCommand,
     WorkspaceAction,
     WorkspaceState,
     WorkspaceTab,
@@ -42,8 +53,11 @@ export function WorkspaceShell({
 }: WorkspaceShellProps) {
     const workspaceRef = useRef(workspace);
     const saveQueueRef = useRef<SaveQueue | null>(null);
-    const workspaceRootRef = useRef(workspace.rootPath);
+    const workspaceRootRef = useRef<string | null>(null);
     const editorViewportRef = useRef<HTMLDivElement | null>(null);
+    const selectionByTabRef = useRef<Record<string, CliSelectionSnapshot | null>>({});
+    const [pendingCliCommand, setPendingCliCommand] =
+        useState<PendingCliEditorCommand | null>(null);
     const tabs = workspace.tabOrder
         .map((tabId) => workspace.tabs[tabId])
         .filter((tab): tab is WorkspaceTab => Boolean(tab));
@@ -63,6 +77,14 @@ export function WorkspaceShell({
         if (workspaceRootRef.current !== workspace.rootPath) {
             workspaceRootRef.current = workspace.rootPath;
             saveQueueRef.current = null;
+            if (isTauriRuntime()) {
+                void syncCliWorkspaceSnapshot(
+                    workspace,
+                    selectionByTabRef.current,
+                ).catch((error) => {
+                    console.warn("Failed to sync CLI workspace snapshot.", error);
+                });
+            }
         }
     }, [workspace]);
 
@@ -73,6 +95,14 @@ export function WorkspaceShell({
                 action,
             );
             dispatch(action);
+            if (isTauriRuntime()) {
+                void syncCliWorkspaceSnapshot(
+                    workspaceRef.current,
+                    selectionByTabRef.current,
+                ).catch((error) => {
+                    console.warn("Failed to sync CLI workspace snapshot.", error);
+                });
+            }
         },
         [dispatch],
     );
@@ -111,6 +141,125 @@ export function WorkspaceShell({
         },
         [dispatchAndMirror],
     );
+    const handleSelectionChange = useCallback(
+        (tabId: string, selection: Record<string, unknown> | null) => {
+            selectionByTabRef.current = {
+                ...selectionByTabRef.current,
+                [tabId]: selection as CliSelectionSnapshot | null,
+            };
+            if (isTauriRuntime()) {
+                void syncCliWorkspaceSnapshot(
+                    workspaceRef.current,
+                    selectionByTabRef.current,
+                ).catch((error) => {
+                    console.warn("Failed to sync CLI workspace snapshot.", error);
+                });
+            }
+        },
+        [],
+    );
+    const handlePendingCliCommandHandled = useCallback((commandId: string) => {
+        setPendingCliCommand((current) =>
+            current?.id === commandId ? null : current,
+        );
+    }, []);
+    const queuePendingCliCommand = useCallback(
+        (command: PendingCliEditorCommand) => {
+            setPendingCliCommand(command);
+        },
+        [],
+    );
+
+    useEffect(() => {
+        if (!isTauriRuntime()) {
+            return;
+        }
+
+        let disposed = false;
+        const unlisteners: Array<() => void> = [];
+
+        const subscribe = async () => {
+            const { listen } = await import("@tauri-apps/api/event");
+
+            const nextUnlisteners = await Promise.all([
+                listen<CliOpenFileEvent>("cli-open-file", (event) => {
+                    void handleCliOpenFile(
+                        event.payload,
+                        workspaceRef.current,
+                        dispatchAndMirror,
+                        queuePendingCliCommand,
+                    );
+                }),
+                listen<CliInsertEvent>("cli-insert", (event) => {
+                    handleCliInsert(
+                        event.payload,
+                        workspaceRef.current,
+                        dispatchAndMirror,
+                        queuePendingCliCommand,
+                    );
+                }),
+                listen<CliTabEvent>("cli-focus-tab", (event) => {
+                    handleCliFocusTab(
+                        event.payload,
+                        workspaceRef.current,
+                        dispatchAndMirror,
+                        queuePendingCliCommand,
+                    );
+                }),
+                listen<CliCloseEvent>("cli-close-tab", (event) => {
+                    handleCliCloseTab(
+                        event.payload,
+                        workspaceRef.current,
+                        dispatchAndMirror,
+                    );
+                }),
+                listen<CliTabEvent>("cli-save-tab", (event) => {
+                    void handleCliSaveTab(
+                        event.payload,
+                        workspaceRef.current,
+                        saveTab,
+                    );
+                }),
+                listen<CliFileCreatedEvent>("cli-file-created", (event) => {
+                    void handleCliFileCreated(
+                        event.payload,
+                        workspaceRef.current,
+                        dispatchAndMirror,
+                        queuePendingCliCommand,
+                    );
+                }),
+                listen<CliFolderCreatedEvent>("cli-folder-created", (event) => {
+                    void handleCliFolderCreated(
+                        event.payload,
+                        workspaceRef.current,
+                        dispatchAndMirror,
+                    );
+                }),
+                listen<CliPathRenamedEvent>("cli-path-renamed", (event) => {
+                    void handleCliPathRenamed(
+                        event.payload,
+                        workspaceRef.current,
+                        dispatchAndMirror,
+                    );
+                }),
+            ]);
+            unlisteners.push(...nextUnlisteners);
+
+            if (disposed) {
+                unlisteners.forEach((unlisten) => unlisten());
+            }
+        };
+
+        void subscribe().catch((error) => {
+            console.warn("Failed to subscribe to CLI events.", error);
+        });
+
+        return () => {
+            disposed = true;
+            unlisteners.forEach((unlisten) => unlisten());
+        };
+    }, [dispatchAndMirror, queuePendingCliCommand, saveTab]);
+
     const scrollToHeading = useCallback((_: unknown, index: number) => {
         scrollRenderedHeadingIntoView(editorViewportRef.current, index);
     }, []);
@@ -220,6 +369,11 @@ export function WorkspaceShell({
                         dispatch={dispatchAndMirror}
                         onSaveTab={saveTab}
                         editorViewportRef={editorViewportRef}
+                        pendingCliCommand={pendingCliCommand}
+                        onPendingCliCommandHandled={
+                            handlePendingCliCommandHandled
+                        }
+                        onSelectionChange={handleSelectionChange}
                     />
                 </main>
 
@@ -263,4 +417,194 @@ async function refreshTree(
         type: "tree/loaded",
         fileTree: built.nodes,
     });
+}
+
+function isTauriRuntime() {
+    return (
+        typeof window !== "undefined" &&
+        "__TAURI_INTERNALS__" in window
+    );
+}
+
+async function handleCliOpenFile(
+    payload: CliOpenFileEvent,
+    workspace: WorkspaceState,
+    dispatch: (action: WorkspaceAction) => void,
+    queuePendingCommand: (command: PendingCliEditorCommand) => void,
+) {
+    const normalizedPath = payload.path;
+    const existingTab = workspace.tabOrder
+        .map((tabId) => workspace.tabs[tabId])
+        .find((tab) => tab?.path === normalizedPath);
+
+    if (existingTab) {
+        dispatch({
+            type: "tab/activated",
+            tabId: existingTab.tabId,
+        });
+        queuePendingCommand({
+            id: nanoid(8),
+            kind: "focus",
+            tabId: existingTab.tabId,
+        });
+        return;
+    }
+
+    const tabId = nanoid(8);
+    const title = normalizedPath.split("/").pop() ?? normalizedPath;
+    dispatch({
+        type: "tab/opened",
+        tab: {
+            tabId,
+            path: normalizedPath,
+            title,
+            dirty: false,
+            needsRenameOnFirstSave: false,
+        },
+    });
+    queuePendingCommand({
+        id: nanoid(8),
+        kind: "focus",
+        tabId,
+    });
+}
+
+function handleCliInsert(
+    payload: CliInsertEvent,
+    workspace: WorkspaceState,
+    dispatch: (action: WorkspaceAction) => void,
+    queuePendingCommand: (command: PendingCliEditorCommand) => void,
+) {
+    const tabId = payload.tabId ?? workspace.activeTabId ?? null;
+
+    if (!tabId || !workspace.tabs[tabId]) {
+        return;
+    }
+
+    if (workspace.activeTabId !== tabId) {
+        dispatch({
+            type: "tab/activated",
+            tabId,
+        });
+    }
+
+    queuePendingCommand({
+        id: nanoid(8),
+        kind: "insert",
+        tabId,
+        text: payload.text,
+    });
+}
+
+function handleCliFocusTab(
+    payload: CliTabEvent,
+    workspace: WorkspaceState,
+    dispatch: (action: WorkspaceAction) => void,
+    queuePendingCommand: (command: PendingCliEditorCommand) => void,
+) {
+    const tabId =
+        payload.tabId ?? workspace.activeTabId ?? workspace.tabOrder[0] ?? null;
+
+    if (!tabId) {
+        return;
+    }
+
+    if (workspace.tabs[tabId]) {
+        dispatch({
+            type: "tab/activated",
+            tabId,
+        });
+        queuePendingCommand({
+            id: nanoid(8),
+            kind: "focus",
+            tabId,
+        });
+    }
+}
+
+function handleCliCloseTab(
+    payload: CliCloseEvent,
+    workspace: WorkspaceState,
+    dispatch: (action: WorkspaceAction) => void,
+) {
+    const tabId = payload.tabId ?? workspace.activeTabId ?? null;
+
+    if (!tabId || !workspace.tabs[tabId]) {
+        return;
+    }
+
+    dispatch({
+        type: "tab/closed",
+        tabId,
+    });
+}
+
+async function handleCliSaveTab(
+    payload: CliTabEvent,
+    workspace: WorkspaceState,
+    saveTab: (tabId: string) => Promise<boolean>,
+) {
+    const tabId = payload.tabId ?? workspace.activeTabId ?? null;
+
+    if (!tabId || !workspace.tabs[tabId]) {
+        return;
+    }
+
+    await saveTab(tabId);
+}
+
+async function handleCliFileCreated(
+    payload: CliFileCreatedEvent,
+    workspace: WorkspaceState,
+    dispatch: (action: WorkspaceAction) => void,
+    queuePendingCommand: (command: PendingCliEditorCommand) => void,
+) {
+    const tabId = nanoid(8);
+    dispatch({
+        type: "tab/opened",
+        tab: {
+            tabId,
+            path: payload.path,
+            title: payload.name,
+            dirty: false,
+            needsRenameOnFirstSave: payload.needsRenameOnFirstSave,
+        },
+    });
+
+    queuePendingCommand({
+        id: nanoid(8),
+        kind: "focus",
+        tabId,
+    });
+
+    await refreshTree(workspace.rootPath, () => workspace.rootPath, dispatch);
+}
+
+async function handleCliFolderCreated(
+    _payload: CliFolderCreatedEvent,
+    workspace: WorkspaceState,
+    dispatch: (action: WorkspaceAction) => void,
+) {
+    await refreshTree(workspace.rootPath, () => workspace.rootPath, dispatch);
+}
+
+async function handleCliPathRenamed(
+    payload: CliPathRenamedEvent,
+    workspace: WorkspaceState,
+    dispatch: (action: WorkspaceAction) => void,
+) {
+    dispatch(
+        payload.affectedPrefix
+            ? {
+                  type: "tab/prefixRemapped",
+                  affectedPrefix: payload.affectedPrefix,
+              }
+            : {
+                  type: "tab/pathRemapped",
+                  fromPath: payload.oldPath,
+                  toPath: payload.newPath,
+              },
+    );
+
+    await refreshTree(workspace.rootPath, () => workspace.rootPath, dispatch);
 }

@@ -1,0 +1,251 @@
+use std::path::{Component, Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(tag = "cmd", rename_all = "kebab-case")]
+pub enum CliRequest {
+    New,
+    Open {
+        path: String,
+    },
+    List,
+    Content {
+        #[serde(default)]
+        tab_id: Option<String>,
+    },
+    Selection {
+        #[serde(default)]
+        tab_id: Option<String>,
+    },
+    Insert {
+        #[serde(default)]
+        tab_id: Option<String>,
+        text: String,
+    },
+    Save {
+        #[serde(default)]
+        tab_id: Option<String>,
+    },
+    Focus {
+        #[serde(default)]
+        tab_id: Option<String>,
+    },
+    Close {
+        #[serde(default)]
+        tab_id: Option<String>,
+        #[serde(default)]
+        force: Option<bool>,
+    },
+    CreateFile {
+        #[serde(default)]
+        parent_dir: Option<String>,
+        #[serde(default)]
+        name: Option<String>,
+    },
+    CreateFolder {
+        #[serde(default)]
+        parent_dir: Option<String>,
+        #[serde(default)]
+        name: Option<String>,
+    },
+    Rename {
+        #[serde(default)]
+        path: Option<String>,
+        new_name: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct WorkspaceSnapshot {
+    #[serde(alias = "rootPath")]
+    pub root_path: Option<String>,
+    #[serde(alias = "activeTabId")]
+    pub active_tab_id: Option<String>,
+    #[serde(default)]
+    pub tabs: Vec<TabSnapshot>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct TabSnapshot {
+    #[serde(alias = "tabId")]
+    pub tab_id: String,
+    pub path: String,
+    pub title: String,
+    pub dirty: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct SelectionSnapshot {
+    pub has_selection: bool,
+    pub selected_text: String,
+    pub before: String,
+    pub after: String,
+    pub before_truncated: bool,
+    pub after_truncated: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct CliResponse {
+    pub ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub window_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub root_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_tab_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tabs: Vec<TabSnapshot>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tab_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub needs_rename_on_first_save: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub old_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selection: Option<SelectionSnapshot>,
+}
+
+impl CliResponse {
+    pub fn ok() -> Self {
+        Self {
+            ok: true,
+            ..Self::default()
+        }
+    }
+
+    pub fn error(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            ok: false,
+            error_code: Some(code.into()),
+            error: Some(message.into()),
+            ..Self::default()
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CliProtocolError {
+    error_code: String,
+    message: String,
+}
+
+impl CliProtocolError {
+    pub fn new(error_code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            error_code: error_code.into(),
+            message: message.into(),
+        }
+    }
+
+    pub fn error_code(&self) -> &str {
+        &self.error_code
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+impl std::fmt::Display for CliProtocolError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}: {}", self.error_code, self.message)
+    }
+}
+
+impl std::error::Error for CliProtocolError {}
+
+pub fn resolve_cli_path(
+    snapshot: &WorkspaceSnapshot,
+    input: &str,
+) -> Result<String, CliProtocolError> {
+    if input.trim().is_empty() {
+        return Err(CliProtocolError::new(
+            "invalid_path",
+            "path must not be empty",
+        ));
+    }
+
+    let Some(root_path) = snapshot.root_path.as_deref() else {
+        return Err(CliProtocolError::new(
+            "no_workspace",
+            "no active workspace root is available",
+        ));
+    };
+
+    let root = normalize_path_lexically(Path::new(root_path));
+    let input = Path::new(input);
+    let candidate = if input.is_absolute() {
+        normalize_path_lexically(input)
+    } else {
+        normalize_path_lexically(&root.join(input))
+    };
+
+    if !candidate.starts_with(&root) {
+        return Err(CliProtocolError::new(
+            "outside_workspace",
+            "path is outside the active workspace",
+        ));
+    }
+
+    Ok(candidate.to_string_lossy().into_owned())
+}
+
+pub fn list_response_from_snapshot(snapshot: &WorkspaceSnapshot) -> CliResponse {
+    CliResponse {
+        ok: true,
+        root_path: snapshot.root_path.clone(),
+        active_tab_id: snapshot.active_tab_id.clone(),
+        tabs: snapshot.tabs.clone(),
+        ..CliResponse::default()
+    }
+}
+
+pub fn active_or_requested_tab<'a>(
+    snapshot: &'a WorkspaceSnapshot,
+    tab_id: Option<&str>,
+) -> Result<&'a TabSnapshot, CliProtocolError> {
+    let target = tab_id
+        .map(str::to_owned)
+        .or_else(|| snapshot.active_tab_id.clone())
+        .ok_or_else(|| CliProtocolError::new("tab_not_found", "no active tab"))?;
+
+    snapshot
+        .tabs
+        .iter()
+        .find(|tab| tab.tab_id == target)
+        .ok_or_else(|| CliProtocolError::new("tab_not_found", "tab was not found"))
+}
+
+fn normalize_path_lexically(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            Component::Normal(part) => normalized.push(part),
+            Component::RootDir | Component::Prefix(_) => normalized.push(component.as_os_str()),
+        }
+    }
+
+    normalized
+}

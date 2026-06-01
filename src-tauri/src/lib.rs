@@ -4,6 +4,8 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
 mod assets;
+pub mod cli_protocol;
+mod cli_server;
 mod models;
 mod path_guard;
 mod state_store;
@@ -12,13 +14,15 @@ mod workspace_fs;
 #[cfg(test)]
 mod assets_tests;
 #[cfg(test)]
+mod cli_protocol_tests;
+#[cfg(test)]
 mod state_store_tests;
 #[cfg(test)]
 mod workspace_fs_tests;
 
 static WIN_ID: AtomicU32 = AtomicU32::new(0);
 
-fn new_workspace_window(app: &AppHandle) -> tauri::Result<()> {
+pub(crate) fn new_workspace_window(app: &AppHandle) -> tauri::Result<String> {
     let label = format!("w{}", WIN_ID.fetch_add(1, Ordering::SeqCst));
     let window = WebviewWindowBuilder::new(app, &label, WebviewUrl::App("/".into()))
         .title("MDX")
@@ -26,7 +30,7 @@ fn new_workspace_window(app: &AppHandle) -> tauri::Result<()> {
         .resizable(true)
         .build()?;
     let _ = window.set_focus();
-    Ok(())
+    Ok(label)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -42,6 +46,8 @@ pub fn run() {
             }
             app.handle().plugin(tauri_plugin_dialog::init())?;
             app.handle().plugin(tauri_plugin_process::init())?;
+            app.manage(cli_server::CliState::default());
+            cli_server::start(app.handle().clone());
 
             let new_window_item =
                 MenuItem::with_id(app, "new-window", "New Window", true, Some("CmdOrCtrl+N"))?;
@@ -98,6 +104,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            cli_server::cli_update_workspace_snapshot,
+            cli_server::cli_update_tab_state,
             state_store::load_app_state,
             state_store::save_app_state,
             assets::save_image_asset,

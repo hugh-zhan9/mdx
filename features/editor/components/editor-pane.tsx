@@ -1,10 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import type { RefObject } from "react";
 import { loadImage } from "@/common/lib/image-storage";
 import { tokenize } from "@/common/lib/prism";
-import type { WorkspaceTab } from "@/features/workspace/lib/types";
+import type {
+    PendingCliEditorCommand,
+    WorkspaceTab,
+} from "@/features/workspace/lib/types";
 import {
     DOMD,
     DOMDProvider,
@@ -16,6 +19,12 @@ interface EditorPaneProps {
     tab: WorkspaceTab;
     onMarkdownChange: (tabId: string, markdown: string) => void;
     editorViewportRef?: RefObject<HTMLDivElement | null>;
+    pendingCliCommand: PendingCliEditorCommand | null;
+    onPendingCliCommandHandled: (commandId: string) => void;
+    onSelectionChange: (
+        tabId: string,
+        selection: Record<string, unknown> | null,
+    ) => void;
 }
 
 export function EditorPane({
@@ -23,6 +32,9 @@ export function EditorPane({
     tab,
     onMarkdownChange,
     editorViewportRef,
+    pendingCliCommand,
+    onPendingCliCommandHandled,
+    onSelectionChange,
 }: EditorPaneProps) {
     const initMd = tab.markdown ?? "";
 
@@ -44,6 +56,9 @@ export function EditorPane({
                 tab={tab}
                 onMarkdownChange={onMarkdownChange}
                 editorViewportRef={editorViewportRef}
+                pendingCliCommand={pendingCliCommand}
+                onPendingCliCommandHandled={onPendingCliCommandHandled}
+                onSelectionChange={onSelectionChange}
             />
         </DOMDProvider>
     );
@@ -53,16 +68,26 @@ function EditorPaneInner({
     tab,
     onMarkdownChange,
     editorViewportRef,
+    pendingCliCommand,
+    onPendingCliCommandHandled,
+    onSelectionChange,
 }: {
     tab: WorkspaceTab;
     onMarkdownChange: (tabId: string, markdown: string) => void;
     editorViewportRef?: RefObject<HTMLDivElement | null>;
+    pendingCliCommand: PendingCliEditorCommand | null;
+    onPendingCliCommandHandled: (commandId: string) => void;
+    onSelectionChange: (
+        tabId: string,
+        selection: Record<string, unknown> | null,
+    ) => void;
 }) {
     const bridge = useEditorBridge({
         tabId: tab.tabId,
         markdown: tab.markdown,
         onMarkdownChange,
     });
+    const { focus, insertText } = bridge;
     const statusText = tab.dirty ? "Unsaved changes" : "Saved";
     const selectionText = useMemo(() => {
         if (!bridge.selection) {
@@ -73,6 +98,33 @@ function EditorPaneInner({
             ? `${bridge.selection.selected_text.length} chars selected`
             : "Cursor ready";
     }, [bridge.selection]);
+
+    useEffect(() => {
+        onSelectionChange(
+            tab.tabId,
+            (bridge.selection as Record<string, unknown> | null) ?? null,
+        );
+    }, [bridge.selection, onSelectionChange, tab.tabId]);
+
+    useEffect(() => {
+        if (!pendingCliCommand || pendingCliCommand.tabId !== tab.tabId) {
+            return;
+        }
+
+        focus();
+
+        if (pendingCliCommand.kind === "insert" && pendingCliCommand.text) {
+            insertText(pendingCliCommand.text);
+        }
+
+        onPendingCliCommandHandled(pendingCliCommand.id);
+    }, [
+        focus,
+        insertText,
+        onPendingCliCommandHandled,
+        pendingCliCommand,
+        tab.tabId,
+    ]);
 
     return (
         <div className="flex h-full min-h-0 flex-col">

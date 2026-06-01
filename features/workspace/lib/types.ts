@@ -43,6 +43,82 @@ export interface WorkspaceTab {
     markdown?: string;
 }
 
+export interface CliSelectionSnapshot {
+    has_selection: boolean;
+    selected_text: string;
+    before: string;
+    after: string;
+    before_truncated: boolean;
+    after_truncated: boolean;
+}
+
+export interface CliWorkspaceTabSnapshot {
+    tab_id: string;
+    path: string;
+    title: string;
+    dirty: boolean;
+}
+
+export interface CliWorkspaceSnapshot {
+    root_path: string | null;
+    active_tab_id: string | null;
+    tabs: CliWorkspaceTabSnapshot[];
+}
+
+export interface CliWorkspaceSyncPayload {
+    workspace: CliWorkspaceSnapshot;
+    tab_contents: Record<string, string>;
+    tab_selections: Record<string, CliSelectionSnapshot | null>;
+}
+
+export interface CliEditorSnapshot {
+    tabId: string;
+    markdown: string;
+    selection: CliSelectionSnapshot | null;
+}
+
+export interface PendingCliEditorCommand {
+    id: string;
+    kind: "focus" | "insert";
+    tabId: string;
+    text?: string;
+}
+
+export interface CliOpenFileEvent {
+    path: string;
+}
+
+export interface CliTabEvent {
+    tabId?: string;
+}
+
+export interface CliInsertEvent {
+    tabId?: string;
+    text: string;
+}
+
+export interface CliCloseEvent {
+    tabId?: string;
+    force: boolean;
+}
+
+export interface CliFileCreatedEvent {
+    path: string;
+    name: string;
+    needsRenameOnFirstSave: boolean;
+}
+
+export interface CliFolderCreatedEvent {
+    path: string;
+    name: string;
+}
+
+export interface CliPathRenamedEvent {
+    oldPath: string;
+    newPath: string;
+    affectedPrefix?: AffectedPrefix | null;
+}
+
 export interface AffectedPrefix {
     oldPrefix: string;
     newPrefix: string;
