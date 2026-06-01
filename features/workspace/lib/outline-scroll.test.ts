@@ -55,7 +55,11 @@ describe("outline scroll helpers", () => {
 
         expect(headingButton).toBeTruthy();
 
-        headingButton?.props.onClick();
+        const onClick = headingButton?.props.onClick as
+            | (() => void)
+            | undefined;
+
+        onClick?.();
 
         expect(onHeadingClick).toHaveBeenCalledTimes(1);
         expect(onHeadingClick).toHaveBeenCalledWith(headings[1], 1);

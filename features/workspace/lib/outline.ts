@@ -24,7 +24,7 @@ export function parseMarkdownOutline(markdown: string): MarkdownOutlineHeading[]
             return;
         }
 
-        const headingMatch = line.match(/^\s{0,3}(#{1,6})[ \t]+(.+?)\s*$/);
+        const headingMatch = line.match(/^(#{1,6})[ \t]+(.+?)\s*$/);
 
         if (!headingMatch) {
             return;

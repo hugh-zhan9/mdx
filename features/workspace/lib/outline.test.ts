@@ -16,6 +16,11 @@ describe("parseMarkdownOutline", () => {
         expect(headings.map((h) => h.level)).toEqual([1, 6]);
     });
 
+    it("ignores indented atx headings", () => {
+        const headings = parseMarkdownOutline("  # Hidden\n# Visible");
+        expect(headings.map((h) => h.text)).toEqual(["Visible"]);
+    });
+
     it("keeps headings inside unmatched shorter fences hidden", () => {
         const headings = parseMarkdownOutline(
             "````\n```\n# Hidden\n```\n````\n# Visible",
