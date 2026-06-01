@@ -14,7 +14,7 @@ export function parseMarkdownOutline(markdown: string): MarkdownOutlineHeading[]
             return;
         }
 
-        const fenceMatch = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+        const fenceMatch = line.match(/^(`{3,}|~{3,})(.*)$/);
 
         if (fenceMatch) {
             fence = {
@@ -52,7 +52,7 @@ function isClosingFence(
     fence: { char: "`" | "~"; length: number },
 ) {
     const pattern = new RegExp(
-        `^ {0,3}${escapeForRegExp(fence.char)}{${fence.length},}[ \\t]*$`,
+        `^${escapeForRegExp(fence.char)}{${fence.length},}[ \\t]*$`,
     );
 
     return pattern.test(line);
