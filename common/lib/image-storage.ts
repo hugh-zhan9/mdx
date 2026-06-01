@@ -1,4 +1,3 @@
-import Dexie, { type Table } from "dexie";
 import { isTauri } from "./platform";
 import { tauriCore } from "./tauri";
 
@@ -15,138 +14,6 @@ const MIME_TO_EXT: Record<string, string> = {
     "image/tiff": "tiff",
 };
 
-function extOf(file: File | Blob, nameHint?: string): string {
-    const name = (file instanceof File ? file.name : nameHint) || "";
-    const dot = name.lastIndexOf(".");
-    if (dot > 0 && dot < name.length - 1) {
-        return name.slice(dot + 1).toLowerCase();
-    }
-    return MIME_TO_EXT[file.type] || "bin";
-}
-
-async function sha256Hex(blob: Blob): Promise<string> {
-    const buf = await blob.arrayBuffer();
-    const digest = await crypto.subtle.digest("SHA-256", buf);
-    const bytes = new Uint8Array(digest);
-    let hex = "";
-    for (const b of bytes) hex += b.toString(16).padStart(2, "0");
-    return hex.slice(0, 32);
-}
-
-// ── Web (IndexedDB via Dexie) ────────────────────────────────────────────────
-
-interface ImageRecord {
-    id: string;
-    blob: Blob;
-    mimeType: string;
-    createdAt: number;
-}
-
-class DomdDb extends Dexie {
-    images!: Table<ImageRecord, string>;
-    constructor() {
-        super("domd");
-        this.version(1).stores({ images: "id, createdAt" });
-    }
-}
-
-let _db: DomdDb | null = null;
-function db(): DomdDb {
-    if (!_db) _db = new DomdDb();
-    return _db;
-}
-
-async function storeWeb(file: Blob, id: string): Promise<void> {
-    const existing = await db().images.get(id);
-    if (existing) return;
-    await db().images.put({
-        id,
-        blob: file,
-        mimeType: file.type,
-        createdAt: Date.now(),
-    });
-}
-
-export async function readWebImage(id: string): Promise<Blob | null> {
-    const row = await db().images.get(id);
-    return row?.blob ?? null;
-}
-
-// ── Desktop (Tauri filesystem) ───────────────────────────────────────────────
-
-async function storeDesktop(file: Blob, name: string): Promise<string> {
-    const { invoke } = await tauriCore();
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    return invoke<string>("save_image", { name, bytes });
-}
-
-// ── Public API ───────────────────────────────────────────────────────────────
-
-export interface StoredImage {
-    url: string;
-    altText: string;
-}
-
-export async function storeImage(file: File): Promise<StoredImage> {
-    const ext = extOf(file);
-    const hash = await sha256Hex(file);
-    const name = `${hash}.${ext}`;
-    const altText = file.name || `image.${ext}`;
-
-    if (isTauri()) {
-        const absPath = await storeDesktop(file, name);
-        return { url: absPath, altText };
-    }
-    await storeWeb(file, hash);
-    return { url: `domd-idb://${hash}`, altText };
-}
-
-// ── Loader (DOMDProvider imageLoader prop) ───────────────────────────────────
-
-const isAbsoluteFsPath = (s: string) =>
-    s.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(s);
-
-const isUrlScheme = (s: string) => /^[a-z][a-z0-9+.-]*:/i.test(s);
-
-const isQuickLook = () =>
-    typeof window !== "undefined" && window.location.protocol === "domd:";
-
-function resolveRelative(dir: string, rel: string): string {
-    const parts = dir.split("/").filter((p) => p.length > 0);
-    for (const seg of rel.split("/")) {
-        if (!seg || seg === ".") continue;
-        if (seg === "..") {
-            parts.pop();
-            continue;
-        }
-        parts.push(seg);
-    }
-    return "/" + parts.join("/");
-}
-
-async function getMdBaseDir(): Promise<string | null> {
-    if (isQuickLook()) {
-        const dir = (window as Window & { __DOMD_PREVIEW_DIR__?: string })
-            .__DOMD_PREVIEW_DIR__;
-        return typeof dir === "string" ? dir : null;
-    }
-    if (isTauri()) {
-        try {
-            const { invoke } = await tauriCore();
-            const path = await invoke<string | null>("get_my_path");
-            if (!path) return null;
-            const sep = Math.max(
-                path.lastIndexOf("/"),
-                path.lastIndexOf("\\"),
-            );
-            return sep > 0 ? path.slice(0, sep) : null;
-        } catch {
-            return null;
-        }
-    }
-    return null;
-}
-
 const EXT_TO_MIME: Record<string, string> = {
     png: "image/png",
     jpg: "image/jpeg",
@@ -160,116 +27,141 @@ const EXT_TO_MIME: Record<string, string> = {
     tiff: "image/tiff",
 };
 
-function mimeFromPath(p: string): string {
-    const dot = p.lastIndexOf(".");
-    if (dot < 0) return "application/octet-stream";
-    return EXT_TO_MIME[p.slice(dot + 1).toLowerCase()] || "application/octet-stream";
+export interface StoredImage {
+    url: string;
+    altText: string;
 }
 
-export async function loadImage(src: string): Promise<string> {
-    if (src.startsWith("domd-idb://")) {
-        const id = src.slice("domd-idb://".length);
-        const blob = await readWebImage(id);
-        if (!blob) throw new Error(`image not found: ${src}`);
-        return URL.createObjectURL(blob);
+export interface StoredWorkspaceImage extends StoredImage {
+    storedPath: string;
+    usedFallback: boolean;
+}
+
+export interface StoreImageForWorkspaceOptions {
+    rootPath?: string | null;
+    currentFilePath?: string | null;
+    invoke?: <T>(cmd: string, args: Record<string, unknown>) => Promise<T>;
+}
+
+interface SaveImageAssetResponse {
+    markdownPath: string;
+    storedPath: string;
+    usedFallback: boolean;
+}
+
+function extOf(file: File | Blob, nameHint?: string): string {
+    const name = (file instanceof File ? file.name : nameHint) || "";
+    const dot = name.lastIndexOf(".");
+    if (dot > 0 && dot < name.length - 1) {
+        return name.slice(dot + 1).toLowerCase();
+    }
+    return MIME_TO_EXT[file.type] || "bin";
+}
+
+function mimeFromPath(path: string): string {
+    const dot = path.lastIndexOf(".");
+    if (dot < 0) return "application/octet-stream";
+    return (
+        EXT_TO_MIME[path.slice(dot + 1).toLowerCase()] ||
+        "application/octet-stream"
+    );
+}
+
+function dirname(path: string): string {
+    const normalized = path.replace(/\\/g, "/");
+    const index = normalized.lastIndexOf("/");
+    return index >= 0 ? normalized.slice(0, index) : "";
+}
+
+function resolveRelative(baseDir: string, rel: string): string {
+    const parts = baseDir.replace(/\\/g, "/").split("/").filter(Boolean);
+    for (const segment of rel.replace(/\\/g, "/").split("/")) {
+        if (!segment || segment === ".") continue;
+        if (segment === "..") {
+            parts.pop();
+            continue;
+        }
+        parts.push(segment);
+    }
+    return parts.length > 0 ? `/${parts.join("/")}` : "/";
+}
+
+function isAbsoluteFsPath(path: string): boolean {
+    return path.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(path);
+}
+
+function isUrlScheme(path: string): boolean {
+    return /^[a-z][a-z0-9+.-]*:/i.test(path);
+}
+
+export async function storeImageForWorkspace(
+    file: File,
+    options: StoreImageForWorkspaceOptions = {},
+): Promise<StoredWorkspaceImage> {
+    const ext = extOf(file);
+    const name = file.name || `image.${ext}`;
+    const altText = name;
+    const bytes = new Uint8Array(await file.arrayBuffer());
+
+    if (options.invoke || isTauri()) {
+        const { invoke } = options.invoke
+            ? { invoke: options.invoke }
+            : await tauriCore();
+        const response = await invoke<SaveImageAssetResponse>("save_image_asset", {
+            rootPath: options.rootPath ?? null,
+            currentFilePath: options.currentFilePath ?? null,
+            name,
+            bytes,
+        });
+
+        return {
+            url: response.markdownPath,
+            altText,
+            storedPath: response.storedPath,
+            usedFallback: response.usedFallback,
+        };
     }
 
-    // Resolve to an absolute filesystem path when possible:
-    //   - already absolute → use as-is
-    //   - relative (no URL scheme) → resolve against the .md's directory
-    //   - URL (http/https/data:) → leave alone
+    const url = URL.createObjectURL(file);
+    return {
+        url,
+        altText,
+        storedPath: url,
+        usedFallback: false,
+    };
+}
+
+export async function storeImage(file: File): Promise<StoredWorkspaceImage> {
+    return storeImageForWorkspace(file);
+}
+
+export async function loadImage(
+    src: string,
+    options: { rootPath?: string; currentFilePath?: string } = {},
+): Promise<string> {
+    if (isUrlScheme(src) || src.startsWith("data:")) {
+        return src;
+    }
+
     let absPath: string | null = null;
     if (isAbsoluteFsPath(src)) {
         absPath = src;
-    } else if (!isUrlScheme(src)) {
-        const baseDir = await getMdBaseDir();
-        if (baseDir) absPath = resolveRelative(baseDir, src);
+    } else if (src.startsWith(".assets/") && options.rootPath) {
+        absPath = resolveRelative(options.rootPath, src);
+    } else if (!isUrlScheme(src) && options.currentFilePath) {
+        absPath = resolveRelative(dirname(options.currentFilePath), src);
     }
 
-    if (absPath) {
-        if (isTauri()) {
-            const { invoke } = await tauriCore();
-            const bytes = await invoke<number[]>("read_file_bytes", {
-                path: absPath,
-            });
-            const blob = new Blob([new Uint8Array(bytes)], {
-                type: mimeFromPath(absPath),
-            });
-            return URL.createObjectURL(blob);
-        }
-        if (isQuickLook()) {
-            // Routed through PreviewURLSchemeHandler (Swift) which reads the
-            // file via FileManager. Sandbox entitlements gate which paths
-            // are actually readable.
-            return `domd://file${encodeURI(absPath)}`;
-        }
+    if (absPath && isTauri()) {
+        const { invoke } = await tauriCore();
+        const bytes = await invoke<number[]>("read_file_bytes", { path: absPath });
+        const blob = new Blob([new Uint8Array(bytes)], {
+            type: mimeFromPath(absPath),
+        });
+        return URL.createObjectURL(blob);
     }
+
     return src;
-}
-
-// ── Web export bundle (Save → write .md + .domd/assets/ alongside) ───────────
-
-const IDB_REF_RE = /domd-idb:\/\/([a-f0-9]+)/g;
-
-export function scanIdbRefs(md: string): Set<string> {
-    const ids = new Set<string>();
-    for (const m of md.matchAll(IDB_REF_RE)) ids.add(m[1]);
-    return ids;
-}
-
-function extFromMime(mime: string): string {
-    return MIME_TO_EXT[mime] || "bin";
-}
-
-/**
- * Write all referenced IDB images to `<rootDir>/.domd/assets/`. Skips files
- * already present (hash filename = dedup). Returns a map of id → relative
- * path (`.domd/assets/<id>.<ext>`) suitable for rewriting markdown.
- */
-export async function bundleIdbImages(
-    rootDir: FileSystemDirectoryHandle,
-    ids: Iterable<string>,
-): Promise<Map<string, string>> {
-    const idArr = [...ids];
-    if (idArr.length === 0) return new Map();
-
-    const domdDir = await rootDir.getDirectoryHandle(".domd", { create: true });
-    const assetsDir = await domdDir.getDirectoryHandle("assets", {
-        create: true,
-    });
-
-    const mapping = new Map<string, string>();
-    for (const id of idArr) {
-        const row = await db().images.get(id);
-        if (!row) continue;
-        const ext = extFromMime(row.mimeType);
-        const filename = `${id}.${ext}`;
-
-        let exists = false;
-        try {
-            await assetsDir.getFileHandle(filename);
-            exists = true;
-        } catch {
-            /* not present, will create */
-        }
-        if (!exists) {
-            const fh = await assetsDir.getFileHandle(filename, {
-                create: true,
-            });
-            const w = await fh.createWritable();
-            await w.write(row.blob);
-            await w.close();
-        }
-        mapping.set(id, `.domd/assets/${filename}`);
-    }
-    return mapping;
-}
-
-export function rewriteIdbRefs(
-    md: string,
-    mapping: Map<string, string>,
-): string {
-    return md.replace(IDB_REF_RE, (full, id) => mapping.get(id) ?? full);
 }
 
 export const IMAGE_EXTENSIONS = new Set([

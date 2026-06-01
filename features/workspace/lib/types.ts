@@ -66,6 +66,33 @@ export interface WorkspaceState {
 
 export type WorkspacePanelSide = "left" | "right";
 
+export interface PersistedAppState {
+    stateVersion: number;
+    recentWorkspaceRoot: string | null;
+    workspaces: PersistedWorkspaceState[];
+    windowSize: PersistedWindowSize;
+}
+
+export interface PersistedWorkspaceState {
+    rootPath: string;
+    tabs: PersistedWorkspaceTab[];
+    activeTabId: string | null;
+    panels: WorkspacePanelState;
+}
+
+export interface PersistedWorkspaceTab {
+    tabId: string;
+    path: string;
+    title: string;
+    dirty: boolean;
+    needsRenameOnFirstSave: boolean;
+}
+
+export interface PersistedWindowSize {
+    width: number;
+    height: number;
+}
+
 export type WorkspaceAction =
     | {
           type: "workspace/rootChanged";

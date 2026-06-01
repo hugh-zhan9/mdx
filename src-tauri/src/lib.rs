@@ -3,10 +3,16 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
+mod assets;
 mod models;
 mod path_guard;
+mod state_store;
 mod workspace_fs;
 
+#[cfg(test)]
+mod assets_tests;
+#[cfg(test)]
+mod state_store_tests;
 #[cfg(test)]
 mod workspace_fs_tests;
 
@@ -92,6 +98,10 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            state_store::load_app_state,
+            state_store::save_app_state,
+            assets::save_image_asset,
+            assets::read_file_bytes,
             workspace_fs::scan_workspace,
             workspace_fs::read_markdown_file,
             workspace_fs::write_markdown_file,
