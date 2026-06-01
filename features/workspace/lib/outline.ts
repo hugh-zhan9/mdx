@@ -43,7 +43,7 @@ export function parseMarkdownOutline(markdown: string): MarkdownOutlineHeading[]
 }
 
 function isClosingFence(line: string) {
-    return line.startsWith("```");
+    return line.includes("```");
 }
 
 function hasSameLineClosingFence(line: string) {
