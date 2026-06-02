@@ -85,7 +85,7 @@ fn detect_reports_not_ready_when_required_directory_is_a_file() {
     let status = detect_llm_wiki_workspace(root.path()).unwrap();
 
     assert!(!status.has_llm_wiki);
-    assert!(status.can_initialize);
+    assert!(!status.can_initialize);
     assert_eq!(status.mode, "ordinary");
     assert!(status.missing_paths.contains(&"raw".to_string()));
 }
@@ -97,6 +97,21 @@ fn initialize_errors_when_required_file_path_is_a_directory() {
 
     let result = initialize_llm_wiki_workspace(root.path());
 
-    assert!(result.is_err());
+    let error = result.unwrap_err();
+    assert_eq!(error.error_code(), "path_type_conflict");
     assert!(root.path().join("index.md").is_dir());
+}
+
+#[cfg(unix)]
+#[test]
+fn initialize_errors_when_managed_directory_is_a_symlink() {
+    let root = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    std::os::unix::fs::symlink(outside.path(), root.path().join("wiki")).unwrap();
+
+    let result = initialize_llm_wiki_workspace(root.path());
+
+    let error = result.unwrap_err();
+    assert_eq!(error.error_code(), "path_type_conflict");
+    assert!(!outside.path().join("sources").exists());
 }

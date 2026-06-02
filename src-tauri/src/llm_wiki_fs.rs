@@ -18,9 +18,11 @@ const REQUIRED_FILES: &[&str] = &[
 ];
 
 const INITIAL_DIRS: &[&str] = &[
+    "raw",
     "raw/notes",
     "raw/articles",
     "raw/assets",
+    "wiki",
     "wiki/sources",
     "wiki/entities",
     "wiki/concepts",
@@ -35,14 +37,25 @@ pub fn detect_llm_wiki_workspace(
     ensure_directory(root)?;
 
     let mut missing_paths = Vec::new();
+    let mut has_type_conflict = false;
     for path in REQUIRED_DIRS {
-        if !root.join(path).is_dir() {
-            missing_paths.push((*path).to_string());
+        match required_path_state(root, path, RequiredPathKind::Directory)? {
+            RequiredPathState::Valid => {}
+            RequiredPathState::Missing => missing_paths.push((*path).to_string()),
+            RequiredPathState::TypeConflict => {
+                missing_paths.push((*path).to_string());
+                has_type_conflict = true;
+            }
         }
     }
     for path in REQUIRED_FILES {
-        if !root.join(path).is_file() {
-            missing_paths.push((*path).to_string());
+        match required_path_state(root, path, RequiredPathKind::File)? {
+            RequiredPathState::Valid => {}
+            RequiredPathState::Missing => missing_paths.push((*path).to_string()),
+            RequiredPathState::TypeConflict => {
+                missing_paths.push((*path).to_string());
+                has_type_conflict = true;
+            }
         }
     }
     let has_llm_wiki = missing_paths.is_empty();
@@ -54,7 +67,7 @@ pub fn detect_llm_wiki_workspace(
             "ordinary".to_string()
         },
         has_llm_wiki,
-        can_initialize: !has_llm_wiki,
+        can_initialize: !has_llm_wiki && !has_type_conflict,
         missing_paths,
     })
 }
@@ -165,15 +178,19 @@ fn create_dir_if_missing(
     preserved_paths: &mut Vec<String>,
 ) -> Result<(), WorkspaceError> {
     let path = root.join(relative_path);
-    if path.is_dir() {
-        preserved_paths.push(relative_path.to_string());
-        return Ok(());
-    }
-    if path.exists() {
-        return Err(WorkspaceError::new(
-            "path_type_conflict",
-            format!("llm wiki directory path exists but is not a directory: {relative_path}"),
-        ));
+    match existing_path_kind(&path)? {
+        ExistingPathKind::Missing => {}
+        ExistingPathKind::Directory => {
+            preserved_paths.push(relative_path.to_string());
+            return Ok(());
+        }
+        ExistingPathKind::File | ExistingPathKind::Symlink | ExistingPathKind::Other => {
+            return Err(path_type_conflict(
+                "directory",
+                "not a directory",
+                relative_path,
+            ));
+        }
     }
 
     fs::create_dir_all(&path).map_err(|error| {
@@ -195,15 +212,15 @@ fn create_file_if_missing(
     preserved_paths: &mut Vec<String>,
 ) -> Result<(), WorkspaceError> {
     let path = root.join(relative_path);
-    if path.is_file() {
-        preserved_paths.push(relative_path.to_string());
-        return Ok(());
-    }
-    if path.exists() {
-        return Err(WorkspaceError::new(
-            "path_type_conflict",
-            format!("llm wiki file path exists but is not a file: {relative_path}"),
-        ));
+    match existing_path_kind(&path)? {
+        ExistingPathKind::Missing => {}
+        ExistingPathKind::File => {
+            preserved_paths.push(relative_path.to_string());
+            return Ok(());
+        }
+        ExistingPathKind::Directory | ExistingPathKind::Symlink | ExistingPathKind::Other => {
+            return Err(path_type_conflict("file", "not a file", relative_path));
+        }
     }
 
     if let Some(parent) = path.parent() {
@@ -245,5 +262,72 @@ fn create_json_file_if_missing<T: serde::Serialize>(
         &contents,
         created_paths,
         preserved_paths,
+    )
+}
+
+enum RequiredPathKind {
+    Directory,
+    File,
+}
+
+enum RequiredPathState {
+    Valid,
+    Missing,
+    TypeConflict,
+}
+
+enum ExistingPathKind {
+    Missing,
+    Directory,
+    File,
+    Symlink,
+    Other,
+}
+
+fn required_path_state(
+    root: &Path,
+    relative_path: &str,
+    kind: RequiredPathKind,
+) -> Result<RequiredPathState, WorkspaceError> {
+    let path_kind = existing_path_kind(&root.join(relative_path))?;
+    Ok(match (path_kind, kind) {
+        (ExistingPathKind::Missing, _) => RequiredPathState::Missing,
+        (ExistingPathKind::Directory, RequiredPathKind::Directory)
+        | (ExistingPathKind::File, RequiredPathKind::File) => RequiredPathState::Valid,
+        _ => RequiredPathState::TypeConflict,
+    })
+}
+
+fn existing_path_kind(path: &Path) -> Result<ExistingPathKind, WorkspaceError> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(ExistingPathKind::Missing);
+        }
+        Err(error) => {
+            return Err(WorkspaceError::from_io(
+                "path_failed",
+                "failed to inspect llm wiki managed path",
+                &error,
+            ));
+        }
+    };
+
+    let file_type = metadata.file_type();
+    if file_type.is_symlink() {
+        Ok(ExistingPathKind::Symlink)
+    } else if file_type.is_dir() {
+        Ok(ExistingPathKind::Directory)
+    } else if file_type.is_file() {
+        Ok(ExistingPathKind::File)
+    } else {
+        Ok(ExistingPathKind::Other)
+    }
+}
+
+fn path_type_conflict(expected: &str, actual: &str, relative_path: &str) -> WorkspaceError {
+    WorkspaceError::new(
+        "path_type_conflict",
+        format!("llm wiki {expected} path exists but is {actual}: {relative_path}"),
     )
 }
