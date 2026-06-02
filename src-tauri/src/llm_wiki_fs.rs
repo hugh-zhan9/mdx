@@ -13,7 +13,7 @@ use crate::models::WorkspaceError;
 use crate::path_guard::is_allowed_markdown_file;
 use sha2::{Digest, Sha256};
 
-const REQUIRED_DIRS: &[&str] = &["raw", "wiki"];
+const REQUIRED_DIRS: &[&str] = &["raw", "wiki", ".llm-wiki"];
 
 const REQUIRED_FILES: &[&str] = &[
     "index.md",
@@ -21,6 +21,8 @@ const REQUIRED_FILES: &[&str] = &[
     "purpose.md",
     "AGENTS.md",
     "llm-wiki-progress.md",
+    ".llm-wiki/cache.json",
+    ".llm-wiki/config.json",
 ];
 
 const INITIAL_DIRS: &[&str] = &[
@@ -555,22 +557,25 @@ impl GraphPageIndex {
     }
 
     fn resolve(&self, source_path: &str, link: &GraphLink) -> Option<String> {
-        let target = normalize_graph_link_target(&link.target);
-        if target.is_empty() {
+        let target = GraphLinkTarget::parse(&link.target);
+        if target.path.is_empty() {
             return None;
         }
 
-        if target.contains('/') {
-            if link.wiki_root_qualified || is_wiki_root_qualified_link(&target) {
-                return self.path_keys.get(&target).cloned();
+        if target.path.contains('/') {
+            if link.wiki_root_qualified
+                || target.root_qualified
+                || is_wiki_root_qualified_link(&target.path)
+            {
+                return self.path_keys.get(&target.path).cloned();
             }
-            if let Some(relative_target) = self.resolve_source_relative(source_path, &target) {
+            if let Some(relative_target) = self.resolve_source_relative(source_path, &target.path) {
                 return Some(relative_target);
             }
-            return self.path_keys.get(&target).cloned();
+            return self.path_keys.get(&target.path).cloned();
         }
 
-        self.unambiguous_names.get(&target).cloned()
+        self.unambiguous_names.get(&target.path).cloned()
     }
 
     fn resolve_source_relative(&self, source_path: &str, target: &str) -> Option<String> {
@@ -584,8 +589,34 @@ impl GraphPageIndex {
         } else {
             format!("{source_dir}/{target}")
         };
+        let candidate = normalize_graph_path(&candidate)?;
 
         self.path_keys.get(&candidate).cloned()
+    }
+}
+
+struct GraphLinkTarget {
+    path: String,
+    root_qualified: bool,
+}
+
+impl GraphLinkTarget {
+    fn parse(target: &str) -> Self {
+        let target = trim_markdown_extension(target.trim());
+        let (path, root_qualified) = if let Some(rest) = target.strip_prefix("/wiki/") {
+            (normalize_graph_path(rest).unwrap_or_default(), true)
+        } else if let Some(rest) = target.strip_prefix('/') {
+            (normalize_graph_path(rest).unwrap_or_default(), true)
+        } else if let Some(rest) = target.strip_prefix("wiki/") {
+            (normalize_graph_path(rest).unwrap_or_default(), true)
+        } else {
+            (target.to_string(), false)
+        };
+
+        Self {
+            path,
+            root_qualified,
+        }
     }
 }
 
@@ -645,15 +676,25 @@ fn graph_link_path_key(relative_path: &str) -> String {
         .to_string()
 }
 
-fn normalize_graph_link_target(target: &str) -> String {
-    trim_markdown_extension(target.trim().trim_start_matches("wiki/")).to_string()
-}
-
 fn is_wiki_root_qualified_link(target: &str) -> bool {
     matches!(
         target.split('/').next(),
         Some("sources" | "entities" | "concepts" | "syntheses")
     )
+}
+
+fn normalize_graph_path(path: &str) -> Option<String> {
+    let mut segments = Vec::new();
+    for segment in path.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                segments.pop()?;
+            }
+            segment => segments.push(segment),
+        }
+    }
+    Some(segments.join("/"))
 }
 
 fn trim_markdown_extension(path: &str) -> &str {

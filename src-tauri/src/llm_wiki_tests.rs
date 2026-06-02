@@ -1,7 +1,7 @@
 use sha2::{Digest, Sha256};
 use tempfile::tempdir;
 
-use crate::llm_wiki::llm_wiki_refresh_graph;
+use crate::llm_wiki::{llm_wiki_refresh_graph, llm_wiki_rescan_raw};
 use crate::llm_wiki_fs::{
     build_knowledge_graph_markdown, detect_llm_wiki_workspace, initialize_llm_wiki_workspace,
     read_knowledge_config, scan_raw_files, update_progress_markdown,
@@ -94,6 +94,41 @@ fn detect_reports_not_ready_when_required_directory_is_a_file() {
     assert!(!status.can_initialize);
     assert_eq!(status.mode, "ordinary");
     assert!(status.missing_paths.contains(&"raw".to_string()));
+}
+
+#[test]
+fn detect_reports_not_ready_when_llm_wiki_metadata_directory_is_missing() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::remove_dir_all(root.path().join(".llm-wiki")).unwrap();
+
+    let status = detect_llm_wiki_workspace(root.path()).unwrap();
+
+    assert!(!status.has_llm_wiki);
+    assert!(status.can_initialize);
+    assert!(status.missing_paths.contains(&".llm-wiki".to_string()));
+    assert!(status
+        .missing_paths
+        .contains(&".llm-wiki/cache.json".to_string()));
+    assert!(status
+        .missing_paths
+        .contains(&".llm-wiki/config.json".to_string()));
+}
+
+#[cfg(unix)]
+#[test]
+fn detect_reports_not_ready_when_llm_wiki_metadata_directory_is_a_symlink() {
+    let root = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::remove_dir_all(root.path().join(".llm-wiki")).unwrap();
+    std::os::unix::fs::symlink(outside.path(), root.path().join(".llm-wiki")).unwrap();
+
+    let status = detect_llm_wiki_workspace(root.path()).unwrap();
+
+    assert!(!status.has_llm_wiki);
+    assert!(!status.can_initialize);
+    assert!(status.missing_paths.contains(&".llm-wiki".to_string()));
 }
 
 #[test]
@@ -210,6 +245,26 @@ fn update_progress_markdown_writes_visible_status_document() {
     assert!(progress.contains("raw/notes/b.md"));
     assert!(progress.contains("llm_failed"));
     assert!(progress.contains("raw/ignored"));
+}
+
+#[test]
+fn rescan_raw_returns_no_pending_files_when_config_is_paused() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::write(root.path().join("raw/notes/a.md"), "# A\n").unwrap();
+    std::fs::write(
+        root.path().join(".llm-wiki/config.json"),
+        r#"{"paused":true,"skipPaths":[]}"#,
+    )
+    .unwrap();
+
+    let result = llm_wiki_rescan_raw(root.path().to_string_lossy().into_owned()).unwrap();
+
+    assert_eq!(result.total, 1);
+    assert!(result.pending.is_empty());
+    let progress = std::fs::read_to_string(root.path().join("llm-wiki-progress.md")).unwrap();
+    assert!(progress.contains("paused"));
+    assert!(!progress.contains("raw/notes/a.md"));
 }
 
 #[test]
@@ -349,6 +404,43 @@ fn graph_markdown_does_not_fallback_wiki_prefix_link_to_source_relative_unknown_
         "wiki/entities/A.md",
         "wiki/entities/other/B.md"
     )));
+}
+
+#[test]
+fn graph_markdown_normalizes_dot_segments_and_root_links() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::create_dir_all(root.path().join("wiki/entities/nested")).unwrap();
+    std::fs::write(
+        root.path().join("wiki/entities/nested/A.md"),
+        "# A\n\n[[./B]]\n[[../C]]\n[[../../outside/D]]\n[[/wiki/concepts/D]]\n[[/concepts/E]]\n",
+    )
+    .unwrap();
+    std::fs::write(root.path().join("wiki/entities/nested/B.md"), "# B\n").unwrap();
+    std::fs::write(root.path().join("wiki/entities/C.md"), "# C\n").unwrap();
+    std::fs::create_dir_all(root.path().join("wiki/concepts")).unwrap();
+    std::fs::write(root.path().join("wiki/concepts/D.md"), "# D\n").unwrap();
+    std::fs::write(root.path().join("wiki/concepts/E.md"), "# E\n").unwrap();
+
+    let markdown = build_knowledge_graph_markdown(root.path()).unwrap();
+
+    assert!(markdown.contains(&graph_edge(
+        "wiki/entities/nested/A.md",
+        "wiki/entities/nested/B.md"
+    )));
+    assert!(markdown.contains(&graph_edge(
+        "wiki/entities/nested/A.md",
+        "wiki/entities/C.md"
+    )));
+    assert!(markdown.contains(&graph_edge(
+        "wiki/entities/nested/A.md",
+        "wiki/concepts/D.md"
+    )));
+    assert!(markdown.contains(&graph_edge(
+        "wiki/entities/nested/A.md",
+        "wiki/concepts/E.md"
+    )));
+    assert!(!markdown.contains("outside"));
 }
 
 #[test]
