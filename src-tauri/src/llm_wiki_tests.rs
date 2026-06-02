@@ -1,3 +1,4 @@
+use sha2::{Digest, Sha256};
 use tempfile::tempdir;
 
 use crate::llm_wiki::llm_wiki_refresh_graph;
@@ -211,15 +212,18 @@ fn graph_markdown_handles_aliases_self_anchors_and_duplicate_basenames() {
     assert!(markdown.contains("[\"A\"]"));
     assert!(markdown.contains("[\"B\"]"));
     assert!(markdown.contains("[\"Topic\"]"));
-    assert!(markdown.contains("  wiki_entities_A --> wiki_concepts_B\n"));
-    assert!(markdown.contains("  wiki_entities_A --> wiki_entities_nested_Topic\n"));
+    assert!(markdown.contains(&graph_edge("wiki/entities/A.md", "wiki/concepts/B.md")));
+    assert!(markdown.contains(&graph_edge(
+        "wiki/entities/A.md",
+        "wiki/entities/nested/Topic.md"
+    )));
     assert!(!markdown.contains("Bee"));
     assert!(!markdown.contains("Background"));
-    assert!(markdown.contains("wiki_entities_Topic"));
-    assert!(markdown.contains("wiki_entities_nested_Topic"));
+    assert!(markdown.contains(&graph_id("wiki/entities/Topic.md")));
+    assert!(markdown.contains(&graph_id("wiki/entities/nested/Topic.md")));
     assert_ne!(
-        markdown.find("wiki_entities_Topic"),
-        markdown.find("wiki_entities_nested_Topic")
+        markdown.find(&graph_id("wiki/entities/Topic.md")),
+        markdown.find(&graph_id("wiki/entities/nested/Topic.md"))
     );
 }
 
@@ -238,9 +242,72 @@ fn graph_markdown_does_not_resolve_ambiguous_bare_basenames() {
 
     let markdown = build_knowledge_graph_markdown(root.path()).unwrap();
 
-    assert!(markdown.contains("wiki_entities_A[\"A\"]"));
-    assert!(!markdown.contains("wiki_entities_A --> wiki_entities_Topic"));
-    assert!(!markdown.contains("wiki_entities_A --> wiki_entities_nested_Topic"));
+    assert!(markdown.contains(&format!("{}[\"A\"]", graph_id("wiki/entities/A.md"))));
+    assert!(!markdown.contains(&graph_edge("wiki/entities/A.md", "wiki/entities/Topic.md")));
+    assert!(!markdown.contains(&graph_edge(
+        "wiki/entities/A.md",
+        "wiki/entities/nested/Topic.md"
+    )));
+}
+
+#[test]
+fn graph_markdown_resolves_root_qualified_slash_links_before_source_relative() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::create_dir_all(root.path().join("wiki/entities/concepts")).unwrap();
+    std::fs::write(
+        root.path().join("wiki/entities/A.md"),
+        "# A\n\n[[wiki/concepts/B]]\n[[concepts/B]]\n[[entities/concepts/B]]\n",
+    )
+    .unwrap();
+    std::fs::write(root.path().join("wiki/concepts/B.md"), "# B\n").unwrap();
+    std::fs::write(root.path().join("wiki/entities/concepts/B.md"), "# B\n").unwrap();
+
+    let markdown = build_knowledge_graph_markdown(root.path()).unwrap();
+
+    assert!(markdown.contains(&graph_edge("wiki/entities/A.md", "wiki/concepts/B.md")));
+    assert!(markdown.contains(&graph_edge(
+        "wiki/entities/A.md",
+        "wiki/entities/concepts/B.md"
+    )));
+}
+
+#[test]
+fn graph_markdown_uses_collision_proof_node_ids_for_similar_paths() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::create_dir_all(root.path().join("wiki/entities/foo")).unwrap();
+    std::fs::write(root.path().join("wiki/entities/foo-bar.md"), "# Foo Bar\n").unwrap();
+    std::fs::write(root.path().join("wiki/entities/foo/bar.md"), "# Bar\n").unwrap();
+
+    let markdown = build_knowledge_graph_markdown(root.path()).unwrap();
+    let ids = markdown
+        .lines()
+        .filter_map(|line| {
+            line.trim()
+                .split_once("[\"")
+                .map(|(id, _)| id.trim().to_string())
+        })
+        .filter(|id| id.starts_with("wiki_"))
+        .collect::<std::collections::BTreeSet<_>>();
+
+    assert_eq!(ids.len(), 2);
+    assert!(!ids.contains("wiki_entities_foo_bar"));
+}
+
+#[test]
+fn refresh_graph_is_idempotent_and_excludes_generated_graph_page() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::write(root.path().join("wiki/entities/A.md"), "# A\n\n[[B]]\n").unwrap();
+    std::fs::write(root.path().join("wiki/concepts/B.md"), "# B\n").unwrap();
+
+    let first = llm_wiki_refresh_graph(root.path().to_string_lossy().into_owned()).unwrap();
+    let second = llm_wiki_refresh_graph(root.path().to_string_lossy().into_owned()).unwrap();
+
+    assert_eq!(first, second);
+    assert!(!second.contains("knowledge-graph"));
+    assert!(!second.contains("Knowledge Graph\"]"));
 }
 
 #[cfg(unix)]
@@ -372,4 +439,19 @@ fn write_graph_markdown_writes_regular_managed_graph_file() {
         std::fs::read_to_string(root.path().join("wiki/knowledge-graph.md")).unwrap(),
         "# Knowledge Graph\n"
     );
+}
+
+fn graph_edge(source: &str, target: &str) -> String {
+    format!("  {} --> {}\n", graph_id(source), graph_id(target))
+}
+
+fn graph_id(relative_path: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(relative_path.as_bytes());
+    let digest = hasher.finalize();
+    let mut id = String::from("wiki_");
+    for byte in digest.iter().take(12) {
+        id.push_str(&format!("{byte:02x}"));
+    }
+    id
 }

@@ -438,6 +438,9 @@ fn scan_wiki_graph_dir(
             scan_wiki_graph_dir(root, &path, pages)?;
         } else if file_type.is_file() && is_allowed_markdown_file(&path) {
             let relative_path = relative_path(root, &path)?;
+            if relative_path == "wiki/knowledge-graph.md" {
+                continue;
+            }
             let display_name = graph_display_name(&path);
             let id = graph_node_id(&relative_path);
             let contents = fs::read_to_string(&path).map_err(|error| {
@@ -526,6 +529,12 @@ impl GraphPageIndex {
         }
 
         if target.contains('/') {
+            if is_wiki_root_qualified_link(&target) {
+                if let Some(root_target) = self.path_keys.get(&target).cloned() {
+                    return Some(root_target);
+                }
+                return self.resolve_source_relative(source_path, &target);
+            }
             if let Some(relative_target) = self.resolve_source_relative(source_path, &target) {
                 return Some(relative_target);
             }
@@ -591,19 +600,14 @@ fn graph_display_name(path: &Path) -> String {
 }
 
 fn graph_node_id(relative_path: &str) -> String {
-    let without_extension = graph_link_path_key(relative_path);
+    let mut hasher = Sha256::new();
+    hasher.update(relative_path.as_bytes());
+    let digest = hasher.finalize();
     let mut id = String::from("wiki_");
-    for character in without_extension.chars() {
-        if character.is_ascii_alphanumeric() {
-            id.push(character);
-        } else {
-            id.push('_');
-        }
+    for byte in digest.iter().take(12) {
+        id.push_str(&format!("{byte:02x}"));
     }
-    while id.contains("__") {
-        id = id.replace("__", "_");
-    }
-    id.trim_end_matches('_').to_string()
+    id
 }
 
 fn graph_link_path_key(relative_path: &str) -> String {
@@ -614,6 +618,13 @@ fn graph_link_path_key(relative_path: &str) -> String {
 
 fn normalize_graph_link_target(target: &str) -> String {
     trim_markdown_extension(target.trim().trim_start_matches("wiki/")).to_string()
+}
+
+fn is_wiki_root_qualified_link(target: &str) -> bool {
+    matches!(
+        target.split('/').next(),
+        Some("sources" | "entities" | "concepts" | "syntheses")
+    )
 }
 
 fn trim_markdown_extension(path: &str) -> &str {
