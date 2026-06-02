@@ -1,4 +1,5 @@
 use std::fs;
+use std::io;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -52,14 +53,8 @@ pub fn save_llm_config_to_path(
         )
     })?;
 
-    fs::create_dir_all(parent).map_err(|error| {
-        WorkspaceError::from_io(
-            "llm_config_save_failed",
-            "failed to create llm config directory",
-            &error,
-        )
-    })?;
-    restrict_config_dir(parent)?;
+    ensure_config_parent_dir(parent)?;
+    ensure_config_file_target(path)?;
 
     let bytes = serde_json::to_vec_pretty(config).map_err(|error| {
         WorkspaceError::new(
@@ -96,14 +91,7 @@ pub fn save_llm_config_to_path(
         })?;
     }
 
-    fs::rename(&temp_path, path).map_err(|error| {
-        let _ = fs::remove_file(&temp_path);
-        WorkspaceError::from_io(
-            "llm_config_save_failed",
-            "failed to replace llm config",
-            &error,
-        )
-    })?;
+    replace_config_file(&temp_path, path)?;
     restrict_config_file(path)
 }
 
@@ -123,6 +111,74 @@ pub fn default_llm_config_path() -> Result<PathBuf, WorkspaceError> {
             WorkspaceError::new("llm_config_path_failed", "home directory is not set")
         })?;
     Ok(PathBuf::from(home).join(".mdx").join("llm-config.json"))
+}
+
+fn ensure_config_parent_dir(path: &Path) -> Result<(), WorkspaceError> {
+    match existing_path_kind(path)? {
+        ExistingPathKind::Directory => restrict_config_dir(path),
+        ExistingPathKind::Missing => {
+            fs::create_dir_all(path).map_err(|error| {
+                WorkspaceError::from_io(
+                    "llm_config_save_failed",
+                    "failed to create llm config directory",
+                    &error,
+                )
+            })?;
+            match existing_path_kind(path)? {
+                ExistingPathKind::Directory => restrict_config_dir(path),
+                ExistingPathKind::Missing => Err(WorkspaceError::new(
+                    "llm_config_save_failed",
+                    "llm config directory was not created",
+                )),
+                ExistingPathKind::File | ExistingPathKind::Symlink | ExistingPathKind::Other => {
+                    Err(path_type_conflict("directory", "not a directory"))
+                }
+            }
+        }
+        ExistingPathKind::File | ExistingPathKind::Symlink | ExistingPathKind::Other => {
+            Err(path_type_conflict("directory", "not a directory"))
+        }
+    }
+}
+
+fn ensure_config_file_target(path: &Path) -> Result<(), WorkspaceError> {
+    match existing_path_kind(path)? {
+        ExistingPathKind::Missing | ExistingPathKind::File => Ok(()),
+        ExistingPathKind::Directory | ExistingPathKind::Symlink | ExistingPathKind::Other => {
+            Err(path_type_conflict("file", "not a file"))
+        }
+    }
+}
+
+#[cfg(windows)]
+fn replace_config_file(temp_path: &Path, path: &Path) -> Result<(), WorkspaceError> {
+    if matches!(existing_path_kind(path)?, ExistingPathKind::File) {
+        fs::remove_file(path).map_err(|error| {
+            let _ = fs::remove_file(temp_path);
+            WorkspaceError::from_io(
+                "llm_config_save_failed",
+                "failed to remove existing llm config before replace",
+                &error,
+            )
+        })?;
+    }
+    rename_config_file(temp_path, path)
+}
+
+#[cfg(not(windows))]
+fn replace_config_file(temp_path: &Path, path: &Path) -> Result<(), WorkspaceError> {
+    rename_config_file(temp_path, path)
+}
+
+fn rename_config_file(temp_path: &Path, path: &Path) -> Result<(), WorkspaceError> {
+    fs::rename(temp_path, path).map_err(|error| {
+        let _ = fs::remove_file(temp_path);
+        WorkspaceError::from_io(
+            "llm_config_save_failed",
+            "failed to replace llm config",
+            &error,
+        )
+    })
 }
 
 #[cfg(unix)]
@@ -193,4 +249,47 @@ fn timestamp_nanos() -> u128 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExistingPathKind {
+    Missing,
+    Directory,
+    File,
+    Symlink,
+    Other,
+}
+
+fn existing_path_kind(path: &Path) -> Result<ExistingPathKind, WorkspaceError> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            return Ok(ExistingPathKind::Missing);
+        }
+        Err(error) => {
+            return Err(WorkspaceError::from_io(
+                "llm_config_save_failed",
+                "failed to inspect llm config path",
+                &error,
+            ));
+        }
+    };
+
+    let file_type = metadata.file_type();
+    if file_type.is_symlink() {
+        Ok(ExistingPathKind::Symlink)
+    } else if file_type.is_dir() {
+        Ok(ExistingPathKind::Directory)
+    } else if file_type.is_file() {
+        Ok(ExistingPathKind::File)
+    } else {
+        Ok(ExistingPathKind::Other)
+    }
+}
+
+fn path_type_conflict(expected: &str, actual: &str) -> WorkspaceError {
+    WorkspaceError::new(
+        "path_type_conflict",
+        format!("expected llm config {expected}, found {actual}"),
+    )
 }

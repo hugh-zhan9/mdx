@@ -28,6 +28,47 @@ fn llm_config_round_trips_outside_workspace_files() {
     assert_eq!(loaded, config);
 }
 
+#[test]
+fn llm_config_save_replaces_existing_config_file() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("llm-config.json");
+    let first = LlmProviderConfig {
+        base_url: "https://api.example.com/v1".to_string(),
+        model: "first-model".to_string(),
+        api_key: Some("first-key".to_string()),
+    };
+    let second = LlmProviderConfig {
+        base_url: "https://api.example.com/v1".to_string(),
+        model: "second-model".to_string(),
+        api_key: Some("second-key".to_string()),
+    };
+
+    save_llm_config_to_path(&path, &first).unwrap();
+    save_llm_config_to_path(&path, &second).unwrap();
+
+    assert_eq!(load_llm_config_from_path(&path).unwrap(), second);
+}
+
+#[cfg(unix)]
+#[test]
+fn llm_config_save_rejects_symlinked_parent_without_touching_target() {
+    let dir = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    let symlink_parent = dir.path().join("config");
+    std::os::unix::fs::symlink(outside.path(), &symlink_parent).unwrap();
+    let path = symlink_parent.join("llm-config.json");
+    let config = LlmProviderConfig {
+        base_url: "https://api.example.com/v1".to_string(),
+        model: "test-model".to_string(),
+        api_key: Some("secret-key".to_string()),
+    };
+
+    let error = save_llm_config_to_path(&path, &config).unwrap_err();
+
+    assert_eq!(error.error_code(), "path_type_conflict");
+    assert!(!outside.path().join("llm-config.json").exists());
+}
+
 #[cfg(unix)]
 #[test]
 fn llm_config_save_restricts_secret_file_permissions() {
@@ -105,6 +146,7 @@ fn openai_chat_request_uses_model_and_messages() {
     assert_eq!(request["model"], "model-a");
     assert_eq!(request["messages"][0]["role"], "system");
     assert_eq!(request["messages"][1]["content"], "question");
+    assert_eq!(request["temperature"], 0.2);
 }
 
 #[test]
