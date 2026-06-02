@@ -906,6 +906,7 @@ fn ingest_output_path_guard_allows_only_managed_markdown_outputs() {
         "raw/notes/a.md",
         ".llm-wiki/config.json",
         ".env",
+        "purpose.md",
         "wiki/entities/.hidden.md",
         "",
         "wiki/./entities/A.md",
@@ -920,6 +921,13 @@ fn ingest_output_path_guard_allows_only_managed_markdown_outputs() {
 #[test]
 fn ingest_parse_file_blocks_rejects_unsafe_output_path() {
     let error = parse_file_blocks("---FILE: raw/notes/a.md---\n# A\n---END FILE---").unwrap_err();
+
+    assert_eq!(error.error_code(), "invalid_llm_wiki_output_path");
+}
+
+#[test]
+fn ingest_parse_file_blocks_rejects_purpose_output_path() {
+    let error = parse_file_blocks("---FILE: purpose.md---\n# Purpose\n---END FILE---").unwrap_err();
 
     assert_eq!(error.error_code(), "invalid_llm_wiki_output_path");
 }
@@ -1185,6 +1193,36 @@ fn ingest_write_outputs_rejects_raw_path_outside_raw() {
 
     assert_eq!(error.error_code(), "invalid_llm_wiki_raw_path");
     assert!(!root.path().join("wiki/sources/a.md").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn ingest_write_outputs_rejects_raw_symlink_ancestor_to_workspace_file_without_write_or_cache_update(
+) {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::create_dir(root.path().join("other")).unwrap();
+    std::fs::write(root.path().join("other/a.md"), "# Raw A\n").unwrap();
+    std::fs::remove_dir(root.path().join("raw/notes")).unwrap();
+    std::os::unix::fs::symlink(root.path().join("other"), root.path().join("raw/notes")).unwrap();
+    let initial_cache = std::fs::read_to_string(root.path().join(".llm-wiki/cache.json")).unwrap();
+    let blocks = parse_file_blocks("---FILE: wiki/sources/a.md---\n# A\n---END FILE---").unwrap();
+
+    let error = write_ingest_outputs(
+        root.path(),
+        "raw/notes/a.md",
+        "sha256:test",
+        "test-model",
+        &blocks,
+    )
+    .unwrap_err();
+
+    assert_eq!(error.error_code(), "invalid_llm_wiki_raw_path");
+    assert!(!root.path().join("wiki/sources/a.md").exists());
+    assert_eq!(
+        std::fs::read_to_string(root.path().join(".llm-wiki/cache.json")).unwrap(),
+        initial_cache
+    );
 }
 
 #[test]

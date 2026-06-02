@@ -137,7 +137,7 @@ pub fn is_safe_llm_wiki_output_path(path: &str) -> bool {
     if components.len() == 1 {
         return matches!(
             components[0],
-            "index.md" | "log.md" | "purpose.md" | "llm-wiki-progress.md"
+            "index.md" | "log.md" | "llm-wiki-progress.md"
         );
     }
 
@@ -255,10 +255,18 @@ fn validate_raw_relative_path(
     let canonical = fs::canonicalize(&path).map_err(|error| {
         WorkspaceError::from_io("path_failed", "failed to resolve llm wiki raw file", &error)
     })?;
-    if !canonical.starts_with(root) {
+    let raw_dir = managed_directory(root, "raw")?;
+    let canonical_raw_dir = fs::canonicalize(&raw_dir).map_err(|error| {
+        WorkspaceError::from_io(
+            "path_failed",
+            "failed to resolve llm wiki raw directory",
+            &error,
+        )
+    })?;
+    if !canonical.starts_with(&canonical_raw_dir) {
         return Err(WorkspaceError::new(
-            "outside_workspace",
-            "llm wiki raw file is outside workspace",
+            "invalid_llm_wiki_raw_path",
+            "llm wiki raw path must resolve inside raw/",
         ));
     }
 
