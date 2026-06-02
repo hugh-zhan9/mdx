@@ -73,14 +73,18 @@ pub fn llm_config_get() -> Result<Option<PublicLlmProviderConfig>, WorkspaceErro
     }
 
     let config = load_llm_config_from_path(path)?;
-    Ok(Some(PublicLlmProviderConfig {
-        base_url: config.base_url,
-        model: config.model,
-        has_api_key: config.api_key.is_some(),
-    }))
+    Ok(Some(llm_config_to_public(config)))
 }
 
 #[tauri::command]
 pub fn llm_config_set(config: LlmProviderConfig) -> Result<(), WorkspaceError> {
     save_llm_config_to_path(default_llm_config_path()?, &config)
+}
+
+pub fn llm_config_to_public(config: LlmProviderConfig) -> PublicLlmProviderConfig {
+    PublicLlmProviderConfig {
+        base_url: config.base_url,
+        model: config.model,
+        has_api_key: config.api_key.is_some(),
+    }
 }

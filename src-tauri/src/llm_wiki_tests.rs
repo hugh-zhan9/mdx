@@ -1,7 +1,7 @@
 use sha2::{Digest, Sha256};
 use tempfile::tempdir;
 
-use crate::llm_wiki::{llm_wiki_refresh_graph, llm_wiki_rescan_raw};
+use crate::llm_wiki::{llm_config_to_public, llm_wiki_refresh_graph, llm_wiki_rescan_raw};
 use crate::llm_wiki_fs::{
     build_knowledge_graph_markdown, detect_llm_wiki_workspace, initialize_llm_wiki_workspace,
     read_knowledge_config, scan_raw_files, update_progress_markdown,
@@ -26,6 +26,64 @@ fn llm_config_round_trips_outside_workspace_files() {
     let loaded = load_llm_config_from_path(&path).unwrap();
 
     assert_eq!(loaded, config);
+}
+
+#[cfg(unix)]
+#[test]
+fn llm_config_save_restricts_secret_file_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("config").join("llm-config.json");
+    let config = LlmProviderConfig {
+        base_url: "https://api.example.com/v1".to_string(),
+        model: "test-model".to_string(),
+        api_key: Some("secret-key".to_string()),
+    };
+
+    save_llm_config_to_path(&path, &config).unwrap();
+
+    let parent_mode = std::fs::metadata(path.parent().unwrap())
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+    let file_mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+
+    assert_eq!(parent_mode, 0o700);
+    assert_eq!(file_mode, 0o600);
+}
+
+#[test]
+fn llm_config_debug_redacts_api_key() {
+    let config = LlmProviderConfig {
+        base_url: "https://api.example.com/v1".to_string(),
+        model: "test-model".to_string(),
+        api_key: Some("secret-key".to_string()),
+    };
+
+    let debug = format!("{config:?}");
+
+    assert!(debug.contains("api_key"));
+    assert!(!debug.contains("secret-key"));
+}
+
+#[test]
+fn llm_config_public_projection_does_not_expose_api_key() {
+    let config = LlmProviderConfig {
+        base_url: "https://api.example.com/v1".to_string(),
+        model: "test-model".to_string(),
+        api_key: Some("secret-key".to_string()),
+    };
+
+    let public = llm_config_to_public(config);
+    let json = serde_json::to_value(&public).unwrap();
+
+    assert_eq!(public.base_url, "https://api.example.com/v1");
+    assert_eq!(public.model, "test-model");
+    assert!(public.has_api_key);
+    assert!(json.get("apiKey").is_none());
+    assert!(!json.to_string().contains("secret-key"));
 }
 
 #[test]
