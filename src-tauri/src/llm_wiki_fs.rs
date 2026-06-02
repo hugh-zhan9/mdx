@@ -491,7 +491,13 @@ fn raw_file_hash(relative_path: &str, contents: &[u8]) -> String {
 struct GraphPage {
     id: String,
     display_name: String,
-    links: Vec<String>,
+    links: Vec<GraphLink>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct GraphLink {
+    target: String,
+    wiki_root_qualified: bool,
 }
 
 struct GraphPageIndex {
@@ -522,14 +528,14 @@ impl GraphPageIndex {
         }
     }
 
-    fn resolve(&self, source_path: &str, target: &str) -> Option<String> {
-        let target = normalize_graph_link_target(target);
+    fn resolve(&self, source_path: &str, link: &GraphLink) -> Option<String> {
+        let target = normalize_graph_link_target(&link.target);
         if target.is_empty() {
             return None;
         }
 
         if target.contains('/') {
-            if is_wiki_root_qualified_link(&target) {
+            if link.wiki_root_qualified || is_wiki_root_qualified_link(&target) {
                 return self.path_keys.get(&target).cloned();
             }
             if let Some(relative_target) = self.resolve_source_relative(source_path, &target) {
@@ -659,7 +665,7 @@ fn safe_temp_suffix(relative_path: &str) -> String {
     suffix
 }
 
-fn extract_wikilinks(contents: &str) -> Vec<String> {
+fn extract_wikilinks(contents: &str) -> Vec<GraphLink> {
     let mut links = BTreeSet::new();
     let mut rest = contents;
     while let Some(start) = rest.find("[[") {
@@ -668,15 +674,18 @@ fn extract_wikilinks(contents: &str) -> Vec<String> {
             break;
         };
         let raw_target = &rest[..end];
-        let target = raw_target.split('|').next().unwrap_or("").trim();
-        if target.starts_with('#') {
+        let raw_target = raw_target.split('|').next().unwrap_or("").trim();
+        if raw_target.starts_with('#') {
             rest = &rest[end + 2..];
             continue;
         }
-        let target = target.split('#').next().unwrap_or("").trim();
+        let target = raw_target.split('#').next().unwrap_or("").trim();
         let target = trim_markdown_extension(target);
         if !target.is_empty() {
-            links.insert(target.to_string());
+            links.insert(GraphLink {
+                target: target.to_string(),
+                wiki_root_qualified: raw_target.starts_with("wiki/"),
+            });
         }
         rest = &rest[end + 2..];
     }
