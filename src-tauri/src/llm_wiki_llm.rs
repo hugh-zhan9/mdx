@@ -21,12 +21,26 @@ pub struct LlmChatMessage {
     pub content: String,
 }
 
+#[allow(dead_code)]
 pub fn load_llm_config_from_path(
     path: impl AsRef<Path>,
 ) -> Result<LlmProviderConfig, WorkspaceError> {
     let path = path.as_ref();
     ensure_config_load_target(path)?;
+    read_llm_config_from_path(path)
+}
 
+pub fn load_optional_llm_config_from_path(
+    path: impl AsRef<Path>,
+) -> Result<Option<LlmProviderConfig>, WorkspaceError> {
+    let path = path.as_ref();
+    if !prepare_optional_config_load_target(path)? {
+        return Ok(None);
+    }
+    read_llm_config_from_path(path).map(Some)
+}
+
+fn read_llm_config_from_path(path: &Path) -> Result<LlmProviderConfig, WorkspaceError> {
     let bytes = fs::read(path).map_err(|error| {
         WorkspaceError::from_io(
             "llm_config_load_failed",
@@ -144,6 +158,7 @@ fn ensure_config_parent_dir(path: &Path) -> Result<(), WorkspaceError> {
     }
 }
 
+#[allow(dead_code)]
 fn ensure_config_load_target(path: &Path) -> Result<(), WorkspaceError> {
     ensure_no_existing_symlink_ancestor(path, PathOperation::Load)?;
     match existing_path_kind(path, PathOperation::Load)? {
@@ -153,6 +168,17 @@ fn ensure_config_load_target(path: &Path) -> Result<(), WorkspaceError> {
             "failed to read llm config",
             &io::Error::from(io::ErrorKind::NotFound),
         )),
+        ExistingPathKind::Directory | ExistingPathKind::Symlink | ExistingPathKind::Other => {
+            Err(path_type_conflict("file", "not a file"))
+        }
+    }
+}
+
+fn prepare_optional_config_load_target(path: &Path) -> Result<bool, WorkspaceError> {
+    ensure_no_existing_symlink_ancestor(path, PathOperation::Load)?;
+    match existing_path_kind(path, PathOperation::Load)? {
+        ExistingPathKind::File => Ok(true),
+        ExistingPathKind::Missing => Ok(false),
         ExistingPathKind::Directory | ExistingPathKind::Symlink | ExistingPathKind::Other => {
             Err(path_type_conflict("file", "not a file"))
         }
@@ -189,20 +215,53 @@ fn ensure_no_existing_symlink_ancestor(
 
 #[cfg(windows)]
 fn replace_config_file(temp_path: &Path, path: &Path) -> Result<(), WorkspaceError> {
-    if matches!(
+    if !matches!(
         existing_path_kind(path, PathOperation::Save)?,
         ExistingPathKind::File
     ) {
-        fs::remove_file(path).map_err(|error| {
-            let _ = fs::remove_file(temp_path);
-            WorkspaceError::from_io(
-                "llm_config_save_failed",
-                "failed to remove existing llm config before replace",
-                &error,
-            )
-        })?;
+        return rename_config_file(temp_path, path);
     }
-    rename_config_file(temp_path, path)
+
+    let backup_path = path.with_file_name(format!(
+        ".{}.backup.{}.{}",
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("llm-config.json"),
+        std::process::id(),
+        timestamp_nanos()
+    ));
+    fs::rename(path, &backup_path).map_err(|error| {
+        let _ = fs::remove_file(temp_path);
+        WorkspaceError::from_io(
+            "llm_config_save_failed",
+            "failed to back up existing llm config before replace",
+            &error,
+        )
+    })?;
+
+    match fs::rename(temp_path, path) {
+        Ok(()) => {
+            let _ = fs::remove_file(&backup_path);
+            Ok(())
+        }
+        Err(error) => {
+            let restore_result = fs::rename(&backup_path, path);
+            let _ = fs::remove_file(temp_path);
+            if let Err(restore_error) = restore_result {
+                return Err(WorkspaceError::new(
+                    "llm_config_save_failed",
+                    format!(
+                        "failed to replace llm config: {error}; failed to restore previous config: {restore_error}"
+                    ),
+                ));
+            }
+            Err(WorkspaceError::from_io(
+                "llm_config_save_failed",
+                "failed to replace llm config",
+                &error,
+            ))
+        }
+    }
 }
 
 #[cfg(not(windows))]

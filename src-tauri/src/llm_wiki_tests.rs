@@ -8,7 +8,8 @@ use crate::llm_wiki_fs::{
     write_knowledge_graph_markdown,
 };
 use crate::llm_wiki_llm::{
-    build_openai_chat_request, load_llm_config_from_path, save_llm_config_to_path, LlmChatMessage,
+    build_openai_chat_request, load_llm_config_from_path, load_optional_llm_config_from_path,
+    save_llm_config_to_path, LlmChatMessage,
 };
 use crate::llm_wiki_models::LlmProviderConfig;
 
@@ -104,6 +105,35 @@ fn llm_config_load_rejects_symlinked_config_file() {
     std::os::unix::fs::symlink(&outside_config, &path).unwrap();
 
     let error = load_llm_config_from_path(&path).unwrap_err();
+
+    assert_eq!(error.error_code(), "path_type_conflict");
+}
+
+#[test]
+fn llm_config_optional_load_returns_none_only_for_confirmed_missing_file() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().canonicalize().unwrap().join("llm-config.json");
+
+    let loaded = load_optional_llm_config_from_path(&path).unwrap();
+
+    assert_eq!(loaded, None);
+}
+
+#[cfg(unix)]
+#[test]
+fn llm_config_optional_load_rejects_symlinked_config_file() {
+    let dir = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    let outside_config = outside.path().join("llm-config.json");
+    std::fs::write(
+        &outside_config,
+        r#"{"baseUrl":"https://api.example.com/v1","model":"outside","apiKey":"secret"}"#,
+    )
+    .unwrap();
+    let path = dir.path().join("llm-config.json");
+    std::os::unix::fs::symlink(&outside_config, &path).unwrap();
+
+    let error = load_optional_llm_config_from_path(&path).unwrap_err();
 
     assert_eq!(error.error_code(), "path_type_conflict");
 }

@@ -4,7 +4,7 @@ use crate::llm_wiki_fs::{
     write_knowledge_graph_markdown,
 };
 use crate::llm_wiki_llm::{
-    default_llm_config_path, load_llm_config_from_path, save_llm_config_to_path,
+    default_llm_config_path, load_optional_llm_config_from_path, save_llm_config_to_path,
 };
 use crate::llm_wiki_models::{
     InitializeLlmWikiResult, LlmProviderConfig, LlmWikiWorkspaceStatus, PublicLlmProviderConfig,
@@ -67,13 +67,7 @@ pub fn llm_wiki_refresh_graph(root_path: String) -> Result<String, WorkspaceErro
 
 #[tauri::command]
 pub fn llm_config_get() -> Result<Option<PublicLlmProviderConfig>, WorkspaceError> {
-    let path = default_llm_config_path()?;
-    if !path.exists() {
-        return Ok(None);
-    }
-
-    let config = load_llm_config_from_path(path)?;
-    Ok(Some(llm_config_to_public(config)))
+    Ok(load_optional_llm_config_from_path(default_llm_config_path()?)?.map(llm_config_to_public))
 }
 
 #[tauri::command]
