@@ -3,6 +3,7 @@ use crate::llm_wiki_fs::{
     read_knowledge_config, scan_raw_files, update_progress_markdown,
     write_knowledge_graph_markdown,
 };
+use crate::llm_wiki_ingest::{parse_file_blocks, write_ingest_outputs};
 use crate::llm_wiki_llm::{
     default_llm_config_path, load_optional_llm_config_from_path, save_llm_config_to_path,
 };
@@ -63,6 +64,19 @@ pub fn llm_wiki_refresh_graph(root_path: String) -> Result<String, WorkspaceErro
     let markdown = build_knowledge_graph_markdown(&root)?;
     write_knowledge_graph_markdown(&root, &markdown)?;
     Ok(markdown)
+}
+
+#[tauri::command]
+pub fn llm_wiki_ingest_mock_output(
+    root_path: String,
+    raw_relative_path: String,
+    hash: String,
+    model: String,
+    llm_output: String,
+) -> Result<(), WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    let blocks = parse_file_blocks(&llm_output)?;
+    write_ingest_outputs(&root, &raw_relative_path, &hash, &model, &blocks)
 }
 
 #[tauri::command]

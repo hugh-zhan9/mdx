@@ -1,17 +1,23 @@
 use sha2::{Digest, Sha256};
 use tempfile::tempdir;
 
-use crate::llm_wiki::{llm_config_to_public, llm_wiki_refresh_graph, llm_wiki_rescan_raw};
+use crate::llm_wiki::{
+    llm_config_to_public, llm_wiki_ingest_mock_output, llm_wiki_refresh_graph, llm_wiki_rescan_raw,
+};
 use crate::llm_wiki_fs::{
     build_knowledge_graph_markdown, detect_llm_wiki_workspace, initialize_llm_wiki_workspace,
     read_knowledge_config, scan_raw_files, update_progress_markdown,
     write_knowledge_graph_markdown,
+};
+use crate::llm_wiki_ingest::{
+    is_safe_llm_wiki_output_path, parse_file_blocks, write_ingest_outputs, LlmWikiFileBlock,
 };
 use crate::llm_wiki_llm::{
     build_openai_chat_request, load_llm_config_from_path, load_optional_llm_config_from_path,
     save_llm_config_to_path, LlmChatMessage,
 };
 use crate::llm_wiki_models::LlmProviderConfig;
+use crate::llm_wiki_models::LlmWikiCache;
 
 #[test]
 fn llm_config_round_trips_outside_workspace_files() {
@@ -863,6 +869,214 @@ fn write_graph_markdown_writes_regular_managed_graph_file() {
     assert_eq!(
         std::fs::read_to_string(root.path().join("wiki/knowledge-graph.md")).unwrap(),
         "# Knowledge Graph\n"
+    );
+}
+
+#[test]
+fn ingest_parse_file_blocks_returns_ordered_paths_and_strips_marker_newline() {
+    let blocks = parse_file_blocks(
+        "---FILE: wiki/sources/a.md---\n# A\n---END FILE---\n---FILE: index.md---\n# Index\n---END FILE---",
+    )
+    .unwrap();
+
+    assert_eq!(
+        blocks,
+        vec![
+            LlmWikiFileBlock {
+                path: "wiki/sources/a.md".to_string(),
+                content: "# A\n".to_string(),
+            },
+            LlmWikiFileBlock {
+                path: "index.md".to_string(),
+                content: "# Index\n".to_string(),
+            },
+        ]
+    );
+}
+
+#[test]
+fn ingest_output_path_guard_allows_only_managed_markdown_outputs() {
+    assert!(is_safe_llm_wiki_output_path("wiki/entities/A.md"));
+    assert!(is_safe_llm_wiki_output_path("index.md"));
+
+    for path in [
+        "../outside.md",
+        "/tmp/outside.md",
+        "wiki\\entities\\A.md",
+        "raw/notes/a.md",
+        ".llm-wiki/config.json",
+        ".env",
+        "wiki/entities/.hidden.md",
+        "",
+        "wiki/entities/",
+        "wiki/entities/A.txt",
+    ] {
+        assert!(!is_safe_llm_wiki_output_path(path), "{path}");
+    }
+}
+
+#[test]
+fn ingest_parse_file_blocks_rejects_unsafe_output_path() {
+    let error = parse_file_blocks("---FILE: raw/notes/a.md---\n# A\n---END FILE---").unwrap_err();
+
+    assert_eq!(error.error_code(), "invalid_llm_wiki_output_path");
+}
+
+#[test]
+fn ingest_write_outputs_writes_files_and_updates_cache_entry() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::write(root.path().join("raw/notes/a.md"), "# Raw A\n").unwrap();
+    let blocks = parse_file_blocks("---FILE: wiki/sources/a.md---\n# A\n---END FILE---").unwrap();
+
+    write_ingest_outputs(
+        root.path(),
+        "raw/notes/a.md",
+        "sha256:test",
+        "test-model",
+        &blocks,
+    )
+    .unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(root.path().join("wiki/sources/a.md")).unwrap(),
+        "# A\n"
+    );
+    let cache: LlmWikiCache = serde_json::from_str(
+        &std::fs::read_to_string(root.path().join(".llm-wiki/cache.json")).unwrap(),
+    )
+    .unwrap();
+    let entry = cache.entries.get("raw/notes/a.md").unwrap();
+    assert_eq!(entry.source_page, "wiki/sources/a.md");
+    assert_eq!(entry.hash, "sha256:test");
+    assert_eq!(entry.model, "test-model");
+    assert_ne!(entry.ingested_at, "now");
+}
+
+#[test]
+fn ingest_write_outputs_rejects_unsafe_block_without_partial_write() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::write(root.path().join("raw/notes/a.md"), "# Raw A\n").unwrap();
+    let blocks = vec![
+        LlmWikiFileBlock {
+            path: "wiki/sources/a.md".to_string(),
+            content: "# A\n".to_string(),
+        },
+        LlmWikiFileBlock {
+            path: "raw/notes/generated.md".to_string(),
+            content: "# Bad\n".to_string(),
+        },
+    ];
+
+    let error = write_ingest_outputs(
+        root.path(),
+        "raw/notes/a.md",
+        "sha256:test",
+        "test-model",
+        &blocks,
+    )
+    .unwrap_err();
+
+    assert_eq!(error.error_code(), "invalid_llm_wiki_output_path");
+    assert!(!root.path().join("wiki/sources/a.md").exists());
+}
+
+#[test]
+fn ingest_write_outputs_rejects_raw_path_outside_raw() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::write(root.path().join("index.md"), "# Index\n").unwrap();
+    let blocks = parse_file_blocks("---FILE: wiki/sources/a.md---\n# A\n---END FILE---").unwrap();
+
+    let error = write_ingest_outputs(
+        root.path(),
+        "index.md",
+        "sha256:test",
+        "test-model",
+        &blocks,
+    )
+    .unwrap_err();
+
+    assert_eq!(error.error_code(), "invalid_llm_wiki_raw_path");
+    assert!(!root.path().join("wiki/sources/a.md").exists());
+}
+
+#[test]
+fn ingest_mock_output_command_uses_same_safe_writer() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::write(root.path().join("raw/notes/a.md"), "# Raw A\n").unwrap();
+
+    llm_wiki_ingest_mock_output(
+        root.path().to_string_lossy().into_owned(),
+        "raw/notes/a.md".to_string(),
+        "sha256:test".to_string(),
+        "test-model".to_string(),
+        "---FILE: wiki/sources/a.md---\n# A\n---END FILE---".to_string(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(root.path().join("wiki/sources/a.md")).unwrap(),
+        "# A\n"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn ingest_write_outputs_rejects_symlinked_output_target_without_external_write() {
+    let root = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::write(root.path().join("raw/notes/a.md"), "# Raw A\n").unwrap();
+    let outside_file = outside.path().join("a.md");
+    std::fs::write(&outside_file, "outside-original").unwrap();
+    std::os::unix::fs::symlink(&outside_file, root.path().join("wiki/sources/a.md")).unwrap();
+    let blocks = parse_file_blocks("---FILE: wiki/sources/a.md---\n# A\n---END FILE---").unwrap();
+
+    let error = write_ingest_outputs(
+        root.path(),
+        "raw/notes/a.md",
+        "sha256:test",
+        "test-model",
+        &blocks,
+    )
+    .unwrap_err();
+
+    assert_eq!(error.error_code(), "path_type_conflict");
+    assert_eq!(
+        std::fs::read_to_string(outside_file).unwrap(),
+        "outside-original"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn ingest_write_outputs_rejects_symlinked_cache_file_without_external_write() {
+    let root = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::write(root.path().join("raw/notes/a.md"), "# Raw A\n").unwrap();
+    let outside_cache = outside.path().join("cache.json");
+    std::fs::write(&outside_cache, r#"{"version":1,"entries":{}}"#).unwrap();
+    std::fs::remove_file(root.path().join(".llm-wiki/cache.json")).unwrap();
+    std::os::unix::fs::symlink(&outside_cache, root.path().join(".llm-wiki/cache.json")).unwrap();
+    let blocks = parse_file_blocks("---FILE: wiki/sources/a.md---\n# A\n---END FILE---").unwrap();
+
+    let error = write_ingest_outputs(
+        root.path(),
+        "raw/notes/a.md",
+        "sha256:test",
+        "test-model",
+        &blocks,
+    )
+    .unwrap_err();
+
+    assert_eq!(error.error_code(), "path_type_conflict");
+    assert_eq!(
+        std::fs::read_to_string(outside_cache).unwrap(),
+        r#"{"version":1,"entries":{}}"#
     );
 }
 

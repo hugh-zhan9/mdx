@@ -8,6 +8,7 @@ pub mod cli_protocol;
 mod cli_server;
 mod llm_wiki;
 mod llm_wiki_fs;
+mod llm_wiki_ingest;
 mod llm_wiki_llm;
 mod llm_wiki_models;
 mod models;
@@ -153,6 +154,7 @@ pub fn run() {
             llm_wiki::llm_wiki_initialize_workspace,
             llm_wiki::llm_wiki_rescan_raw,
             llm_wiki::llm_wiki_refresh_graph,
+            llm_wiki::llm_wiki_ingest_mock_output,
             llm_wiki::llm_config_get,
             llm_wiki::llm_config_set,
             workspace_fs::scan_workspace,

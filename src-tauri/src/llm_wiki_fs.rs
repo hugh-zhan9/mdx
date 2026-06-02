@@ -288,8 +288,8 @@ pub fn write_knowledge_graph_markdown(
     write_managed_file(root, &relative_path, markdown.as_bytes())
 }
 
-fn ensure_directory(path: &Path) -> Result<(), WorkspaceError> {
-    let metadata = fs::metadata(path).map_err(|error| {
+pub(crate) fn ensure_directory(path: &Path) -> Result<(), WorkspaceError> {
+    let metadata = fs::symlink_metadata(path).map_err(|error| {
         let code = if error.kind() == std::io::ErrorKind::NotFound {
             "root_not_found"
         } else if error.kind() == std::io::ErrorKind::PermissionDenied {
@@ -300,7 +300,8 @@ fn ensure_directory(path: &Path) -> Result<(), WorkspaceError> {
         WorkspaceError::from_io(code, "failed to inspect llm wiki workspace root", &error)
     })?;
 
-    if !metadata.is_dir() {
+    let file_type = metadata.file_type();
+    if file_type.is_symlink() || !file_type.is_dir() {
         return Err(WorkspaceError::new(
             "not_directory",
             "llm wiki workspace root is not a directory",
@@ -310,7 +311,7 @@ fn ensure_directory(path: &Path) -> Result<(), WorkspaceError> {
     Ok(())
 }
 
-fn managed_directory(
+pub(crate) fn managed_directory(
     root: &Path,
     relative_path: &str,
 ) -> Result<std::path::PathBuf, WorkspaceError> {
@@ -328,17 +329,22 @@ fn managed_directory(
     }
 }
 
-fn write_managed_file(
+pub(crate) fn write_managed_file(
     root: &Path,
-    relative_path: &str,
+    managed_relative_path: &str,
     contents: &[u8],
 ) -> Result<(), WorkspaceError> {
-    let path = root.join(relative_path);
+    let path = root.join(managed_relative_path);
+    ensure_managed_parent_directories(root, managed_relative_path)?;
     match existing_path_kind(&path)? {
         ExistingPathKind::Missing => {}
         ExistingPathKind::File => {}
         ExistingPathKind::Directory | ExistingPathKind::Symlink | ExistingPathKind::Other => {
-            return Err(path_type_conflict("file", "not a file", relative_path));
+            return Err(path_type_conflict(
+                "file",
+                "not a file",
+                managed_relative_path,
+            ));
         }
     }
 
@@ -348,7 +354,7 @@ fn write_managed_file(
     ensure_directory(parent)?;
 
     let temp_dir = managed_directory(root, ".llm-wiki")?;
-    let tmp_path = temp_dir.join(unique_temp_filename(relative_path));
+    let tmp_path = temp_dir.join(unique_temp_filename(managed_relative_path));
     {
         let mut file = fs::OpenOptions::new()
             .write(true)
@@ -387,6 +393,56 @@ fn write_managed_file(
         let _ = fs::remove_file(&tmp_path);
         WorkspaceError::from_io("write_failed", "failed to replace llm wiki file", &error)
     })
+}
+
+pub(crate) fn ensure_managed_file_target(
+    root: &Path,
+    managed_relative_path: &str,
+) -> Result<(), WorkspaceError> {
+    ensure_managed_parent_directories(root, managed_relative_path)?;
+    match existing_path_kind(&root.join(managed_relative_path))? {
+        ExistingPathKind::Missing | ExistingPathKind::File => Ok(()),
+        ExistingPathKind::Directory | ExistingPathKind::Symlink | ExistingPathKind::Other => Err(
+            path_type_conflict("file", "not a file", managed_relative_path),
+        ),
+    }
+}
+
+fn ensure_managed_parent_directories(
+    root: &Path,
+    managed_relative_path: &str,
+) -> Result<(), WorkspaceError> {
+    let path = root.join(managed_relative_path);
+    let parent = path
+        .parent()
+        .ok_or_else(|| WorkspaceError::new("write_failed", "llm wiki path has no parent"))?;
+    let relative_parent = parent
+        .strip_prefix(root)
+        .map_err(|_| WorkspaceError::new("outside_workspace", "path is outside llm wiki root"))?;
+
+    let mut current = root.to_path_buf();
+    for component in relative_parent.components() {
+        current.push(component);
+        let relative_component = relative_path(root, &current)?;
+        match existing_path_kind(&current)? {
+            ExistingPathKind::Directory => {}
+            ExistingPathKind::Missing => {
+                return Err(WorkspaceError::new(
+                    "not_found",
+                    format!("llm wiki managed directory is missing: {relative_component}"),
+                ));
+            }
+            ExistingPathKind::File | ExistingPathKind::Symlink | ExistingPathKind::Other => {
+                return Err(path_type_conflict(
+                    "directory",
+                    "not a directory",
+                    &relative_component,
+                ));
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn scan_raw_dir(
@@ -501,7 +557,7 @@ fn normalize_relative_path(path: &str) -> String {
     path.trim().trim_matches('/').replace('\\', "/")
 }
 
-fn relative_path(root: &Path, path: &Path) -> Result<String, WorkspaceError> {
+pub(crate) fn relative_path(root: &Path, path: &Path) -> Result<String, WorkspaceError> {
     path.strip_prefix(root)
         .map(|path| path.to_string_lossy().replace('\\', "/"))
         .map_err(|_| WorkspaceError::new("outside_workspace", "path is outside llm wiki root"))
@@ -864,14 +920,6 @@ enum RequiredPathState {
     TypeConflict,
 }
 
-enum ExistingPathKind {
-    Missing,
-    Directory,
-    File,
-    Symlink,
-    Other,
-}
-
 fn required_path_state(
     root: &Path,
     relative_path: &str,
@@ -886,7 +934,15 @@ fn required_path_state(
     })
 }
 
-fn existing_path_kind(path: &Path) -> Result<ExistingPathKind, WorkspaceError> {
+pub(crate) enum ExistingPathKind {
+    Missing,
+    Directory,
+    File,
+    Symlink,
+    Other,
+}
+
+pub(crate) fn existing_path_kind(path: &Path) -> Result<ExistingPathKind, WorkspaceError> {
     let metadata = match fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -913,7 +969,11 @@ fn existing_path_kind(path: &Path) -> Result<ExistingPathKind, WorkspaceError> {
     }
 }
 
-fn path_type_conflict(expected: &str, actual: &str, relative_path: &str) -> WorkspaceError {
+pub(crate) fn path_type_conflict(
+    expected: &str,
+    actual: &str,
+    relative_path: &str,
+) -> WorkspaceError {
     WorkspaceError::new(
         "path_type_conflict",
         format!("llm wiki {expected} path exists but is {actual}: {relative_path}"),
