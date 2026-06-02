@@ -273,6 +273,26 @@ fn graph_markdown_resolves_root_qualified_slash_links_before_source_relative() {
 }
 
 #[test]
+fn graph_markdown_does_not_fallback_wiki_root_link_to_source_relative() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::create_dir_all(root.path().join("wiki/entities/concepts")).unwrap();
+    std::fs::write(
+        root.path().join("wiki/entities/A.md"),
+        "# A\n\n[[wiki/concepts/B]]\n",
+    )
+    .unwrap();
+    std::fs::write(root.path().join("wiki/entities/concepts/B.md"), "# B\n").unwrap();
+
+    let markdown = build_knowledge_graph_markdown(root.path()).unwrap();
+
+    assert!(!markdown.contains(&graph_edge(
+        "wiki/entities/A.md",
+        "wiki/entities/concepts/B.md"
+    )));
+}
+
+#[test]
 fn graph_markdown_uses_collision_proof_node_ids_for_similar_paths() {
     let root = tempdir().unwrap();
     initialize_llm_wiki_workspace(root.path()).unwrap();

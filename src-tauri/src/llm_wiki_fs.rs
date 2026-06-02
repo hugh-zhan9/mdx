@@ -530,10 +530,7 @@ impl GraphPageIndex {
 
         if target.contains('/') {
             if is_wiki_root_qualified_link(&target) {
-                if let Some(root_target) = self.path_keys.get(&target).cloned() {
-                    return Some(root_target);
-                }
-                return self.resolve_source_relative(source_path, &target);
+                return self.path_keys.get(&target).cloned();
             }
             if let Some(relative_target) = self.resolve_source_relative(source_path, &target) {
                 return Some(relative_target);
