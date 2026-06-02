@@ -30,8 +30,10 @@ import type {
 import type { SaveQueue } from "../lib/workspace-save";
 import { EditorStage } from "./editor-stage";
 import { FileTreePanel } from "./file-tree-panel";
+import { useAppDialogs } from "./app-dialogs";
 import { OutlinePanel } from "./outline-panel";
 import { TabStrip } from "./tab-strip";
+import { ThemeToggleButton } from "./theme-toggle-button";
 
 interface WorkspaceShellProps {
     workspace: WorkspaceState;
@@ -55,6 +57,7 @@ export function WorkspaceShell({
     message,
     onActionsChange,
 }: WorkspaceShellProps) {
+    const dialogs = useAppDialogs();
     const workspaceRef = useRef(workspace);
     const saveQueueRef = useRef<SaveQueue | null>(null);
     const workspaceRootRef = useRef<string | null>(null);
@@ -132,8 +135,18 @@ export function WorkspaceShell({
                     const { invoke } = await tauriCore();
                     return invoke(command, args);
                 },
-                promptName: (title) => window.prompt("File name", title),
-                alert: (text) => window.alert(text),
+                promptName: async (title) =>
+                    dialogs.prompt({
+                        title: "保存文件",
+                        label: "文件名",
+                        initialValue: title,
+                        confirmLabel: "保存",
+                    }),
+                alert: (text) =>
+                    void dialogs.alert({
+                        title: "保存文件",
+                        message: text,
+                    }),
                 warn: (text, error) => console.warn(text, error),
                 refreshTree: (rootPath) =>
                     refreshTree(
@@ -145,7 +158,7 @@ export function WorkspaceShell({
 
             return saveQueueRef.current.saveTab(tabId);
         },
-        [dispatchAndMirror],
+        [dialogs, dispatchAndMirror],
     );
     const closeTab = useCallback(
         async (tabId: string) => {
@@ -163,13 +176,18 @@ export function WorkspaceShell({
                 return;
             }
 
-            const choice = window.prompt(
-                `"${tab.title}" has unsaved changes. Type save, discard, or cancel.`,
-                "save",
-            );
-            const normalizedChoice = choice?.trim().toLowerCase();
+            const choice = await dialogs.choice({
+                title: "未保存更改",
+                message:
+                    `“${tab.title}” 有未保存更改。请选择保存、丢弃或取消。`,
+                choices: [
+                    { label: "保存", value: "save" },
+                    { label: "丢弃", value: "discard", destructive: true },
+                ],
+                cancelLabel: "取消",
+            });
 
-            if (normalizedChoice === "discard") {
+            if (choice === "discard") {
                 dispatchAndMirror({
                     type: "tab/closed",
                     tabId,
@@ -177,7 +195,7 @@ export function WorkspaceShell({
                 return;
             }
 
-            if (normalizedChoice !== "save") {
+            if (choice !== "save") {
                 return;
             }
 
@@ -190,7 +208,7 @@ export function WorkspaceShell({
                 });
             }
         },
-        [dispatchAndMirror, saveTab],
+        [dialogs, dispatchAndMirror, saveTab],
     );
     const saveActiveTab = useCallback(async () => {
         const tabId = workspaceRef.current.activeTabId;
@@ -361,16 +379,16 @@ export function WorkspaceShell({
                         onClick={leftPanel.toggleCollapsed}
                         aria-label={
                             leftPanel.isCollapsed
-                                ? "Show file panel"
-                                : "Hide file panel"
+                                ? "展开文件树"
+                                : "收起文件树"
                         }
                         title={
                             leftPanel.isCollapsed
-                                ? "Show file panel"
-                                : "Hide file panel"
+                                ? "展开文件树"
+                                : "收起文件树"
                         }
                     >
-                        Files
+                        文件树
                     </button>
                     <div className="min-w-0 truncate text-sm font-semibold">
                         MDX
@@ -392,24 +410,25 @@ export function WorkspaceShell({
                         onClick={onChooseWorkspace}
                         disabled={!canChooseWorkspace}
                     >
-                        Open Folder
+                        打开文件夹
                     </button>
+                    <ThemeToggleButton />
                     <button
                         type="button"
                         className="h-7 px-2 text-xs text-base-content/70 hover:bg-base-300"
                         onClick={rightPanel.toggleCollapsed}
                         aria-label={
                             rightPanel.isCollapsed
-                                ? "Show outline panel"
-                                : "Hide outline panel"
+                                ? "展开目录"
+                                : "收起目录"
                         }
                         title={
                             rightPanel.isCollapsed
-                                ? "Show outline panel"
-                                : "Hide outline panel"
+                                ? "展开目录"
+                                : "收起目录"
                         }
                     >
-                        Outline
+                        目录
                     </button>
                 </div>
             </header>

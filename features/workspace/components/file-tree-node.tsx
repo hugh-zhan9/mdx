@@ -44,9 +44,9 @@ export function FileTreeNodeView({
     const isFolder = node.kind === "folder";
     const isExpanded =
         isFolder && (searchActive || expandedPaths.has(node.path));
-    const paddingLeft = 10 + depth * 14;
+    const paddingLeft = 12 + depth * 14;
     const rowClassName = [
-        "flex h-7 w-full min-w-0 items-center gap-1 truncate pr-2 text-left text-sm outline-none",
+        "flex h-7 w-full min-w-0 items-center gap-1 truncate pr-3 text-left text-sm outline-none",
         isSelected
             ? "bg-primary/10 text-base-content"
             : "text-base-content/72 hover:bg-base-200",
@@ -123,7 +123,7 @@ export function FileTreeNodeView({
                         className="h-6 truncate pr-2 text-xs text-base-content/35"
                         style={{ paddingLeft: paddingLeft + 18 }}
                     >
-                        Empty
+                        空文件夹
                     </div>
                 )
             ) : null}

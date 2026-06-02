@@ -8,6 +8,7 @@ import {
     useEditorStoreApi as kernelUseEditorStoreApi,
     useRenderData as kernelUseRenderData,
 } from "@do-md/react";
+import "@do-md/react/style.css";
 import type {
     DOMDProviderProps,
     Editor,

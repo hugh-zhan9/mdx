@@ -41,7 +41,7 @@ export function FileTreeContextMenu({
 
     return (
         <div
-            className="fixed z-30 min-w-44 border border-base-300 bg-base-100 py-1 text-sm shadow-lg"
+            className="fixed z-30 min-w-48 border border-base-300 bg-base-100 py-1 text-sm shadow-lg"
             style={{ left: x, top: y }}
             onContextMenu={(event) => event.preventDefault()}
         >
@@ -49,34 +49,34 @@ export function FileTreeContextMenu({
                 <>
                     <button
                         type="button"
-                        className="block w-full px-3 py-1.5 text-left text-base-content/75 hover:bg-base-200"
+                        className="block w-full whitespace-nowrap px-3 py-1.5 text-left text-base-content/75 hover:bg-base-200"
                         onClick={handleClick(onCreateFolder)}
                     >
-                        New folder
+                        新建文件夹
                     </button>
                     <button
                         type="button"
-                        className="block w-full px-3 py-1.5 text-left text-base-content/75 hover:bg-base-200"
+                        className="block w-full whitespace-nowrap px-3 py-1.5 text-left text-base-content/75 hover:bg-base-200"
                         onClick={handleClick(onCreateMarkdownFile)}
                     >
-                        New markdown file
+                        新建文档
                     </button>
                     <div className="my-1 border-t border-base-300" />
                 </>
             ) : null}
             <button
                 type="button"
-                className="block w-full px-3 py-1.5 text-left text-base-content/75 hover:bg-base-200"
+                className="block w-full whitespace-nowrap px-3 py-1.5 text-left text-base-content/75 hover:bg-base-200"
                 onClick={handleClick(onRename)}
             >
-                Rename
+                重命名
             </button>
             <button
                 type="button"
-                className="block w-full px-3 py-1.5 text-left text-error hover:bg-error/10"
+                className="block w-full whitespace-nowrap px-3 py-1.5 text-left text-error hover:bg-error/10"
                 onClick={handleClick(onDelete)}
             >
-                Delete
+                移到废纸篓
             </button>
         </div>
     );

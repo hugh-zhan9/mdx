@@ -43,7 +43,7 @@ export function EditorPane({
             key={tab.tabId}
             editable
             initMd={initMd}
-            placeholder="Start writing markdown"
+            placeholder="开始编写 Markdown"
             imageLoader={(src) =>
                 loadImage(src, {
                     rootPath,
@@ -88,15 +88,15 @@ function EditorPaneInner({
         onMarkdownChange,
     });
     const { focus, insertText } = bridge;
-    const statusText = tab.dirty ? "Unsaved changes" : "Saved";
+    const statusText = tab.dirty ? "未保存更改" : "已保存";
     const selectionText = useMemo(() => {
         if (!bridge.selection) {
-            return "No selection";
+            return "未选择";
         }
 
         return bridge.selection.has_selection
-            ? `${bridge.selection.selected_text.length} chars selected`
-            : "Cursor ready";
+            ? `已选择 ${bridge.selection.selected_text.length} 个字符`
+            : "光标就绪";
     }, [bridge.selection]);
 
     useEffect(() => {
@@ -136,7 +136,9 @@ function EditorPaneInner({
                 ref={editorViewportRef}
                 className="min-h-0 flex-1 overflow-auto bg-base-100"
             >
-                <DOMD />
+                <div className="mx-auto min-h-full w-full max-w-4xl px-6 py-6 sm:px-8 sm:py-8">
+                    <DOMD />
+                </div>
             </div>
         </div>
     );

@@ -9,9 +9,23 @@ import type {
     WorkspaceState,
     WorkspaceTab,
 } from "../lib/types";
+import {
+    AppDialogProvider,
+    useAppDialogs,
+} from "./app-dialogs";
+import { ThemeToggleButton } from "./theme-toggle-button";
 import { WorkspaceShell } from "./workspace-shell";
 
 export function WorkspaceApp() {
+    return (
+        <AppDialogProvider>
+            <WorkspaceAppInner />
+        </AppDialogProvider>
+    );
+}
+
+function WorkspaceAppInner() {
+    const dialogs = useAppDialogs();
     const workspaceActionsRef = useRef<WorkspaceMenuActions | null>(null);
     const workspaceRef = useRef<WorkspaceState | null>(null);
     const {
@@ -32,15 +46,19 @@ export function WorkspaceApp() {
         if (
             currentWorkspace &&
             hasDirtyTabs(currentWorkspace) &&
-            !window.confirm(
-                "This workspace has unsaved changes. Open another folder and discard them?",
-            )
+            !(await dialogs.confirm({
+                title: "切换工作区",
+                message:
+                    "当前工作区有未保存更改。打开其他文件夹会丢弃这些更改，是否继续？",
+                confirmLabel: "继续",
+                destructive: true,
+            }))
         ) {
             return;
         }
 
         await chooseWorkspace();
-    }, [chooseWorkspace]);
+    }, [chooseWorkspace, dialogs]);
 
     const handleActionsChange = useCallback(
         (actions: WorkspaceMenuActions | null) => {
@@ -54,7 +72,7 @@ export function WorkspaceApp() {
         workspaceActionsRef,
         chooseWorkspaceWithGuard,
     );
-    useWorkspaceCloseGuard(workspaceRef);
+    useWorkspaceCloseGuard(workspaceRef, dialogs);
 
     return (
         <main
@@ -169,7 +187,10 @@ function useWorkspaceMenuEvents(
 
 function useWorkspaceCloseGuard(
     workspaceRef: RefObject<WorkspaceState | null>,
+    dialogs: ReturnType<typeof useAppDialogs>,
 ) {
+    const allowCloseRef = useRef(false);
+
     useEffect(() => {
         if (!isTauriRuntime()) {
             return;
@@ -180,18 +201,36 @@ function useWorkspaceCloseGuard(
 
         const subscribe = async () => {
             const { getCurrentWindow } = await import("@tauri-apps/api/window");
-            const nextUnlisten = await getCurrentWindow().onCloseRequested(
+            const currentWindow = getCurrentWindow();
+            const nextUnlisten = await currentWindow.onCloseRequested(
                 (event) => {
                     const workspace = workspaceRef.current;
 
+                    if (allowCloseRef.current) {
+                        return;
+                    }
+
                     if (
                         workspace &&
-                        hasDirtyTabs(workspace) &&
-                        !window.confirm(
-                            "This workspace has unsaved changes. Close this window and discard them?",
-                        )
+                        hasDirtyTabs(workspace)
                     ) {
                         event.preventDefault();
+                        void dialogs.confirm({
+                            title: "关闭窗口",
+                            message:
+                                "当前工作区有未保存更改。关闭窗口会丢弃这些更改，是否继续？",
+                            confirmLabel: "关闭",
+                            destructive: true,
+                        }).then((confirmed) => {
+                            if (!confirmed) {
+                                return;
+                            }
+
+                            allowCloseRef.current = true;
+                            void currentWindow.close().finally(() => {
+                                allowCloseRef.current = false;
+                            });
+                        });
                     }
                 },
             );
@@ -212,7 +251,7 @@ function useWorkspaceCloseGuard(
             disposed = true;
             unlisten?.();
         };
-    }, [workspaceRef]);
+    }, [dialogs, workspaceRef]);
 }
 
 function useCliWorkspaceSync(workspace: WorkspaceState | null) {
@@ -261,34 +300,37 @@ function WorkspaceEmptyState({
         <div className="grid h-full min-h-0 grid-rows-[44px_minmax(0,1fr)]">
             <header className="flex items-center justify-between border-b border-base-300 bg-base-200 px-3">
                 <div className="text-sm font-semibold">MDX</div>
-                {canChooseWorkspace ? (
-                    <button
-                        type="button"
-                        className="h-7 px-2 text-xs text-base-content/70 hover:bg-base-300 disabled:text-base-content/30"
-                        onClick={onChooseWorkspace}
-                        disabled={isLoading}
-                    >
-                        Open Folder
-                    </button>
-                ) : (
-                    <div className="text-xs text-base-content/50">
-                        Desktop app required
-                    </div>
-                )}
+                <div className="flex items-center gap-2">
+                    <ThemeToggleButton />
+                    {canChooseWorkspace ? (
+                        <button
+                            type="button"
+                            className="h-7 px-2 text-xs text-base-content/70 hover:bg-base-300 disabled:text-base-content/30"
+                            onClick={onChooseWorkspace}
+                            disabled={isLoading}
+                        >
+                            打开文件夹
+                        </button>
+                    ) : (
+                        <div className="text-xs text-base-content/50">
+                            需要桌面版
+                        </div>
+                    )}
+                </div>
             </header>
 
             <section className="flex min-h-0 items-center justify-center px-6">
                 <div className="max-w-md text-center">
                     <div className="text-sm font-medium">
                         {isLoading
-                            ? "Restoring workspace..."
-                            : "No workspace open"}
+                            ? "正在恢复工作区..."
+                            : "未打开工作区"}
                     </div>
                     <div className="mt-2 text-sm text-base-content/55">
                         {message ??
                             (canChooseWorkspace
-                                ? "Choose a folder to open a workspace."
-                                : "Open the desktop app to choose and restore a workspace folder.")}
+                                ? "请选择一个文件夹以打开工作区。"
+                                : "请在桌面版中选择并恢复工作区文件夹。")}
                     </div>
                 </div>
             </section>

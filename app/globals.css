@@ -19,6 +19,8 @@
     --color-info: #2563eb;
     --color-info-content: #3c7cab;
     --color-warning: #b45309;
+    --color-error: #dc2626;
+    --color-error-content: #ffffff;
     --depth: 0;
 }
 
@@ -37,6 +39,8 @@
     --color-info: #4daafc;
     --color-info-content: #3c7cab;
     --color-warning: #c3be00;
+    --color-error: #ef4444;
+    --color-error-content: #ffffff;
     --depth: 0;
 }
 
@@ -49,6 +53,14 @@ body {
     margin: 0;
     padding: 0;
     height: 100%;
+}
+
+html[data-theme="light"] {
+    color-scheme: light;
+}
+
+html[data-theme="dark"] {
+    color-scheme: dark;
 }
 
 /*

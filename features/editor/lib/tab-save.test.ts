@@ -36,7 +36,7 @@ describe("requiresRenameOnFirstSave", () => {
 
         expect(result).toEqual({
             kind: "invalid_name",
-            reason: "Please choose a formal file name.",
+            reason: "请输入正式文件名。",
         });
     });
 });

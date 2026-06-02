@@ -19,7 +19,7 @@ export function TabStrip({
         <div className="flex h-10 min-w-0 items-stretch overflow-hidden border-b border-base-300 bg-base-100">
             {tabs.length === 0 ? (
                 <div className="flex items-center px-4 text-sm text-base-content/50">
-                    No file selected
+                    未打开文件
                 </div>
             ) : (
                 <div className="flex min-w-0 overflow-x-auto">
@@ -50,8 +50,8 @@ export function TabStrip({
                             <button
                                 type="button"
                                 className="h-full px-2 text-base-content/45 hover:bg-base-300 hover:text-base-content"
-                                aria-label={`Close ${tab.title}`}
-                                title="Close tab"
+                                aria-label={`关闭 ${tab.title}`}
+                                title="关闭标签页"
                                 onClick={() => void onCloseTab(tab.tabId)}
                             >
                                 x

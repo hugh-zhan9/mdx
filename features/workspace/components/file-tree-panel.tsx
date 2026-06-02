@@ -34,6 +34,7 @@ import type {
 import { FileTreeContextMenu } from "./file-tree-context-menu";
 import { FileTreeNodeView } from "./file-tree-node";
 import { FileTreeToolbar } from "./file-tree-toolbar";
+import { useAppDialogs } from "./app-dialogs";
 
 interface FileTreePanelProps {
     rootPath: string;
@@ -85,6 +86,7 @@ export function FileTreePanel({
     onActionsChange,
     resizeHandleProps,
 }: FileTreePanelProps) {
+    const dialogs = useAppDialogs();
     const [selectedPath, setSelectedPath] = useState<string | null>(null);
     const [expandedPaths, setExpandedPaths] = useState<Set<string>>(
         () => new Set(),
@@ -144,8 +146,11 @@ export function FileTreePanel({
     const showError = useCallback((error: unknown, fallback: string) => {
         const formatted = formatError(error, fallback);
         setMessage(formatted);
-        window.alert(formatted);
-    }, []);
+        void dialogs.alert({
+            title: "操作失败",
+            message: formatted,
+        });
+    }, [dialogs]);
 
     const refreshTree = useCallback(async () => {
         try {
@@ -165,13 +170,17 @@ export function FileTreePanel({
             });
             setMessage(null);
         } catch (error) {
-            showError(error, "Failed to refresh workspace.");
+            showError(error, "刷新工作区失败。");
         }
     }, [dispatch, rootPath, showError]);
 
     const createFolder = useCallback(
         async (parentDir: string) => {
-            const name = window.prompt("Folder name");
+            const name = await dialogs.prompt({
+                title: "新建文件夹",
+                label: "文件夹名称",
+                confirmLabel: "创建",
+            });
 
             if (!name?.trim()) {
                 return;
@@ -191,10 +200,10 @@ export function FileTreePanel({
                 expandPath(parentDir, setExpandedPaths);
                 await refreshTree();
             } catch (error) {
-                showError(error, "Failed to create folder.");
+                showError(error, "创建文件夹失败。");
             }
         },
-        [refreshTree, rootPath, showError],
+        [dialogs, refreshTree, rootPath, showError],
     );
 
     const createMarkdownFile = useCallback(
@@ -225,7 +234,7 @@ export function FileTreePanel({
                 });
                 await refreshTree();
             } catch (error) {
-                showError(error, "Failed to create markdown file.");
+                showError(error, "创建 Markdown 文档失败。");
             }
         },
         [dispatch, refreshTree, rootPath, showError],
@@ -241,7 +250,12 @@ export function FileTreePanel({
 
     const renameNode = useCallback(
         async (node: ActionNode) => {
-            const name = window.prompt("New name", node.name);
+            const name = await dialogs.prompt({
+                title: "重命名",
+                label: node.kind === "file" ? "文件名称" : "文件夹名称",
+                initialValue: node.name,
+                confirmLabel: "重命名",
+            });
 
             if (!name?.trim() || name.trim() === node.name) {
                 return;
@@ -279,17 +293,20 @@ export function FileTreePanel({
                 setSelectedPath(normalizeWorkspacePath(renamed.newPath));
                 await refreshTree();
             } catch (error) {
-                showError(error, "Failed to rename path.");
+                showError(error, "重命名失败。");
             }
         },
-        [dispatch, refreshTree, rootPath, showError],
+        [dialogs, dispatch, refreshTree, rootPath, showError],
     );
 
     const deleteNode = useCallback(
         async (node: ActionNode) => {
-            const confirmed = window.confirm(
-                `Move "${node.name}" to the trash?`,
-            );
+            const confirmed = await dialogs.confirm({
+                title: "移到废纸篓",
+                message: `将“${node.name}”移到废纸篓？`,
+                confirmLabel: "移到废纸篓",
+                destructive: true,
+            });
 
             if (!confirmed) {
                 return;
@@ -316,31 +333,37 @@ export function FileTreePanel({
                 );
                 await refreshTree();
             } catch (error) {
-                showError(error, "Failed to move path to trash.");
+                showError(error, "移动到废纸篓失败。");
             }
         },
-        [dispatch, refreshTree, rootPath, showError],
+        [dialogs, dispatch, refreshTree, rootPath, showError],
     );
 
     const renameSelection = useCallback(async () => {
         if (!actionTargetNode) {
-            setMessage("Select a file or folder first.");
-            window.alert("Select a file or folder first.");
+            setMessage("请先选择文件或文件夹。");
+            void dialogs.alert({
+                title: "需要选择",
+                message: "请先选择文件或文件夹。",
+            });
             return;
         }
 
         await renameNode(actionTargetNode);
-    }, [actionTargetNode, renameNode]);
+    }, [actionTargetNode, dialogs, renameNode]);
 
     const deleteSelection = useCallback(async () => {
         if (!actionTargetNode) {
-            setMessage("Select a file or folder first.");
-            window.alert("Select a file or folder first.");
+            setMessage("请先选择文件或文件夹。");
+            void dialogs.alert({
+                title: "需要选择",
+                message: "请先选择文件或文件夹。",
+            });
             return;
         }
 
         await deleteNode(actionTargetNode);
-    }, [actionTargetNode, deleteNode]);
+    }, [actionTargetNode, deleteNode, dialogs]);
 
     const actions = useMemo<WorkspaceFileTreeActions>(
         () => ({
@@ -414,7 +437,7 @@ export function FileTreePanel({
                 expandPath(normalizedTargetDir, setExpandedPaths);
                 await refreshTree();
             } catch (error) {
-                showError(error, "Failed to move path.");
+                showError(error, "移动失败。");
             }
         },
         [builtTree, dispatch, refreshTree, rootPath, showError],
@@ -471,8 +494,8 @@ export function FileTreePanel({
                         type="button"
                         className="h-7 shrink-0 px-2 text-xs text-base-content/65 hover:bg-base-200"
                         onClick={onToggleCollapsed}
-                        aria-label="Collapse file panel"
-                        title="Collapse file panel"
+                        aria-label="收起文件树"
+                        title="收起文件树"
                     >
                         &lt;
                     </button>
@@ -481,9 +504,14 @@ export function FileTreePanel({
                     rootPath={rootPath}
                     query={searchQuery}
                     canChooseWorkspace={canChooseWorkspace}
+                    canMutateSelection={Boolean(actionTargetNode)}
                     onChooseWorkspace={onChooseWorkspace}
-                    onNewFolder={() => void createFolder(rootPath)}
-                    onNewMarkdownFile={() => void createMarkdownFile(rootPath)}
+                    onNewFolder={() => void createFolderAtSelection()}
+                    onNewMarkdownFile={() =>
+                        void createMarkdownFileAtSelection()
+                    }
+                    onRename={() => void renameSelection()}
+                    onDelete={() => void deleteSelection()}
                     onRefresh={() => void refreshTree()}
                     onQueryChange={(query) =>
                         dispatch({
@@ -507,8 +535,8 @@ export function FileTreePanel({
                     {visibleNodes.length === 0 ? (
                         <div className="px-3 py-2 text-sm text-base-content/50">
                             {searchActive
-                                ? "No matching markdown files."
-                                : "No markdown files found."}
+                                ? "未找到匹配的 Markdown 文件。"
+                                : "未找到 Markdown 文件。"}
                         </div>
                     ) : (
                         visibleNodes.map((node) => (

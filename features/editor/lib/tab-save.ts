@@ -48,7 +48,7 @@ export function planFirstSave({
     if (!nextName) {
         return {
             kind: "invalid_name",
-            reason: "Please enter a file name.",
+            reason: "请输入文件名。",
         };
     }
 
@@ -58,7 +58,7 @@ export function planFirstSave({
     ) {
         return {
             kind: "invalid_name",
-            reason: "Please choose a formal file name.",
+            reason: "请输入正式文件名。",
         };
     }
 

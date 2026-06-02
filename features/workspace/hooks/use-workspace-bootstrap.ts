@@ -71,7 +71,7 @@ export function useWorkspaceBootstrap() {
 
         if (!normalizedRootPath) {
             setStatus("empty");
-            setMessage("Choose a folder to open a workspace.");
+            setMessage("请选择一个文件夹以打开工作区。");
             setWorkspace(null);
             return;
         }
@@ -90,14 +90,14 @@ export function useWorkspaceBootstrap() {
         } catch (error) {
             setWorkspace(null);
             setStatus("error");
-            setMessage(formatError(error, "Failed to restore workspace."));
+            setMessage(formatError(error, "恢复工作区失败。"));
         }
     }, []);
 
     const chooseWorkspace = useCallback(async () => {
         if (!isTauriRuntime()) {
             setStatus("empty");
-            setMessage("Folder selection is available in the desktop app.");
+            setMessage("文件夹选择仅在桌面版中可用。");
             return;
         }
 
@@ -109,7 +109,7 @@ export function useWorkspaceBootstrap() {
                 setMessage(
                     workspace
                         ? null
-                        : "Choose a folder to open a workspace.",
+                        : "请选择一个文件夹以打开工作区。",
                 );
                 return;
             }
@@ -117,7 +117,7 @@ export function useWorkspaceBootstrap() {
             await openWorkspace(selectedRoot);
         } catch (error) {
             setStatus(workspace ? "ready" : "error");
-            setMessage(formatError(error, "Failed to choose workspace."));
+            setMessage(formatError(error, "选择工作区失败。"));
         }
     }, [openWorkspace, workspace]);
 
@@ -141,7 +141,7 @@ export function useWorkspaceBootstrap() {
 
             if (!tauriRuntime) {
                 setStatus("empty");
-                setMessage("Open the desktop app to choose and restore a folder.");
+                setMessage("请使用桌面版选择并恢复文件夹。");
                 return;
             }
 
@@ -179,7 +179,7 @@ export function useWorkspaceBootstrap() {
                 }
 
                 setStatus("empty");
-                setMessage("Choose a folder to open a workspace.");
+                setMessage("请选择一个文件夹以打开工作区。");
             } catch (error) {
                 if (cancelled) {
                     return;
@@ -187,7 +187,7 @@ export function useWorkspaceBootstrap() {
 
                 appStateRef.current = createDefaultAppState();
                 setStatus("error");
-                setMessage(formatError(error, "Failed to load app state."));
+                setMessage(formatError(error, "加载应用状态失败。"));
             }
         }
 
@@ -219,7 +219,7 @@ export function useWorkspaceBootstrap() {
             );
             appStateRef.current = nextAppState;
             void saveAppState(nextAppState).catch((error) => {
-                setMessage(formatError(error, "Failed to save app state."));
+                setMessage(formatError(error, "保存应用状态失败。"));
             });
             saveTimerRef.current = null;
         }, 350);
@@ -255,7 +255,7 @@ export function useWorkspaceBootstrap() {
             );
             appStateRef.current = nextAppState;
             void saveAppState(nextAppState).catch((error) => {
-                setMessage(formatError(error, "Failed to save app state."));
+                setMessage(formatError(error, "保存应用状态失败。"));
             });
         };
 

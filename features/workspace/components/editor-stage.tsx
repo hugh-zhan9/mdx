@@ -66,7 +66,7 @@ export function EditorStage({
                 setMessage(null);
             } catch (error) {
                 if (!cancelled) {
-                    setMessage(formatError(error, "Failed to load file."));
+                    setMessage(formatError(error, "加载文件失败。"));
                 }
             }
         }
@@ -110,7 +110,7 @@ export function EditorStage({
     if (!activeTab) {
         return (
             <section className="flex min-h-0 flex-1 items-center justify-center bg-base-100 px-6 text-sm text-base-content/50">
-                Select a markdown file to start.
+                选择一个 Markdown 文件开始编辑。
             </section>
         );
     }
@@ -128,7 +128,7 @@ export function EditorStage({
                         </div>
                     ) : null}
                     <div className="text-xs text-base-content/45">
-                        {activeTab.dirty ? "Unsaved" : "Saved"}
+                        {activeTab.dirty ? "未保存" : "已保存"}
                     </div>
                     <button
                         type="button"
@@ -137,17 +137,17 @@ export function EditorStage({
                         disabled={saving || activeTab.markdown === undefined}
                     >
                         {saving
-                            ? "Saving"
+                            ? "保存中"
                             : activeTab.needsRenameOnFirstSave
-                              ? "Name and Save"
-                              : "Save"}
+                              ? "命名并保存"
+                              : "保存"}
                     </button>
                 </div>
             </div>
             <div className="min-h-0 flex-1 overflow-hidden">
                 {activeTab.markdown === undefined ? (
                     <div className="flex h-full items-center justify-center px-6 text-sm text-base-content/50">
-                        {message ?? "Loading file..."}
+                        {message ?? "正在加载文件..."}
                     </div>
                 ) : (
                     <EditorPane

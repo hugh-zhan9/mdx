@@ -4,7 +4,7 @@ import "./prism-themes.css";
 
 export const metadata: Metadata = {
     title: "MDX",
-    description: "Markdown editor",
+    description: "Markdown 工作区编辑器",
 };
 
 /**
@@ -20,10 +20,14 @@ const themeInitScript = `
   var osDark = function () {
     return matchMedia("(prefers-color-scheme: dark)").matches;
   };
-  document.documentElement.dataset.theme = read() || (osDark() ? "dark" : "light");
+  var apply = function (theme) {
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+  };
+  apply(read() || (osDark() ? "dark" : "light"));
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function (e) {
     if (read()) return;
-    document.documentElement.dataset.theme = e.matches ? "dark" : "light";
+    apply(e.matches ? "dark" : "light");
   });
 })();
 `;
@@ -34,7 +38,7 @@ export default function RootLayout({
     children: React.ReactNode;
 }>) {
     return (
-        <html lang="en" className="h-full" suppressHydrationWarning>
+        <html lang="zh-CN" className="h-full" suppressHydrationWarning>
             <head>
                 <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
             </head>

@@ -63,33 +63,34 @@ pub fn run() {
             let open_folder_item = MenuItem::with_id(
                 app,
                 "open-folder",
-                "Open Folder...",
+                "打开文件夹...",
                 true,
                 Some("CmdOrCtrl+O"),
             )?;
             let new_markdown_item = MenuItem::with_id(
                 app,
                 "new-markdown-file",
-                "New Markdown File",
+                "新建 Markdown 文档",
                 true,
                 Some("CmdOrCtrl+N"),
             )?;
             let new_folder_item = MenuItem::with_id(
                 app,
                 "new-folder",
-                "New Folder",
+                "新建文件夹",
                 true,
                 Some("CmdOrCtrl+Shift+N"),
             )?;
-            let rename_item = MenuItem::with_id(app, "rename", "Rename", true, None::<&str>)?;
-            let trash_item = MenuItem::with_id(app, "trash", "Move to Trash", true, None::<&str>)?;
-            let refresh_item = MenuItem::with_id(app, "refresh", "Refresh", true, None::<&str>)?;
-            let save_item = MenuItem::with_id(app, "save", "Save", true, Some("CmdOrCtrl+S"))?;
+            let rename_item = MenuItem::with_id(app, "rename", "重命名", true, None::<&str>)?;
+            let trash_item =
+                MenuItem::with_id(app, "trash", "移到废纸篓", true, None::<&str>)?;
+            let refresh_item = MenuItem::with_id(app, "refresh", "刷新", true, None::<&str>)?;
+            let save_item = MenuItem::with_id(app, "save", "保存", true, Some("CmdOrCtrl+S"))?;
             let close_tab_item =
-                MenuItem::with_id(app, "close-tab", "Close Tab", true, Some("CmdOrCtrl+W"))?;
+                MenuItem::with_id(app, "close-tab", "关闭标签页", true, Some("CmdOrCtrl+W"))?;
             let file_menu = Submenu::with_items(
                 app,
-                "File",
+                "文件",
                 true,
                 &[
                     &open_folder_item,
@@ -108,7 +109,7 @@ pub fn run() {
 
             let edit_menu = Submenu::with_items(
                 app,
-                "Edit",
+                "编辑",
                 true,
                 &[
                     &PredefinedMenuItem::undo(app, None)?,

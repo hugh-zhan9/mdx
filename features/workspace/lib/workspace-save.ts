@@ -12,12 +12,14 @@ export type SaveInvoke = <T = unknown>(
     args: Record<string, unknown>,
 ) => Promise<T>;
 
+export type MaybePromise<T> = T | Promise<T>;
+
 export interface SaveTabEnvironment {
     getWorkspace: () => WorkspaceState;
     dispatch: (action: WorkspaceAction) => void;
     invoke: SaveInvoke;
-    promptName: (title: string) => string | null;
-    alert: (message: string) => void;
+    promptName: (title: string) => MaybePromise<string | null>;
+    alert: (message: string) => MaybePromise<void>;
     warn: (message: string, error: unknown) => void;
     refreshTree: (rootPath: string) => Promise<void>;
 }
@@ -84,7 +86,7 @@ export async function performSaveTab(
         let renamed = false;
 
         if (initialTab.needsRenameOnFirstSave) {
-            const requestedName = environment.promptName(
+            const requestedName = await environment.promptName(
                 suggestedFormalName(initialTab.title),
             );
 
@@ -108,7 +110,7 @@ export async function performSaveTab(
             }
 
             if (plan.kind === "name_conflict") {
-                environment.alert(`"${plan.name}" already exists.`);
+                environment.alert(`“${plan.name}” 已存在。`);
                 return false;
             }
 
@@ -181,13 +183,13 @@ export async function performSaveTab(
                 await environment.refreshTree(writePlan.rootPath);
             } catch (refreshError) {
                 environment.warn(
-                    "File saved, but failed to refresh workspace tree.",
+                    "文件已保存，但刷新工作区树失败。",
                     refreshError,
                 );
                 environment.alert(
                     formatError(
                         refreshError,
-                        "File saved, but failed to refresh workspace tree.",
+                        "文件已保存，但刷新工作区树失败。",
                     ),
                 );
             }
@@ -195,7 +197,7 @@ export async function performSaveTab(
 
         return savedStillCurrent;
     } catch (error) {
-        environment.alert(formatError(error, "Failed to save file."));
+        environment.alert(formatError(error, "保存文件失败。"));
         return false;
     }
 }
