@@ -110,6 +110,7 @@ pub fn is_safe_llm_wiki_output_path(path: &str) -> bool {
         || Path::new(path).is_absolute()
         || !path.ends_with(".md")
         || has_unsafe_slash_segment(path)
+        || !has_only_safe_ascii_output_path_chars(path)
     {
         return false;
     }
@@ -375,6 +376,11 @@ fn output_path_uniqueness_key(path: &str) -> String {
 fn has_unsafe_slash_segment(path: &str) -> bool {
     path.split('/')
         .any(|segment| segment.is_empty() || segment == "." || segment == "..")
+}
+
+fn has_only_safe_ascii_output_path_chars(path: &str) -> bool {
+    path.bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'/' | b'.' | b'_' | b'-'))
 }
 
 fn invalid_raw_path() -> WorkspaceError {

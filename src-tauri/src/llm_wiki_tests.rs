@@ -897,6 +897,7 @@ fn ingest_parse_file_blocks_returns_ordered_paths_and_strips_marker_newline() {
 #[test]
 fn ingest_output_path_guard_allows_only_managed_markdown_outputs() {
     assert!(is_safe_llm_wiki_output_path("wiki/entities/A.md"));
+    assert!(is_safe_llm_wiki_output_path("wiki/sources/a-file_1.md"));
     assert!(is_safe_llm_wiki_output_path("index.md"));
 
     for path in [
@@ -911,6 +912,7 @@ fn ingest_output_path_guard_allows_only_managed_markdown_outputs() {
         "",
         "wiki/./entities/A.md",
         "wiki//entities/A.md",
+        "wiki/sources/café.md",
         "wiki/entities/",
         "wiki/entities/A.txt",
     ] {
@@ -930,6 +932,18 @@ fn ingest_parse_file_blocks_rejects_purpose_output_path() {
     let error = parse_file_blocks("---FILE: purpose.md---\n# Purpose\n---END FILE---").unwrap_err();
 
     assert_eq!(error.error_code(), "invalid_llm_wiki_output_path");
+}
+
+#[test]
+fn ingest_parse_file_blocks_rejects_unicode_output_paths() {
+    for output in [
+        "---FILE: wiki/sources/café.md---\n# Cafe\n---END FILE---",
+        "---FILE: wiki/sources/cafe\u{301}.md---\n# Cafe\n---END FILE---",
+    ] {
+        let error = parse_file_blocks(output).unwrap_err();
+
+        assert_eq!(error.error_code(), "invalid_llm_wiki_output_path");
+    }
 }
 
 #[test]
@@ -1265,6 +1279,30 @@ fn ingest_mock_output_rejects_ambiguous_truncated_output_without_write_or_cache_
 
     assert_eq!(error.error_code(), "llm_wiki_parse_failed");
     assert!(!root.path().join("wiki/sources/a.md").exists());
+    assert_eq!(
+        std::fs::read_to_string(root.path().join(".llm-wiki/cache.json")).unwrap(),
+        initial_cache
+    );
+}
+
+#[test]
+fn ingest_mock_output_rejects_unicode_output_path_without_write_or_cache_update() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::write(root.path().join("raw/notes/a.md"), "# Raw A\n").unwrap();
+    let initial_cache = std::fs::read_to_string(root.path().join(".llm-wiki/cache.json")).unwrap();
+
+    let error = llm_wiki_ingest_mock_output(
+        root.path().to_string_lossy().into_owned(),
+        "raw/notes/a.md".to_string(),
+        "sha256:test".to_string(),
+        "test-model".to_string(),
+        "---FILE: wiki/sources/café.md---\n# Cafe\n---END FILE---".to_string(),
+    )
+    .unwrap_err();
+
+    assert_eq!(error.error_code(), "invalid_llm_wiki_output_path");
+    assert!(!root.path().join("wiki/sources/café.md").exists());
     assert_eq!(
         std::fs::read_to_string(root.path().join(".llm-wiki/cache.json")).unwrap(),
         initial_cache
