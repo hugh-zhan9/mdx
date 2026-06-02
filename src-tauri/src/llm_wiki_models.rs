@@ -44,7 +44,7 @@ pub struct LlmWikiFailedFile {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct LlmWikiCache {
-    pub version: String,
+    pub version: u32,
     pub entries: BTreeMap<String, LlmWikiCacheEntry>,
 }
 

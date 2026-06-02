@@ -7,9 +7,9 @@ use crate::llm_wiki_models::{
 };
 use crate::models::WorkspaceError;
 
-const REQUIRED_PATHS: &[&str] = &[
-    "raw",
-    "wiki",
+const REQUIRED_DIRS: &[&str] = &["raw", "wiki"];
+
+const REQUIRED_FILES: &[&str] = &[
     "index.md",
     "log.md",
     "purpose.md",
@@ -34,11 +34,17 @@ pub fn detect_llm_wiki_workspace(
     let root = root.as_ref();
     ensure_directory(root)?;
 
-    let missing_paths = REQUIRED_PATHS
-        .iter()
-        .filter(|path| !root.join(path).exists())
-        .map(|path| (*path).to_string())
-        .collect::<Vec<_>>();
+    let mut missing_paths = Vec::new();
+    for path in REQUIRED_DIRS {
+        if !root.join(path).is_dir() {
+            missing_paths.push((*path).to_string());
+        }
+    }
+    for path in REQUIRED_FILES {
+        if !root.join(path).is_file() {
+            missing_paths.push((*path).to_string());
+        }
+    }
     let has_llm_wiki = missing_paths.is_empty();
 
     Ok(LlmWikiWorkspaceStatus {
@@ -105,7 +111,7 @@ pub fn initialize_llm_wiki_workspace(
         root,
         ".llm-wiki/cache.json",
         &LlmWikiCache {
-            version: "1".to_string(),
+            version: 1,
             entries: BTreeMap::new(),
         },
         &mut created_paths,
@@ -159,9 +165,15 @@ fn create_dir_if_missing(
     preserved_paths: &mut Vec<String>,
 ) -> Result<(), WorkspaceError> {
     let path = root.join(relative_path);
-    if path.exists() {
+    if path.is_dir() {
         preserved_paths.push(relative_path.to_string());
         return Ok(());
+    }
+    if path.exists() {
+        return Err(WorkspaceError::new(
+            "path_type_conflict",
+            format!("llm wiki directory path exists but is not a directory: {relative_path}"),
+        ));
     }
 
     fs::create_dir_all(&path).map_err(|error| {
@@ -183,9 +195,15 @@ fn create_file_if_missing(
     preserved_paths: &mut Vec<String>,
 ) -> Result<(), WorkspaceError> {
     let path = root.join(relative_path);
-    if path.exists() {
+    if path.is_file() {
         preserved_paths.push(relative_path.to_string());
         return Ok(());
+    }
+    if path.exists() {
+        return Err(WorkspaceError::new(
+            "path_type_conflict",
+            format!("llm wiki file path exists but is not a file: {relative_path}"),
+        ));
     }
 
     if let Some(parent) = path.parent() {
