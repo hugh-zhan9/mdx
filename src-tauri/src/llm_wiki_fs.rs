@@ -1,5 +1,6 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
+use std::io::Write;
 use std::path::Path;
 
 use crate::llm_wiki_models::{
@@ -213,13 +214,7 @@ pub fn update_progress_markdown(
     append_failed_section(&mut markdown, failed);
     append_path_section(&mut markdown, "Skipped", skipped);
 
-    fs::write(root.as_ref().join("llm-wiki-progress.md"), markdown).map_err(|error| {
-        WorkspaceError::from_io(
-            "write_failed",
-            "failed to write llm wiki progress markdown",
-            &error,
-        )
-    })
+    write_managed_file(root.as_ref(), "llm-wiki-progress.md", markdown.as_bytes())
 }
 
 pub fn build_knowledge_graph_markdown(root: impl AsRef<Path>) -> Result<String, WorkspaceError> {
@@ -227,17 +222,35 @@ pub fn build_knowledge_graph_markdown(root: impl AsRef<Path>) -> Result<String, 
     ensure_directory(root)?;
 
     let wiki_dir = managed_directory(root, "wiki")?;
+    let mut pages = BTreeMap::new();
+    scan_wiki_graph_dir(root, &wiki_dir, &mut pages)?;
+    let index = graph_page_index(&pages);
     let mut edges = Vec::new();
-    scan_wiki_graph_dir(root, &wiki_dir, &mut edges)?;
+    for (source_path, page) in &pages {
+        for target in &page.links {
+            if let Some(target_path) = index.get(target) {
+                if target_path != source_path {
+                    edges.push((source_path.clone(), target_path.clone()));
+                }
+            }
+        }
+    }
     edges.sort();
     edges.dedup();
 
     let mut markdown = String::from("# Knowledge Graph\n\n```mermaid\ngraph TD\n");
+    for page in pages.values() {
+        markdown.push_str("  ");
+        markdown.push_str(&page.id);
+        markdown.push_str("[\"");
+        markdown.push_str(&escape_mermaid_label(&page.display_name));
+        markdown.push_str("\"]\n");
+    }
     for (source, target) in edges {
         markdown.push_str("  ");
-        markdown.push_str(&source);
+        markdown.push_str(&pages[&source].id);
         markdown.push_str(" --> ");
-        markdown.push_str(&target);
+        markdown.push_str(&pages[&target].id);
         markdown.push('\n');
     }
     markdown.push_str("```\n");
@@ -251,13 +264,8 @@ pub fn write_knowledge_graph_markdown(
     let root = root.as_ref();
     ensure_directory(root)?;
     let wiki_dir = managed_directory(root, "wiki")?;
-    fs::write(wiki_dir.join("knowledge-graph.md"), markdown).map_err(|error| {
-        WorkspaceError::from_io(
-            "write_failed",
-            "failed to write llm wiki knowledge graph",
-            &error,
-        )
-    })
+    let relative_path = relative_path(root, &wiki_dir.join("knowledge-graph.md"))?;
+    write_managed_file(root, &relative_path, markdown.as_bytes())
 }
 
 fn ensure_directory(path: &Path) -> Result<(), WorkspaceError> {
@@ -298,6 +306,57 @@ fn managed_directory(
             relative_path,
         )),
     }
+}
+
+fn write_managed_file(
+    root: &Path,
+    relative_path: &str,
+    contents: &[u8],
+) -> Result<(), WorkspaceError> {
+    let path = root.join(relative_path);
+    match existing_path_kind(&path)? {
+        ExistingPathKind::Missing => {}
+        ExistingPathKind::File => {}
+        ExistingPathKind::Directory | ExistingPathKind::Symlink | ExistingPathKind::Other => {
+            return Err(path_type_conflict("file", "not a file", relative_path));
+        }
+    }
+
+    let parent = path
+        .parent()
+        .ok_or_else(|| WorkspaceError::new("write_failed", "llm wiki path has no parent"))?;
+    ensure_directory(parent)?;
+
+    let tmp_path = root.join(format!(
+        ".llm-wiki/.write-{}.tmp",
+        safe_temp_suffix(relative_path)
+    ));
+    {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp_path)
+            .map_err(|error| {
+                WorkspaceError::from_io(
+                    "write_failed",
+                    "failed to create llm wiki temp file",
+                    &error,
+                )
+            })?;
+        file.write_all(contents).map_err(|error| {
+            let _ = fs::remove_file(&tmp_path);
+            WorkspaceError::from_io("write_failed", "failed to write llm wiki temp file", &error)
+        })?;
+        file.sync_all().map_err(|error| {
+            let _ = fs::remove_file(&tmp_path);
+            WorkspaceError::from_io("write_failed", "failed to sync llm wiki temp file", &error)
+        })?;
+    }
+
+    fs::rename(&tmp_path, &path).map_err(|error| {
+        let _ = fs::remove_file(&tmp_path);
+        WorkspaceError::from_io("write_failed", "failed to replace llm wiki file", &error)
+    })
 }
 
 fn scan_raw_dir(
@@ -349,7 +408,7 @@ fn scan_raw_dir(
 fn scan_wiki_graph_dir(
     root: &Path,
     dir: &Path,
-    edges: &mut Vec<(String, String)>,
+    pages: &mut BTreeMap<String, GraphPage>,
 ) -> Result<(), WorkspaceError> {
     for entry in fs::read_dir(dir).map_err(|error| {
         WorkspaceError::from_io(
@@ -374,17 +433,22 @@ fn scan_wiki_graph_dir(
             continue;
         }
         if file_type.is_dir() {
-            scan_wiki_graph_dir(root, &path, edges)?;
+            scan_wiki_graph_dir(root, &path, pages)?;
         } else if file_type.is_file() && is_allowed_markdown_file(&path) {
-            let source = graph_node_name(root, &path)?;
+            let relative_path = relative_path(root, &path)?;
+            let display_name = graph_display_name(&path);
+            let id = graph_node_id(&relative_path);
             let contents = fs::read_to_string(&path).map_err(|error| {
                 WorkspaceError::from_io("read_failed", "failed to read llm wiki graph file", &error)
             })?;
-            for target in extract_wikilinks(&contents) {
-                if target != source {
-                    edges.push((source.clone(), target));
-                }
-            }
+            pages.insert(
+                relative_path,
+                GraphPage {
+                    id,
+                    display_name,
+                    links: extract_wikilinks(&contents),
+                },
+            );
         }
     }
 
@@ -416,6 +480,22 @@ fn raw_file_hash(relative_path: &str, contents: &[u8]) -> String {
     hasher.update([0]);
     hasher.update(contents);
     format!("sha256:{:x}", hasher.finalize())
+}
+
+#[derive(Debug)]
+struct GraphPage {
+    id: String,
+    display_name: String,
+    links: Vec<String>,
+}
+
+fn graph_page_index(pages: &BTreeMap<String, GraphPage>) -> BTreeMap<String, String> {
+    let mut index = BTreeMap::new();
+    for (relative_path, page) in pages {
+        index.insert(page.display_name.clone(), relative_path.clone());
+        index.insert(graph_link_path_key(relative_path), relative_path.clone());
+    }
+    index
 }
 
 fn append_path_section(markdown: &mut String, title: &str, paths: &[String]) {
@@ -450,20 +530,59 @@ fn append_failed_section(markdown: &mut String, failed: &[(String, String)]) {
     markdown.push('\n');
 }
 
-fn graph_node_name(root: &Path, path: &Path) -> Result<String, WorkspaceError> {
-    let relative = path.strip_prefix(root.join("wiki")).map_err(|_| {
-        WorkspaceError::new("outside_workspace", "wiki path is outside llm wiki root")
-    })?;
-    let without_extension = relative.with_extension("");
-    Ok(without_extension
-        .file_name()
+fn graph_display_name(path: &Path) -> String {
+    path.file_stem()
         .and_then(|name| name.to_str())
         .unwrap_or_default()
-        .to_string())
+        .to_string()
+}
+
+fn graph_node_id(relative_path: &str) -> String {
+    let without_extension = trim_markdown_extension(relative_path);
+    let mut id = String::from("wiki");
+    for character in without_extension.chars() {
+        if character.is_ascii_alphanumeric() {
+            id.push(character);
+        } else {
+            id.push('_');
+        }
+    }
+    while id.contains("__") {
+        id = id.replace("__", "_");
+    }
+    id.trim_end_matches('_').to_string()
+}
+
+fn graph_link_path_key(relative_path: &str) -> String {
+    trim_markdown_extension(relative_path)
+        .trim_start_matches("wiki/")
+        .to_string()
+}
+
+fn trim_markdown_extension(path: &str) -> &str {
+    path.strip_suffix(".markdown")
+        .or_else(|| path.strip_suffix(".md"))
+        .unwrap_or(path)
+}
+
+fn escape_mermaid_label(label: &str) -> String {
+    label.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+fn safe_temp_suffix(relative_path: &str) -> String {
+    let mut suffix = String::new();
+    for character in relative_path.chars() {
+        if character.is_ascii_alphanumeric() {
+            suffix.push(character);
+        } else {
+            suffix.push('-');
+        }
+    }
+    suffix
 }
 
 fn extract_wikilinks(contents: &str) -> Vec<String> {
-    let mut links = Vec::new();
+    let mut links = BTreeSet::new();
     let mut rest = contents;
     while let Some(start) = rest.find("[[") {
         rest = &rest[start + 2..];
@@ -471,28 +590,19 @@ fn extract_wikilinks(contents: &str) -> Vec<String> {
             break;
         };
         let raw_target = &rest[..end];
-        let target = raw_target
-            .split('|')
-            .next()
-            .unwrap_or("")
-            .trim()
-            .trim_start_matches('#')
-            .split('#')
-            .next()
-            .unwrap_or("")
-            .trim();
-        let target = target
-            .rsplit('/')
-            .next()
-            .unwrap_or(target)
-            .trim_end_matches(".markdown")
-            .trim_end_matches(".md");
+        let target = raw_target.split('|').next().unwrap_or("").trim();
+        if target.starts_with('#') {
+            rest = &rest[end + 2..];
+            continue;
+        }
+        let target = target.split('#').next().unwrap_or("").trim();
+        let target = trim_markdown_extension(target);
         if !target.is_empty() {
-            links.push(target.to_string());
+            links.insert(target.to_string());
         }
         rest = &rest[end + 2..];
     }
-    links
+    links.into_iter().collect()
 }
 
 fn create_dir_if_missing(

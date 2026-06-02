@@ -4,6 +4,7 @@ use crate::llm_wiki::llm_wiki_refresh_graph;
 use crate::llm_wiki_fs::{
     build_knowledge_graph_markdown, detect_llm_wiki_workspace, initialize_llm_wiki_workspace,
     read_knowledge_config, scan_raw_files, update_progress_markdown,
+    write_knowledge_graph_markdown,
 };
 
 #[test]
@@ -181,8 +182,44 @@ fn graph_markdown_uses_wikilinks_without_inferred_labels() {
     let markdown = build_knowledge_graph_markdown(root.path()).unwrap();
 
     assert!(markdown.contains("```mermaid"));
-    assert!(markdown.contains("A --> B"));
+    assert!(markdown.contains("[\"A\"]"));
+    assert!(markdown.contains("[\"B\"]"));
+    assert!(markdown.contains(" --> "));
     assert!(!markdown.contains("-->|"));
+}
+
+#[test]
+fn graph_markdown_handles_aliases_self_anchors_and_duplicate_basenames() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::create_dir_all(root.path().join("wiki/entities/nested")).unwrap();
+    std::fs::write(
+        root.path().join("wiki/entities/A.md"),
+        "# A\n\n[[B|Bee]]\n[[#Background]]\n[[nested/Topic.md]]\n",
+    )
+    .unwrap();
+    std::fs::write(root.path().join("wiki/concepts/B.md"), "# B\n").unwrap();
+    std::fs::write(root.path().join("wiki/entities/Topic.md"), "# Topic\n").unwrap();
+    std::fs::write(
+        root.path().join("wiki/entities/nested/Topic.md"),
+        "# Topic\n",
+    )
+    .unwrap();
+
+    let markdown = build_knowledge_graph_markdown(root.path()).unwrap();
+
+    assert!(markdown.contains("[\"A\"]"));
+    assert!(markdown.contains("[\"B\"]"));
+    assert!(markdown.contains("[\"Topic\"]"));
+    assert!(markdown.contains(" --> "));
+    assert!(!markdown.contains("Bee"));
+    assert!(!markdown.contains("Background"));
+    assert!(markdown.contains("wiki_entities_Topic"));
+    assert!(markdown.contains("wiki_entities_nested_Topic"));
+    assert_ne!(
+        markdown.find("wiki_entities_Topic"),
+        markdown.find("wiki_entities_nested_Topic")
+    );
 }
 
 #[cfg(unix)]
@@ -231,4 +268,57 @@ fn refresh_graph_rejects_wiki_symlink_without_external_write() {
 
     assert_eq!(error.error_code(), "path_type_conflict");
     assert!(!outside.path().join("knowledge-graph.md").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn refresh_graph_rejects_symlinked_graph_file_without_external_write() {
+    let root = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    let outside_file = outside.path().join("knowledge-graph.md");
+    std::fs::write(&outside_file, "outside-original").unwrap();
+    std::fs::remove_file(root.path().join("wiki/knowledge-graph.md")).ok();
+    std::os::unix::fs::symlink(&outside_file, root.path().join("wiki/knowledge-graph.md")).unwrap();
+
+    let error = llm_wiki_refresh_graph(root.path().to_string_lossy().into_owned()).unwrap_err();
+
+    assert_eq!(error.error_code(), "path_type_conflict");
+    assert_eq!(
+        std::fs::read_to_string(outside_file).unwrap(),
+        "outside-original"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn update_progress_rejects_symlinked_progress_file_without_external_write() {
+    let root = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    let outside_file = outside.path().join("progress.md");
+    std::fs::write(&outside_file, "outside-original").unwrap();
+    std::fs::remove_file(root.path().join("llm-wiki-progress.md")).unwrap();
+    std::os::unix::fs::symlink(&outside_file, root.path().join("llm-wiki-progress.md")).unwrap();
+
+    let error = update_progress_markdown(root.path(), "scanning", &[], &[], &[], &[]).unwrap_err();
+
+    assert_eq!(error.error_code(), "path_type_conflict");
+    assert_eq!(
+        std::fs::read_to_string(outside_file).unwrap(),
+        "outside-original"
+    );
+}
+
+#[test]
+fn write_graph_markdown_writes_regular_managed_graph_file() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+
+    write_knowledge_graph_markdown(root.path(), "# Knowledge Graph\n").unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(root.path().join("wiki/knowledge-graph.md")).unwrap(),
+        "# Knowledge Graph\n"
+    );
 }
