@@ -27,16 +27,16 @@ pub fn llm_wiki_initialize_workspace(
 pub fn llm_wiki_rescan_raw(root_path: String) -> Result<RawScanResult, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
     let config = read_knowledge_config(&root)?;
-    let files = scan_raw_files(&root, &config)?;
     if config.paused {
         update_progress_markdown(&root, "paused", &[], &[], &[], &config.skip_paths)?;
         return Ok(RawScanResult {
-            total: files.len(),
+            total: 0,
             pending: Vec::new(),
             skipped: config.skip_paths,
         });
     }
 
+    let files = scan_raw_files(&root, &config)?;
     let pending = files
         .iter()
         .map(|file| file.relative_path.clone())

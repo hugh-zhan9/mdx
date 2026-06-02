@@ -260,11 +260,34 @@ fn rescan_raw_returns_no_pending_files_when_config_is_paused() {
 
     let result = llm_wiki_rescan_raw(root.path().to_string_lossy().into_owned()).unwrap();
 
-    assert_eq!(result.total, 1);
+    assert_eq!(result.total, 0);
     assert!(result.pending.is_empty());
     let progress = std::fs::read_to_string(root.path().join("llm-wiki-progress.md")).unwrap();
     assert!(progress.contains("paused"));
     assert!(!progress.contains("raw/notes/a.md"));
+}
+
+#[cfg(unix)]
+#[test]
+fn rescan_raw_does_not_scan_invalid_raw_when_config_is_paused() {
+    let root = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::write(
+        root.path().join(".llm-wiki/config.json"),
+        r#"{"paused":true,"skipPaths":["raw/skipped"]}"#,
+    )
+    .unwrap();
+    std::fs::remove_dir_all(root.path().join("raw")).unwrap();
+    std::os::unix::fs::symlink(outside.path(), root.path().join("raw")).unwrap();
+
+    let result = llm_wiki_rescan_raw(root.path().to_string_lossy().into_owned()).unwrap();
+
+    assert_eq!(result.total, 0);
+    assert!(result.pending.is_empty());
+    assert_eq!(result.skipped, vec!["raw/skipped".to_string()]);
+    let progress = std::fs::read_to_string(root.path().join("llm-wiki-progress.md")).unwrap();
+    assert!(progress.contains("paused"));
 }
 
 #[test]
