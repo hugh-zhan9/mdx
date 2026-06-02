@@ -1,5 +1,6 @@
 use tempfile::tempdir;
 
+use crate::llm_wiki::llm_wiki_refresh_graph;
 use crate::llm_wiki_fs::{
     build_knowledge_graph_markdown, detect_llm_wiki_workspace, initialize_llm_wiki_workspace,
     read_knowledge_config, scan_raw_files, update_progress_markdown,
@@ -182,4 +183,52 @@ fn graph_markdown_uses_wikilinks_without_inferred_labels() {
     assert!(markdown.contains("```mermaid"));
     assert!(markdown.contains("A --> B"));
     assert!(!markdown.contains("-->|"));
+}
+
+#[cfg(unix)]
+#[test]
+fn scan_raw_files_rejects_raw_symlink() {
+    let root = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::create_dir_all(outside.path().join("notes")).unwrap();
+    std::fs::write(outside.path().join("notes/leaked.md"), "# Leaked\n").unwrap();
+    std::fs::remove_dir_all(root.path().join("raw")).unwrap();
+    std::os::unix::fs::symlink(outside.path(), root.path().join("raw")).unwrap();
+
+    let config = read_knowledge_config(root.path()).unwrap();
+    let error = scan_raw_files(root.path(), &config).unwrap_err();
+
+    assert_eq!(error.error_code(), "path_type_conflict");
+}
+
+#[cfg(unix)]
+#[test]
+fn graph_markdown_rejects_wiki_symlink() {
+    let root = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::create_dir_all(outside.path().join("entities")).unwrap();
+    std::fs::write(outside.path().join("entities/A.md"), "# A\n\n[[B]]\n").unwrap();
+    std::fs::remove_dir_all(root.path().join("wiki")).unwrap();
+    std::os::unix::fs::symlink(outside.path(), root.path().join("wiki")).unwrap();
+
+    let error = build_knowledge_graph_markdown(root.path()).unwrap_err();
+
+    assert_eq!(error.error_code(), "path_type_conflict");
+}
+
+#[cfg(unix)]
+#[test]
+fn refresh_graph_rejects_wiki_symlink_without_external_write() {
+    let root = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::remove_dir_all(root.path().join("wiki")).unwrap();
+    std::os::unix::fs::symlink(outside.path(), root.path().join("wiki")).unwrap();
+
+    let error = llm_wiki_refresh_graph(root.path().to_string_lossy().into_owned()).unwrap_err();
+
+    assert_eq!(error.error_code(), "path_type_conflict");
+    assert!(!outside.path().join("knowledge-graph.md").exists());
 }

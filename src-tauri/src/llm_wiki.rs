@@ -1,8 +1,7 @@
-use std::fs;
-
 use crate::llm_wiki_fs::{
     build_knowledge_graph_markdown, detect_llm_wiki_workspace, initialize_llm_wiki_workspace,
     read_knowledge_config, scan_raw_files, update_progress_markdown,
+    write_knowledge_graph_markdown,
 };
 use crate::llm_wiki_models::{InitializeLlmWikiResult, LlmWikiWorkspaceStatus, RawScanResult};
 use crate::models::WorkspaceError;
@@ -47,12 +46,6 @@ pub fn llm_wiki_rescan_raw(root_path: String) -> Result<RawScanResult, Workspace
 pub fn llm_wiki_refresh_graph(root_path: String) -> Result<String, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
     let markdown = build_knowledge_graph_markdown(&root)?;
-    fs::write(root.join("wiki/knowledge-graph.md"), &markdown).map_err(|error| {
-        WorkspaceError::from_io(
-            "write_failed",
-            "failed to write llm wiki knowledge graph",
-            &error,
-        )
-    })?;
+    write_knowledge_graph_markdown(&root, &markdown)?;
     Ok(markdown)
 }

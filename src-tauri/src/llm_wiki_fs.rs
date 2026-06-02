@@ -188,12 +188,8 @@ pub fn scan_raw_files(
     let root = root.as_ref();
     ensure_directory(root)?;
 
-    let raw_dir = root.join("raw");
+    let raw_dir = managed_directory(root, "raw")?;
     let mut files = Vec::new();
-    if !path_has_entry(&raw_dir)? {
-        return Ok(files);
-    }
-
     scan_raw_dir(root, &raw_dir, config, &mut files)?;
     files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
     Ok(files)
@@ -230,11 +226,9 @@ pub fn build_knowledge_graph_markdown(root: impl AsRef<Path>) -> Result<String, 
     let root = root.as_ref();
     ensure_directory(root)?;
 
-    let wiki_dir = root.join("wiki");
+    let wiki_dir = managed_directory(root, "wiki")?;
     let mut edges = Vec::new();
-    if path_has_entry(&wiki_dir)? {
-        scan_wiki_graph_dir(root, &wiki_dir, &mut edges)?;
-    }
+    scan_wiki_graph_dir(root, &wiki_dir, &mut edges)?;
     edges.sort();
     edges.dedup();
 
@@ -248,6 +242,22 @@ pub fn build_knowledge_graph_markdown(root: impl AsRef<Path>) -> Result<String, 
     }
     markdown.push_str("```\n");
     Ok(markdown)
+}
+
+pub fn write_knowledge_graph_markdown(
+    root: impl AsRef<Path>,
+    markdown: &str,
+) -> Result<(), WorkspaceError> {
+    let root = root.as_ref();
+    ensure_directory(root)?;
+    let wiki_dir = managed_directory(root, "wiki")?;
+    fs::write(wiki_dir.join("knowledge-graph.md"), markdown).map_err(|error| {
+        WorkspaceError::from_io(
+            "write_failed",
+            "failed to write llm wiki knowledge graph",
+            &error,
+        )
+    })
 }
 
 fn ensure_directory(path: &Path) -> Result<(), WorkspaceError> {
@@ -270,6 +280,24 @@ fn ensure_directory(path: &Path) -> Result<(), WorkspaceError> {
     }
 
     Ok(())
+}
+
+fn managed_directory(
+    root: &Path,
+    relative_path: &str,
+) -> Result<std::path::PathBuf, WorkspaceError> {
+    match required_path_state(root, relative_path, RequiredPathKind::Directory)? {
+        RequiredPathState::Valid => Ok(root.join(relative_path)),
+        RequiredPathState::Missing => Err(WorkspaceError::new(
+            "not_found",
+            format!("llm wiki managed directory is missing: {relative_path}"),
+        )),
+        RequiredPathState::TypeConflict => Err(path_type_conflict(
+            "directory",
+            "not a directory",
+            relative_path,
+        )),
+    }
 }
 
 fn scan_raw_dir(
@@ -465,18 +493,6 @@ fn extract_wikilinks(contents: &str) -> Vec<String> {
         rest = &rest[end + 2..];
     }
     links
-}
-
-fn path_has_entry(path: &Path) -> Result<bool, WorkspaceError> {
-    match fs::symlink_metadata(path) {
-        Ok(_) => Ok(true),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(error) => Err(WorkspaceError::from_io(
-            "path_failed",
-            "failed to inspect llm wiki path",
-            &error,
-        )),
-    }
 }
 
 fn create_dir_if_missing(
