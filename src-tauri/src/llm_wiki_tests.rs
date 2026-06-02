@@ -149,6 +149,45 @@ fn scan_raw_files_only_includes_markdown_under_raw_and_respects_skip() {
     assert!(files[0].hash.starts_with("sha256:"));
 }
 
+#[cfg(unix)]
+#[test]
+fn read_knowledge_config_rejects_llm_wiki_symlink() {
+    let root = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::remove_dir_all(root.path().join(".llm-wiki")).unwrap();
+    std::fs::write(
+        outside.path().join("config.json"),
+        r#"{"paused":false,"skipPaths":["raw/leaked"]}"#,
+    )
+    .unwrap();
+    std::os::unix::fs::symlink(outside.path(), root.path().join(".llm-wiki")).unwrap();
+
+    let error = read_knowledge_config(root.path()).unwrap_err();
+
+    assert_eq!(error.error_code(), "path_type_conflict");
+}
+
+#[cfg(unix)]
+#[test]
+fn read_knowledge_config_rejects_config_file_symlink() {
+    let root = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    let outside_config = outside.path().join("config.json");
+    std::fs::write(
+        &outside_config,
+        r#"{"paused":false,"skipPaths":["raw/leaked"]}"#,
+    )
+    .unwrap();
+    std::fs::remove_file(root.path().join(".llm-wiki/config.json")).unwrap();
+    std::os::unix::fs::symlink(&outside_config, root.path().join(".llm-wiki/config.json")).unwrap();
+
+    let error = read_knowledge_config(root.path()).unwrap_err();
+
+    assert_eq!(error.error_code(), "path_type_conflict");
+}
+
 #[test]
 fn update_progress_markdown_writes_visible_status_document() {
     let root = tempdir().unwrap();

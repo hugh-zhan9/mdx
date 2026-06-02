@@ -160,15 +160,29 @@ pub fn initialize_llm_wiki_workspace(
 pub fn read_knowledge_config(
     root: impl AsRef<Path>,
 ) -> Result<LlmWikiKnowledgeConfig, WorkspaceError> {
-    let path = root.as_ref().join(".llm-wiki/config.json");
-    let contents = match fs::read_to_string(&path) {
-        Ok(contents) => contents,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+    let root = root.as_ref();
+    ensure_directory(root)?;
+    let llm_wiki_dir = managed_directory(root, ".llm-wiki")?;
+    let path = llm_wiki_dir.join("config.json");
+    match existing_path_kind(&path)? {
+        ExistingPathKind::Missing => {
             return Ok(LlmWikiKnowledgeConfig {
                 paused: false,
                 skip_paths: Vec::new(),
             });
         }
+        ExistingPathKind::File => {}
+        ExistingPathKind::Directory | ExistingPathKind::Symlink | ExistingPathKind::Other => {
+            return Err(path_type_conflict(
+                "file",
+                "not a file",
+                ".llm-wiki/config.json",
+            ));
+        }
+    }
+
+    let contents = match fs::read_to_string(&path) {
+        Ok(contents) => contents,
         Err(error) => {
             return Err(WorkspaceError::from_io(
                 "read_failed",
@@ -352,6 +366,18 @@ fn write_managed_file(
         file.sync_all().map_err(|error| {
             let _ = fs::remove_file(&tmp_path);
             WorkspaceError::from_io("write_failed", "failed to sync llm wiki temp file", &error)
+        })?;
+    }
+
+    #[cfg(windows)]
+    if matches!(existing_path_kind(&path)?, ExistingPathKind::File) {
+        fs::remove_file(&path).map_err(|error| {
+            let _ = fs::remove_file(&tmp_path);
+            WorkspaceError::from_io(
+                "write_failed",
+                "failed to remove existing llm wiki file before replace",
+                &error,
+            )
         })?;
     }
 
