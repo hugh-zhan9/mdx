@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -18,34 +18,73 @@ pub struct LlmWikiFileBlock {
 
 pub fn parse_file_blocks(output: &str) -> Result<Vec<LlmWikiFileBlock>, WorkspaceError> {
     let mut blocks = Vec::new();
-    let mut rest = output;
+    let mut seen_paths = BTreeSet::new();
+    let mut current_block: Option<OpenFileBlock> = None;
 
-    while let Some(marker_start) = rest.find("---FILE:") {
-        rest = &rest[marker_start + "---FILE:".len()..];
-        let Some(marker_end) = rest.find("---") else {
-            return Err(WorkspaceError::new(
-                "llm_wiki_parse_failed",
-                "llm wiki file block marker is not closed",
-            ));
-        };
-        let path = rest[..marker_end].trim().to_string();
-        if !is_safe_llm_wiki_output_path(&path) {
-            return Err(invalid_output_path(&path));
+    for line in output.split_inclusive('\n') {
+        let line_body = line_without_ending(line).trim();
+        if let Some(open_block) = current_block.as_mut() {
+            if !open_block.in_fence && line_body == "---END FILE---" {
+                let open_block = current_block.take().expect("open block exists");
+                blocks.push(LlmWikiFileBlock {
+                    path: open_block.path,
+                    content: open_block.content,
+                });
+                continue;
+            }
+            if !open_block.in_fence && parse_file_marker_path(line_body).is_some() {
+                return Err(WorkspaceError::new(
+                    "llm_wiki_parse_failed",
+                    "llm wiki file block started before previous block ended",
+                ));
+            }
+
+            open_block.content.push_str(line);
+            update_fence_state(&mut open_block.in_fence, line_body);
+            continue;
         }
 
-        rest = &rest[marker_end + "---".len()..];
-        rest = strip_one_leading_newline(rest);
-        let Some(content_end) = rest.find("---END FILE---") else {
-            return Err(WorkspaceError::new(
-                "llm_wiki_parse_failed",
-                "llm wiki file block is missing end marker",
-            ));
+        if let Some(path) = parse_file_marker_path(line_body) {
+            if !is_safe_llm_wiki_output_path(&path) {
+                return Err(invalid_output_path(&path));
+            }
+            if !seen_paths.insert(path.clone()) {
+                return Err(duplicate_output_path(&path));
+            }
+            current_block = Some(OpenFileBlock {
+                path,
+                content: String::new(),
+                in_fence: false,
+            });
+        }
+    }
+
+    if let Some(open_block) = current_block {
+        return Err(WorkspaceError::new(
+            "llm_wiki_parse_failed",
+            format!(
+                "llm wiki file block is missing end marker: {}",
+                open_block.path
+            ),
+        ));
+    }
+
+    if !output.ends_with('\n') {
+        if let Some(line) = output.rsplit('\n').next() {
+            let line_body = line.trim();
+            if let Some(path) = parse_file_marker_path(line_body) {
+                if !is_safe_llm_wiki_output_path(&path) {
+                    return Err(invalid_output_path(&path));
+                }
+                if !seen_paths.insert(path.clone()) {
+                    return Err(duplicate_output_path(&path));
+                }
+                return Err(WorkspaceError::new(
+                    "llm_wiki_parse_failed",
+                    format!("llm wiki file block is missing end marker: {path}"),
+                ));
+            }
         };
-        blocks.push(LlmWikiFileBlock {
-            path,
-            content: rest[..content_end].to_string(),
-        });
-        rest = &rest[content_end + "---END FILE---".len()..];
     }
 
     if blocks.is_empty() {
@@ -117,9 +156,13 @@ pub fn write_ingest_outputs(
     let root = root.as_path();
     ensure_directory(root)?;
 
+    let mut seen_paths = BTreeSet::new();
     for block in blocks {
         if !is_safe_llm_wiki_output_path(&block.path) {
             return Err(invalid_output_path(&block.path));
+        }
+        if !seen_paths.insert(block.path.clone()) {
+            return Err(duplicate_output_path(&block.path));
         }
     }
     let source_page = source_page(blocks)?;
@@ -145,6 +188,12 @@ pub fn write_ingest_outputs(
         },
     );
     write_cache(root, &cache)
+}
+
+struct OpenFileBlock {
+    path: String,
+    content: String,
+    in_fence: bool,
 }
 
 fn canonicalize_root(root: &Path) -> Result<PathBuf, WorkspaceError> {
@@ -272,17 +321,36 @@ fn write_cache(root: &Path, cache: &LlmWikiCache) -> Result<(), WorkspaceError> 
     write_managed_file(root, ".llm-wiki/cache.json", &contents_with_newline)
 }
 
-fn strip_one_leading_newline(value: &str) -> &str {
-    value
-        .strip_prefix("\r\n")
-        .or_else(|| value.strip_prefix('\n'))
-        .unwrap_or(value)
+fn parse_file_marker_path(line: &str) -> Option<String> {
+    let rest = line.strip_prefix("---FILE:")?;
+    let path = rest.strip_suffix("---")?.trim();
+    Some(path.to_string())
+}
+
+fn line_without_ending(line: &str) -> &str {
+    line.strip_suffix("\r\n")
+        .or_else(|| line.strip_suffix('\n'))
+        .unwrap_or(line)
+}
+
+fn update_fence_state(in_fence: &mut bool, line_body: &str) {
+    let trimmed = line_body.trim_start();
+    if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+        *in_fence = !*in_fence;
+    }
 }
 
 fn invalid_output_path(path: &str) -> WorkspaceError {
     WorkspaceError::new(
         "invalid_llm_wiki_output_path",
         format!("unsafe llm wiki output path: {path}"),
+    )
+}
+
+fn duplicate_output_path(path: &str) -> WorkspaceError {
+    WorkspaceError::new(
+        "duplicate_llm_wiki_output_path",
+        format!("duplicate llm wiki output path: {path}"),
     )
 }
 

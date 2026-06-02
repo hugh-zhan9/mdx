@@ -7,7 +7,7 @@ use crate::llm_wiki::{
 use crate::llm_wiki_fs::{
     build_knowledge_graph_markdown, detect_llm_wiki_workspace, initialize_llm_wiki_workspace,
     read_knowledge_config, scan_raw_files, update_progress_markdown,
-    write_knowledge_graph_markdown,
+    write_knowledge_graph_markdown, write_managed_file,
 };
 use crate::llm_wiki_ingest::{
     is_safe_llm_wiki_output_path, parse_file_blocks, write_ingest_outputs, LlmWikiFileBlock,
@@ -923,6 +923,29 @@ fn ingest_parse_file_blocks_rejects_unsafe_output_path() {
 }
 
 #[test]
+fn ingest_parse_file_blocks_rejects_duplicate_output_paths() {
+    let error = parse_file_blocks(
+        "---FILE: wiki/sources/a.md---\n# A\n---END FILE---\n---FILE: wiki/sources/a.md---\n# Again\n---END FILE---",
+    )
+    .unwrap_err();
+
+    assert_eq!(error.error_code(), "duplicate_llm_wiki_output_path");
+}
+
+#[test]
+fn ingest_parse_file_blocks_preserves_end_marker_text_inside_content() {
+    let blocks = parse_file_blocks(
+        "---FILE: wiki/sources/a.md---\n# A\n\n```text\n---END FILE---\n```\n---END FILE---",
+    )
+    .unwrap();
+
+    assert_eq!(
+        blocks[0].content,
+        "# A\n\n```text\n---END FILE---\n```\n".to_string()
+    );
+}
+
+#[test]
 fn ingest_write_outputs_writes_files_and_updates_cache_entry() {
     let root = tempdir().unwrap();
     initialize_llm_wiki_workspace(root.path()).unwrap();
@@ -980,6 +1003,55 @@ fn ingest_write_outputs_rejects_unsafe_block_without_partial_write() {
 
     assert_eq!(error.error_code(), "invalid_llm_wiki_output_path");
     assert!(!root.path().join("wiki/sources/a.md").exists());
+}
+
+#[test]
+fn ingest_write_outputs_rejects_duplicate_output_paths_without_partial_write() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::write(root.path().join("raw/notes/a.md"), "# Raw A\n").unwrap();
+    let blocks = vec![
+        LlmWikiFileBlock {
+            path: "wiki/sources/a.md".to_string(),
+            content: "# A\n".to_string(),
+        },
+        LlmWikiFileBlock {
+            path: "wiki/sources/a.md".to_string(),
+            content: "# Again\n".to_string(),
+        },
+    ];
+
+    let error = write_ingest_outputs(
+        root.path(),
+        "raw/notes/a.md",
+        "sha256:test",
+        "test-model",
+        &blocks,
+    )
+    .unwrap_err();
+
+    assert_eq!(error.error_code(), "duplicate_llm_wiki_output_path");
+    assert!(!root.path().join("wiki/sources/a.md").exists());
+}
+
+#[test]
+fn llm_wiki_managed_writer_rejects_unsafe_relative_paths_without_external_write() {
+    let parent = tempdir().unwrap();
+    let root = parent.path().join("workspace");
+    std::fs::create_dir(&root).unwrap();
+    initialize_llm_wiki_workspace(&root).unwrap();
+
+    for path in [
+        "../outside.md",
+        "/tmp/outside.md",
+        "wiki\\sources\\a.md",
+        "",
+    ] {
+        let error = write_managed_file(&root, path, b"outside").unwrap_err();
+
+        assert_eq!(error.error_code(), "invalid_llm_wiki_managed_path");
+    }
+    assert!(!parent.path().join("outside.md").exists());
 }
 
 #[test]

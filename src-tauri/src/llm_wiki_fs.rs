@@ -334,6 +334,7 @@ pub(crate) fn write_managed_file(
     managed_relative_path: &str,
     contents: &[u8],
 ) -> Result<(), WorkspaceError> {
+    validate_managed_relative_path(managed_relative_path)?;
     let path = root.join(managed_relative_path);
     ensure_managed_parent_directories(root, managed_relative_path)?;
     match existing_path_kind(&path)? {
@@ -399,6 +400,7 @@ pub(crate) fn ensure_managed_file_target(
     root: &Path,
     managed_relative_path: &str,
 ) -> Result<(), WorkspaceError> {
+    validate_managed_relative_path(managed_relative_path)?;
     ensure_managed_parent_directories(root, managed_relative_path)?;
     match existing_path_kind(&root.join(managed_relative_path))? {
         ExistingPathKind::Missing | ExistingPathKind::File => Ok(()),
@@ -406,6 +408,45 @@ pub(crate) fn ensure_managed_file_target(
             path_type_conflict("file", "not a file", managed_relative_path),
         ),
     }
+}
+
+fn validate_managed_relative_path(managed_relative_path: &str) -> Result<(), WorkspaceError> {
+    if managed_relative_path.is_empty()
+        || managed_relative_path.contains('\\')
+        || managed_relative_path.contains('\0')
+        || Path::new(managed_relative_path).is_absolute()
+    {
+        return Err(invalid_managed_path(managed_relative_path));
+    }
+
+    let mut has_component = false;
+    for component in Path::new(managed_relative_path).components() {
+        match component {
+            std::path::Component::Normal(segment) => {
+                let Some(segment) = segment.to_str() else {
+                    return Err(invalid_managed_path(managed_relative_path));
+                };
+                if segment.is_empty() {
+                    return Err(invalid_managed_path(managed_relative_path));
+                }
+                has_component = true;
+            }
+            _ => return Err(invalid_managed_path(managed_relative_path)),
+        }
+    }
+
+    if !has_component {
+        return Err(invalid_managed_path(managed_relative_path));
+    }
+
+    Ok(())
+}
+
+fn invalid_managed_path(managed_relative_path: &str) -> WorkspaceError {
+    WorkspaceError::new(
+        "invalid_llm_wiki_managed_path",
+        format!("unsafe llm wiki managed path: {managed_relative_path}"),
+    )
 }
 
 fn ensure_managed_parent_directories(
