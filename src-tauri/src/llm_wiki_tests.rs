@@ -340,6 +340,22 @@ fn search_wiki_pages_finds_query_terms_in_generated_wiki() {
     assert!(results[0].snippet.contains("系统编程语言。"));
 }
 
+#[cfg(unix)]
+#[test]
+fn search_wiki_pages_skips_symlinked_wiki_file_without_reading_target() {
+    let root = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    let outside_file = outside.path().join("Outside.md");
+    std::fs::write(&outside_file, "secret outside term\n").unwrap();
+    std::os::unix::fs::symlink(&outside_file, root.path().join("wiki/entities/Outside.md"))
+        .unwrap();
+
+    let results = search_wiki_pages(root.path(), "outside term").unwrap();
+
+    assert!(results.is_empty());
+}
+
 #[test]
 fn write_digest_page_saves_under_syntheses_and_updates_index_and_log() {
     let root = tempdir().unwrap();
@@ -353,6 +369,40 @@ fn write_digest_page_saves_under_syntheses_and_updates_index_and_log() {
     let log = std::fs::read_to_string(root.path().join("log.md")).unwrap();
     assert!(index.contains("[[Rust]]"));
     assert!(log.contains("digest"));
+}
+
+#[cfg(unix)]
+#[test]
+fn write_digest_page_rejects_symlinked_index_without_creating_digest() {
+    let root = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    let outside_index = outside.path().join("index.md");
+    std::fs::write(&outside_index, "# Outside\n").unwrap();
+    std::fs::remove_file(root.path().join("index.md")).unwrap();
+    std::os::unix::fs::symlink(&outside_index, root.path().join("index.md")).unwrap();
+
+    let error = write_digest_page(root.path(), "Rust", "# Rust\n").unwrap_err();
+
+    assert_eq!(error.error_code(), "path_type_conflict");
+    assert!(!root.path().join("wiki/syntheses/Rust.md").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn write_digest_page_rejects_symlinked_log_without_creating_digest() {
+    let root = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    let outside_log = outside.path().join("log.md");
+    std::fs::write(&outside_log, "# Outside\n").unwrap();
+    std::fs::remove_file(root.path().join("log.md")).unwrap();
+    std::os::unix::fs::symlink(&outside_log, root.path().join("log.md")).unwrap();
+
+    let error = write_digest_page(root.path(), "Rust", "# Rust\n").unwrap_err();
+
+    assert_eq!(error.error_code(), "path_type_conflict");
+    assert!(!root.path().join("wiki/syntheses/Rust.md").exists());
 }
 
 #[test]
@@ -370,6 +420,47 @@ fn mechanical_lint_reports_broken_wikilinks() {
 
     assert!(report.contains("断链"));
     assert!(report.contains("[[Missing]]"));
+}
+
+#[test]
+fn mechanical_lint_accepts_heading_alias_and_extension_links() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    write_managed_file(
+        root.path(),
+        "wiki/entities/Page.md",
+        "# Heading\n".as_bytes(),
+    )
+    .unwrap();
+    write_managed_file(
+        root.path(),
+        "wiki/entities/A.md",
+        "[[Page#Heading|Label]]\n[[Page.md#Heading]]\n[[#Local]]\n".as_bytes(),
+    )
+    .unwrap();
+
+    let report = mechanical_lint_report(root.path()).unwrap();
+
+    assert!(report.contains("断链"));
+    assert!(report.contains("无"));
+    assert!(!report.contains("[[Page"));
+}
+
+#[cfg(unix)]
+#[test]
+fn mechanical_lint_skips_symlinked_wiki_file_without_reading_target() {
+    let root = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    let outside_file = outside.path().join("Outside.md");
+    std::fs::write(&outside_file, "[[Missing]]\n").unwrap();
+    std::os::unix::fs::symlink(&outside_file, root.path().join("wiki/entities/Outside.md"))
+        .unwrap();
+
+    let report = mechanical_lint_report(root.path()).unwrap();
+
+    assert!(report.contains("无"));
+    assert!(!report.contains("[[Missing]]"));
 }
 
 #[test]
