@@ -908,6 +908,8 @@ fn ingest_output_path_guard_allows_only_managed_markdown_outputs() {
         ".env",
         "wiki/entities/.hidden.md",
         "",
+        "wiki/./entities/A.md",
+        "wiki//entities/A.md",
         "wiki/entities/",
         "wiki/entities/A.txt",
     ] {
@@ -940,6 +942,24 @@ fn ingest_parse_file_blocks_rejects_case_variant_duplicate_output_paths() {
     .unwrap_err();
 
     assert_eq!(error.error_code(), "duplicate_llm_wiki_output_path");
+}
+
+#[test]
+fn ingest_parse_file_blocks_rejects_dot_segment_duplicate_output_paths() {
+    let error = parse_file_blocks(
+        "---FILE: wiki/sources/a.md---\n# A\n---END FILE---\n---FILE: wiki/./sources/a.md---\n# Again\n---END FILE---",
+    )
+    .unwrap_err();
+
+    assert_eq!(error.error_code(), "invalid_llm_wiki_output_path");
+}
+
+#[test]
+fn ingest_parse_file_blocks_rejects_repeated_separator_output_path() {
+    let error =
+        parse_file_blocks("---FILE: wiki//sources/a.md---\n# A\n---END FILE---").unwrap_err();
+
+    assert_eq!(error.error_code(), "invalid_llm_wiki_output_path");
 }
 
 #[test]
@@ -1091,6 +1111,41 @@ fn ingest_write_outputs_rejects_case_variant_duplicate_paths_without_partial_wri
 }
 
 #[test]
+fn ingest_write_outputs_rejects_dot_segment_duplicate_paths_without_partial_write_or_cache_update()
+{
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::write(root.path().join("raw/notes/a.md"), "# Raw A\n").unwrap();
+    let initial_cache = std::fs::read_to_string(root.path().join(".llm-wiki/cache.json")).unwrap();
+    let blocks = vec![
+        LlmWikiFileBlock {
+            path: "wiki/sources/a.md".to_string(),
+            content: "# A\n".to_string(),
+        },
+        LlmWikiFileBlock {
+            path: "wiki/./sources/a.md".to_string(),
+            content: "# Again\n".to_string(),
+        },
+    ];
+
+    let error = write_ingest_outputs(
+        root.path(),
+        "raw/notes/a.md",
+        "sha256:test",
+        "test-model",
+        &blocks,
+    )
+    .unwrap_err();
+
+    assert_eq!(error.error_code(), "invalid_llm_wiki_output_path");
+    assert!(!root.path().join("wiki/sources/a.md").exists());
+    assert_eq!(
+        std::fs::read_to_string(root.path().join(".llm-wiki/cache.json")).unwrap(),
+        initial_cache
+    );
+}
+
+#[test]
 fn llm_wiki_managed_writer_rejects_unsafe_relative_paths_without_external_write() {
     let parent = tempdir().unwrap();
     let root = parent.path().join("workspace");
@@ -1101,6 +1156,8 @@ fn llm_wiki_managed_writer_rejects_unsafe_relative_paths_without_external_write(
         "../outside.md",
         "/tmp/outside.md",
         "wiki\\sources\\a.md",
+        "wiki/./sources/a.md",
+        "wiki//sources/a.md",
         "",
     ] {
         let error = write_managed_file(&root, path, b"outside").unwrap_err();

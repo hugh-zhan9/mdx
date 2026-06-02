@@ -415,6 +415,7 @@ fn validate_managed_relative_path(managed_relative_path: &str) -> Result<(), Wor
         || managed_relative_path.contains('\\')
         || managed_relative_path.contains('\0')
         || Path::new(managed_relative_path).is_absolute()
+        || has_unsafe_slash_segment(managed_relative_path)
     {
         return Err(invalid_managed_path(managed_relative_path));
     }
@@ -447,6 +448,11 @@ fn invalid_managed_path(managed_relative_path: &str) -> WorkspaceError {
         "invalid_llm_wiki_managed_path",
         format!("unsafe llm wiki managed path: {managed_relative_path}"),
     )
+}
+
+fn has_unsafe_slash_segment(path: &str) -> bool {
+    path.split('/')
+        .any(|segment| segment.is_empty() || segment == "." || segment == "..")
 }
 
 fn ensure_managed_parent_directories(

@@ -109,6 +109,7 @@ pub fn is_safe_llm_wiki_output_path(path: &str) -> bool {
         || path.ends_with('/')
         || Path::new(path).is_absolute()
         || !path.ends_with(".md")
+        || has_unsafe_slash_segment(path)
     {
         return false;
     }
@@ -361,6 +362,11 @@ fn duplicate_output_path(path: &str) -> WorkspaceError {
 
 fn output_path_uniqueness_key(path: &str) -> String {
     path.to_lowercase()
+}
+
+fn has_unsafe_slash_segment(path: &str) -> bool {
+    path.split('/')
+        .any(|segment| segment.is_empty() || segment == "." || segment == "..")
 }
 
 fn invalid_raw_path() -> WorkspaceError {
