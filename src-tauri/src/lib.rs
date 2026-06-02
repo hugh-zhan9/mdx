@@ -6,6 +6,9 @@ use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 mod assets;
 pub mod cli_protocol;
 mod cli_server;
+mod llm_wiki;
+mod llm_wiki_fs;
+mod llm_wiki_models;
 mod models;
 mod path_guard;
 mod state_store;
@@ -15,6 +18,8 @@ mod workspace_fs;
 mod assets_tests;
 #[cfg(test)]
 mod cli_protocol_tests;
+#[cfg(test)]
+mod llm_wiki_tests;
 #[cfg(test)]
 mod state_store_tests;
 #[cfg(test)]
@@ -144,6 +149,8 @@ pub fn run() {
             state_store::save_app_state,
             assets::save_image_asset,
             assets::load_image_asset,
+            llm_wiki::llm_wiki_detect_workspace,
+            llm_wiki::llm_wiki_initialize_workspace,
             workspace_fs::scan_workspace,
             workspace_fs::read_markdown_file,
             workspace_fs::write_markdown_file,
