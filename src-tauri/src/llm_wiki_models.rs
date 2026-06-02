@@ -66,6 +66,22 @@ pub struct LlmWikiKnowledgeConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct LlmProviderConfig {
+    pub base_url: String,
+    pub model: String,
+    pub api_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicLlmProviderConfig {
+    pub base_url: String,
+    pub model: String,
+    pub has_api_key: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct RawScanFile {
     pub relative_path: String,
     pub absolute_path: String,

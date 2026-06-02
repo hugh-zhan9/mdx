@@ -3,7 +3,13 @@ use crate::llm_wiki_fs::{
     read_knowledge_config, scan_raw_files, update_progress_markdown,
     write_knowledge_graph_markdown,
 };
-use crate::llm_wiki_models::{InitializeLlmWikiResult, LlmWikiWorkspaceStatus, RawScanResult};
+use crate::llm_wiki_llm::{
+    default_llm_config_path, load_llm_config_from_path, save_llm_config_to_path,
+};
+use crate::llm_wiki_models::{
+    InitializeLlmWikiResult, LlmProviderConfig, LlmWikiWorkspaceStatus, PublicLlmProviderConfig,
+    RawScanResult,
+};
 use crate::models::WorkspaceError;
 use crate::path_guard::canonicalize_workspace_root;
 
@@ -57,4 +63,24 @@ pub fn llm_wiki_refresh_graph(root_path: String) -> Result<String, WorkspaceErro
     let markdown = build_knowledge_graph_markdown(&root)?;
     write_knowledge_graph_markdown(&root, &markdown)?;
     Ok(markdown)
+}
+
+#[tauri::command]
+pub fn llm_config_get() -> Result<Option<PublicLlmProviderConfig>, WorkspaceError> {
+    let path = default_llm_config_path()?;
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let config = load_llm_config_from_path(path)?;
+    Ok(Some(PublicLlmProviderConfig {
+        base_url: config.base_url,
+        model: config.model,
+        has_api_key: config.api_key.is_some(),
+    }))
+}
+
+#[tauri::command]
+pub fn llm_config_set(config: LlmProviderConfig) -> Result<(), WorkspaceError> {
+    save_llm_config_to_path(default_llm_config_path()?, &config)
 }

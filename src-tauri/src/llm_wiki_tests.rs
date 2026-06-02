@@ -7,6 +7,47 @@ use crate::llm_wiki_fs::{
     read_knowledge_config, scan_raw_files, update_progress_markdown,
     write_knowledge_graph_markdown,
 };
+use crate::llm_wiki_llm::{
+    build_openai_chat_request, load_llm_config_from_path, save_llm_config_to_path, LlmChatMessage,
+};
+use crate::llm_wiki_models::LlmProviderConfig;
+
+#[test]
+fn llm_config_round_trips_outside_workspace_files() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("llm-config.json");
+    let config = LlmProviderConfig {
+        base_url: "https://api.example.com/v1".to_string(),
+        model: "test-model".to_string(),
+        api_key: Some("secret-key".to_string()),
+    };
+
+    save_llm_config_to_path(&path, &config).unwrap();
+    let loaded = load_llm_config_from_path(&path).unwrap();
+
+    assert_eq!(loaded, config);
+}
+
+#[test]
+fn openai_chat_request_uses_model_and_messages() {
+    let request = build_openai_chat_request(
+        "model-a",
+        vec![
+            LlmChatMessage {
+                role: "system".to_string(),
+                content: "rules".to_string(),
+            },
+            LlmChatMessage {
+                role: "user".to_string(),
+                content: "question".to_string(),
+            },
+        ],
+    );
+
+    assert_eq!(request["model"], "model-a");
+    assert_eq!(request["messages"][0]["role"], "system");
+    assert_eq!(request["messages"][1]["content"], "question");
+}
 
 #[test]
 fn detect_reports_ordinary_workspace_before_initialization() {
