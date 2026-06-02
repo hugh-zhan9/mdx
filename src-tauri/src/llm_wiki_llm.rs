@@ -25,6 +25,8 @@ pub fn load_llm_config_from_path(
     path: impl AsRef<Path>,
 ) -> Result<LlmProviderConfig, WorkspaceError> {
     let path = path.as_ref();
+    ensure_config_load_target(path)?;
+
     let bytes = fs::read(path).map_err(|error| {
         WorkspaceError::from_io(
             "llm_config_load_failed",
@@ -114,6 +116,7 @@ pub fn default_llm_config_path() -> Result<PathBuf, WorkspaceError> {
 }
 
 fn ensure_config_parent_dir(path: &Path) -> Result<(), WorkspaceError> {
+    ensure_no_existing_symlink_ancestor(path)?;
     match existing_path_kind(path)? {
         ExistingPathKind::Directory => restrict_config_dir(path),
         ExistingPathKind::Missing => {
@@ -141,6 +144,21 @@ fn ensure_config_parent_dir(path: &Path) -> Result<(), WorkspaceError> {
     }
 }
 
+fn ensure_config_load_target(path: &Path) -> Result<(), WorkspaceError> {
+    ensure_no_existing_symlink_ancestor(path)?;
+    match existing_path_kind(path)? {
+        ExistingPathKind::File => Ok(()),
+        ExistingPathKind::Missing => Err(WorkspaceError::from_io(
+            "llm_config_load_failed",
+            "failed to read llm config",
+            &io::Error::from(io::ErrorKind::NotFound),
+        )),
+        ExistingPathKind::Directory | ExistingPathKind::Symlink | ExistingPathKind::Other => {
+            Err(path_type_conflict("file", "not a file"))
+        }
+    }
+}
+
 fn ensure_config_file_target(path: &Path) -> Result<(), WorkspaceError> {
     match existing_path_kind(path)? {
         ExistingPathKind::Missing | ExistingPathKind::File => Ok(()),
@@ -148,6 +166,22 @@ fn ensure_config_file_target(path: &Path) -> Result<(), WorkspaceError> {
             Err(path_type_conflict("file", "not a file"))
         }
     }
+}
+
+fn ensure_no_existing_symlink_ancestor(path: &Path) -> Result<(), WorkspaceError> {
+    for ancestor in path.ancestors().skip(1) {
+        if ancestor.as_os_str().is_empty() {
+            continue;
+        }
+        match existing_path_kind(ancestor)? {
+            ExistingPathKind::Missing => {}
+            ExistingPathKind::Directory => {}
+            ExistingPathKind::File | ExistingPathKind::Symlink | ExistingPathKind::Other => {
+                return Err(path_type_conflict("directory", "not a directory"));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(windows)]

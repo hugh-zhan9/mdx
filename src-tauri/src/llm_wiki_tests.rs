@@ -15,7 +15,7 @@ use crate::llm_wiki_models::LlmProviderConfig;
 #[test]
 fn llm_config_round_trips_outside_workspace_files() {
     let dir = tempdir().unwrap();
-    let path = dir.path().join("llm-config.json");
+    let path = dir.path().canonicalize().unwrap().join("llm-config.json");
     let config = LlmProviderConfig {
         base_url: "https://api.example.com/v1".to_string(),
         model: "test-model".to_string(),
@@ -31,7 +31,7 @@ fn llm_config_round_trips_outside_workspace_files() {
 #[test]
 fn llm_config_save_replaces_existing_config_file() {
     let dir = tempdir().unwrap();
-    let path = dir.path().join("llm-config.json");
+    let path = dir.path().canonicalize().unwrap().join("llm-config.json");
     let first = LlmProviderConfig {
         base_url: "https://api.example.com/v1".to_string(),
         model: "first-model".to_string(),
@@ -71,11 +71,55 @@ fn llm_config_save_rejects_symlinked_parent_without_touching_target() {
 
 #[cfg(unix)]
 #[test]
+fn llm_config_save_rejects_symlinked_ancestor_without_touching_target() {
+    let dir = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    let symlink_ancestor = dir.path().join("mdx-home");
+    std::os::unix::fs::symlink(outside.path(), &symlink_ancestor).unwrap();
+    let path = symlink_ancestor.join(".mdx").join("llm-config.json");
+    let config = LlmProviderConfig {
+        base_url: "https://api.example.com/v1".to_string(),
+        model: "test-model".to_string(),
+        api_key: Some("secret-key".to_string()),
+    };
+
+    let error = save_llm_config_to_path(&path, &config).unwrap_err();
+
+    assert_eq!(error.error_code(), "path_type_conflict");
+    assert!(!outside.path().join(".mdx").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn llm_config_load_rejects_symlinked_config_file() {
+    let dir = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    let outside_config = outside.path().join("llm-config.json");
+    std::fs::write(
+        &outside_config,
+        r#"{"baseUrl":"https://api.example.com/v1","model":"outside","apiKey":"secret"}"#,
+    )
+    .unwrap();
+    let path = dir.path().join("llm-config.json");
+    std::os::unix::fs::symlink(&outside_config, &path).unwrap();
+
+    let error = load_llm_config_from_path(&path).unwrap_err();
+
+    assert_eq!(error.error_code(), "path_type_conflict");
+}
+
+#[cfg(unix)]
+#[test]
 fn llm_config_save_restricts_secret_file_permissions() {
     use std::os::unix::fs::PermissionsExt;
 
     let dir = tempdir().unwrap();
-    let path = dir.path().join("config").join("llm-config.json");
+    let path = dir
+        .path()
+        .canonicalize()
+        .unwrap()
+        .join("config")
+        .join("llm-config.json");
     let config = LlmProviderConfig {
         base_url: "https://api.example.com/v1".to_string(),
         model: "test-model".to_string(),
