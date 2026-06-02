@@ -56,6 +56,11 @@ pub fn parse_file_blocks(output: &str) -> Result<Vec<LlmWikiFileBlock>, Workspac
                 content: String::new(),
                 in_fence: false,
             });
+        } else if !line_body.is_empty() {
+            return Err(WorkspaceError::new(
+                "llm_wiki_parse_failed",
+                "llm wiki output contains text outside file blocks",
+            ));
         }
     }
 

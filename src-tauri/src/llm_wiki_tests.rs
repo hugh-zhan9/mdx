@@ -956,6 +956,16 @@ fn ingest_parse_file_blocks_preserves_end_marker_text_inside_content() {
 }
 
 #[test]
+fn ingest_parse_file_blocks_rejects_prose_after_ambiguous_end_marker() {
+    let error = parse_file_blocks(
+        "---FILE: wiki/sources/a.md---\n# A\n---END FILE---\nMore prose that would be truncated\n",
+    )
+    .unwrap_err();
+
+    assert_eq!(error.error_code(), "llm_wiki_parse_failed");
+}
+
+#[test]
 fn ingest_write_outputs_writes_files_and_updates_cache_entry() {
     let root = tempdir().unwrap();
     initialize_llm_wiki_workspace(root.path()).unwrap();
@@ -1138,6 +1148,31 @@ fn ingest_mock_output_command_uses_same_safe_writer() {
     assert_eq!(
         std::fs::read_to_string(root.path().join("wiki/sources/a.md")).unwrap(),
         "# A\n"
+    );
+}
+
+#[test]
+fn ingest_mock_output_rejects_ambiguous_truncated_output_without_write_or_cache_update() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::write(root.path().join("raw/notes/a.md"), "# Raw A\n").unwrap();
+    let initial_cache = std::fs::read_to_string(root.path().join(".llm-wiki/cache.json")).unwrap();
+
+    let error = llm_wiki_ingest_mock_output(
+        root.path().to_string_lossy().into_owned(),
+        "raw/notes/a.md".to_string(),
+        "sha256:test".to_string(),
+        "test-model".to_string(),
+        "---FILE: wiki/sources/a.md---\n# A\n---END FILE---\nMore prose that would be truncated\n"
+            .to_string(),
+    )
+    .unwrap_err();
+
+    assert_eq!(error.error_code(), "llm_wiki_parse_failed");
+    assert!(!root.path().join("wiki/sources/a.md").exists());
+    assert_eq!(
+        std::fs::read_to_string(root.path().join(".llm-wiki/cache.json")).unwrap(),
+        initial_cache
     );
 }
 
