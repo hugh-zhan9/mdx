@@ -63,3 +63,19 @@ pub struct LlmWikiKnowledgeConfig {
     pub paused: bool,
     pub skip_paths: Vec<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RawScanFile {
+    pub relative_path: String,
+    pub absolute_path: String,
+    pub hash: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RawScanResult {
+    pub total: usize,
+    pub pending: Vec<String>,
+    pub skipped: Vec<String>,
+}

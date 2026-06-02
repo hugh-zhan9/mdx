@@ -87,8 +87,7 @@ pub fn run() {
                 Some("CmdOrCtrl+Shift+N"),
             )?;
             let rename_item = MenuItem::with_id(app, "rename", "重命名", true, None::<&str>)?;
-            let trash_item =
-                MenuItem::with_id(app, "trash", "移到废纸篓", true, None::<&str>)?;
+            let trash_item = MenuItem::with_id(app, "trash", "移到废纸篓", true, None::<&str>)?;
             let refresh_item = MenuItem::with_id(app, "refresh", "刷新", true, None::<&str>)?;
             let save_item = MenuItem::with_id(app, "save", "保存", true, Some("CmdOrCtrl+S"))?;
             let close_tab_item =
@@ -151,6 +150,8 @@ pub fn run() {
             assets::load_image_asset,
             llm_wiki::llm_wiki_detect_workspace,
             llm_wiki::llm_wiki_initialize_workspace,
+            llm_wiki::llm_wiki_rescan_raw,
+            llm_wiki::llm_wiki_refresh_graph,
             workspace_fs::scan_workspace,
             workspace_fs::read_markdown_file,
             workspace_fs::write_markdown_file,

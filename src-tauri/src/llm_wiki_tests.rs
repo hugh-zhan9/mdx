@@ -1,6 +1,9 @@
 use tempfile::tempdir;
 
-use crate::llm_wiki_fs::{detect_llm_wiki_workspace, initialize_llm_wiki_workspace};
+use crate::llm_wiki_fs::{
+    build_knowledge_graph_markdown, detect_llm_wiki_workspace, initialize_llm_wiki_workspace,
+    read_knowledge_config, scan_raw_files, update_progress_markdown,
+};
 
 #[test]
 fn detect_reports_ordinary_workspace_before_initialization() {
@@ -114,4 +117,69 @@ fn initialize_errors_when_managed_directory_is_a_symlink() {
     let error = result.unwrap_err();
     assert_eq!(error.error_code(), "path_type_conflict");
     assert!(!outside.path().join("sources").exists());
+}
+
+#[test]
+fn scan_raw_files_only_includes_markdown_under_raw_and_respects_skip() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::write(root.path().join("raw/notes/a.md"), "# A\n").unwrap();
+    std::fs::write(root.path().join("raw/notes/b.txt"), "B\n").unwrap();
+    std::fs::create_dir_all(root.path().join("raw/ignored")).unwrap();
+    std::fs::write(root.path().join("raw/ignored/c.md"), "# C\n").unwrap();
+    std::fs::write(
+        root.path().join("wiki/sources/generated.md"),
+        "# Generated\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.path().join(".llm-wiki/config.json"),
+        r#"{"paused":false,"skipPaths":["raw/ignored"]}"#,
+    )
+    .unwrap();
+
+    let config = read_knowledge_config(root.path()).unwrap();
+    let files = scan_raw_files(root.path(), &config).unwrap();
+
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].relative_path, "raw/notes/a.md");
+    assert!(files[0].hash.starts_with("sha256:"));
+}
+
+#[test]
+fn update_progress_markdown_writes_visible_status_document() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+
+    update_progress_markdown(
+        root.path(),
+        "scanning",
+        &["raw/notes/a.md".to_string()],
+        &[],
+        &[("raw/notes/b.md".to_string(), "llm_failed".to_string())],
+        &["raw/ignored".to_string()],
+    )
+    .unwrap();
+
+    let progress = std::fs::read_to_string(root.path().join("llm-wiki-progress.md")).unwrap();
+    assert!(progress.contains("# LLM Wiki Progress"));
+    assert!(progress.contains("scanning"));
+    assert!(progress.contains("raw/notes/a.md"));
+    assert!(progress.contains("raw/notes/b.md"));
+    assert!(progress.contains("llm_failed"));
+    assert!(progress.contains("raw/ignored"));
+}
+
+#[test]
+fn graph_markdown_uses_wikilinks_without_inferred_labels() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::write(root.path().join("wiki/entities/A.md"), "# A\n\n[[B]]\n").unwrap();
+    std::fs::write(root.path().join("wiki/concepts/B.md"), "# B\n").unwrap();
+
+    let markdown = build_knowledge_graph_markdown(root.path()).unwrap();
+
+    assert!(markdown.contains("```mermaid"));
+    assert!(markdown.contains("A --> B"));
+    assert!(!markdown.contains("-->|"));
 }

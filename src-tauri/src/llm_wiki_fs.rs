@@ -4,8 +4,11 @@ use std::path::Path;
 
 use crate::llm_wiki_models::{
     InitializeLlmWikiResult, LlmWikiCache, LlmWikiKnowledgeConfig, LlmWikiWorkspaceStatus,
+    RawScanFile,
 };
 use crate::models::WorkspaceError;
+use crate::path_guard::is_allowed_markdown_file;
+use sha2::{Digest, Sha256};
 
 const REQUIRED_DIRS: &[&str] = &["raw", "wiki"];
 
@@ -149,6 +152,104 @@ pub fn initialize_llm_wiki_workspace(
     })
 }
 
+pub fn read_knowledge_config(
+    root: impl AsRef<Path>,
+) -> Result<LlmWikiKnowledgeConfig, WorkspaceError> {
+    let path = root.as_ref().join(".llm-wiki/config.json");
+    let contents = match fs::read_to_string(&path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(LlmWikiKnowledgeConfig {
+                paused: false,
+                skip_paths: Vec::new(),
+            });
+        }
+        Err(error) => {
+            return Err(WorkspaceError::from_io(
+                "read_failed",
+                "failed to read llm wiki config",
+                &error,
+            ));
+        }
+    };
+
+    serde_json::from_str(&contents).map_err(|error| {
+        WorkspaceError::new(
+            "config_parse_failed",
+            format!("failed to parse llm wiki config: {error}"),
+        )
+    })
+}
+
+pub fn scan_raw_files(
+    root: impl AsRef<Path>,
+    config: &LlmWikiKnowledgeConfig,
+) -> Result<Vec<RawScanFile>, WorkspaceError> {
+    let root = root.as_ref();
+    ensure_directory(root)?;
+
+    let raw_dir = root.join("raw");
+    let mut files = Vec::new();
+    if !path_has_entry(&raw_dir)? {
+        return Ok(files);
+    }
+
+    scan_raw_dir(root, &raw_dir, config, &mut files)?;
+    files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+    Ok(files)
+}
+
+pub fn update_progress_markdown(
+    root: impl AsRef<Path>,
+    status: &str,
+    pending: &[String],
+    completed: &[String],
+    failed: &[(String, String)],
+    skipped: &[String],
+) -> Result<(), WorkspaceError> {
+    let mut markdown = String::from("# LLM Wiki Progress\n\n");
+    markdown.push_str("## Status\n\n");
+    markdown.push_str(status);
+    markdown.push_str("\n\n");
+    append_path_section(&mut markdown, "Pending", pending);
+    append_path_section(&mut markdown, "Processing", &[]);
+    append_path_section(&mut markdown, "Completed", completed);
+    append_failed_section(&mut markdown, failed);
+    append_path_section(&mut markdown, "Skipped", skipped);
+
+    fs::write(root.as_ref().join("llm-wiki-progress.md"), markdown).map_err(|error| {
+        WorkspaceError::from_io(
+            "write_failed",
+            "failed to write llm wiki progress markdown",
+            &error,
+        )
+    })
+}
+
+pub fn build_knowledge_graph_markdown(root: impl AsRef<Path>) -> Result<String, WorkspaceError> {
+    let root = root.as_ref();
+    ensure_directory(root)?;
+
+    let wiki_dir = root.join("wiki");
+    let mut edges = Vec::new();
+    if path_has_entry(&wiki_dir)? {
+        scan_wiki_graph_dir(root, &wiki_dir, &mut edges)?;
+    }
+    edges.sort();
+    edges.dedup();
+
+    let mut markdown = String::from("# Knowledge Graph\n\n```mermaid\ngraph TD\n");
+    for (source, target) in edges {
+        markdown.push_str("  ");
+        markdown.push_str(&source);
+        markdown.push_str(" --> ");
+        markdown.push_str(&target);
+        markdown.push('\n');
+    }
+    markdown.push_str("```\n");
+    Ok(markdown)
+}
+
 fn ensure_directory(path: &Path) -> Result<(), WorkspaceError> {
     let metadata = fs::metadata(path).map_err(|error| {
         let code = if error.kind() == std::io::ErrorKind::NotFound {
@@ -169,6 +270,213 @@ fn ensure_directory(path: &Path) -> Result<(), WorkspaceError> {
     }
 
     Ok(())
+}
+
+fn scan_raw_dir(
+    root: &Path,
+    dir: &Path,
+    config: &LlmWikiKnowledgeConfig,
+    files: &mut Vec<RawScanFile>,
+) -> Result<(), WorkspaceError> {
+    for entry in fs::read_dir(dir).map_err(|error| {
+        WorkspaceError::from_io(
+            "scan_failed",
+            "failed to scan llm wiki raw directory",
+            &error,
+        )
+    })? {
+        let entry = entry.map_err(|error| {
+            WorkspaceError::from_io("scan_failed", "failed to read llm wiki raw entry", &error)
+        })?;
+        let path = entry.path();
+        let relative_path = relative_path(root, &path)?;
+        if should_skip_path(&relative_path, &config.skip_paths) {
+            continue;
+        }
+
+        let metadata = fs::symlink_metadata(&path).map_err(|error| {
+            WorkspaceError::from_io("path_failed", "failed to inspect llm wiki raw path", &error)
+        })?;
+        let file_type = metadata.file_type();
+        if file_type.is_symlink() {
+            continue;
+        }
+        if file_type.is_dir() {
+            scan_raw_dir(root, &path, config, files)?;
+        } else if file_type.is_file() && is_allowed_markdown_file(&path) {
+            let contents = fs::read(&path).map_err(|error| {
+                WorkspaceError::from_io("read_failed", "failed to read llm wiki raw file", &error)
+            })?;
+            files.push(RawScanFile {
+                hash: raw_file_hash(&relative_path, &contents),
+                absolute_path: path.to_string_lossy().into_owned(),
+                relative_path,
+            });
+        }
+    }
+
+    Ok(())
+}
+
+fn scan_wiki_graph_dir(
+    root: &Path,
+    dir: &Path,
+    edges: &mut Vec<(String, String)>,
+) -> Result<(), WorkspaceError> {
+    for entry in fs::read_dir(dir).map_err(|error| {
+        WorkspaceError::from_io(
+            "scan_failed",
+            "failed to scan llm wiki graph directory",
+            &error,
+        )
+    })? {
+        let entry = entry.map_err(|error| {
+            WorkspaceError::from_io("scan_failed", "failed to read llm wiki graph entry", &error)
+        })?;
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path).map_err(|error| {
+            WorkspaceError::from_io(
+                "path_failed",
+                "failed to inspect llm wiki graph path",
+                &error,
+            )
+        })?;
+        let file_type = metadata.file_type();
+        if file_type.is_symlink() {
+            continue;
+        }
+        if file_type.is_dir() {
+            scan_wiki_graph_dir(root, &path, edges)?;
+        } else if file_type.is_file() && is_allowed_markdown_file(&path) {
+            let source = graph_node_name(root, &path)?;
+            let contents = fs::read_to_string(&path).map_err(|error| {
+                WorkspaceError::from_io("read_failed", "failed to read llm wiki graph file", &error)
+            })?;
+            for target in extract_wikilinks(&contents) {
+                if target != source {
+                    edges.push((source.clone(), target));
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn should_skip_path(relative_path: &str, skip_paths: &[String]) -> bool {
+    skip_paths
+        .iter()
+        .map(|path| normalize_relative_path(path))
+        .any(|skip_path| {
+            relative_path == skip_path || relative_path.starts_with(&format!("{skip_path}/"))
+        })
+}
+
+fn normalize_relative_path(path: &str) -> String {
+    path.trim().trim_matches('/').replace('\\', "/")
+}
+
+fn relative_path(root: &Path, path: &Path) -> Result<String, WorkspaceError> {
+    path.strip_prefix(root)
+        .map(|path| path.to_string_lossy().replace('\\', "/"))
+        .map_err(|_| WorkspaceError::new("outside_workspace", "path is outside llm wiki root"))
+}
+
+fn raw_file_hash(relative_path: &str, contents: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(relative_path.as_bytes());
+    hasher.update([0]);
+    hasher.update(contents);
+    format!("sha256:{:x}", hasher.finalize())
+}
+
+fn append_path_section(markdown: &mut String, title: &str, paths: &[String]) {
+    markdown.push_str("## ");
+    markdown.push_str(title);
+    markdown.push_str("\n\n");
+    if paths.is_empty() {
+        markdown.push_str("- None\n\n");
+        return;
+    }
+    for path in paths {
+        markdown.push_str("- ");
+        markdown.push_str(path);
+        markdown.push('\n');
+    }
+    markdown.push('\n');
+}
+
+fn append_failed_section(markdown: &mut String, failed: &[(String, String)]) {
+    markdown.push_str("## Failed\n\n");
+    if failed.is_empty() {
+        markdown.push_str("- None\n\n");
+        return;
+    }
+    for (path, reason) in failed {
+        markdown.push_str("- ");
+        markdown.push_str(path);
+        markdown.push_str(": ");
+        markdown.push_str(reason);
+        markdown.push('\n');
+    }
+    markdown.push('\n');
+}
+
+fn graph_node_name(root: &Path, path: &Path) -> Result<String, WorkspaceError> {
+    let relative = path.strip_prefix(root.join("wiki")).map_err(|_| {
+        WorkspaceError::new("outside_workspace", "wiki path is outside llm wiki root")
+    })?;
+    let without_extension = relative.with_extension("");
+    Ok(without_extension
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default()
+        .to_string())
+}
+
+fn extract_wikilinks(contents: &str) -> Vec<String> {
+    let mut links = Vec::new();
+    let mut rest = contents;
+    while let Some(start) = rest.find("[[") {
+        rest = &rest[start + 2..];
+        let Some(end) = rest.find("]]") else {
+            break;
+        };
+        let raw_target = &rest[..end];
+        let target = raw_target
+            .split('|')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .trim_start_matches('#')
+            .split('#')
+            .next()
+            .unwrap_or("")
+            .trim();
+        let target = target
+            .rsplit('/')
+            .next()
+            .unwrap_or(target)
+            .trim_end_matches(".markdown")
+            .trim_end_matches(".md");
+        if !target.is_empty() {
+            links.push(target.to_string());
+        }
+        rest = &rest[end + 2..];
+    }
+    links
+}
+
+fn path_has_entry(path: &Path) -> Result<bool, WorkspaceError> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(WorkspaceError::from_io(
+            "path_failed",
+            "failed to inspect llm wiki path",
+            &error,
+        )),
+    }
 }
 
 fn create_dir_if_missing(
