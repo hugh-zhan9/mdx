@@ -116,8 +116,8 @@ pub fn default_llm_config_path() -> Result<PathBuf, WorkspaceError> {
 }
 
 fn ensure_config_parent_dir(path: &Path) -> Result<(), WorkspaceError> {
-    ensure_no_existing_symlink_ancestor(path)?;
-    match existing_path_kind(path)? {
+    ensure_no_existing_symlink_ancestor(path, PathOperation::Save)?;
+    match existing_path_kind(path, PathOperation::Save)? {
         ExistingPathKind::Directory => restrict_config_dir(path),
         ExistingPathKind::Missing => {
             fs::create_dir_all(path).map_err(|error| {
@@ -127,7 +127,7 @@ fn ensure_config_parent_dir(path: &Path) -> Result<(), WorkspaceError> {
                     &error,
                 )
             })?;
-            match existing_path_kind(path)? {
+            match existing_path_kind(path, PathOperation::Save)? {
                 ExistingPathKind::Directory => restrict_config_dir(path),
                 ExistingPathKind::Missing => Err(WorkspaceError::new(
                     "llm_config_save_failed",
@@ -145,8 +145,8 @@ fn ensure_config_parent_dir(path: &Path) -> Result<(), WorkspaceError> {
 }
 
 fn ensure_config_load_target(path: &Path) -> Result<(), WorkspaceError> {
-    ensure_no_existing_symlink_ancestor(path)?;
-    match existing_path_kind(path)? {
+    ensure_no_existing_symlink_ancestor(path, PathOperation::Load)?;
+    match existing_path_kind(path, PathOperation::Load)? {
         ExistingPathKind::File => Ok(()),
         ExistingPathKind::Missing => Err(WorkspaceError::from_io(
             "llm_config_load_failed",
@@ -160,7 +160,7 @@ fn ensure_config_load_target(path: &Path) -> Result<(), WorkspaceError> {
 }
 
 fn ensure_config_file_target(path: &Path) -> Result<(), WorkspaceError> {
-    match existing_path_kind(path)? {
+    match existing_path_kind(path, PathOperation::Save)? {
         ExistingPathKind::Missing | ExistingPathKind::File => Ok(()),
         ExistingPathKind::Directory | ExistingPathKind::Symlink | ExistingPathKind::Other => {
             Err(path_type_conflict("file", "not a file"))
@@ -168,12 +168,15 @@ fn ensure_config_file_target(path: &Path) -> Result<(), WorkspaceError> {
     }
 }
 
-fn ensure_no_existing_symlink_ancestor(path: &Path) -> Result<(), WorkspaceError> {
+fn ensure_no_existing_symlink_ancestor(
+    path: &Path,
+    operation: PathOperation,
+) -> Result<(), WorkspaceError> {
     for ancestor in path.ancestors().skip(1) {
         if ancestor.as_os_str().is_empty() {
             continue;
         }
-        match existing_path_kind(ancestor)? {
+        match existing_path_kind(ancestor, operation)? {
             ExistingPathKind::Missing => {}
             ExistingPathKind::Directory => {}
             ExistingPathKind::File | ExistingPathKind::Symlink | ExistingPathKind::Other => {
@@ -186,7 +189,10 @@ fn ensure_no_existing_symlink_ancestor(path: &Path) -> Result<(), WorkspaceError
 
 #[cfg(windows)]
 fn replace_config_file(temp_path: &Path, path: &Path) -> Result<(), WorkspaceError> {
-    if matches!(existing_path_kind(path)?, ExistingPathKind::File) {
+    if matches!(
+        existing_path_kind(path, PathOperation::Save)?,
+        ExistingPathKind::File
+    ) {
         fs::remove_file(path).map_err(|error| {
             let _ = fs::remove_file(temp_path);
             WorkspaceError::from_io(
@@ -294,7 +300,16 @@ enum ExistingPathKind {
     Other,
 }
 
-fn existing_path_kind(path: &Path) -> Result<ExistingPathKind, WorkspaceError> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PathOperation {
+    Load,
+    Save,
+}
+
+fn existing_path_kind(
+    path: &Path,
+    operation: PathOperation,
+) -> Result<ExistingPathKind, WorkspaceError> {
     let metadata = match fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
@@ -302,8 +317,8 @@ fn existing_path_kind(path: &Path) -> Result<ExistingPathKind, WorkspaceError> {
         }
         Err(error) => {
             return Err(WorkspaceError::from_io(
-                "llm_config_save_failed",
-                "failed to inspect llm config path",
+                operation.inspect_error_code(),
+                operation.inspect_error_message(),
                 &error,
             ));
         }
@@ -318,6 +333,22 @@ fn existing_path_kind(path: &Path) -> Result<ExistingPathKind, WorkspaceError> {
         Ok(ExistingPathKind::File)
     } else {
         Ok(ExistingPathKind::Other)
+    }
+}
+
+impl PathOperation {
+    fn inspect_error_code(self) -> &'static str {
+        match self {
+            Self::Load => "llm_config_load_failed",
+            Self::Save => "llm_config_save_failed",
+        }
+    }
+
+    fn inspect_error_message(self) -> &'static str {
+        match self {
+            Self::Load => "failed to inspect llm config before load",
+            Self::Save => "failed to inspect llm config before save",
+        }
     }
 }
 

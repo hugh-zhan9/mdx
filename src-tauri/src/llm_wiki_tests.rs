@@ -110,6 +110,22 @@ fn llm_config_load_rejects_symlinked_config_file() {
 
 #[cfg(unix)]
 #[test]
+fn llm_config_load_metadata_error_uses_load_error_code() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempdir().unwrap();
+    let locked_dir = dir.path().canonicalize().unwrap().join("locked");
+    std::fs::create_dir(&locked_dir).unwrap();
+    std::fs::set_permissions(&locked_dir, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+    let error = load_llm_config_from_path(locked_dir.join("llm-config.json")).unwrap_err();
+
+    std::fs::set_permissions(&locked_dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert_eq!(error.error_code(), "llm_config_load_failed");
+}
+
+#[cfg(unix)]
+#[test]
 fn llm_config_save_restricts_secret_file_permissions() {
     use std::os::unix::fs::PermissionsExt;
 
