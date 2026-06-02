@@ -933,6 +933,16 @@ fn ingest_parse_file_blocks_rejects_duplicate_output_paths() {
 }
 
 #[test]
+fn ingest_parse_file_blocks_rejects_case_variant_duplicate_output_paths() {
+    let error = parse_file_blocks(
+        "---FILE: wiki/sources/A.md---\n# A\n---END FILE---\n---FILE: wiki/sources/a.md---\n# Again\n---END FILE---",
+    )
+    .unwrap_err();
+
+    assert_eq!(error.error_code(), "duplicate_llm_wiki_output_path");
+}
+
+#[test]
 fn ingest_parse_file_blocks_preserves_end_marker_text_inside_content() {
     let blocks = parse_file_blocks(
         "---FILE: wiki/sources/a.md---\n# A\n\n```text\n---END FILE---\n```\n---END FILE---",
@@ -1032,6 +1042,42 @@ fn ingest_write_outputs_rejects_duplicate_output_paths_without_partial_write() {
 
     assert_eq!(error.error_code(), "duplicate_llm_wiki_output_path");
     assert!(!root.path().join("wiki/sources/a.md").exists());
+}
+
+#[test]
+fn ingest_write_outputs_rejects_case_variant_duplicate_paths_without_partial_write_or_cache_update()
+{
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::write(root.path().join("raw/notes/a.md"), "# Raw A\n").unwrap();
+    let initial_cache = std::fs::read_to_string(root.path().join(".llm-wiki/cache.json")).unwrap();
+    let blocks = vec![
+        LlmWikiFileBlock {
+            path: "wiki/sources/A.md".to_string(),
+            content: "# A\n".to_string(),
+        },
+        LlmWikiFileBlock {
+            path: "wiki/sources/a.md".to_string(),
+            content: "# Again\n".to_string(),
+        },
+    ];
+
+    let error = write_ingest_outputs(
+        root.path(),
+        "raw/notes/a.md",
+        "sha256:test",
+        "test-model",
+        &blocks,
+    )
+    .unwrap_err();
+
+    assert_eq!(error.error_code(), "duplicate_llm_wiki_output_path");
+    assert!(!root.path().join("wiki/sources/A.md").exists());
+    assert!(!root.path().join("wiki/sources/a.md").exists());
+    assert_eq!(
+        std::fs::read_to_string(root.path().join(".llm-wiki/cache.json")).unwrap(),
+        initial_cache
+    );
 }
 
 #[test]

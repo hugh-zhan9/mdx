@@ -48,7 +48,7 @@ pub fn parse_file_blocks(output: &str) -> Result<Vec<LlmWikiFileBlock>, Workspac
             if !is_safe_llm_wiki_output_path(&path) {
                 return Err(invalid_output_path(&path));
             }
-            if !seen_paths.insert(path.clone()) {
+            if !seen_paths.insert(output_path_uniqueness_key(&path)) {
                 return Err(duplicate_output_path(&path));
             }
             current_block = Some(OpenFileBlock {
@@ -76,7 +76,7 @@ pub fn parse_file_blocks(output: &str) -> Result<Vec<LlmWikiFileBlock>, Workspac
                 if !is_safe_llm_wiki_output_path(&path) {
                     return Err(invalid_output_path(&path));
                 }
-                if !seen_paths.insert(path.clone()) {
+                if !seen_paths.insert(output_path_uniqueness_key(&path)) {
                     return Err(duplicate_output_path(&path));
                 }
                 return Err(WorkspaceError::new(
@@ -161,7 +161,7 @@ pub fn write_ingest_outputs(
         if !is_safe_llm_wiki_output_path(&block.path) {
             return Err(invalid_output_path(&block.path));
         }
-        if !seen_paths.insert(block.path.clone()) {
+        if !seen_paths.insert(output_path_uniqueness_key(&block.path)) {
             return Err(duplicate_output_path(&block.path));
         }
     }
@@ -352,6 +352,10 @@ fn duplicate_output_path(path: &str) -> WorkspaceError {
         "duplicate_llm_wiki_output_path",
         format!("duplicate llm wiki output path: {path}"),
     )
+}
+
+fn output_path_uniqueness_key(path: &str) -> String {
+    path.to_lowercase()
 }
 
 fn invalid_raw_path() -> WorkspaceError {
