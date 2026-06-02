@@ -211,7 +211,8 @@ fn graph_markdown_handles_aliases_self_anchors_and_duplicate_basenames() {
     assert!(markdown.contains("[\"A\"]"));
     assert!(markdown.contains("[\"B\"]"));
     assert!(markdown.contains("[\"Topic\"]"));
-    assert!(markdown.contains(" --> "));
+    assert!(markdown.contains("  wiki_entities_A --> wiki_concepts_B\n"));
+    assert!(markdown.contains("  wiki_entities_A --> wiki_entities_nested_Topic\n"));
     assert!(!markdown.contains("Bee"));
     assert!(!markdown.contains("Background"));
     assert!(markdown.contains("wiki_entities_Topic"));
@@ -220,6 +221,26 @@ fn graph_markdown_handles_aliases_self_anchors_and_duplicate_basenames() {
         markdown.find("wiki_entities_Topic"),
         markdown.find("wiki_entities_nested_Topic")
     );
+}
+
+#[test]
+fn graph_markdown_does_not_resolve_ambiguous_bare_basenames() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::create_dir_all(root.path().join("wiki/entities/nested")).unwrap();
+    std::fs::write(root.path().join("wiki/entities/A.md"), "# A\n\n[[Topic]]\n").unwrap();
+    std::fs::write(root.path().join("wiki/entities/Topic.md"), "# Topic\n").unwrap();
+    std::fs::write(
+        root.path().join("wiki/entities/nested/Topic.md"),
+        "# Topic\n",
+    )
+    .unwrap();
+
+    let markdown = build_knowledge_graph_markdown(root.path()).unwrap();
+
+    assert!(markdown.contains("wiki_entities_A[\"A\"]"));
+    assert!(!markdown.contains("wiki_entities_A --> wiki_entities_Topic"));
+    assert!(!markdown.contains("wiki_entities_A --> wiki_entities_nested_Topic"));
 }
 
 #[cfg(unix)]
@@ -308,6 +329,36 @@ fn update_progress_rejects_symlinked_progress_file_without_external_write() {
         std::fs::read_to_string(outside_file).unwrap(),
         "outside-original"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn update_progress_rejects_llm_wiki_temp_dir_symlink() {
+    let root = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::remove_dir_all(root.path().join(".llm-wiki")).unwrap();
+    std::os::unix::fs::symlink(outside.path(), root.path().join(".llm-wiki")).unwrap();
+
+    let error = update_progress_markdown(root.path(), "scanning", &[], &[], &[], &[]).unwrap_err();
+
+    assert_eq!(error.error_code(), "path_type_conflict");
+    assert_eq!(std::fs::read_dir(outside.path()).unwrap().count(), 0);
+}
+
+#[cfg(unix)]
+#[test]
+fn write_graph_rejects_llm_wiki_temp_dir_symlink() {
+    let root = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::remove_dir_all(root.path().join(".llm-wiki")).unwrap();
+    std::os::unix::fs::symlink(outside.path(), root.path().join(".llm-wiki")).unwrap();
+
+    let error = write_knowledge_graph_markdown(root.path(), "# Knowledge Graph\n").unwrap_err();
+
+    assert_eq!(error.error_code(), "path_type_conflict");
+    assert_eq!(std::fs::read_dir(outside.path()).unwrap().count(), 0);
 }
 
 #[test]

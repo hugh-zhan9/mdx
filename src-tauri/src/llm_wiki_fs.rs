@@ -2,6 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Write;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::llm_wiki_models::{
     InitializeLlmWikiResult, LlmWikiCache, LlmWikiKnowledgeConfig, LlmWikiWorkspaceStatus,
@@ -33,6 +35,8 @@ const INITIAL_DIRS: &[&str] = &[
     "wiki/syntheses",
     ".llm-wiki",
 ];
+
+static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub fn detect_llm_wiki_workspace(
     root: impl AsRef<Path>,
@@ -224,12 +228,12 @@ pub fn build_knowledge_graph_markdown(root: impl AsRef<Path>) -> Result<String, 
     let wiki_dir = managed_directory(root, "wiki")?;
     let mut pages = BTreeMap::new();
     scan_wiki_graph_dir(root, &wiki_dir, &mut pages)?;
-    let index = graph_page_index(&pages);
+    let index = GraphPageIndex::new(&pages);
     let mut edges = Vec::new();
     for (source_path, page) in &pages {
         for target in &page.links {
-            if let Some(target_path) = index.get(target) {
-                if target_path != source_path {
+            if let Some(target_path) = index.resolve(source_path, target) {
+                if &target_path != source_path {
                     edges.push((source_path.clone(), target_path.clone()));
                 }
             }
@@ -327,10 +331,8 @@ fn write_managed_file(
         .ok_or_else(|| WorkspaceError::new("write_failed", "llm wiki path has no parent"))?;
     ensure_directory(parent)?;
 
-    let tmp_path = root.join(format!(
-        ".llm-wiki/.write-{}.tmp",
-        safe_temp_suffix(relative_path)
-    ));
+    let temp_dir = managed_directory(root, ".llm-wiki")?;
+    let tmp_path = temp_dir.join(unique_temp_filename(relative_path));
     {
         let mut file = fs::OpenOptions::new()
             .write(true)
@@ -489,13 +491,64 @@ struct GraphPage {
     links: Vec<String>,
 }
 
-fn graph_page_index(pages: &BTreeMap<String, GraphPage>) -> BTreeMap<String, String> {
-    let mut index = BTreeMap::new();
-    for (relative_path, page) in pages {
-        index.insert(page.display_name.clone(), relative_path.clone());
-        index.insert(graph_link_path_key(relative_path), relative_path.clone());
+struct GraphPageIndex {
+    path_keys: BTreeMap<String, String>,
+    unambiguous_names: BTreeMap<String, String>,
+}
+
+impl GraphPageIndex {
+    fn new(pages: &BTreeMap<String, GraphPage>) -> Self {
+        let mut path_keys = BTreeMap::new();
+        let mut name_counts = BTreeMap::<String, usize>::new();
+        let mut name_targets = BTreeMap::new();
+
+        for (relative_path, page) in pages {
+            path_keys.insert(graph_link_path_key(relative_path), relative_path.clone());
+            *name_counts.entry(page.display_name.clone()).or_default() += 1;
+            name_targets.insert(page.display_name.clone(), relative_path.clone());
+        }
+
+        let unambiguous_names = name_targets
+            .into_iter()
+            .filter(|(name, _)| name_counts.get(name) == Some(&1))
+            .collect();
+
+        Self {
+            path_keys,
+            unambiguous_names,
+        }
     }
-    index
+
+    fn resolve(&self, source_path: &str, target: &str) -> Option<String> {
+        let target = normalize_graph_link_target(target);
+        if target.is_empty() {
+            return None;
+        }
+
+        if target.contains('/') {
+            if let Some(relative_target) = self.resolve_source_relative(source_path, &target) {
+                return Some(relative_target);
+            }
+            return self.path_keys.get(&target).cloned();
+        }
+
+        self.unambiguous_names.get(&target).cloned()
+    }
+
+    fn resolve_source_relative(&self, source_path: &str, target: &str) -> Option<String> {
+        let source_key = graph_link_path_key(source_path);
+        let source_dir = source_key
+            .rsplit_once('/')
+            .map(|(dir, _)| dir)
+            .unwrap_or("");
+        let candidate = if source_dir.is_empty() {
+            target.to_string()
+        } else {
+            format!("{source_dir}/{target}")
+        };
+
+        self.path_keys.get(&candidate).cloned()
+    }
 }
 
 fn append_path_section(markdown: &mut String, title: &str, paths: &[String]) {
@@ -538,8 +591,8 @@ fn graph_display_name(path: &Path) -> String {
 }
 
 fn graph_node_id(relative_path: &str) -> String {
-    let without_extension = trim_markdown_extension(relative_path);
-    let mut id = String::from("wiki");
+    let without_extension = graph_link_path_key(relative_path);
+    let mut id = String::from("wiki_");
     for character in without_extension.chars() {
         if character.is_ascii_alphanumeric() {
             id.push(character);
@@ -559,6 +612,10 @@ fn graph_link_path_key(relative_path: &str) -> String {
         .to_string()
 }
 
+fn normalize_graph_link_target(target: &str) -> String {
+    trim_markdown_extension(target.trim().trim_start_matches("wiki/")).to_string()
+}
+
 fn trim_markdown_extension(path: &str) -> &str {
     path.strip_suffix(".markdown")
         .or_else(|| path.strip_suffix(".md"))
@@ -567,6 +624,19 @@ fn trim_markdown_extension(path: &str) -> &str {
 
 fn escape_mermaid_label(label: &str) -> String {
     label.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+fn unique_temp_filename(relative_path: &str) -> String {
+    let pid = std::process::id();
+    let counter = TEMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    format!(
+        ".write-{pid}-{counter}-{nanos}-{}.tmp",
+        safe_temp_suffix(relative_path)
+    )
 }
 
 fn safe_temp_suffix(relative_path: &str) -> String {
