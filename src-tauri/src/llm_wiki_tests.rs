@@ -18,6 +18,7 @@ use crate::llm_wiki_llm::{
 };
 use crate::llm_wiki_models::LlmProviderConfig;
 use crate::llm_wiki_models::LlmWikiCache;
+use crate::llm_wiki_query::{mechanical_lint_report, search_wiki_pages, write_digest_page};
 
 #[test]
 fn llm_config_round_trips_outside_workspace_files() {
@@ -318,6 +319,57 @@ fn initialize_is_idempotent_and_preserves_existing_agents_file() {
     assert!(second_result
         .preserved_paths
         .contains(&".llm-wiki/cache.json".to_string()));
+}
+
+#[test]
+fn search_wiki_pages_finds_query_terms_in_generated_wiki() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    write_managed_file(
+        root.path(),
+        "wiki/entities/Rust.md",
+        "系统编程语言。\n".as_bytes(),
+    )
+    .unwrap();
+
+    let results = search_wiki_pages(root.path(), "系统编程").unwrap();
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].title, "Rust");
+    assert!(results[0].path.ends_with("wiki/entities/Rust.md"));
+    assert!(results[0].snippet.contains("系统编程语言。"));
+}
+
+#[test]
+fn write_digest_page_saves_under_syntheses_and_updates_index_and_log() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+
+    let path = write_digest_page(root.path(), "Rust", "# Rust\n").unwrap();
+
+    assert_eq!(path, "wiki/syntheses/Rust.md");
+    assert!(root.path().join("wiki/syntheses/Rust.md").is_file());
+    let index = std::fs::read_to_string(root.path().join("index.md")).unwrap();
+    let log = std::fs::read_to_string(root.path().join("log.md")).unwrap();
+    assert!(index.contains("[[Rust]]"));
+    assert!(log.contains("digest"));
+}
+
+#[test]
+fn mechanical_lint_reports_broken_wikilinks() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    write_managed_file(
+        root.path(),
+        "wiki/entities/A.md",
+        "[[Missing]]\n".as_bytes(),
+    )
+    .unwrap();
+
+    let report = mechanical_lint_report(root.path()).unwrap();
+
+    assert!(report.contains("断链"));
+    assert!(report.contains("[[Missing]]"));
 }
 
 #[test]

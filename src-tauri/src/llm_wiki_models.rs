@@ -107,3 +107,20 @@ pub struct RawScanResult {
     pub pending: Vec<String>,
     pub skipped: Vec<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiSearchResult {
+    pub path: String,
+    pub title: String,
+    pub snippet: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+pub struct LlmWikiQueryResponse {
+    pub answer: String,
+    pub references: Vec<WikiSearchResult>,
+    pub insufficient_context: bool,
+}

@@ -9,8 +9,9 @@ use crate::llm_wiki_llm::{
 };
 use crate::llm_wiki_models::{
     InitializeLlmWikiResult, LlmProviderConfig, LlmWikiWorkspaceStatus, PublicLlmProviderConfig,
-    RawScanResult,
+    RawScanResult, WikiSearchResult,
 };
+use crate::llm_wiki_query::{mechanical_lint_report, search_wiki_pages, write_digest_page};
 use crate::models::WorkspaceError;
 use crate::path_guard::canonicalize_workspace_root;
 
@@ -77,6 +78,31 @@ pub fn llm_wiki_ingest_mock_output(
     let root = canonicalize_workspace_root(root_path)?;
     let blocks = parse_file_blocks(&llm_output)?;
     write_ingest_outputs(&root, &raw_relative_path, &hash, &model, &blocks)
+}
+
+#[tauri::command]
+pub fn llm_wiki_search(
+    root_path: String,
+    query: String,
+) -> Result<Vec<WikiSearchResult>, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    search_wiki_pages(root, &query)
+}
+
+#[tauri::command]
+pub fn llm_wiki_digest_mock(
+    root_path: String,
+    title: String,
+    content: String,
+) -> Result<String, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    write_digest_page(root, &title, &content)
+}
+
+#[tauri::command]
+pub fn llm_wiki_lint(root_path: String) -> Result<String, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    mechanical_lint_report(root)
 }
 
 #[tauri::command]
