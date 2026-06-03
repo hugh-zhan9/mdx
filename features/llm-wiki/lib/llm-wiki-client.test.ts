@@ -4,6 +4,7 @@ import {
   createDigest,
   ingestRawFile,
   queryWiki,
+  rescanRaw,
   saveLlmConfig,
 } from "./llm-wiki-client";
 
@@ -53,6 +54,34 @@ describe("ingestRawFile", () => {
   });
 });
 
+describe("rescanRaw", () => {
+  it("passes excluded pending paths when continuing after failures", async () => {
+    const invoke = vi.fn(async () => ({
+      total: 2,
+      pending: ["raw/notes/b.md"],
+      completed: [],
+      skipped: [],
+    }));
+    vi.mocked(tauriCore).mockResolvedValue({
+      invoke,
+    } as unknown as Awaited<ReturnType<typeof tauriCore>>);
+
+    await expect(
+      rescanRaw("/tmp/wiki", ["raw/notes/a.md"]),
+    ).resolves.toEqual({
+      total: 2,
+      pending: ["raw/notes/b.md"],
+      completed: [],
+      skipped: [],
+    });
+
+    expect(invoke).toHaveBeenCalledWith("llm_wiki_rescan_raw", {
+      rootPath: "/tmp/wiki",
+      excludedPendingPaths: ["raw/notes/a.md"],
+    });
+  });
+});
+
 describe("createDigest", () => {
   it("invokes the real digest command with title and prompt", async () => {
     const invoke = vi.fn(async () => "wiki/syntheses/project-summary.md");
@@ -77,6 +106,7 @@ describe("saveLlmConfig", () => {
     const invoke = vi.fn(async () => ({
       baseUrl: "https://api.example.com/v1",
       model: "gpt-4.1-mini",
+      apiMode: "responses",
       hasApiKey: true,
     }));
     vi.mocked(tauriCore).mockResolvedValue({
@@ -87,12 +117,14 @@ describe("saveLlmConfig", () => {
       saveLlmConfig({
         baseUrl: "https://api.example.com/v1",
         model: "gpt-4.1-mini",
+        apiMode: "responses",
         apiKey: "",
         preserveApiKey: true,
       }),
     ).resolves.toEqual({
       baseUrl: "https://api.example.com/v1",
       model: "gpt-4.1-mini",
+      apiMode: "responses",
       hasApiKey: true,
     });
 
@@ -100,6 +132,7 @@ describe("saveLlmConfig", () => {
       config: {
         baseUrl: "https://api.example.com/v1",
         model: "gpt-4.1-mini",
+        apiMode: "responses",
         apiKey: null,
         preserveApiKey: true,
       },

@@ -10,6 +10,7 @@ import {
   updateLlmWikiConfig,
 } from "@/features/llm-wiki/lib/llm-wiki-client";
 import type { LlmWikiKnowledgeConfig } from "@/features/llm-wiki/lib/types";
+import type { LlmProviderApiMode } from "@/features/llm-wiki/lib/types";
 import { TextControlButton } from "../../../common/components/ui-controls";
 import type { AppPreferences } from "../lib/types";
 import {
@@ -78,6 +79,7 @@ function SettingsDialog({
   });
   const [baseUrl, setBaseUrl] = useState("https://api.openai.com/v1");
   const [model, setModel] = useState("gpt-4.1-mini");
+  const [apiMode, setApiMode] = useState<LlmProviderApiMode>("chat");
   const [apiKey, setApiKey] = useState("");
   const [hasExistingApiKey, setHasExistingApiKey] = useState(false);
   const [loadingConfig, setLoadingConfig] = useState(true);
@@ -108,6 +110,7 @@ function SettingsDialog({
         if (config) {
           setBaseUrl(config.baseUrl);
           setModel(config.model);
+          setApiMode(config.apiMode);
           setHasExistingApiKey(config.hasApiKey);
         }
       } catch (error) {
@@ -198,6 +201,7 @@ function SettingsDialog({
       const saved = await saveLlmConfig({
         baseUrl,
         model,
+        apiMode,
         apiKey,
         preserveApiKey: hasExistingApiKey && apiKey.trim() === "",
       });
@@ -205,6 +209,7 @@ function SettingsDialog({
       setApiKey("");
       setBaseUrl(saved.baseUrl);
       setModel(saved.model);
+      setApiMode(saved.apiMode);
       await onLlmConfigSaved?.();
       onClose();
     } catch (error) {
@@ -399,6 +404,27 @@ function SettingsDialog({
                     disabled={loadingConfig || savingSettings}
                   />
                 </label>
+                <div className="space-y-1.5 text-xs text-base-content/70">
+                  <span>API 模式</span>
+                  <div className="grid grid-cols-2 gap-1 bg-base-200 p-1">
+                    {LLM_API_MODE_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={[
+                          "h-8 text-xs",
+                          apiMode === option.value
+                            ? "bg-base-100 text-base-content shadow-sm"
+                            : "text-base-content/60 hover:text-base-content",
+                        ].join(" ")}
+                        onClick={() => setApiMode(option.value)}
+                        disabled={loadingConfig || savingSettings}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <label className="block space-y-1.5 text-xs text-base-content/70">
                   <span>API Key</span>
                   <input
@@ -460,6 +486,14 @@ const THEME_OPTIONS: Array<{ value: ThemePreference; label: string }> = [
   { value: "dark", label: "深色" },
 ];
 
+const LLM_API_MODE_OPTIONS: Array<{
+  value: LlmProviderApiMode;
+  label: string;
+}> = [
+  { value: "chat", label: "Chat" },
+  { value: "responses", label: "Responses" },
+];
+
 const DEFAULT_APP_PREFERENCES: AppPreferences = {
   fileTreeExcludeDirs: [],
 };
@@ -504,6 +538,30 @@ function formatError(error: unknown, fallback: string) {
 
   if (typeof error === "string" && error.length > 0) {
     return `${fallback} ${error}`;
+  }
+
+  if (error && typeof error === "object") {
+    if (
+      "message" in error &&
+      typeof error.message === "string" &&
+      error.message.length > 0
+    ) {
+      return `${fallback} ${error.message}`;
+    }
+
+    if (
+      "error" in error &&
+      typeof error.error === "string" &&
+      error.error.length > 0
+    ) {
+      return `${fallback} ${error.error}`;
+    }
+
+    try {
+      return `${fallback} ${JSON.stringify(error)}`;
+    } catch {
+      return `${fallback} ${String(error)}`;
+    }
   }
 
   return fallback;

@@ -110,39 +110,33 @@ fn scan_workspace_truncates_when_raw_entries_exceed_limit() {
 }
 
 #[test]
-fn read_preview_text_file_allows_txt_and_html_sources() {
+fn read_preview_text_file_allows_text_like_sources() {
     let root = tempdir().unwrap();
-    let text_path = root.path().join("notes.txt");
-    let html_path = root.path().join("page.html");
-    let htm_path = root.path().join("legacy.htm");
-    std::fs::write(&text_path, "plain notes").unwrap();
-    std::fs::write(&html_path, "<h1>Page</h1>").unwrap();
-    std::fs::write(&htm_path, "<p>Legacy</p>").unwrap();
+    let cases = [
+        ("notes.txt", "plain notes"),
+        ("page.html", "<h1>Page</h1>"),
+        ("legacy.htm", "<p>Legacy</p>"),
+        ("archive.mhtml", "MHTML"),
+        ("Main.java", "class Main {}"),
+        ("config.json", "{}"),
+        ("app.yaml", "key: value"),
+        ("schema.xsd", "<schema />"),
+        ("LICENSE", "license text"),
+    ];
 
-    assert_eq!(
-        read_preview_text_file(
-            root.path().to_string_lossy().into_owned(),
-            text_path.to_string_lossy().into_owned(),
-        )
-        .unwrap(),
-        "plain notes"
-    );
-    assert_eq!(
-        read_preview_text_file(
-            root.path().to_string_lossy().into_owned(),
-            html_path.to_string_lossy().into_owned(),
-        )
-        .unwrap(),
-        "<h1>Page</h1>"
-    );
-    assert_eq!(
-        read_preview_text_file(
-            root.path().to_string_lossy().into_owned(),
-            htm_path.to_string_lossy().into_owned(),
-        )
-        .unwrap(),
-        "<p>Legacy</p>"
-    );
+    for (name, contents) in cases {
+        let path = root.path().join(name);
+        std::fs::write(&path, contents).unwrap();
+
+        assert_eq!(
+            read_preview_text_file(
+                root.path().to_string_lossy().into_owned(),
+                path.to_string_lossy().into_owned(),
+            )
+            .unwrap(),
+            contents
+        );
+    }
 }
 
 #[test]
@@ -178,8 +172,8 @@ fn read_preview_binary_file_allows_pdf_sources() {
 #[test]
 fn read_preview_binary_file_allows_image_sources() {
     let root = tempdir().unwrap();
-    let image_path = root.path().join("cover.png");
-    std::fs::write(&image_path, [137, 80, 78, 71]).unwrap();
+    let image_path = root.path().join("cover.jfif");
+    std::fs::write(&image_path, [255, 216, 255, 224]).unwrap();
 
     let bytes = read_preview_binary_file(
         root.path().to_string_lossy().into_owned(),
@@ -187,7 +181,22 @@ fn read_preview_binary_file_allows_image_sources() {
     )
     .unwrap();
 
-    assert_eq!(bytes, vec![137, 80, 78, 71]);
+    assert_eq!(bytes, vec![255, 216, 255, 224]);
+}
+
+#[test]
+fn read_preview_binary_file_allows_awebp_sources() {
+    let root = tempdir().unwrap();
+    let image_path = root.path().join("animated.awebp");
+    std::fs::write(&image_path, b"RIFF").unwrap();
+
+    let bytes = read_preview_binary_file(
+        root.path().to_string_lossy().into_owned(),
+        image_path.to_string_lossy().into_owned(),
+    )
+    .unwrap();
+
+    assert_eq!(bytes, b"RIFF");
 }
 
 #[test]

@@ -25,6 +25,7 @@ interface EditorStageProps {
   dispatch: (action: WorkspaceAction) => void;
   editorViewportRef?: RefObject<HTMLDivElement | null>;
   pendingCliCommand: PendingCliEditorCommand | null;
+  onOpenWikilink?: (target: string, sourcePath: string) => void;
   onCreateMarkdownFile?: () => Promise<void> | void;
   onInitialMarkdownLoadSettled?: () => void;
   onPendingCliCommandHandled: (commandId: string) => void;
@@ -40,6 +41,7 @@ export function EditorStage({
   dispatch,
   editorViewportRef,
   pendingCliCommand,
+  onOpenWikilink,
   onCreateMarkdownFile,
   onInitialMarkdownLoadSettled,
   onPendingCliCommandHandled,
@@ -187,6 +189,7 @@ export function EditorStage({
             editorViewportRef={editorViewportRef}
             pendingCliCommand={pendingCliCommand}
             onPendingCliCommandHandled={onPendingCliCommandHandled}
+            onOpenWikilink={onOpenWikilink}
             onSelectionChange={onSelectionChange}
           />
         )}
@@ -359,9 +362,13 @@ function getTabKind(path: string) {
 }
 
 function imageMimeType(path: string) {
-  const normalized = path.toLowerCase();
+    const normalized = path.toLowerCase();
 
-  if (normalized.endsWith(".jpg") || normalized.endsWith(".jpeg")) {
+  if (
+    normalized.endsWith(".jpg") ||
+    normalized.endsWith(".jpeg") ||
+    normalized.endsWith(".jfif")
+  ) {
     return "image/jpeg";
   }
 
@@ -373,8 +380,28 @@ function imageMimeType(path: string) {
     return "image/webp";
   }
 
+  if (normalized.endsWith(".awebp")) {
+    return "image/webp";
+  }
+
   if (normalized.endsWith(".svg")) {
     return "image/svg+xml";
+  }
+
+  if (normalized.endsWith(".bmp")) {
+    return "image/bmp";
+  }
+
+  if (normalized.endsWith(".avif")) {
+    return "image/avif";
+  }
+
+  if (normalized.endsWith(".heic")) {
+    return "image/heic";
+  }
+
+  if (normalized.endsWith(".tif") || normalized.endsWith(".tiff")) {
+    return "image/tiff";
   }
 
   return "image/png";

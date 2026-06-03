@@ -1,5 +1,8 @@
+use std::error::Error as StdError;
 use std::fs;
 use std::io;
+use std::io::BufRead;
+use std::io::BufReader;
 use std::io::Read;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -16,6 +19,7 @@ use crate::models::WorkspaceError;
 
 const LLM_RESPONSE_BODY_LIMIT_BYTES: usize = 2 * 1024 * 1024;
 const LLM_ERROR_BODY_PREVIEW_LIMIT_BYTES: usize = 16 * 1024;
+const LLM_REQUEST_TIMEOUT_SECS: u64 = 600;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -124,23 +128,119 @@ pub fn build_openai_chat_request(model: &str, messages: Vec<LlmChatMessage>) -> 
     })
 }
 
+#[allow(dead_code)]
+pub fn build_openai_chat_stream_request(
+    model: &str,
+    messages: Vec<LlmChatMessage>,
+) -> serde_json::Value {
+    json!({
+        "model": model,
+        "messages": messages,
+        "temperature": 0.2,
+        "stream": true,
+    })
+}
+
+#[allow(dead_code)]
+pub fn build_openai_responses_request(
+    model: &str,
+    messages: Vec<LlmChatMessage>,
+) -> serde_json::Value {
+    json!({
+        "model": model,
+        "input": messages,
+        "temperature": 0.2,
+    })
+}
+
 pub fn call_chat_completion(
     config: &LlmProviderConfig,
     messages: Vec<LlmChatMessage>,
 ) -> Result<String, WorkspaceError> {
+    let api_mode = LlmApiMode::from_config(&config.api_mode)?;
+    let client = build_llm_http_client()?;
+
+    match api_mode {
+        LlmApiMode::Chat => call_chat_completion_streaming_with_fallback(&client, config, messages),
+        LlmApiMode::Responses => call_non_streaming_completion(&client, config, api_mode, messages),
+    }
+}
+
+fn call_non_streaming_completion(
+    client: &reqwest::blocking::Client,
+    config: &LlmProviderConfig,
+    api_mode: LlmApiMode,
+    messages: Vec<LlmChatMessage>,
+) -> Result<String, WorkspaceError> {
+    let url = api_mode.url(&config.base_url)?;
+    let body = api_mode.build_request(&config.model, messages);
+    let response = send_llm_request(client, config, url, &body, api_mode.label())?;
+    let response = ensure_successful_llm_response(response, api_mode.label())?;
+    let bytes =
+        read_limited_response_body(response, LLM_RESPONSE_BODY_LIMIT_BYTES, "llm response")?;
+    api_mode.extract_content(&bytes)
+}
+
+fn call_chat_completion_streaming_with_fallback(
+    client: &reqwest::blocking::Client,
+    config: &LlmProviderConfig,
+    messages: Vec<LlmChatMessage>,
+) -> Result<String, WorkspaceError> {
     let url = chat_completions_url(&config.base_url)?;
-    let body = build_openai_chat_request(&config.model, messages);
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(60))
+    let body = build_openai_chat_stream_request(&config.model, messages.clone());
+    let stream_result = send_llm_request(client, config, url, &body, "chat completion stream")
+        .and_then(|response| ensure_successful_llm_response(response, "chat completion stream"));
+
+    match stream_result {
+        Ok(response) => match read_chat_completion_stream(response) {
+            Ok(content) => Ok(content),
+            Err(error) if !error.received_content => {
+                call_non_streaming_after_stream_failure(client, config, messages, error.error)
+            }
+            Err(error) => Err(error.error),
+        },
+        Err(error) => call_non_streaming_after_stream_failure(client, config, messages, error),
+    }
+}
+
+fn call_non_streaming_after_stream_failure(
+    client: &reqwest::blocking::Client,
+    config: &LlmProviderConfig,
+    messages: Vec<LlmChatMessage>,
+    stream_error: WorkspaceError,
+) -> Result<String, WorkspaceError> {
+    match call_non_streaming_completion(client, config, LlmApiMode::Chat, messages) {
+        Ok(content) => Ok(content),
+        Err(fallback_error) => Err(WorkspaceError::new(
+            "llm_failed",
+            format!(
+                "{}; non-stream fallback failed: {}",
+                stream_error, fallback_error
+            ),
+        )),
+    }
+}
+
+fn build_llm_http_client() -> Result<reqwest::blocking::Client, WorkspaceError> {
+    reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(LLM_REQUEST_TIMEOUT_SECS))
         .build()
         .map_err(|error| {
             WorkspaceError::new(
                 "llm_failed",
                 format!("failed to create llm http client: {error}"),
             )
-        })?;
+        })
+}
 
-    let mut request = client.post(url).json(&body);
+fn send_llm_request(
+    client: &reqwest::blocking::Client,
+    config: &LlmProviderConfig,
+    url: String,
+    body: &serde_json::Value,
+    label: &str,
+) -> Result<reqwest::blocking::Response, WorkspaceError> {
+    let mut request = client.post(url).json(body);
     if let Some(api_key) = config
         .api_key
         .as_deref()
@@ -150,51 +250,41 @@ pub fn call_chat_completion(
         request = request.bearer_auth(api_key);
     }
 
-    let response = request.send().map_err(|error| {
+    request.send().map_err(|error| {
         WorkspaceError::new(
             "llm_failed",
-            format!("llm chat completion request failed: {error}"),
+            format!(
+                "llm {label} request failed after up to {}s: {}",
+                LLM_REQUEST_TIMEOUT_SECS,
+                format_http_error(&error)
+            ),
         )
-    })?;
+    })
+}
+
+fn ensure_successful_llm_response(
+    response: reqwest::blocking::Response,
+    label: &str,
+) -> Result<reqwest::blocking::Response, WorkspaceError> {
     let status = response.status();
 
-    if !status.is_success() {
-        let bytes = read_limited_response_body(
-            response,
-            LLM_ERROR_BODY_PREVIEW_LIMIT_BYTES,
-            "llm error response",
-        )?;
-        let message = parse_openai_error_message(&bytes)
-            .unwrap_or_else(|| String::from_utf8_lossy(&bytes).trim().to_string());
-        let message = if message.is_empty() {
-            format!("llm chat completion returned status {status}")
-        } else {
-            format!("llm chat completion returned status {status}: {message}")
-        };
-        return Err(WorkspaceError::new("llm_failed", message));
+    if status.is_success() {
+        return Ok(response);
     }
 
-    let bytes =
-        read_limited_response_body(response, LLM_RESPONSE_BODY_LIMIT_BYTES, "llm response")?;
-    let response: OpenAiChatCompletionResponse =
-        serde_json::from_slice(&bytes).map_err(|error| {
-            WorkspaceError::new(
-                "llm_failed",
-                format!("failed to parse llm chat completion response: {error}"),
-            )
-        })?;
-    response
-        .choices
-        .into_iter()
-        .next()
-        .and_then(|choice| choice.message.content)
-        .filter(|content| !content.trim().is_empty())
-        .ok_or_else(|| {
-            WorkspaceError::new(
-                "llm_failed",
-                "llm chat completion response did not include message content",
-            )
-        })
+    let bytes = read_limited_response_body(
+        response,
+        LLM_ERROR_BODY_PREVIEW_LIMIT_BYTES,
+        "llm error response",
+    )?;
+    let message = parse_openai_error_message(&bytes)
+        .unwrap_or_else(|| String::from_utf8_lossy(&bytes).trim().to_string());
+    let message = if message.is_empty() {
+        format!("llm {label} returned status {status}")
+    } else {
+        format!("llm {label} returned status {status}: {message}")
+    };
+    Err(WorkspaceError::new("llm_failed", message))
 }
 
 pub fn default_llm_config_path() -> Result<PathBuf, WorkspaceError> {
@@ -441,6 +531,17 @@ fn chat_completions_url(base_url: &str) -> Result<String, WorkspaceError> {
     ))
 }
 
+fn responses_url(base_url: &str) -> Result<String, WorkspaceError> {
+    let base_url = base_url.trim();
+    if base_url.is_empty() {
+        return Err(WorkspaceError::new(
+            "llm_failed",
+            "llm base url must not be empty",
+        ));
+    }
+    Ok(format!("{}/responses", base_url.trim_end_matches('/')))
+}
+
 fn parse_openai_error_message(bytes: &[u8]) -> Option<String> {
     let value: serde_json::Value = serde_json::from_slice(bytes).ok()?;
     value
@@ -450,6 +551,206 @@ fn parse_openai_error_message(bytes: &[u8]) -> Option<String> {
         .map(str::trim)
         .filter(|message| !message.is_empty())
         .map(str::to_string)
+}
+
+#[allow(dead_code)]
+pub fn extract_chat_completion_content(bytes: &[u8]) -> Result<String, WorkspaceError> {
+    let response: OpenAiChatCompletionResponse = serde_json::from_slice(bytes).map_err(|_| {
+        llm_response_parse_error("chat completion", bytes)
+            .expect_err("parse error helper always returns an error")
+    })?;
+    response
+        .choices
+        .into_iter()
+        .next()
+        .and_then(|choice| choice.message.content)
+        .filter(|content| !content.trim().is_empty())
+        .ok_or_else(|| {
+            WorkspaceError::new(
+                "llm_failed",
+                "llm chat completion response did not include message content",
+            )
+        })
+}
+
+#[allow(dead_code)]
+pub fn extract_chat_completion_stream_content(bytes: &[u8]) -> Result<String, WorkspaceError> {
+    read_chat_completion_stream(io::Cursor::new(bytes)).map_err(|error| error.error)
+}
+
+fn read_chat_completion_stream(reader: impl Read) -> Result<String, ChatStreamReadError> {
+    let mut lines = BufReader::new(reader).lines();
+    let mut content = String::new();
+    let mut preview = Vec::new();
+    let mut saw_terminal = false;
+    let mut saw_data = false;
+
+    while let Some(line) = lines.next() {
+        let line = line.map_err(|error| {
+            ChatStreamReadError::new(
+                format!("failed to read llm chat completion stream: {error}"),
+                &preview,
+                !content.is_empty(),
+            )
+        })?;
+        let trimmed = line.trim_end_matches('\r');
+        if trimmed.is_empty() || trimmed.starts_with(':') {
+            continue;
+        }
+        let Some(data) = trimmed.strip_prefix("data:") else {
+            continue;
+        };
+        let data = data.trim_start();
+        saw_data = true;
+        append_preview_bytes(&mut preview, data.as_bytes());
+        append_preview_bytes(&mut preview, b"\n");
+
+        if data.trim() == "[DONE]" {
+            saw_terminal = true;
+            break;
+        }
+
+        if let Some(message) = parse_openai_error_message(data.as_bytes()) {
+            return Err(ChatStreamReadError::new(
+                format!("llm chat completion stream returned error: {message}"),
+                &preview,
+                !content.is_empty(),
+            ));
+        }
+
+        let event: OpenAiChatCompletionStreamEvent = serde_json::from_str(data).map_err(|_| {
+            ChatStreamReadError::new(
+                format!(
+                    "failed to parse llm chat completion stream event; stream preview: {}",
+                    response_preview(&preview)
+                ),
+                &preview,
+                !content.is_empty(),
+            )
+        })?;
+
+        for choice in event.choices {
+            if let Some(finish_reason) = choice.finish_reason {
+                if !finish_reason.is_null() {
+                    saw_terminal = true;
+                }
+            }
+            if let Some(part) = choice
+                .delta
+                .and_then(|delta| delta.content)
+                .filter(|content| !content.is_empty())
+            {
+                content.push_str(&part);
+                if content.len() > LLM_RESPONSE_BODY_LIMIT_BYTES {
+                    return Err(ChatStreamReadError::new(
+                        format!(
+                            "llm chat completion stream content exceeded {} byte limit",
+                            LLM_RESPONSE_BODY_LIMIT_BYTES
+                        ),
+                        &preview,
+                        true,
+                    ));
+                }
+            }
+        }
+    }
+
+    if !content.trim().is_empty() {
+        return Ok(content);
+    }
+
+    let noun = if saw_data {
+        "delta content"
+    } else {
+        "SSE data events"
+    };
+    let terminal_note = if saw_terminal {
+        ""
+    } else {
+        "; stream ended before [DONE]"
+    };
+    Err(ChatStreamReadError::new(
+        format!(
+            "llm chat completion stream did not include {noun}{terminal_note}; stream preview: {}",
+            response_preview(&preview)
+        ),
+        &preview,
+        false,
+    ))
+}
+
+#[allow(dead_code)]
+pub fn extract_responses_content(bytes: &[u8]) -> Result<String, WorkspaceError> {
+    let response: OpenAiResponsesResponse = serde_json::from_slice(bytes).map_err(|_| {
+        llm_response_parse_error("responses", bytes)
+            .expect_err("parse error helper always returns an error")
+    })?;
+    let mut parts = Vec::new();
+    for output in response.output {
+        for content in output.content {
+            if content.content_type == "output_text" {
+                if let Some(text) = content.text.filter(|text| !text.trim().is_empty()) {
+                    parts.push(text);
+                }
+            }
+        }
+    }
+    if parts.is_empty() {
+        return Err(WorkspaceError::new(
+            "llm_failed",
+            format!(
+                "llm responses response did not include output_text content; response preview: {}",
+                response_preview(bytes)
+            ),
+        ));
+    }
+    Ok(parts.join("\n"))
+}
+
+#[allow(dead_code)]
+pub fn llm_response_parse_error(noun: &str, bytes: &[u8]) -> Result<(), WorkspaceError> {
+    Err(WorkspaceError::new(
+        "llm_failed",
+        format!(
+            "failed to parse llm {noun} response; response preview: {}",
+            response_preview(bytes)
+        ),
+    ))
+}
+
+fn response_preview(bytes: &[u8]) -> String {
+    const PREVIEW_LIMIT: usize = 800;
+    let text = String::from_utf8_lossy(&bytes[..bytes.len().min(PREVIEW_LIMIT)]);
+    let mut preview = text.replace(
+        |character: char| character.is_control() && character != '\n',
+        " ",
+    );
+    if bytes.len() > PREVIEW_LIMIT {
+        preview.push_str("...");
+    }
+    preview.trim().to_string()
+}
+
+fn append_preview_bytes(preview: &mut Vec<u8>, fragment: &[u8]) {
+    const PREVIEW_LIMIT: usize = 800;
+    if preview.len() >= PREVIEW_LIMIT {
+        return;
+    }
+    let remaining = PREVIEW_LIMIT - preview.len();
+    preview.extend_from_slice(&fragment[..fragment.len().min(remaining)]);
+}
+
+fn format_http_error(error: &reqwest::Error) -> String {
+    let mut parts = vec![error.to_string()];
+    let mut source = error.source();
+    while let Some(next) = source {
+        let text = next.to_string();
+        if !parts.iter().any(|part| part == &text) {
+            parts.push(text);
+        }
+        source = next.source();
+    }
+    parts.join("; caused by: ")
 }
 
 fn read_limited_response_body(
@@ -487,6 +788,113 @@ struct OpenAiChatChoice {
 #[derive(Debug, Deserialize)]
 struct OpenAiChatChoiceMessage {
     content: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiChatCompletionStreamEvent {
+    #[serde(default)]
+    choices: Vec<OpenAiChatStreamChoice>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiChatStreamChoice {
+    #[serde(default)]
+    delta: Option<OpenAiChatStreamDelta>,
+    #[serde(default)]
+    finish_reason: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiChatStreamDelta {
+    content: Option<String>,
+}
+
+#[derive(Debug)]
+struct ChatStreamReadError {
+    error: WorkspaceError,
+    received_content: bool,
+}
+
+impl ChatStreamReadError {
+    fn new(message: String, preview: &[u8], received_content: bool) -> Self {
+        let message = if received_content {
+            format!(
+                "{message}; received partial stream content before failure; stream preview: {}",
+                response_preview(preview)
+            )
+        } else {
+            message
+        };
+        Self {
+            error: WorkspaceError::new("llm_failed", message),
+            received_content,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiResponsesResponse {
+    output: Vec<OpenAiResponsesOutput>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiResponsesOutput {
+    #[serde(default)]
+    content: Vec<OpenAiResponsesContent>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiResponsesContent {
+    #[serde(rename = "type")]
+    content_type: String,
+    text: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LlmApiMode {
+    Chat,
+    Responses,
+}
+
+impl LlmApiMode {
+    fn from_config(value: &str) -> Result<Self, WorkspaceError> {
+        match value.trim() {
+            "" | "chat" => Ok(Self::Chat),
+            "responses" => Ok(Self::Responses),
+            other => Err(WorkspaceError::new(
+                "llm_failed",
+                format!("unsupported llm api mode: {other}"),
+            )),
+        }
+    }
+
+    fn url(self, base_url: &str) -> Result<String, WorkspaceError> {
+        match self {
+            Self::Chat => chat_completions_url(base_url),
+            Self::Responses => responses_url(base_url),
+        }
+    }
+
+    fn build_request(self, model: &str, messages: Vec<LlmChatMessage>) -> serde_json::Value {
+        match self {
+            Self::Chat => build_openai_chat_request(model, messages),
+            Self::Responses => build_openai_responses_request(model, messages),
+        }
+    }
+
+    fn extract_content(self, bytes: &[u8]) -> Result<String, WorkspaceError> {
+        match self {
+            Self::Chat => extract_chat_completion_content(bytes),
+            Self::Responses => extract_responses_content(bytes),
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Chat => "chat completion",
+            Self::Responses => "responses",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

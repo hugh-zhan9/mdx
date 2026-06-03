@@ -16,6 +16,34 @@ use crate::path_guard::{
 };
 
 const DEFAULT_MAX_TREE_ENTRIES: usize = 100_000;
+const PREVIEW_TEXT_EXTENSIONS: &[&str] = &[
+    "",
+    "csv",
+    "go",
+    "java",
+    "js",
+    "json",
+    "jsp",
+    "mhtml",
+    "ndjson",
+    "properties",
+    "py",
+    "rst",
+    "sh",
+    "sql",
+    "srt",
+    "template",
+    "ts",
+    "txt",
+    "xml",
+    "xsd",
+    "yaml",
+    "yml",
+];
+const PREVIEW_BINARY_EXTENSIONS: &[&str] = &[
+    "pdf", "png", "jpg", "jpeg", "jfif", "gif", "webp", "awebp", "svg", "bmp", "avif", "heic",
+    "tif", "tiff",
+];
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -140,7 +168,10 @@ pub fn read_preview_text_file(root_path: String, path: String) -> Result<String,
 }
 
 #[tauri::command]
-pub fn read_preview_binary_file(root_path: String, path: String) -> Result<Vec<u8>, WorkspaceError> {
+pub fn read_preview_binary_file(
+    root_path: String,
+    path: String,
+) -> Result<Vec<u8>, WorkspaceError> {
     let target = resolve_existing_preview_binary_path(root_path, path)?;
     ensure_preview_binary_path(&target.path)?;
 
@@ -630,7 +661,7 @@ fn ensure_preview_text_path(path: &Path) -> Result<(), WorkspaceError> {
     } else {
         Err(WorkspaceError::new(
             "invalid_name",
-            "preview text files must end with .txt, .html, or .htm",
+            "preview text files must use a supported text extension",
         ))
     }
 }
@@ -728,25 +759,23 @@ fn resolve_existing_preview_binary_path(
 }
 
 fn is_allowed_preview_text_file(path: &Path) -> bool {
-    let Some(extension) = path.extension().and_then(|ext| ext.to_str()) else {
-        return false;
-    };
+    let extension = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
 
-    matches!(
-        extension.to_ascii_lowercase().as_str(),
-        "txt" | "html" | "htm"
-    )
+    PREVIEW_TEXT_EXTENSIONS.contains(&extension.as_str())
+        || matches!(extension.as_str(), "html" | "htm")
 }
 
 fn is_allowed_preview_binary_file(path: &Path) -> bool {
     let Some(extension) = path.extension().and_then(|ext| ext.to_str()) else {
         return false;
     };
+    let extension = extension.to_ascii_lowercase();
 
-    matches!(
-        extension.to_ascii_lowercase().as_str(),
-        "pdf" | "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg"
-    )
+    PREVIEW_BINARY_EXTENSIONS.contains(&extension.as_str())
 }
 
 fn relative_to_root(root: &Path, path: &Path) -> Result<PathBuf, WorkspaceError> {

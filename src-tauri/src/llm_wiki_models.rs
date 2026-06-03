@@ -75,6 +75,8 @@ pub struct LlmProviderConfig {
     pub base_url: String,
     pub model: String,
     pub api_key: Option<String>,
+    #[serde(default = "default_llm_api_mode")]
+    pub api_mode: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -84,6 +86,8 @@ pub struct LlmProviderConfigUpdate {
     pub model: String,
     pub api_key: Option<String>,
     pub preserve_api_key: bool,
+    #[serde(default = "default_llm_api_mode")]
+    pub api_mode: String,
 }
 
 impl fmt::Debug for LlmProviderConfig {
@@ -92,6 +96,7 @@ impl fmt::Debug for LlmProviderConfig {
             .debug_struct("LlmProviderConfig")
             .field("base_url", &self.base_url)
             .field("model", &self.model)
+            .field("api_mode", &self.api_mode)
             .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
             .finish()
     }
@@ -102,7 +107,12 @@ impl fmt::Debug for LlmProviderConfig {
 pub struct PublicLlmProviderConfig {
     pub base_url: String,
     pub model: String,
+    pub api_mode: String,
     pub has_api_key: bool,
+}
+
+pub fn default_llm_api_mode() -> String {
+    "chat".to_string()
 }
 
 #[cfg(test)]

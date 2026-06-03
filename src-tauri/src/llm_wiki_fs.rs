@@ -5,12 +5,12 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[cfg(test)]
+use crate::llm_wiki_models::RawScanFile;
 use crate::llm_wiki_models::{
     InitializeLlmWikiResult, LlmWikiCache, LlmWikiKnowledgeConfig, LlmWikiWorkspaceStatus,
     RawScanFileMetadata,
 };
-#[cfg(test)]
-use crate::llm_wiki_models::RawScanFile;
 use crate::models::WorkspaceError;
 use crate::path_guard::is_allowed_markdown_file;
 use sha2::{Digest, Sha256};
@@ -39,6 +39,36 @@ const INITIAL_DIRS: &[&str] = &[
     "wiki/syntheses",
     ".llm-wiki",
 ];
+
+const LEGACY_AGENTS_PLACEHOLDER: &str = "# LLM Wiki Rules\n";
+pub(crate) const DEFAULT_AGENTS_MARKDOWN: &str = r#"# LLM Wiki Rules
+
+## Scope
+
+- Build a local Markdown knowledge base from raw notes under `raw/`.
+- Use only the raw source and existing wiki context. Do not invent facts.
+- Write concise Chinese by default unless the source clearly requires another language.
+
+## Files
+
+- Put source summaries under `wiki/sources/`.
+- Put named people, projects, products, systems, and organizations under `wiki/entities/`.
+- Put reusable ideas, methods, terms, and decisions under `wiki/concepts/`.
+- Put cross-source summaries under `wiki/syntheses/`.
+- Keep output paths ASCII, lowercase, descriptive, and stable.
+
+## Links
+
+- Use `[[wikilinks]]` for important entities and concepts.
+- Prefer links to existing page titles when possible.
+- Use aliases such as `[[Target|Label]]` only when the label improves reading.
+
+## Quality
+
+- Preserve source nuance and uncertainty.
+- Keep each generated page scan-friendly with clear headings and short sections.
+- Include source provenance in generated source pages.
+"#;
 
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -121,10 +151,11 @@ pub fn initialize_llm_wiki_workspace(
     create_file_if_missing(
         root,
         "AGENTS.md",
-        "# LLM Wiki Rules\n",
+        DEFAULT_AGENTS_MARKDOWN,
         &mut created_paths,
         &mut preserved_paths,
     )?;
+    ensure_default_agents_rules(root)?;
     create_file_if_missing(
         root,
         "llm-wiki-progress.md",
@@ -219,6 +250,21 @@ pub fn write_knowledge_config(
     write_managed_file(root, ".llm-wiki/config.json", &contents)
 }
 
+pub fn ensure_default_agents_rules(root: impl AsRef<Path>) -> Result<(), WorkspaceError> {
+    let root = root.as_ref();
+    ensure_directory(root)?;
+    ensure_managed_file_target(root, "AGENTS.md")?;
+    let contents = fs::read_to_string(root.join("AGENTS.md")).map_err(|error| {
+        WorkspaceError::from_io("read_failed", "failed to read llm wiki agents file", &error)
+    })?;
+
+    if contents.trim() == LEGACY_AGENTS_PLACEHOLDER.trim() {
+        write_managed_file(root, "AGENTS.md", DEFAULT_AGENTS_MARKDOWN.as_bytes())?;
+    }
+
+    Ok(())
+}
+
 pub fn read_llm_wiki_log(root: impl AsRef<Path>) -> Result<String, WorkspaceError> {
     let root = root.as_ref();
     ensure_directory(root)?;
@@ -265,12 +311,24 @@ pub fn update_progress_markdown(
     failed: &[(String, String)],
     skipped: &[String],
 ) -> Result<(), WorkspaceError> {
+    update_progress_markdown_with_processing(root, status, pending, &[], completed, failed, skipped)
+}
+
+pub fn update_progress_markdown_with_processing(
+    root: impl AsRef<Path>,
+    status: &str,
+    pending: &[String],
+    processing: &[String],
+    completed: &[String],
+    failed: &[(String, String)],
+    skipped: &[String],
+) -> Result<(), WorkspaceError> {
     let mut markdown = String::from("# LLM Wiki Progress\n\n");
     markdown.push_str("## Status\n\n");
     markdown.push_str(status);
     markdown.push_str("\n\n");
     append_path_section(&mut markdown, "Pending", pending);
-    append_path_section(&mut markdown, "Processing", &[]);
+    append_path_section(&mut markdown, "Processing", processing);
     append_path_section(&mut markdown, "Completed", completed);
     append_failed_section(&mut markdown, failed);
     append_path_section(&mut markdown, "Skipped", skipped);

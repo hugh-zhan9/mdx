@@ -20,6 +20,7 @@ import { isMarkdownFilePath } from "../lib/path";
 import { scrollRenderedHeadingIntoView } from "../lib/outline-scroll";
 import { createTabSaveQueue } from "../lib/workspace-save";
 import { workspaceReducer } from "../lib/workspace-reducer";
+import { resolveWikilinkFile } from "../lib/wikilink";
 import type {
   CliCloseEvent,
   CliFileCreatedEvent,
@@ -87,6 +88,8 @@ export function WorkspaceShell({
   const [pendingCliCommand, setPendingCliCommand] =
     useState<PendingCliEditorCommand | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [rightPanelTab, setRightPanelTab] =
+    useState<"outline" | "llmWiki">("outline");
   const [workspaceBodyWidth, setWorkspaceBodyWidth] = useState(() =>
     typeof window === "undefined" ? 1280 : window.innerWidth,
   );
@@ -355,6 +358,46 @@ export function WorkspaceShell({
     },
     [],
   );
+  const openWikilink = useCallback(
+    (target: string, sourcePath: string) => {
+      const currentWorkspace = workspaceRef.current;
+      const resolvedPath = resolveWikilinkFile(
+        currentWorkspace.rootPath,
+        sourcePath,
+        currentWorkspace.fileTree,
+        target,
+      );
+
+      if (!resolvedPath) {
+        console.warn(`Unable to resolve wikilink: ${target}`);
+        return;
+      }
+
+      const existingTab = currentWorkspace.tabOrder
+        .map((tabId) => currentWorkspace.tabs[tabId])
+        .find((tab) => tab?.path === resolvedPath);
+
+      if (existingTab) {
+        dispatchAndMirror({
+          type: "tab/activated",
+          tabId: existingTab.tabId,
+        });
+        return;
+      }
+
+      dispatchAndMirror({
+        type: "tab/opened",
+        tab: {
+          tabId: nanoid(8),
+          path: resolvedPath,
+          title: resolvedPath.split("/").pop() ?? resolvedPath,
+          dirty: false,
+          needsRenameOnFirstSave: false,
+        },
+      });
+    },
+    [dispatchAndMirror],
+  );
 
   useEffect(() => {
     if (!isTauriRuntime()) {
@@ -536,6 +579,7 @@ export function WorkspaceShell({
             dispatch={dispatchAndMirror}
             editorViewportRef={editorViewportRef}
             pendingCliCommand={pendingCliCommand}
+            onOpenWikilink={openWikilink}
             onCreateMarkdownFile={fileTreeActions?.createMarkdownFile}
             onInitialMarkdownLoadSettled={() =>
               setInitialEditorLoadSettled(true)
@@ -551,19 +595,48 @@ export function WorkspaceShell({
         >
           {rightPanel.isCollapsed ? null : (
             <aside className="h-full min-h-0 overflow-hidden border-l border-base-300 bg-base-100">
-              <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_minmax(0,1fr)]">
-                <div className="min-h-0 overflow-hidden [&>aside]:border-l-0 [&>aside>div:last-child]:hidden">
+              <div className="flex h-full min-h-0 flex-col">
+                <div className="grid grid-cols-2 gap-1 border-b border-base-300 bg-base-200 p-1">
+                  <button
+                    type="button"
+                    className={[
+                      "h-7 text-xs outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                      rightPanelTab === "outline"
+                        ? "bg-base-100 text-base-content shadow-sm"
+                        : "text-base-content/70 hover:text-base-content",
+                    ].join(" ")}
+                    onClick={() => setRightPanelTab("outline")}
+                  >
+                    目录
+                  </button>
+                  <button
+                    type="button"
+                    className={[
+                      "h-7 text-xs outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                      rightPanelTab === "llmWiki"
+                        ? "bg-base-100 text-base-content shadow-sm"
+                        : "text-base-content/70 hover:text-base-content",
+                    ].join(" ")}
+                    onClick={() => setRightPanelTab("llmWiki")}
+                  >
+                    LLM Wiki
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-hidden [&>aside]:h-full [&>aside]:border-l-0 [&>aside]:border-t-0 [&>aside>div:last-child]:hidden">
+                  {rightPanelTab === "outline" ? (
                   <OutlinePanel
                     headings={activeHeadings}
                     collapsed={false}
                     onHeadingClick={scrollToHeading}
                     resizeHandleProps={{}}
                   />
+                  ) : (
+                    <LlmWikiPanel
+                      llmWiki={llmWiki}
+                      onConfigureLlm={() => setSettingsOpen(true)}
+                    />
+                  )}
                 </div>
-                <LlmWikiPanel
-                  llmWiki={llmWiki}
-                  onConfigureLlm={() => setSettingsOpen(true)}
-                />
               </div>
               <div
                 {...rightPanel.resizeHandleProps}

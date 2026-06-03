@@ -188,6 +188,7 @@ export function useLlmWikiWorkspace(
       }
 
       const failed: Array<{ path: string; error: string }> = [];
+      const failedPaths = new Set<string>();
       let batch = pending;
       let processedCount = 0;
 
@@ -196,7 +197,7 @@ export function useLlmWikiWorkspace(
           current.rootPath === ingestRootPath
             ? {
                 ...current,
-                message: `开始后台处理 raw：${processedCount}/${processedCount + batch.length}`,
+                message: `开始后台处理 raw：${processedCount}/${processedCount + batch.length}\n待处理：${batch.join("\n")}`,
               }
             : current,
         );
@@ -206,30 +207,77 @@ export function useLlmWikiWorkspace(
             return;
           }
 
+          const totalInBatch = processedCount + batch.length;
+          const startedAt = Date.now();
+          const updateProcessingMessage = () => {
+            const elapsedSeconds = Math.max(
+              0,
+              Math.floor((Date.now() - startedAt) / 1000),
+            );
+            setSnapshot((current) =>
+              current.rootPath === ingestRootPath
+                ? {
+                    ...current,
+                    message: [
+                      `正在处理 raw：${processedCount + 1}/${totalInBatch}`,
+                      `当前：${rawRelativePath}`,
+                      `状态：等待 LLM 返回，已等待 ${elapsedSeconds} 秒`,
+                      "阶段：后端会依次执行分析和生成，完成或失败后会写入日志",
+                      `已完成：${processedCount}`,
+                      `已失败：${failed.length}`,
+                    ].join("\n"),
+                  }
+                : current,
+            );
+          };
+          let heartbeat: ReturnType<typeof setInterval> | null = null;
+
           try {
+            updateProcessingMessage();
+            heartbeat = setInterval(updateProcessingMessage, 1000);
             await ingestRawFile(ingestRootPath, rawRelativePath);
             processedCount += 1;
             setSnapshot((current) =>
               current.rootPath === ingestRootPath
                 ? {
                     ...current,
-                    message: `后台处理 raw：${processedCount}`,
+                    message: `后台处理 raw：${processedCount} 个已完成`,
                   }
                 : current,
             );
           } catch (error) {
+            failedPaths.add(rawRelativePath);
             failed.push({
               path: rawRelativePath,
               error: formatError(error),
             });
+            setSnapshot((current) =>
+              current.rootPath === ingestRootPath
+                ? {
+                    ...current,
+                    message: [
+                      `后台处理 raw 失败：${processedCount}/${totalInBatch} 个已完成`,
+                      `当前：${rawRelativePath}`,
+                      `错误：${formatError(error)}`,
+                    ].join("\n"),
+                  }
+                : current,
+            );
+          } finally {
+            if (heartbeat) {
+              clearInterval(heartbeat);
+            }
           }
         }
 
-        if (activeRootPathRef.current !== ingestRootPath || failed.length > 0) {
+        if (activeRootPathRef.current !== ingestRootPath) {
           break;
         }
 
-        const next = await rescanRaw(ingestRootPath);
+        const next = await rescanRaw(
+          ingestRootPath,
+          Array.from(failedPaths),
+        );
 
         if (activeRootPathRef.current !== ingestRootPath) {
           return;
@@ -243,10 +291,13 @@ export function useLlmWikiWorkspace(
               }
             : current,
         );
-        batch = next.pending;
+        batch = next.pending.filter((path) => !failedPaths.has(path));
       }
 
-      const latest = await rescanRaw(ingestRootPath);
+      const latest = await rescanRaw(
+        ingestRootPath,
+        Array.from(failedPaths),
+      );
 
       if (activeRootPathRef.current !== ingestRootPath) {
         return;
@@ -260,9 +311,14 @@ export function useLlmWikiWorkspace(
               message:
                 failed.length === 0
                   ? `后台处理完成：${processedCount} 个 raw。`
-                  : `后台处理完成，${failed.length} 个失败：${failed
-                      .map((item) => item.path)
-                      .join(", ")}`,
+                  : [
+                      `后台处理完成：${processedCount} 个成功，${failed.length} 个失败。`,
+                      "",
+                      ...failed.map(
+                        (item, index) =>
+                          `${index + 1}. ${item.path}\n   ${item.error}`,
+                      ),
+                    ].join("\n"),
             }
           : current,
       );
@@ -887,6 +943,30 @@ function formatError(error: unknown) {
 
   if (typeof error === "string") {
     return error;
+  }
+
+  if (error && typeof error === "object") {
+    if (
+      "message" in error &&
+      typeof error.message === "string" &&
+      error.message.length > 0
+    ) {
+      return error.message;
+    }
+
+    if (
+      "error" in error &&
+      typeof error.error === "string" &&
+      error.error.length > 0
+    ) {
+      return error.error;
+    }
+
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return String(error);
+    }
   }
 
   return "未知错误";

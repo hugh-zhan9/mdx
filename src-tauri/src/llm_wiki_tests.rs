@@ -4,20 +4,22 @@ use tempfile::tempdir;
 use crate::llm_wiki::{
     llm_config_to_public, llm_wiki_get_config, llm_wiki_get_log, llm_wiki_ingest_mock_output,
     llm_wiki_lint, llm_wiki_query_sync, llm_wiki_refresh_graph_sync, llm_wiki_rescan_raw_sync,
-    llm_wiki_update_config,
+    llm_wiki_rescan_raw_sync_with_exclusions, llm_wiki_update_config,
 };
 use crate::llm_wiki_fs::{
     build_knowledge_graph_markdown, detect_llm_wiki_workspace, initialize_llm_wiki_workspace,
     read_knowledge_config, scan_raw_file_metadata, scan_raw_files, update_progress_markdown,
-    write_knowledge_graph_markdown, write_managed_file,
+    update_progress_markdown_with_processing, write_knowledge_graph_markdown, write_managed_file,
 };
 use crate::llm_wiki_ingest::{
     build_ingest_analysis_prompt, build_ingest_generation_prompt, is_safe_llm_wiki_output_path,
     parse_file_blocks, write_ingest_outputs, LlmWikiFileBlock,
 };
 use crate::llm_wiki_llm::{
-    build_openai_chat_request, load_llm_config_from_path, load_optional_llm_config_from_path,
-    save_llm_config_to_path, LlmChatMessage,
+    build_openai_chat_request, build_openai_chat_stream_request, build_openai_responses_request,
+    extract_chat_completion_content, extract_chat_completion_stream_content,
+    extract_responses_content, llm_response_parse_error, load_llm_config_from_path,
+    load_optional_llm_config_from_path, save_llm_config_to_path, LlmChatMessage,
 };
 use crate::llm_wiki_models::LlmProviderConfig;
 use crate::llm_wiki_models::LlmWikiCache;
@@ -31,6 +33,7 @@ fn llm_config_round_trips_outside_workspace_files() {
         base_url: "https://api.example.com/v1".to_string(),
         model: "test-model".to_string(),
         api_key: Some("secret-key".to_string()),
+        api_mode: "chat".to_string(),
     };
 
     save_llm_config_to_path(&path, &config).unwrap();
@@ -47,11 +50,13 @@ fn llm_config_save_replaces_existing_config_file() {
         base_url: "https://api.example.com/v1".to_string(),
         model: "first-model".to_string(),
         api_key: Some("first-key".to_string()),
+        api_mode: "chat".to_string(),
     };
     let second = LlmProviderConfig {
         base_url: "https://api.example.com/v1".to_string(),
         model: "second-model".to_string(),
         api_key: Some("second-key".to_string()),
+        api_mode: "responses".to_string(),
     };
 
     save_llm_config_to_path(&path, &first).unwrap();
@@ -72,6 +77,7 @@ fn llm_config_save_rejects_symlinked_parent_without_touching_target() {
         base_url: "https://api.example.com/v1".to_string(),
         model: "test-model".to_string(),
         api_key: Some("secret-key".to_string()),
+        api_mode: "chat".to_string(),
     };
 
     let error = save_llm_config_to_path(&path, &config).unwrap_err();
@@ -92,6 +98,7 @@ fn llm_config_save_rejects_symlinked_ancestor_without_touching_target() {
         base_url: "https://api.example.com/v1".to_string(),
         model: "test-model".to_string(),
         api_key: Some("secret-key".to_string()),
+        api_mode: "chat".to_string(),
     };
 
     let error = save_llm_config_to_path(&path, &config).unwrap_err();
@@ -180,6 +187,7 @@ fn llm_config_save_restricts_secret_file_permissions() {
         base_url: "https://api.example.com/v1".to_string(),
         model: "test-model".to_string(),
         api_key: Some("secret-key".to_string()),
+        api_mode: "chat".to_string(),
     };
 
     save_llm_config_to_path(&path, &config).unwrap();
@@ -201,6 +209,7 @@ fn llm_config_debug_redacts_api_key() {
         base_url: "https://api.example.com/v1".to_string(),
         model: "test-model".to_string(),
         api_key: Some("secret-key".to_string()),
+        api_mode: "chat".to_string(),
     };
 
     let debug = format!("{config:?}");
@@ -215,6 +224,7 @@ fn llm_config_public_projection_does_not_expose_api_key() {
         base_url: "https://api.example.com/v1".to_string(),
         model: "test-model".to_string(),
         api_key: Some("secret-key".to_string()),
+        api_mode: "responses".to_string(),
     };
 
     let public = llm_config_to_public(config);
@@ -222,9 +232,25 @@ fn llm_config_public_projection_does_not_expose_api_key() {
 
     assert_eq!(public.base_url, "https://api.example.com/v1");
     assert_eq!(public.model, "test-model");
+    assert_eq!(public.api_mode, "responses");
     assert!(public.has_api_key);
     assert!(json.get("apiKey").is_none());
     assert!(!json.to_string().contains("secret-key"));
+}
+
+#[test]
+fn llm_config_load_defaults_missing_api_mode_to_chat() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().canonicalize().unwrap().join("llm-config.json");
+    std::fs::write(
+        &path,
+        r#"{"baseUrl":"https://api.example.com/v1","model":"legacy","apiKey":"secret"}"#,
+    )
+    .unwrap();
+
+    let loaded = load_llm_config_from_path(&path).unwrap();
+
+    assert_eq!(loaded.api_mode, "chat");
 }
 
 #[test]
@@ -247,6 +273,94 @@ fn openai_chat_request_uses_model_and_messages() {
     assert_eq!(request["messages"][0]["role"], "system");
     assert_eq!(request["messages"][1]["content"], "question");
     assert_eq!(request["temperature"], 0.2);
+}
+
+#[test]
+fn openai_chat_stream_request_enables_streaming() {
+    let request = build_openai_chat_stream_request(
+        "model-a",
+        vec![LlmChatMessage {
+            role: "user".to_string(),
+            content: "question".to_string(),
+        }],
+    );
+
+    assert_eq!(request["model"], "model-a");
+    assert_eq!(request["messages"][0]["content"], "question");
+    assert_eq!(request["temperature"], 0.2);
+    assert_eq!(request["stream"], true);
+}
+
+#[test]
+fn openai_responses_request_uses_input_messages() {
+    let request = build_openai_responses_request(
+        "model-a",
+        vec![
+            LlmChatMessage {
+                role: "system".to_string(),
+                content: "rules".to_string(),
+            },
+            LlmChatMessage {
+                role: "user".to_string(),
+                content: "question".to_string(),
+            },
+        ],
+    );
+
+    assert_eq!(request["model"], "model-a");
+    assert_eq!(request["input"][0]["role"], "system");
+    assert_eq!(request["input"][1]["content"], "question");
+    assert_eq!(request["temperature"], 0.2);
+}
+
+#[test]
+fn extracts_chat_completion_content() {
+    let content =
+        extract_chat_completion_content(br#"{"choices":[{"message":{"content":"hello"}}]}"#)
+            .unwrap();
+
+    assert_eq!(content, "hello");
+}
+
+#[test]
+fn extracts_chat_completion_stream_content() {
+    let content = extract_chat_completion_stream_content(
+        br#"data: {"choices":[{"delta":{"content":"Hel"}}]}
+data: {"choices":[{"delta":{"content":"lo"}}]}
+data: [DONE]
+"#,
+    )
+    .unwrap();
+
+    assert_eq!(content, "Hello");
+}
+
+#[test]
+fn chat_completion_stream_parse_error_includes_preview() {
+    let error = extract_chat_completion_stream_content(b"data: not-json\n").unwrap_err();
+    let message = error.to_string();
+
+    assert!(message.contains("failed to parse llm chat completion stream event"));
+    assert!(message.contains("not-json"));
+}
+
+#[test]
+fn extracts_responses_output_text_content() {
+    let content = extract_responses_content(
+        br#"{"output":[{"content":[{"type":"output_text","text":"hello"}]}]}"#,
+    )
+    .unwrap();
+
+    assert_eq!(content, "hello");
+}
+
+#[test]
+fn llm_parse_error_includes_response_preview() {
+    let error = llm_response_parse_error("chat completion", b"not-json\nbody").unwrap_err();
+    let message = error.to_string();
+
+    assert!(message.contains("failed to parse llm chat completion response"));
+    assert!(message.contains("not-json"));
 }
 
 #[test]
@@ -309,6 +423,9 @@ fn initialize_creates_llm_wiki_structure_without_migrating_markdown() {
     assert!(root.path().join("existing.md").is_file());
     assert!(!root.path().join("raw/notes/existing.md").exists());
     assert!(!result.created_paths.is_empty());
+    let agents = std::fs::read_to_string(root.path().join("AGENTS.md")).unwrap();
+    assert!(agents.contains("Use `[[wikilinks]]`"));
+    assert!(agents.contains("Do not invent facts"));
 
     let cache_json: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(root.path().join(".llm-wiki/cache.json")).unwrap(),
@@ -344,6 +461,19 @@ fn initialize_is_idempotent_and_preserves_existing_agents_file() {
     assert!(second_result
         .preserved_paths
         .contains(&".llm-wiki/cache.json".to_string()));
+}
+
+#[test]
+fn rescan_upgrades_legacy_agents_placeholder() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::write(root.path().join("AGENTS.md"), "# LLM Wiki Rules\n").unwrap();
+
+    llm_wiki_rescan_raw_sync(root.path().to_string_lossy().into_owned()).unwrap();
+
+    let agents = std::fs::read_to_string(root.path().join("AGENTS.md")).unwrap();
+    assert!(agents.contains("Use `[[wikilinks]]`"));
+    assert!(agents.contains("Do not invent facts"));
 }
 
 #[test]
@@ -421,12 +551,8 @@ fn llm_wiki_config_update_toggles_paused_and_preserves_skip_paths() {
     )
     .unwrap();
 
-    let updated = llm_wiki_update_config(
-        root.path().to_string_lossy().into_owned(),
-        true,
-        None,
-    )
-    .unwrap();
+    let updated =
+        llm_wiki_update_config(root.path().to_string_lossy().into_owned(), true, None).unwrap();
 
     assert!(updated.paused);
     assert_eq!(updated.skip_paths, vec!["raw/archive".to_string()]);
@@ -789,6 +915,27 @@ fn update_progress_markdown_writes_visible_status_document() {
 }
 
 #[test]
+fn update_progress_markdown_writes_processing_paths() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+
+    update_progress_markdown_with_processing(
+        root.path(),
+        "processing",
+        &[],
+        &["raw/notes/current.md".to_string()],
+        &[],
+        &[],
+        &[],
+    )
+    .unwrap();
+
+    let progress = std::fs::read_to_string(root.path().join("llm-wiki-progress.md")).unwrap();
+    assert!(progress.contains("## Processing"));
+    assert!(progress.contains("raw/notes/current.md"));
+}
+
+#[test]
 fn rescan_raw_returns_no_pending_files_when_config_is_paused() {
     let root = tempdir().unwrap();
     initialize_llm_wiki_workspace(root.path()).unwrap();
@@ -823,6 +970,8 @@ fn rescan_raw_marks_cached_files_completed_instead_of_pending() {
     assert_eq!(result.total, 1);
     assert!(result.pending.is_empty());
     let progress = std::fs::read_to_string(root.path().join("llm-wiki-progress.md")).unwrap();
+    assert!(progress.contains("completed"));
+    assert!(!progress.contains("scanning"));
     assert!(progress.contains("## Completed"));
     assert!(progress.contains("raw/notes/a.md"));
 }
@@ -844,6 +993,41 @@ fn rescan_raw_returns_bounded_pending_batch_for_large_raw_trees() {
     assert_eq!(result.total, 8);
     assert_eq!(result.pending.len(), 5);
     assert!(result.completed.is_empty());
+}
+
+#[test]
+fn rescan_raw_excludes_failed_pending_paths_for_current_run() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    for index in 0..8 {
+        std::fs::write(
+            root.path().join(format!("raw/notes/note-{index}.md")),
+            format!("# Note {index}\n"),
+        )
+        .unwrap();
+    }
+
+    let result = llm_wiki_rescan_raw_sync_with_exclusions(
+        root.path().to_string_lossy().into_owned(),
+        vec![
+            "raw/notes/note-0.md".to_string(),
+            "raw/notes/note-1.md".to_string(),
+            "raw/notes/note-2.md".to_string(),
+            "raw/notes/note-3.md".to_string(),
+            "raw/notes/note-4.md".to_string(),
+        ],
+    )
+    .unwrap();
+
+    assert_eq!(result.total, 8);
+    assert_eq!(
+        result.pending,
+        vec![
+            "raw/notes/note-5.md".to_string(),
+            "raw/notes/note-6.md".to_string(),
+            "raw/notes/note-7.md".to_string(),
+        ]
+    );
 }
 
 #[cfg(unix)]
@@ -1125,7 +1309,8 @@ fn refresh_graph_rejects_wiki_symlink_without_external_write() {
     std::fs::remove_dir_all(root.path().join("wiki")).unwrap();
     std::os::unix::fs::symlink(outside.path(), root.path().join("wiki")).unwrap();
 
-    let error = llm_wiki_refresh_graph_sync(root.path().to_string_lossy().into_owned()).unwrap_err();
+    let error =
+        llm_wiki_refresh_graph_sync(root.path().to_string_lossy().into_owned()).unwrap_err();
 
     assert_eq!(error.error_code(), "path_type_conflict");
     assert!(!outside.path().join("knowledge-graph.md").exists());
@@ -1142,7 +1327,8 @@ fn refresh_graph_rejects_symlinked_graph_file_without_external_write() {
     std::fs::remove_file(root.path().join("wiki/knowledge-graph.md")).ok();
     std::os::unix::fs::symlink(&outside_file, root.path().join("wiki/knowledge-graph.md")).unwrap();
 
-    let error = llm_wiki_refresh_graph_sync(root.path().to_string_lossy().into_owned()).unwrap_err();
+    let error =
+        llm_wiki_refresh_graph_sync(root.path().to_string_lossy().into_owned()).unwrap_err();
 
     assert_eq!(error.error_code(), "path_type_conflict");
     assert_eq!(
@@ -1234,6 +1420,16 @@ fn ingest_parse_file_blocks_returns_ordered_paths_and_strips_marker_newline() {
             },
         ]
     );
+}
+
+#[test]
+fn ingest_parse_file_blocks_normalizes_wiki_index_to_root_index() {
+    let blocks = parse_file_blocks(
+        "---FILE: wiki/sources/a.md---\n# A\n---END FILE---\n---FILE: wiki/index.md---\n# Index\n---END FILE---",
+    )
+    .unwrap();
+
+    assert_eq!(blocks[1].path, "index.md");
 }
 
 #[test]

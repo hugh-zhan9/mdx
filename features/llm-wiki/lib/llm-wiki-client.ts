@@ -42,14 +42,21 @@ export function saveLlmConfig(
     config: {
       baseUrl: config.baseUrl,
       model: config.model,
+      apiMode: config.apiMode,
       apiKey: config.apiKey.trim() ? config.apiKey : null,
       preserveApiKey: config.preserveApiKey,
     },
   });
 }
 
-export function rescanRaw(rootPath: string): Promise<RawScanResult> {
-  return invokeCommand("llm_wiki_rescan_raw", { rootPath });
+export function rescanRaw(
+  rootPath: string,
+  excludedPendingPaths: string[] = [],
+): Promise<RawScanResult> {
+  return invokeCommand("llm_wiki_rescan_raw", {
+    rootPath,
+    excludedPendingPaths,
+  });
 }
 
 export function ingestRawFile(

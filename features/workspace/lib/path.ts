@@ -93,8 +93,49 @@ export function isPdfFilePath(path: string) {
     return normalizeWorkspacePath(path).toLowerCase().endsWith(".pdf");
 }
 
+const PLAIN_TEXT_EXTENSIONS = new Set([
+    "",
+    ".csv",
+    ".go",
+    ".java",
+    ".js",
+    ".json",
+    ".jsp",
+    ".mhtml",
+    ".ndjson",
+    ".properties",
+    ".py",
+    ".rst",
+    ".sh",
+    ".sql",
+    ".srt",
+    ".template",
+    ".ts",
+    ".txt",
+    ".xml",
+    ".xsd",
+    ".yaml",
+    ".yml",
+]);
+
+const IMAGE_EXTENSIONS = new Set([
+    ".awebp",
+    ".avif",
+    ".bmp",
+    ".gif",
+    ".heic",
+    ".jfif",
+    ".jpeg",
+    ".jpg",
+    ".png",
+    ".svg",
+    ".tif",
+    ".tiff",
+    ".webp",
+]);
+
 export function isPlainTextFilePath(path: string) {
-    return normalizeWorkspacePath(path).toLowerCase().endsWith(".txt");
+    return PLAIN_TEXT_EXTENSIONS.has(getFileExtension(path));
 }
 
 export function isHtmlFilePath(path: string) {
@@ -104,16 +145,7 @@ export function isHtmlFilePath(path: string) {
 }
 
 export function isImageFilePath(path: string) {
-    const normalized = normalizeWorkspacePath(path).toLowerCase();
-
-    return (
-        normalized.endsWith(".png") ||
-        normalized.endsWith(".jpg") ||
-        normalized.endsWith(".jpeg") ||
-        normalized.endsWith(".gif") ||
-        normalized.endsWith(".webp") ||
-        normalized.endsWith(".svg")
-    );
+    return IMAGE_EXTENSIONS.has(getFileExtension(path));
 }
 
 export function isEditableFilePath(path: string) {
@@ -154,4 +186,16 @@ function normalizeCaseForPlatform(
     }
 
     return [rootPath, candidatePath];
+}
+
+function getFileExtension(path: string) {
+    const normalized = normalizeWorkspacePath(path).toLowerCase();
+    const name = normalized.split("/").pop() ?? normalized;
+    const dotIndex = name.lastIndexOf(".");
+
+    if (dotIndex <= 0) {
+        return "";
+    }
+
+    return name.slice(dotIndex);
 }

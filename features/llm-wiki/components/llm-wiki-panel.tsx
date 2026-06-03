@@ -297,7 +297,7 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
         ) : null}
 
         {panelMessage ? (
-          <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded border border-base-300 bg-base-200 p-2 font-sans text-xs leading-relaxed text-base-content/75">
+          <pre className="max-h-72 overflow-auto whitespace-pre-wrap border border-base-300 bg-base-200 p-2 font-sans text-xs leading-relaxed text-base-content/75">
             {panelMessage}
           </pre>
         ) : null}

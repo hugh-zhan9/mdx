@@ -16,12 +16,16 @@ export interface InitializeLlmWikiResult {
 export interface PublicLlmProviderConfig {
     baseUrl: string;
     model: string;
+    apiMode: LlmProviderApiMode;
     hasApiKey: boolean;
 }
+
+export type LlmProviderApiMode = "chat" | "responses";
 
 export interface LlmProviderConfigForm {
     baseUrl: string;
     model: string;
+    apiMode: LlmProviderApiMode;
     apiKey: string;
     preserveApiKey: boolean;
 }

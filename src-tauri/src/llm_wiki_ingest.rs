@@ -58,6 +58,7 @@ Markdown content
 Rules:
 - Produce at least one wiki/sources/*.md source page.
 - You may also produce wiki/entities/*.md, wiki/concepts/*.md, wiki/syntheses/*.md, index.md, log.md, or llm-wiki-progress.md when useful.
+- Use index.md for the workspace index. Do not produce wiki/index.md.
 - Do not produce purpose.md.
 - File paths must be ASCII only and use only letters, digits, '/', '.', '_', and '-'.
 - File paths must end in .md and must not contain spaces, backslashes, dot segments, hidden path segments, absolute paths, or non-ASCII characters.
@@ -404,7 +405,14 @@ fn write_cache(root: &Path, cache: &LlmWikiCache) -> Result<(), WorkspaceError> 
 fn parse_file_marker_path(line: &str) -> Option<String> {
     let rest = line.strip_prefix("---FILE:")?;
     let path = rest.strip_suffix("---")?.trim();
-    Some(path.to_string())
+    Some(normalize_llm_wiki_output_path(path))
+}
+
+fn normalize_llm_wiki_output_path(path: &str) -> String {
+    match path {
+        "wiki/index.md" => "index.md".to_string(),
+        _ => path.to_string(),
+    }
 }
 
 fn line_without_ending(line: &str) -> &str {

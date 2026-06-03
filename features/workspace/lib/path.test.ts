@@ -30,10 +30,17 @@ describe("isPdfFilePath", () => {
 });
 
 describe("isPlainTextFilePath", () => {
-    it("allows txt files only", () => {
+    it("allows common plain text and source files", () => {
         expect(isPlainTextFilePath("/tmp/ws/notes.txt")).toBe(true);
         expect(isPlainTextFilePath("/tmp/ws/notes.TXT")).toBe(true);
+        expect(isPlainTextFilePath("/tmp/ws/Main.java")).toBe(true);
+        expect(isPlainTextFilePath("/tmp/ws/script.py")).toBe(true);
+        expect(isPlainTextFilePath("/tmp/ws/config.json")).toBe(true);
+        expect(isPlainTextFilePath("/tmp/ws/app.yaml")).toBe(true);
+        expect(isPlainTextFilePath("/tmp/ws/archive.mhtml")).toBe(true);
+        expect(isPlainTextFilePath("/tmp/ws/LICENSE")).toBe(true);
         expect(isPlainTextFilePath("/tmp/ws/notes.md")).toBe(false);
+        expect(isPlainTextFilePath("/tmp/ws/movie.mp4")).toBe(false);
     });
 });
 
@@ -51,9 +58,15 @@ describe("isImageFilePath", () => {
         expect(isImageFilePath("/tmp/ws/image.png")).toBe(true);
         expect(isImageFilePath("/tmp/ws/image.jpg")).toBe(true);
         expect(isImageFilePath("/tmp/ws/image.jpeg")).toBe(true);
+        expect(isImageFilePath("/tmp/ws/image.jfif")).toBe(true);
         expect(isImageFilePath("/tmp/ws/image.gif")).toBe(true);
         expect(isImageFilePath("/tmp/ws/image.webp")).toBe(true);
+        expect(isImageFilePath("/tmp/ws/image.awebp")).toBe(true);
         expect(isImageFilePath("/tmp/ws/image.svg")).toBe(true);
+        expect(isImageFilePath("/tmp/ws/image.bmp")).toBe(true);
+        expect(isImageFilePath("/tmp/ws/image.avif")).toBe(true);
+        expect(isImageFilePath("/tmp/ws/image.heic")).toBe(true);
+        expect(isImageFilePath("/tmp/ws/image.tiff")).toBe(true);
         expect(isImageFilePath("/tmp/ws/image.Png")).toBe(true);
         expect(isImageFilePath("/tmp/ws/archive.zip")).toBe(false);
     });
@@ -67,6 +80,9 @@ describe("isPreviewableFilePath", () => {
         expect(isPreviewableFilePath("/tmp/ws/page.html")).toBe(true);
         expect(isPreviewableFilePath("/tmp/ws/page.htm")).toBe(true);
         expect(isPreviewableFilePath("/tmp/ws/photo.png")).toBe(true);
+        expect(isPreviewableFilePath("/tmp/ws/source.java")).toBe(true);
+        expect(isPreviewableFilePath("/tmp/ws/archive.mhtml")).toBe(true);
+        expect(isPreviewableFilePath("/tmp/ws/photo.jfif")).toBe(true);
         expect(isPreviewableFilePath("/tmp/ws/archive.zip")).toBe(false);
     });
 });

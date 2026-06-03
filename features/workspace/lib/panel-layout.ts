@@ -13,7 +13,7 @@ interface WorkspacePanelLayout {
 }
 
 const MIN_PANEL_WIDTH = 160;
-const MAX_PANEL_WIDTH = 640;
+const MAX_PANEL_WIDTH = 820;
 const MIN_EDITOR_WIDTH = 560;
 
 export function calculateWorkspacePanelLayout({

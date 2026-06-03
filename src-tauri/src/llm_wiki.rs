@@ -1,7 +1,11 @@
+use std::collections::BTreeSet;
+use std::path::Path;
+
 use crate::llm_wiki_fs::{
     append_log_entry, build_knowledge_graph_markdown, detect_llm_wiki_workspace,
-    initialize_llm_wiki_workspace, raw_file_hash, raw_file_metadata, read_knowledge_config,
-    read_llm_wiki_log, scan_raw_file_metadata, update_progress_markdown, write_knowledge_config,
+    ensure_default_agents_rules, initialize_llm_wiki_workspace, raw_file_hash, raw_file_metadata,
+    read_knowledge_config, read_llm_wiki_log, scan_raw_file_metadata, update_progress_markdown,
+    update_progress_markdown_with_processing, write_knowledge_config,
     write_knowledge_graph_markdown,
 };
 use crate::llm_wiki_ingest::{
@@ -60,12 +64,31 @@ pub fn llm_wiki_initialize_workspace(
 }
 
 #[tauri::command]
-pub async fn llm_wiki_rescan_raw(root_path: String) -> Result<RawScanResult, WorkspaceError> {
-    run_blocking(move || llm_wiki_rescan_raw_sync(root_path)).await
+pub async fn llm_wiki_rescan_raw(
+    root_path: String,
+    excluded_pending_paths: Option<Vec<String>>,
+) -> Result<RawScanResult, WorkspaceError> {
+    run_blocking(move || {
+        let excluded_pending_paths = excluded_pending_paths.unwrap_or_default();
+        if excluded_pending_paths.is_empty() {
+            llm_wiki_rescan_raw_sync(root_path)
+        } else {
+            llm_wiki_rescan_raw_sync_with_exclusions(root_path, excluded_pending_paths)
+        }
+    })
+    .await
 }
 
 pub fn llm_wiki_rescan_raw_sync(root_path: String) -> Result<RawScanResult, WorkspaceError> {
+    llm_wiki_rescan_raw_sync_with_exclusions(root_path, Vec::new())
+}
+
+pub fn llm_wiki_rescan_raw_sync_with_exclusions(
+    root_path: String,
+    excluded_pending_paths: Vec<String>,
+) -> Result<RawScanResult, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
+    ensure_default_agents_rules(&root)?;
     let config = read_knowledge_config(&root)?;
     if config.paused {
         update_progress_markdown(&root, "paused", &[], &[], &[], &config.skip_paths)?;
@@ -77,40 +100,28 @@ pub fn llm_wiki_rescan_raw_sync(root_path: String) -> Result<RawScanResult, Work
         });
     }
 
-    let files = scan_raw_file_metadata(&root, &config)?;
-    let cache = read_cache(&root)?;
-    let mut pending = Vec::new();
-    let mut completed = Vec::new();
+    let excluded_pending_paths = normalize_excluded_pending_paths(excluded_pending_paths);
+    let progress = scan_raw_progress(&root, &config, &excluded_pending_paths)?;
 
-    for file in &files {
-        match cache.entries.get(&file.relative_path) {
-            Some(entry)
-                if entry.raw_size == Some(file.size)
-                    && entry.raw_modified_ms == file.modified_ms =>
-            {
-                completed.push(file.relative_path.clone());
-            }
-            _ => {
-                if pending.len() < RAW_RESCAN_PENDING_BATCH_SIZE {
-                    pending.push(file.relative_path.clone());
-                }
-            }
-        }
-    }
+    let progress_status = if progress.pending.is_empty() {
+        "completed"
+    } else {
+        "scanning"
+    };
 
     update_progress_markdown(
         &root,
-        "scanning",
-        &pending,
-        &completed,
+        progress_status,
+        &progress.pending,
+        &progress.completed,
         &[],
         &config.skip_paths,
     )?;
 
     Ok(RawScanResult {
-        total: files.len(),
-        pending,
-        completed,
+        total: progress.total,
+        pending: progress.pending,
+        completed: progress.completed,
         skipped: config.skip_paths,
     })
 }
@@ -171,32 +182,147 @@ pub fn llm_wiki_ingest_raw_file_sync(
         ));
     }
     raw_file_metadata(&root, &raw_relative_path)?;
+    ensure_default_agents_rules(&root)?;
     let raw = safe_read_regular_text(&root, &root.join(&raw_relative_path), "llm wiki raw file")?;
     let hash = raw_file_hash(&raw_relative_path, raw.as_bytes());
     let purpose = read_optional_managed_text(&root, "purpose.md")?;
     let agents = read_optional_managed_text(&root, "AGENTS.md")?;
     let index = read_optional_managed_text(&root, "index.md")?;
+    let _ = update_ingest_processing_progress(&root, &knowledge_config, &raw_relative_path);
 
     let analysis_prompt = build_ingest_analysis_prompt(&raw, &purpose, &agents, &index);
-    let analysis_json = call_chat_completion(
+    let analysis_json = match call_chat_completion(
         &config,
         vec![
             system_message("You analyze raw notes for a local markdown knowledge base."),
             user_message(analysis_prompt),
         ],
-    )?;
+    ) {
+        Ok(output) => output,
+        Err(error) => {
+            let _ = append_log_entry(
+                &root,
+                &format!("ingest failed {raw_relative_path} analysis: {error}"),
+            );
+            return Err(error);
+        }
+    };
     let existing_context =
         format!("# Purpose\n{purpose}\n\n# AGENTS\n{agents}\n\n# Index\n{index}\n");
     let generation_prompt = build_ingest_generation_prompt(&analysis_json, &existing_context);
-    let llm_output = call_chat_completion(
+    let llm_output = match call_chat_completion(
         &config,
         vec![
             system_message("You generate strict markdown file blocks for an LLM Wiki parser."),
             user_message(generation_prompt),
         ],
-    )?;
-    let blocks = parse_file_blocks(&llm_output)?;
+    ) {
+        Ok(output) => output,
+        Err(error) => {
+            let _ = append_log_entry(
+                &root,
+                &format!("ingest failed {raw_relative_path} generation: {error}"),
+            );
+            return Err(error);
+        }
+    };
+    let blocks = match parse_file_blocks(&llm_output) {
+        Ok(blocks) => blocks,
+        Err(error) => {
+            let _ = append_log_entry(
+                &root,
+                &format!(
+                    "ingest failed {raw_relative_path} parse: {error}; llm output preview: {}",
+                    llm_output_preview(&llm_output)
+                ),
+            );
+            return Err(error);
+        }
+    };
     write_ingest_outputs(&root, &raw_relative_path, &hash, &config.model, &blocks)
+}
+
+struct RawProgressSnapshot {
+    total: usize,
+    pending: Vec<String>,
+    completed: Vec<String>,
+}
+
+fn scan_raw_progress(
+    root: &Path,
+    config: &LlmWikiKnowledgeConfig,
+    excluded_pending_paths: &BTreeSet<String>,
+) -> Result<RawProgressSnapshot, WorkspaceError> {
+    let files = scan_raw_file_metadata(root, config)?;
+    let cache = read_cache(root)?;
+    let mut pending = Vec::new();
+    let mut completed = Vec::new();
+
+    for file in &files {
+        match cache.entries.get(&file.relative_path) {
+            Some(entry)
+                if entry.raw_size == Some(file.size)
+                    && entry.raw_modified_ms == file.modified_ms =>
+            {
+                completed.push(file.relative_path.clone());
+            }
+            _ => {
+                if pending.len() < RAW_RESCAN_PENDING_BATCH_SIZE
+                    && !excluded_pending_paths.contains(&file.relative_path)
+                {
+                    pending.push(file.relative_path.clone());
+                }
+            }
+        }
+    }
+
+    Ok(RawProgressSnapshot {
+        total: files.len(),
+        pending,
+        completed,
+    })
+}
+
+fn update_ingest_processing_progress(
+    root: &Path,
+    config: &LlmWikiKnowledgeConfig,
+    raw_relative_path: &str,
+) -> Result<(), WorkspaceError> {
+    let excluded = BTreeSet::from([raw_relative_path.to_string()]);
+    let progress = scan_raw_progress(root, config, &excluded)?;
+    update_progress_markdown_with_processing(
+        root,
+        "processing",
+        &progress.pending,
+        &[raw_relative_path.to_string()],
+        &progress.completed,
+        &[],
+        &config.skip_paths,
+    )
+}
+
+fn normalize_excluded_pending_paths(paths: Vec<String>) -> BTreeSet<String> {
+    paths
+        .into_iter()
+        .map(|path| path.trim().trim_matches('/').replace('\\', "/"))
+        .filter(|path| path.starts_with("raw/"))
+        .collect()
+}
+
+fn llm_output_preview(output: &str) -> String {
+    const PREVIEW_LIMIT: usize = 800;
+    let mut preview = output
+        .chars()
+        .take(PREVIEW_LIMIT)
+        .collect::<String>()
+        .replace(
+            |character: char| character.is_control() && character != '\n',
+            " ",
+        );
+    if output.chars().count() > PREVIEW_LIMIT {
+        preview.push_str("...");
+    }
+    preview.trim().to_string()
 }
 
 #[tauri::command]
@@ -369,6 +495,7 @@ pub fn llm_config_update(
         base_url: config.base_url.trim().to_string(),
         model: config.model.trim().to_string(),
         api_key,
+        api_mode: normalize_llm_api_mode(&config.api_mode)?,
     };
 
     save_llm_config_to_path(path, &next)?;
@@ -379,7 +506,26 @@ pub fn llm_config_to_public(config: LlmProviderConfig) -> PublicLlmProviderConfi
     PublicLlmProviderConfig {
         base_url: config.base_url,
         model: config.model,
+        api_mode: normalize_public_llm_api_mode(&config.api_mode),
         has_api_key: config.api_key.is_some(),
+    }
+}
+
+fn normalize_llm_api_mode(api_mode: &str) -> Result<String, WorkspaceError> {
+    match api_mode.trim() {
+        "" | "chat" => Ok("chat".to_string()),
+        "responses" => Ok("responses".to_string()),
+        other => Err(WorkspaceError::new(
+            "llm_config_save_failed",
+            format!("unsupported llm api mode: {other}"),
+        )),
+    }
+}
+
+fn normalize_public_llm_api_mode(api_mode: &str) -> String {
+    match api_mode.trim() {
+        "responses" => "responses".to_string(),
+        _ => "chat".to_string(),
     }
 }
 
