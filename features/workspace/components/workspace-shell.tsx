@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { nanoid } from "nanoid";
 import { tauriCore } from "@/common/lib/tauri";
+import { LlmWikiPanel } from "@/features/llm-wiki";
 import { usePanelResize } from "../hooks/use-panel-resize";
 import { syncCliWorkspaceSnapshot } from "../lib/cli-sync";
 import { buildFileTree } from "../lib/file-tree";
@@ -78,7 +79,7 @@ export function WorkspaceShell({
             activeTab?.markdown === undefined
                 ? []
                 : parseMarkdownOutline(activeTab.markdown),
-        [activeTab?.markdown],
+        [activeTab],
     );
 
     useEffect(() => {
@@ -481,16 +482,29 @@ export function WorkspaceShell({
                 </main>
 
                 <div
-                    className="min-h-0 overflow-hidden"
+                    className="relative min-h-0 overflow-hidden"
                     style={{ gridColumn: 3 }}
                 >
-                    <OutlinePanel
-                        headings={activeHeadings}
-                        collapsed={rightPanel.isCollapsed}
-                        onToggleCollapsed={rightPanel.toggleCollapsed}
-                        onHeadingClick={scrollToHeading}
-                        resizeHandleProps={rightPanel.resizeHandleProps}
-                    />
+                    {rightPanel.isCollapsed ? null : (
+                        <aside className="h-full min-h-0 overflow-hidden border-l border-base-300 bg-base-100">
+                            <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto]">
+                                <div className="min-h-0 overflow-hidden [&>aside]:border-l-0 [&>aside>div:last-child]:hidden">
+                                    <OutlinePanel
+                                        headings={activeHeadings}
+                                        collapsed={false}
+                                        onToggleCollapsed={rightPanel.toggleCollapsed}
+                                        onHeadingClick={scrollToHeading}
+                                        resizeHandleProps={{}}
+                                    />
+                                </div>
+                                <LlmWikiPanel rootPath={workspace.rootPath} />
+                            </div>
+                            <div
+                                {...rightPanel.resizeHandleProps}
+                                className="absolute left-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-primary/40"
+                            />
+                        </aside>
+                    )}
                 </div>
             </div>
         </div>
