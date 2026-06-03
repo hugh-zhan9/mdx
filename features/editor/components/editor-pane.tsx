@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import type { RefObject } from "react";
 import { loadImage } from "@/common/lib/image-storage";
 import { tokenize } from "@/common/lib/prism";
@@ -13,6 +13,12 @@ import {
     DOMDProvider,
 } from "./editor-kernel-adapter";
 import { useEditorBridge } from "../hooks/use-editor-bridge";
+import {
+    elementFromNode,
+    isSelectAllShortcut,
+    resolveScopedSelectAllTarget,
+    selectElementContents,
+} from "../lib/keyboard-selection-scope";
 
 interface EditorPaneProps {
     rootPath: string;
@@ -88,6 +94,27 @@ function EditorPaneInner({
         onMarkdownChange,
     });
     const { focus, insertText } = bridge;
+    const handleEditorKeyDownCapture = useCallback(
+        (event: React.KeyboardEvent<HTMLDivElement>) => {
+            if (!isSelectAllShortcut(event.nativeEvent)) {
+                return;
+            }
+
+            const selectTarget = resolveScopedSelectAllTarget(
+                event.target instanceof HTMLElement ? event.target : null,
+                event.currentTarget,
+                elementFromNode(window.getSelection()?.anchorNode ?? null),
+            );
+            if (!selectTarget) {
+                return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+            selectElementContents(selectTarget as HTMLElement);
+        },
+        [],
+    );
 
     useEffect(() => {
         onSelectionChange(
@@ -122,7 +149,10 @@ function EditorPaneInner({
                 ref={editorViewportRef}
                 className="min-h-0 flex-1 overflow-auto bg-base-100"
             >
-                <div className="mx-auto min-h-full w-full max-w-4xl px-6 py-6 sm:px-8 sm:py-8">
+                <div
+                    className="mx-auto min-h-full w-full max-w-4xl px-6 py-6 sm:px-8 sm:py-8"
+                    onKeyDownCapture={handleEditorKeyDownCapture}
+                >
                     <DOMD />
                 </div>
             </div>
