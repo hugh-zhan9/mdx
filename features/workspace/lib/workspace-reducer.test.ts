@@ -435,7 +435,7 @@ describe("workspaceReducer", () => {
             width: Infinity,
         });
 
-        expect(resized.panel.rightWidth).toBe(240);
+        expect(resized.panel.rightWidth).toBe(300);
 
         const negative = workspaceReducer(resized, {
             type: "panel/resized",
@@ -443,7 +443,7 @@ describe("workspaceReducer", () => {
             width: -1,
         });
 
-        expect(negative.panel.rightWidth).toBe(240);
+        expect(negative.panel.rightWidth).toBe(300);
 
         const tooSmall = workspaceReducer(negative, {
             type: "panel/resized",

@@ -1,5 +1,6 @@
 "use client";
 
+import { IconButton } from "../../../common/components/ui-controls";
 import type { WorkspaceAction, WorkspaceTab } from "../lib/types";
 
 interface TabStripProps {
@@ -18,7 +19,7 @@ export function TabStrip({
     return (
         <div className="flex h-10 min-w-0 items-stretch overflow-hidden border-b border-base-300 bg-base-100">
             {tabs.length === 0 ? (
-                <div className="flex items-center px-4 text-sm text-base-content/50">
+                <div className="flex items-center px-4 text-sm text-base-content/65">
                     未打开文件
                 </div>
             ) : (
@@ -47,15 +48,12 @@ export function TabStrip({
                                 {tab.title}
                                 {tab.dirty ? " *" : ""}
                             </button>
-                            <button
-                                type="button"
-                                className="h-full px-2 text-base-content/45 hover:bg-base-300 hover:text-base-content"
-                                aria-label={`关闭 ${tab.title}`}
-                                title="关闭标签页"
+                            <IconButton
+                                label={`关闭 ${tab.title}`}
+                                icon="×"
+                                className="h-full min-w-8"
                                 onClick={() => void onCloseTab(tab.tabId)}
-                            >
-                                x
-                            </button>
+                            />
                         </div>
                     ))}
                 </div>

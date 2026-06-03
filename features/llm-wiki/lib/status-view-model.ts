@@ -8,6 +8,13 @@ export function createLlmWikiStatusViewModel(
             title: "普通 Markdown 工作区",
             primaryAction: "初始化 LLM Wiki",
             statusLines: ["后台 LLM 未启用"],
+            modes: createModes(false),
+            secondaryActions: createSecondaryActions(true),
+            emptyState: {
+                title: "初始化 LLM Wiki",
+                description: "创建 Wiki 目录后，可以用当前工作区内容提问或生成综述。",
+                actionLabel: "初始化 LLM Wiki",
+            },
         };
     }
 
@@ -28,5 +35,42 @@ export function createLlmWikiStatusViewModel(
               ? "重新扫描 raw"
               : "配置 LLM",
         statusLines,
+        modes: createModes(state.llmConfigured),
+        secondaryActions: createSecondaryActions(!state.llmConfigured),
+        emptyState: state.llmConfigured
+            ? null
+            : {
+                  title: "先配置 LLM",
+                  description:
+                      "配置 Base URL、模型和 API Key 后，才能提问或生成综述。",
+                  actionLabel: "配置 LLM",
+              },
     };
+}
+
+function createModes(llmConfigured: boolean) {
+    return [
+        {
+            id: "status" as const,
+            label: "状态",
+            disabled: false,
+        },
+        {
+            id: "ask" as const,
+            label: "提问",
+            disabled: !llmConfigured,
+        },
+        {
+            id: "digest" as const,
+            label: "综述",
+            disabled: !llmConfigured,
+        },
+    ];
+}
+
+function createSecondaryActions(disabled: boolean) {
+    return [
+        { id: "lint" as const, label: "检查", disabled },
+        { id: "graph" as const, label: "图谱", disabled },
+    ];
 }

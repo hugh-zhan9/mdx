@@ -1,4 +1,4 @@
-import { isMarkdownFilePath, normalizeWorkspacePath } from "./path";
+import { isHiddenFileTreeEntry, normalizeWorkspacePath } from "./path";
 import type { FileTreeNode } from "./types";
 
 export interface FileTreeBuildError {
@@ -125,7 +125,7 @@ function normalizeNode(node: FileTreeNode): FileTreeNode | null {
     }
 
     if (node.kind === "file") {
-        if (!isMarkdownFilePath(normalizedPath)) {
+        if (isHiddenFileTreeEntry(normalizedPath)) {
             return null;
         }
 

@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { createWorkspaceState, workspaceReducer } from "../lib/workspace-reducer";
 import { buildFileTree } from "../lib/file-tree";
 import type {
+    AppPreferences,
     FileTreeNode,
     PersistedAppState,
     PersistedWindowSize,
@@ -34,6 +36,10 @@ interface ScanWorkspaceResult {
     warnings: string[];
 }
 
+interface ScanWorkspaceOptions {
+    excludeDirs: string[];
+}
+
 interface BootstrapWorkspaceResult {
     workspace: WorkspaceState;
     appState: PersistedAppState;
@@ -42,9 +48,9 @@ interface BootstrapWorkspaceResult {
 const STATE_VERSION = 1;
 const DEFAULT_PANEL_STATE: WorkspacePanelState = {
     leftCollapsed: false,
-    leftWidth: 280,
+    leftWidth: 300,
     rightCollapsed: false,
-    rightWidth: 240,
+    rightWidth: 300,
 };
 
 export function useWorkspaceBootstrap() {
@@ -52,10 +58,14 @@ export function useWorkspaceBootstrap() {
     const [workspace, setWorkspace] = useState<WorkspaceState | null>(null);
     const [message, setMessage] = useState<string | null>(null);
     const [isTauri, setIsTauri] = useState(false);
+    const [preferences, setPreferences] = useState<AppPreferences>(
+        createDefaultAppState().preferences,
+    );
     const appStateRef = useRef<PersistedAppState>(createDefaultAppState());
     const workspaceRef = useRef<WorkspaceState | null>(null);
     const openWorkspaceRef =
         useRef<(rootPath: string) => Promise<void>>(async () => {});
+    const preferenceRefreshSequenceRef = useRef(0);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const windowResizeSaveTimerRef =
         useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -159,6 +169,7 @@ export function useWorkspaceBootstrap() {
                 }
 
                 appStateRef.current = appState;
+                setPreferences(appState.preferences);
 
                 if (appStateRef.current.recentWorkspaceRoot) {
                     await openWorkspaceRef.current(
@@ -329,8 +340,46 @@ export function useWorkspaceBootstrap() {
             isTauri,
             canChooseWorkspace: isTauri,
             message,
+            preferences,
+            updatePreferences: async (nextPreferences: AppPreferences) => {
+                const normalizedPreferences =
+                    normalizeAppPreferences(nextPreferences);
+
+                if (
+                    appPreferencesEqual(
+                        normalizedPreferences,
+                        appStateRef.current.preferences,
+                    )
+                ) {
+                    return;
+                }
+
+                const nextAppState = {
+                    ...appStateRef.current,
+                    preferences: normalizedPreferences,
+                };
+                appStateRef.current = nextAppState;
+                setPreferences(normalizedPreferences);
+                await saveAppState(nextAppState);
+
+                const currentWorkspace = workspaceRef.current;
+                if (currentWorkspace) {
+                    const refreshSequence =
+                        preferenceRefreshSequenceRef.current + 1;
+                    preferenceRefreshSequenceRef.current = refreshSequence;
+                    void refreshCurrentWorkspaceInBackground(
+                        currentWorkspace.rootPath,
+                        normalizedPreferences,
+                        refreshSequence,
+                        preferenceRefreshSequenceRef,
+                        workspaceRef,
+                        setWorkspace,
+                        setMessage,
+                    );
+                }
+            },
         }),
-        [chooseWorkspace, dispatch, isTauri, message, status, workspace],
+        [chooseWorkspace, dispatch, isTauri, message, preferences, status, workspace],
     );
 }
 
@@ -338,7 +387,9 @@ async function bootstrapWorkspace(
     rootPath: string,
     appState: PersistedAppState,
 ): Promise<BootstrapWorkspaceResult> {
-    const scanned = await scanWorkspace(rootPath);
+    const scanned = await scanWorkspace(rootPath, {
+        excludeDirs: appState.preferences.fileTreeExcludeDirs,
+    });
     const builtTree = buildFileTree(scanned.nodes);
 
     if (!builtTree.ok) {
@@ -417,6 +468,47 @@ function shouldRestoreTab(
     return knownFilePaths === null || knownFilePaths.has(tabPath);
 }
 
+async function refreshCurrentWorkspaceInBackground(
+    rootPath: string,
+    preferences: AppPreferences,
+    sequence: number,
+    sequenceRef: MutableRefObject<number>,
+    workspaceRef: MutableRefObject<WorkspaceState | null>,
+    setWorkspace: Dispatch<SetStateAction<WorkspaceState | null>>,
+    setMessage: Dispatch<SetStateAction<string | null>>,
+) {
+    try {
+        const scanned = await scanWorkspace(rootPath, {
+            excludeDirs: preferences.fileTreeExcludeDirs,
+        });
+        const builtTree = buildFileTree(scanned.nodes);
+
+        if (!builtTree.ok) {
+            throw new Error(builtTree.error.message);
+        }
+
+        if (
+            sequenceRef.current !== sequence ||
+            workspaceRef.current?.rootPath !== rootPath
+        ) {
+            return;
+        }
+
+        setWorkspace((current) =>
+            current?.rootPath === rootPath
+                ? workspaceReducer(current, {
+                      type: "tree/loaded",
+                      fileTree: builtTree.nodes,
+                  })
+                : current,
+        );
+    } catch (error) {
+        if (sequenceRef.current === sequence) {
+            setMessage(formatError(error, "后台刷新工作区失败。"));
+        }
+    }
+}
+
 function collectFilePaths(nodes: FileTreeNode[]) {
     const paths = new Set<string>();
 
@@ -448,6 +540,7 @@ function upsertWorkspaceState(
     return {
         stateVersion: appState.stateVersion || STATE_VERSION,
         recentWorkspaceRoot: workspace.rootPath,
+        preferences: appState.preferences,
         workspaces: [persistedWorkspace, ...otherWorkspaces],
         windowSize,
     };
@@ -515,9 +608,9 @@ async function saveAppState(state: PersistedAppState) {
     await invoke("save_app_state", { state });
 }
 
-async function scanWorkspace(rootPath: string) {
+async function scanWorkspace(rootPath: string, options: ScanWorkspaceOptions) {
     const { invoke } = await import("@tauri-apps/api/core");
-    return invoke<ScanWorkspaceResult>("scan_workspace", { rootPath });
+    return invoke<ScanWorkspaceResult>("scan_workspace", { rootPath, options });
 }
 
 async function chooseWorkspaceRoot() {
@@ -573,12 +666,13 @@ function normalizeAppState(state: PersistedAppState | null): PersistedAppState {
         return createDefaultAppState();
     }
 
-    return {
-        stateVersion: state.stateVersion || STATE_VERSION,
-        recentWorkspaceRoot: state.recentWorkspaceRoot
-            ? normalizeWorkspacePath(state.recentWorkspaceRoot)
-            : null,
-        workspaces: Array.isArray(state.workspaces)
+        return {
+            stateVersion: state.stateVersion || STATE_VERSION,
+            recentWorkspaceRoot: state.recentWorkspaceRoot
+                ? normalizeWorkspacePath(state.recentWorkspaceRoot)
+                : null,
+            preferences: normalizeAppPreferences(state.preferences),
+            workspaces: Array.isArray(state.workspaces)
             ? state.workspaces
                   .filter((workspace) => workspace.rootPath)
                   .map((workspace) => ({
@@ -598,9 +692,62 @@ function createDefaultAppState(): PersistedAppState {
     return {
         stateVersion: STATE_VERSION,
         recentWorkspaceRoot: null,
+        preferences: {
+            fileTreeExcludeDirs: [],
+        },
         workspaces: [],
         windowSize: DEFAULT_WINDOW_SIZE,
     };
+}
+
+function normalizeAppPreferences(
+    preferences: AppPreferences | undefined,
+): AppPreferences {
+    return {
+        fileTreeExcludeDirs: normalizeExcludeDirs(
+            preferences?.fileTreeExcludeDirs,
+        ),
+    };
+}
+
+function appPreferencesEqual(
+    left: AppPreferences,
+    right: AppPreferences,
+) {
+    return stringListsEqual(
+        left.fileTreeExcludeDirs,
+        right.fileTreeExcludeDirs,
+    );
+}
+
+function stringListsEqual(left: string[], right: string[]) {
+    if (left.length !== right.length) {
+        return false;
+    }
+
+    return left.every((item, index) => item === right[index]);
+}
+
+function normalizeExcludeDirs(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+
+    return Array.from(
+        new Set(
+            value
+                .filter((item): item is string => typeof item === "string")
+                .map((item) => item.replaceAll("\\", "/").trim())
+                .map((item) => item.replace(/^\/+|\/+$/g, ""))
+                .filter((item) => item.length > 0)
+                .filter(
+                    (item) =>
+                        !item
+                            .split("/")
+                            .some((part) => part === "." || part === ".."),
+                ),
+        ),
+    );
 }
 
 function normalizePanelState(
@@ -609,16 +756,24 @@ function normalizePanelState(
     return {
         leftCollapsed: panel?.leftCollapsed ?? DEFAULT_PANEL_STATE.leftCollapsed,
         leftWidth: normalizePanelWidth(
-            panel?.leftWidth,
+            normalizeLegacyDefaultPanelWidth(panel?.leftWidth),
             DEFAULT_PANEL_STATE.leftWidth,
         ),
         rightCollapsed:
             panel?.rightCollapsed ?? DEFAULT_PANEL_STATE.rightCollapsed,
         rightWidth: normalizePanelWidth(
-            panel?.rightWidth,
+            normalizeLegacyDefaultPanelWidth(panel?.rightWidth),
             DEFAULT_PANEL_STATE.rightWidth,
         ),
     };
+}
+
+function normalizeLegacyDefaultPanelWidth(width: number | undefined) {
+    if (width === 280 || width === 240) {
+        return DEFAULT_PANEL_STATE.leftWidth;
+    }
+
+    return width;
 }
 
 function normalizePanelWidth(width: number | undefined, fallback: number) {

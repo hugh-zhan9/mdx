@@ -10,6 +10,10 @@ export function filterTreeByName(
 ): FilteredFileTreeNode[] {
     const normalizedQuery = normalizeSearchQuery(query);
 
+    if (normalizedQuery.length === 0) {
+        return tree as FilteredFileTreeNode[];
+    }
+
     return tree.flatMap((node) => filterNodeByName(node, normalizedQuery));
 }
 
@@ -17,10 +21,6 @@ function filterNodeByName(
     node: FileTreeNode,
     normalizedQuery: string,
 ): FilteredFileTreeNode[] {
-    if (normalizedQuery.length === 0) {
-        return [decorateNode(node, normalizedQuery)];
-    }
-
     const nodeMatches = nameIncludesQuery(node.name, normalizedQuery);
 
     if (node.kind === "file") {

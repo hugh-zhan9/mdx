@@ -17,6 +17,8 @@ pub struct AppState {
     #[serde(default)]
     pub recent_workspace_root: Option<String>,
     #[serde(default)]
+    pub preferences: AppPreferences,
+    #[serde(default)]
     pub workspaces: Vec<PersistedWorkspaceState>,
     #[serde(default)]
     pub window_size: PersistedWindowSize,
@@ -27,10 +29,18 @@ impl Default for AppState {
         Self {
             state_version: STATE_VERSION,
             recent_workspace_root: None,
+            preferences: AppPreferences::default(),
             workspaces: Vec::new(),
             window_size: PersistedWindowSize::default(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AppPreferences {
+    #[serde(default)]
+    pub file_tree_exclude_dirs: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -99,8 +109,8 @@ pub struct PersistedWindowSize {
 impl Default for PersistedWindowSize {
     fn default() -> Self {
         Self {
-            width: 900.0,
-            height: 700.0,
+            width: 1280.0,
+            height: 820.0,
         }
     }
 }

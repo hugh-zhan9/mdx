@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+    isHtmlFilePath,
+    isImageFilePath,
     isMarkdownFilePath,
+    isPdfFilePath,
     isPathInsideRoot,
+    isPlainTextFilePath,
+    isPreviewableFilePath,
     normalizeWorkspacePath,
 } from "./path";
 
@@ -13,6 +18,56 @@ describe("normalizeWorkspacePath", () => {
         expect(normalizeWorkspacePath("C:\\Users\\me\\ws\\..\\ws\\A.md")).toBe(
             "C:/Users/me/ws/A.md",
         );
+    });
+});
+
+describe("isPdfFilePath", () => {
+    it("allows pdf files only", () => {
+        expect(isPdfFilePath("/tmp/ws/Source.pdf")).toBe(true);
+        expect(isPdfFilePath("/tmp/ws/Source.PDF")).toBe(true);
+        expect(isPdfFilePath("/tmp/ws/Source.md")).toBe(false);
+    });
+});
+
+describe("isPlainTextFilePath", () => {
+    it("allows txt files only", () => {
+        expect(isPlainTextFilePath("/tmp/ws/notes.txt")).toBe(true);
+        expect(isPlainTextFilePath("/tmp/ws/notes.TXT")).toBe(true);
+        expect(isPlainTextFilePath("/tmp/ws/notes.md")).toBe(false);
+    });
+});
+
+describe("isHtmlFilePath", () => {
+    it("allows html and htm files only", () => {
+        expect(isHtmlFilePath("/tmp/ws/page.html")).toBe(true);
+        expect(isHtmlFilePath("/tmp/ws/page.htm")).toBe(true);
+        expect(isHtmlFilePath("/tmp/ws/page.HTML")).toBe(true);
+        expect(isHtmlFilePath("/tmp/ws/page.md")).toBe(false);
+    });
+});
+
+describe("isImageFilePath", () => {
+    it("allows common image files only", () => {
+        expect(isImageFilePath("/tmp/ws/image.png")).toBe(true);
+        expect(isImageFilePath("/tmp/ws/image.jpg")).toBe(true);
+        expect(isImageFilePath("/tmp/ws/image.jpeg")).toBe(true);
+        expect(isImageFilePath("/tmp/ws/image.gif")).toBe(true);
+        expect(isImageFilePath("/tmp/ws/image.webp")).toBe(true);
+        expect(isImageFilePath("/tmp/ws/image.svg")).toBe(true);
+        expect(isImageFilePath("/tmp/ws/image.Png")).toBe(true);
+        expect(isImageFilePath("/tmp/ws/archive.zip")).toBe(false);
+    });
+});
+
+describe("isPreviewableFilePath", () => {
+    it("allows markdown, pdf, txt, html, and image files", () => {
+        expect(isPreviewableFilePath("/tmp/ws/Idea.md")).toBe(true);
+        expect(isPreviewableFilePath("/tmp/ws/Book.pdf")).toBe(true);
+        expect(isPreviewableFilePath("/tmp/ws/notes.txt")).toBe(true);
+        expect(isPreviewableFilePath("/tmp/ws/page.html")).toBe(true);
+        expect(isPreviewableFilePath("/tmp/ws/page.htm")).toBe(true);
+        expect(isPreviewableFilePath("/tmp/ws/photo.png")).toBe(true);
+        expect(isPreviewableFilePath("/tmp/ws/archive.zip")).toBe(false);
     });
 });
 

@@ -20,11 +20,11 @@ export interface HighlightSegment {
 
 export type FilteredFileTreeNode =
     | (FileTreeFileNode & {
-          nameSegments: HighlightSegment[];
+          nameSegments?: HighlightSegment[];
       })
     | (Omit<FileTreeFolderNode, "children"> & {
           children: FilteredFileTreeNode[];
-          nameSegments: HighlightSegment[];
+          nameSegments?: HighlightSegment[];
       });
 
 export interface MarkdownOutlineHeading {
@@ -169,8 +169,13 @@ export type WorkspacePanelSide = "left" | "right";
 export interface PersistedAppState {
     stateVersion: number;
     recentWorkspaceRoot: string | null;
+    preferences: AppPreferences;
     workspaces: PersistedWorkspaceState[];
     windowSize: PersistedWindowSize;
+}
+
+export interface AppPreferences {
+    fileTreeExcludeDirs: string[];
 }
 
 export interface PersistedWorkspaceState {

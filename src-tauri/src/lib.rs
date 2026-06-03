@@ -34,7 +34,8 @@ pub(crate) fn new_workspace_window(app: &AppHandle) -> tauri::Result<String> {
     let label = format!("w{}", WIN_ID.fetch_add(1, Ordering::SeqCst));
     let window = WebviewWindowBuilder::new(app, &label, WebviewUrl::App("/".into()))
         .title("MDX")
-        .inner_size(900.0, 700.0)
+        .inner_size(1280.0, 820.0)
+        .min_inner_size(1100.0, 640.0)
         .resizable(true)
         .build()?;
     let _ = window.set_focus();
@@ -167,12 +168,17 @@ pub fn run() {
             llm_wiki::llm_wiki_digest,
             llm_wiki::llm_wiki_digest_mock,
             llm_wiki::llm_wiki_lint,
+            llm_wiki::llm_wiki_get_config,
+            llm_wiki::llm_wiki_update_config,
+            llm_wiki::llm_wiki_get_log,
             llm_wiki::llm_config_get,
             llm_wiki::llm_config_set,
             llm_wiki::llm_config_update,
             quit_app,
             workspace_fs::scan_workspace,
             workspace_fs::read_markdown_file,
+            workspace_fs::read_preview_text_file,
+            workspace_fs::read_preview_binary_file,
             workspace_fs::write_markdown_file,
             workspace_fs::create_markdown_file,
             workspace_fs::create_folder,

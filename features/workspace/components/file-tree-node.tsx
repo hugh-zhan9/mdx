@@ -91,11 +91,17 @@ export function FileTreeNodeView({
                         : undefined
                 }
             >
-                <span className="w-4 shrink-0 text-center text-xs text-base-content/45">
-                    {node.kind === "folder" ? (isExpanded ? "v" : ">") : ""}
+                <span className="w-4 shrink-0 text-center text-xs text-base-content/65">
+                    {node.kind === "folder" ? (isExpanded ? "⌄" : "›") : ""}
                 </span>
                 <span className="min-w-0 flex-1 truncate">
-                    <HighlightedName segments={node.nameSegments} />
+                    <HighlightedName
+                        segments={
+                            node.nameSegments ?? [
+                                { text: node.name, highlighted: false },
+                            ]
+                        }
+                    />
                 </span>
             </button>
 
@@ -120,7 +126,7 @@ export function FileTreeNodeView({
                     </div>
                 ) : (
                     <div
-                        className="h-6 truncate pr-2 text-xs text-base-content/35"
+                        className="h-6 truncate pr-2 text-xs text-base-content/65"
                         style={{ paddingLeft: paddingLeft + 18 }}
                     >
                         空文件夹

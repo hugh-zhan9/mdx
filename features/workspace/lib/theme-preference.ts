@@ -39,10 +39,10 @@ export function useThemePreference() {
     const resolvedTheme = themeFromPreference(preference, osPrefersDark());
 
     useEffect(() => {
-        void syncNativeTheme(resolvedTheme).catch((error) => {
+        void syncNativeThemePreference(preference, resolvedTheme).catch((error) => {
             console.warn("Failed to sync native app theme.", error);
         });
-    }, [resolvedTheme]);
+    }, [preference, resolvedTheme]);
 
     return {
         preference,
@@ -76,8 +76,7 @@ export function applyThemePreference(preference: ThemePreference) {
 
     const resolvedPreference = resolveThemePreference(preference);
     const theme = themeFromPreference(resolvedPreference, osPrefersDark());
-    document.documentElement.dataset.theme = theme;
-    document.documentElement.style.colorScheme = theme;
+    applyResolvedTheme(theme);
 
     try {
         localStorage.setItem(STORAGE_KEY, resolvedPreference);
@@ -125,13 +124,35 @@ function osPrefersDark() {
     );
 }
 
-async function syncNativeTheme(theme: ResolvedTheme) {
+async function syncNativeTheme(theme: ResolvedTheme | null) {
     if (!isTauriRuntime()) {
         return;
     }
 
     const { setTheme } = await import("@tauri-apps/api/app");
     await setTheme(theme);
+}
+
+async function syncNativeThemePreference(
+    preference: ThemePreference,
+    resolvedTheme: ResolvedTheme,
+) {
+    if (preference !== "system") {
+        await syncNativeTheme(resolvedTheme);
+        return;
+    }
+
+    await syncNativeTheme(null);
+    applyResolvedTheme(themeFromPreference("system", osPrefersDark()));
+}
+
+function applyResolvedTheme(theme: ResolvedTheme) {
+    if (typeof document === "undefined") {
+        return;
+    }
+
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
 }
 
 function isTauriRuntime() {

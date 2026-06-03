@@ -1,6 +1,7 @@
 import { tauriCore } from "@/common/lib/tauri";
 import type {
   InitializeLlmWikiResult,
+  LlmWikiKnowledgeConfig,
   LlmWikiLintResult,
   LlmWikiQueryResponse,
   LlmWikiWorkspaceStatus,
@@ -68,6 +69,27 @@ export function refreshKnowledgeGraph(rootPath: string): Promise<string> {
 export async function runLint(rootPath: string): Promise<LlmWikiLintResult> {
   const report = await invokeCommand<string>("llm_wiki_lint", { rootPath });
   return { report };
+}
+
+export function getLlmWikiConfig(
+  rootPath: string,
+): Promise<LlmWikiKnowledgeConfig> {
+  return invokeCommand("llm_wiki_get_config", { rootPath });
+}
+
+export function updateLlmWikiConfig(
+  rootPath: string,
+  config: LlmWikiKnowledgeConfig,
+): Promise<LlmWikiKnowledgeConfig> {
+  return invokeCommand("llm_wiki_update_config", {
+    rootPath,
+    paused: config.paused,
+    skipPaths: config.skipPaths,
+  });
+}
+
+export function getLlmWikiLog(rootPath: string): Promise<string> {
+  return invokeCommand("llm_wiki_get_log", { rootPath });
 }
 
 export function searchWiki(

@@ -29,7 +29,13 @@ export interface LlmProviderConfigForm {
 export interface RawScanResult {
     total: number;
     pending: string[];
+    completed: string[];
     skipped: string[];
+}
+
+export interface LlmWikiKnowledgeConfig {
+    paused: boolean;
+    skipPaths: string[];
 }
 
 export interface LlmWikiPanelState {
@@ -43,10 +49,35 @@ export interface LlmWikiPanelState {
     skippedCount: number;
 }
 
+export type LlmWikiPanelModeId = "status" | "ask" | "digest";
+
+export interface LlmWikiPanelModeViewModel {
+    id: LlmWikiPanelModeId;
+    label: string;
+    disabled: boolean;
+}
+
+export type LlmWikiSecondaryActionId = "lint" | "graph";
+
+export interface LlmWikiSecondaryActionViewModel {
+    id: LlmWikiSecondaryActionId;
+    label: string;
+    disabled: boolean;
+}
+
+export interface LlmWikiEmptyStateViewModel {
+    title: string;
+    description: string;
+    actionLabel: string | null;
+}
+
 export interface LlmWikiStatusViewModel {
     title: string;
     primaryAction: string;
     statusLines: string[];
+    modes: LlmWikiPanelModeViewModel[];
+    secondaryActions: LlmWikiSecondaryActionViewModel[];
+    emptyState: LlmWikiEmptyStateViewModel | null;
 }
 
 export interface WikiSearchResult {

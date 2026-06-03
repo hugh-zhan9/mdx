@@ -16,7 +16,7 @@ function expectBuiltTree(rawNodes: FileTreeNode[]) {
 }
 
 describe("buildFileTree", () => {
-    it("keeps folders, markdown files, and assets folders only", () => {
+    it("keeps folders and visible files", () => {
         const tree = expectBuiltTree([
             {
                 kind: "folder",
@@ -57,18 +57,30 @@ describe("buildFileTree", () => {
                 name: "notes.txt",
                 path: `${root}/notes.txt`,
             },
+            {
+                kind: "file",
+                name: ".hidden.md",
+                path: `${root}/.hidden.md`,
+            },
         ]);
 
         expect(tree).toMatchObject([
             {
                 kind: "folder",
                 name: ".assets",
-                children: [],
+                children: [{ kind: "file", name: "cover.png" }],
             },
             {
                 kind: "folder",
                 name: "Docs",
-                children: [{ kind: "file", name: "Guide.MD" }],
+                children: [
+                    { kind: "file", name: "Guide.MD" },
+                    { kind: "file", name: "photo.png" },
+                ],
+            },
+            {
+                kind: "file",
+                name: "notes.txt",
             },
             {
                 kind: "file",

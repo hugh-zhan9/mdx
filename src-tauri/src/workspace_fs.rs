@@ -4,6 +4,8 @@ use std::io;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
+use serde::{Deserialize, Serialize};
+
 use crate::models::{
     AffectedPrefix, CreateFolderResult, CreateMarkdownFileResult, FileTreeNode, PathChangeResult,
     ScanWorkspaceResult, TrashPathResult, WorkspaceError,
@@ -13,7 +15,14 @@ use crate::path_guard::{
     is_ignored_dir, resolve_candidate_path, sanitize_filename,
 };
 
-const DEFAULT_MAX_TREE_ENTRIES: usize = 5_000;
+const DEFAULT_MAX_TREE_ENTRIES: usize = 100_000;
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanWorkspaceOptions {
+    #[serde(default)]
+    pub exclude_dirs: Vec<String>,
+}
 
 pub fn next_untitled_name(dir: impl AsRef<Path>) -> Result<String, WorkspaceError> {
     let dir = dir.as_ref();
@@ -34,16 +43,55 @@ pub fn next_untitled_name(dir: impl AsRef<Path>) -> Result<String, WorkspaceErro
 }
 
 #[tauri::command]
-pub fn scan_workspace(root_path: String) -> Result<ScanWorkspaceResult, WorkspaceError> {
-    scan_workspace_with_limit(root_path, DEFAULT_MAX_TREE_ENTRIES)
+pub async fn scan_workspace(
+    root_path: String,
+    options: Option<ScanWorkspaceOptions>,
+) -> Result<ScanWorkspaceResult, WorkspaceError> {
+    run_blocking(move || scan_workspace_sync(root_path, options)).await
 }
 
+pub fn scan_workspace_sync(
+    root_path: String,
+    options: Option<ScanWorkspaceOptions>,
+) -> Result<ScanWorkspaceResult, WorkspaceError> {
+    scan_workspace_with_options(
+        root_path,
+        options.unwrap_or_default(),
+        DEFAULT_MAX_TREE_ENTRIES,
+    )
+}
+
+async fn run_blocking<T>(
+    task: impl FnOnce() -> Result<T, WorkspaceError> + Send + 'static,
+) -> Result<T, WorkspaceError>
+where
+    T: Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(task)
+        .await
+        .map_err(|error| {
+            WorkspaceError::new(
+                "background_task_failed",
+                format!("failed to join workspace background task: {error}"),
+            )
+        })?
+}
+
+#[cfg(test)]
 pub fn scan_workspace_with_limit(
     root_path: String,
     max_tree_entries: usize,
 ) -> Result<ScanWorkspaceResult, WorkspaceError> {
+    scan_workspace_with_options(root_path, ScanWorkspaceOptions::default(), max_tree_entries)
+}
+
+pub fn scan_workspace_with_options(
+    root_path: String,
+    options: ScanWorkspaceOptions,
+    max_tree_entries: usize,
+) -> Result<ScanWorkspaceResult, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
-    let mut state = ScanState::new(max_tree_entries);
+    let mut state = ScanState::new(max_tree_entries, options.exclude_dirs);
     let nodes = scan_dir(&root, &root, &mut state)?;
     let warnings = if state.truncated {
         vec![format!(
@@ -72,6 +120,34 @@ pub fn read_markdown_file(root_path: String, path: String) -> Result<String, Wor
     let mut content = String::new();
     file.read_to_string(&mut content).map_err(|error| {
         WorkspaceError::from_io("read_failed", "failed to read markdown file", &error)
+    })?;
+
+    Ok(content)
+}
+
+#[tauri::command]
+pub fn read_preview_text_file(root_path: String, path: String) -> Result<String, WorkspaceError> {
+    let target = resolve_existing_preview_text_path(root_path, path)?;
+    ensure_preview_text_path(&target.path)?;
+
+    let mut file = open_markdown_file_read(&target)?;
+    let mut content = String::new();
+    file.read_to_string(&mut content).map_err(|error| {
+        WorkspaceError::from_io("read_failed", "failed to read preview text file", &error)
+    })?;
+
+    Ok(content)
+}
+
+#[tauri::command]
+pub fn read_preview_binary_file(root_path: String, path: String) -> Result<Vec<u8>, WorkspaceError> {
+    let target = resolve_existing_preview_binary_path(root_path, path)?;
+    ensure_preview_binary_path(&target.path)?;
+
+    let mut file = open_markdown_file_read(&target)?;
+    let mut content = Vec::new();
+    file.read_to_end(&mut content).map_err(|error| {
+        WorkspaceError::from_io("read_failed", "failed to read preview binary file", &error)
     })?;
 
     Ok(content)
@@ -295,15 +371,17 @@ struct ScanState {
     entry_count: usize,
     raw_entry_count: usize,
     truncated: bool,
+    exclude_dirs: Vec<String>,
 }
 
 impl ScanState {
-    fn new(max_tree_entries: usize) -> Self {
+    fn new(max_tree_entries: usize, exclude_dirs: Vec<String>) -> Self {
         Self {
             max_tree_entries,
             entry_count: 0,
             raw_entry_count: 0,
             truncated: false,
+            exclude_dirs: normalize_exclude_dirs(exclude_dirs),
         }
     }
 
@@ -325,6 +403,21 @@ impl ScanState {
 
         self.raw_entry_count += 1;
         true
+    }
+
+    fn should_exclude_dir(&self, root: &Path, path: &Path, name: &str) -> bool {
+        if is_ignored_dir(name) {
+            return true;
+        }
+
+        let Ok(relative_path) = path.strip_prefix(root) else {
+            return true;
+        };
+        let relative = normalize_relative_dir(relative_path);
+
+        self.exclude_dirs.iter().any(|exclude| {
+            name == exclude || relative == *exclude || relative.starts_with(&format!("{exclude}/"))
+        })
     }
 }
 
@@ -381,7 +474,7 @@ fn scan_dir(
             .map_err(|error| map_scan_io_error(error, dir))?;
 
         if file_type.is_dir() {
-            if is_ignored_dir(&name) {
+            if state.should_exclude_dir(root, &path, &name) {
                 continue;
             }
 
@@ -390,7 +483,7 @@ fn scan_dir(
                     entries.push(CandidateNode::Folder(canonical_path));
                 }
             }
-        } else if file_type.is_file() && is_allowed_markdown_file(&path) {
+        } else if file_type.is_file() && !is_hidden_file(&name) {
             if let Ok(canonical_path) = fs::canonicalize(&path) {
                 if canonical_path.starts_with(root) {
                     entries.push(CandidateNode::File(canonical_path));
@@ -429,6 +522,10 @@ fn scan_dir(
     }
 
     Ok(nodes)
+}
+
+fn is_hidden_file(name: &str) -> bool {
+    name.starts_with('.')
 }
 
 fn resolve_workspace_file_path(
@@ -527,6 +624,28 @@ fn ensure_markdown_path(path: &Path) -> Result<(), WorkspaceError> {
     }
 }
 
+fn ensure_preview_text_path(path: &Path) -> Result<(), WorkspaceError> {
+    if is_allowed_preview_text_file(path) {
+        Ok(())
+    } else {
+        Err(WorkspaceError::new(
+            "invalid_name",
+            "preview text files must end with .txt, .html, or .htm",
+        ))
+    }
+}
+
+fn ensure_preview_binary_path(path: &Path) -> Result<(), WorkspaceError> {
+    if is_allowed_preview_binary_file(path) {
+        Ok(())
+    } else {
+        Err(WorkspaceError::new(
+            "invalid_name",
+            "preview binary files must end with .pdf or a supported image extension",
+        ))
+    }
+}
+
 fn ensure_target_available(path: &Path) -> Result<(), WorkspaceError> {
     if path_has_entry(path)? {
         Err(WorkspaceError::new(
@@ -580,6 +699,54 @@ fn resolve_existing_markdown_path(
             "markdown file does not exist",
         )),
     }
+}
+
+fn resolve_existing_preview_text_path(
+    root_path: String,
+    path: String,
+) -> Result<WorkspaceFileTarget, WorkspaceError> {
+    match resolve_workspace_file_path(root_path, path)? {
+        ResolvedWorkspacePath::Existing(path) => Ok(path),
+        ResolvedWorkspacePath::Missing(_) => Err(WorkspaceError::new(
+            "not_found",
+            "preview text file does not exist",
+        )),
+    }
+}
+
+fn resolve_existing_preview_binary_path(
+    root_path: String,
+    path: String,
+) -> Result<WorkspaceFileTarget, WorkspaceError> {
+    match resolve_workspace_file_path(root_path, path)? {
+        ResolvedWorkspacePath::Existing(path) => Ok(path),
+        ResolvedWorkspacePath::Missing(_) => Err(WorkspaceError::new(
+            "not_found",
+            "preview binary file does not exist",
+        )),
+    }
+}
+
+fn is_allowed_preview_text_file(path: &Path) -> bool {
+    let Some(extension) = path.extension().and_then(|ext| ext.to_str()) else {
+        return false;
+    };
+
+    matches!(
+        extension.to_ascii_lowercase().as_str(),
+        "txt" | "html" | "htm"
+    )
+}
+
+fn is_allowed_preview_binary_file(path: &Path) -> bool {
+    let Some(extension) = path.extension().and_then(|ext| ext.to_str()) else {
+        return false;
+    };
+
+    matches!(
+        extension.to_ascii_lowercase().as_str(),
+        "pdf" | "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg"
+    )
 }
 
 fn relative_to_root(root: &Path, path: &Path) -> Result<PathBuf, WorkspaceError> {
@@ -794,6 +961,29 @@ fn path_name(path: &Path) -> String {
 
 fn path_to_string(path: &Path) -> String {
     path.to_string_lossy().into_owned()
+}
+
+fn normalize_exclude_dirs(paths: Vec<String>) -> Vec<String> {
+    let mut normalized = paths
+        .into_iter()
+        .map(|path| path.replace('\\', "/"))
+        .map(|path| path.trim().trim_matches('/').to_string())
+        .filter(|path| !path.is_empty())
+        .filter(|path| !path.split('/').any(|part| part == "." || part == ".."))
+        .collect::<Vec<_>>();
+    normalized.sort();
+    normalized.dedup();
+    normalized
+}
+
+fn normalize_relative_dir(path: &Path) -> String {
+    path.components()
+        .filter_map(|component| match component {
+            std::path::Component::Normal(part) => Some(part.to_string_lossy()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 #[cfg(target_os = "macos")]

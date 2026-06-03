@@ -1,12 +1,12 @@
 "use client";
 
 import type { HTMLAttributes } from "react";
+import { EmptyState } from "../../../common/components/ui-controls";
 import type { MarkdownOutlineHeading } from "../lib/types";
 
 interface OutlinePanelProps {
     headings?: MarkdownOutlineHeading[];
     collapsed: boolean;
-    onToggleCollapsed: () => void;
     onHeadingClick?: (heading: MarkdownOutlineHeading, index: number) => void;
     resizeHandleProps: HTMLAttributes<HTMLDivElement>;
 }
@@ -14,7 +14,6 @@ interface OutlinePanelProps {
 export function OutlinePanel({
     headings = [],
     collapsed,
-    onToggleCollapsed,
     onHeadingClick,
     resizeHandleProps,
 }: OutlinePanelProps) {
@@ -24,25 +23,13 @@ export function OutlinePanel({
 
     return (
         <aside className="relative h-full min-h-0 overflow-hidden border-l border-base-300 bg-base-100">
-            <div className="flex h-10 items-center justify-between border-b border-base-300 px-3">
-                <div className="text-xs font-semibold uppercase text-base-content/60">
-                    目录
-                </div>
-                <button
-                    type="button"
-                    className="h-7 px-2 text-xs text-base-content/65 hover:bg-base-200"
-                    onClick={onToggleCollapsed}
-                    aria-label="收起目录"
-                    title="收起目录"
-                >
-                    &gt;
-                </button>
-            </div>
-
-            <div className="h-[calc(100%-2.5rem)] overflow-auto py-2 text-sm">
+            <div className="h-full overflow-auto py-2 text-sm">
                 {headings.length === 0 ? (
-                    <div className="px-3 py-2 text-base-content/50">
-                        没有标题
+                    <div className="flex min-h-36 items-center">
+                        <EmptyState
+                            title="没有标题"
+                            description="当前文档没有 H1 到 H6 标题。添加标题后，目录会自动显示。"
+                        />
                     </div>
                 ) : (
                     headings.map((heading, index) => (

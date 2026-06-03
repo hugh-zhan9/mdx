@@ -11,10 +11,12 @@ import {
 import { nanoid } from "nanoid";
 import { tauriCore } from "@/common/lib/tauri";
 import { LlmWikiPanel, useLlmWikiWorkspace } from "@/features/llm-wiki";
+import { IconButton, TextControlButton } from "../../../common/components/ui-controls";
 import { usePanelResize } from "../hooks/use-panel-resize";
 import { syncCliWorkspaceSnapshot } from "../lib/cli-sync";
-import { buildFileTree } from "../lib/file-tree";
 import { parseMarkdownOutline } from "../lib/outline";
+import { calculateWorkspacePanelLayout } from "../lib/panel-layout";
+import { isMarkdownFilePath } from "../lib/path";
 import { scrollRenderedHeadingIntoView } from "../lib/outline-scroll";
 import { createTabSaveQueue } from "../lib/workspace-save";
 import { workspaceReducer } from "../lib/workspace-reducer";
@@ -28,6 +30,7 @@ import type {
   CliSelectionSnapshot,
   CliTabEvent,
   FileTreeNode,
+  AppPreferences,
   PendingCliEditorCommand,
   WorkspaceFileTreeActions,
   WorkspaceMenuActions,
@@ -49,6 +52,8 @@ interface WorkspaceShellProps {
   onChooseWorkspace: () => void;
   canChooseWorkspace: boolean;
   message?: string | null;
+  preferences: AppPreferences;
+  onPreferencesChange: (preferences: AppPreferences) => Promise<void>;
   onActionsChange: (actions: WorkspaceMenuActions | null) => void;
 }
 
@@ -63,6 +68,8 @@ export function WorkspaceShell({
   onChooseWorkspace,
   canChooseWorkspace,
   message,
+  preferences,
+  onPreferencesChange,
   onActionsChange,
 }: WorkspaceShellProps) {
   const dialogs = useAppDialogs();
@@ -71,16 +78,24 @@ export function WorkspaceShell({
   const workspaceRootRef = useRef<string | null>(null);
   const syncedCliWorkspaceRootRef = useRef<string | null>(null);
   const editorViewportRef = useRef<HTMLDivElement | null>(null);
+  const workspaceBodyRef = useRef<HTMLDivElement | null>(null);
   const selectionByTabRef = useRef<Record<string, CliSelectionSnapshot | null>>(
     {},
   );
-  const llmWiki = useLlmWikiWorkspace(workspace.rootPath);
-  const handleRawFileSavedRef = useRef(llmWiki.handleRawFileSaved);
   const [fileTreeActions, setFileTreeActions] =
     useState<WorkspaceFileTreeActions | null>(null);
   const [pendingCliCommand, setPendingCliCommand] =
     useState<PendingCliEditorCommand | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [workspaceBodyWidth, setWorkspaceBodyWidth] = useState(() =>
+    typeof window === "undefined" ? 1280 : window.innerWidth,
+  );
+  const [initialEditorLoadSettled, setInitialEditorLoadSettled] =
+    useState(false);
+  const llmWiki = useLlmWikiWorkspace(workspace.rootPath, {
+    canAutoProcess: initialEditorLoadSettled,
+  });
+  const handleRawFileSavedRef = useRef(llmWiki.handleRawFileSaved);
   const tabs = workspace.tabOrder
     .map((tabId) => workspace.tabs[tabId])
     .filter((tab): tab is WorkspaceTab => Boolean(tab));
@@ -94,6 +109,20 @@ export function WorkspaceShell({
         : parseMarkdownOutline(activeTab.markdown),
     [activeTab],
   );
+
+  useEffect(() => {
+    setInitialEditorLoadSettled(false);
+  }, [workspace.rootPath]);
+
+  useEffect(() => {
+    if (
+      !activeTab ||
+      activeTab.markdown !== undefined ||
+      !isMarkdownFilePath(activeTab.path)
+    ) {
+      setInitialEditorLoadSettled(true);
+    }
+  }, [activeTab]);
 
   useLayoutEffect(() => {
     workspaceRef.current = workspace;
@@ -146,6 +175,36 @@ export function WorkspaceShell({
     panel: workspace.panel,
     dispatch: dispatchAndMirror,
   });
+
+  useLayoutEffect(() => {
+    const element = workspaceBodyRef.current;
+
+    if (!element) {
+      return;
+    }
+
+    const updateWidth = () => {
+      setWorkspaceBodyWidth(Math.round(element.getBoundingClientRect().width));
+    };
+
+    updateWidth();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateWidth);
+
+      return () => {
+        window.removeEventListener("resize", updateWidth);
+      };
+    }
+
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(element);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
   const saveTab = useCallback(
     (tabId: string) => {
       saveQueueRef.current ??= createTabSaveQueue({
@@ -173,6 +232,7 @@ export function WorkspaceShell({
             rootPath,
             () => workspaceRef.current.rootPath,
             dispatchAndMirror,
+            preferences,
           ),
         afterSave: (event) => {
           if (event.rootPath !== workspaceRef.current.rootPath) {
@@ -185,7 +245,7 @@ export function WorkspaceShell({
 
       return saveQueueRef.current.saveTab(tabId);
     },
-    [dialogs, dispatchAndMirror],
+    [dialogs, dispatchAndMirror, preferences],
   );
   const closeTab = useCallback(
     async (tabId: string) => {
@@ -348,6 +408,7 @@ export function WorkspaceShell({
             workspaceRef.current,
             dispatchAndMirror,
             queuePendingCliCommand,
+            preferences,
           );
         }),
         listen<CliFolderCreatedEvent>("cli-folder-created", (event) => {
@@ -355,6 +416,7 @@ export function WorkspaceShell({
             event.payload,
             workspaceRef.current,
             dispatchAndMirror,
+            preferences,
           );
         }),
         listen<CliPathRenamedEvent>("cli-path-renamed", (event) => {
@@ -362,6 +424,7 @@ export function WorkspaceShell({
             event.payload,
             workspaceRef.current,
             dispatchAndMirror,
+            preferences,
           );
         }),
       ]);
@@ -380,30 +443,34 @@ export function WorkspaceShell({
       disposed = true;
       unlisteners.forEach((unlisten) => unlisten());
     };
-  }, [dispatchAndMirror, queuePendingCliCommand, saveTab]);
+  }, [dispatchAndMirror, preferences, queuePendingCliCommand, saveTab]);
 
   const scrollToHeading = useCallback((_: unknown, index: number) => {
     scrollRenderedHeadingIntoView(editorViewportRef.current, index);
   }, []);
+  const panelLayout = calculateWorkspacePanelLayout({
+    containerWidth: workspaceBodyWidth,
+    leftCollapsed: leftPanel.isCollapsed,
+    leftWidth: leftPanel.width,
+    rightCollapsed: rightPanel.isCollapsed,
+    rightWidth: rightPanel.width,
+  });
   const gridTemplateColumns = [
-    leftPanel.isCollapsed ? "0px" : `${leftPanel.width}px`,
+    `${panelLayout.leftWidth}px`,
     "minmax(0, 1fr)",
-    rightPanel.isCollapsed ? "0px" : `${rightPanel.width}px`,
+    `${panelLayout.rightWidth}px`,
   ].join(" ");
 
   return (
     <div className="grid h-full min-h-0 grid-rows-[44px_minmax(0,1fr)]">
       <header className="flex min-w-0 items-center justify-between border-b border-base-300 bg-base-200 px-3">
         <div className="flex min-w-0 items-center gap-2">
-          <button
-            type="button"
-            className="h-7 px-2 text-xs text-base-content/70 hover:bg-base-300 disabled:text-base-content/30"
+          <IconButton
             onClick={leftPanel.toggleCollapsed}
-            aria-label={leftPanel.isCollapsed ? "展开文件树" : "收起文件树"}
+            label={leftPanel.isCollapsed ? "展开文件树" : "收起文件树"}
             title={leftPanel.isCollapsed ? "展开文件树" : "收起文件树"}
-          >
-            文件树
-          </button>
+            icon="☰"
+          />
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
@@ -412,32 +479,33 @@ export function WorkspaceShell({
               {message}
             </div>
           ) : null}
-          <button
-            type="button"
-            className="h-7 px-2 text-xs text-base-content/70 hover:bg-base-300 disabled:text-base-content/30"
+          <TextControlButton
             onClick={onChooseWorkspace}
             disabled={!canChooseWorkspace}
           >
             打开文件夹
-          </button>
+          </TextControlButton>
           <SettingsButton
             open={settingsOpen}
             onOpenChange={setSettingsOpen}
+            workspaceRoot={workspace.rootPath}
+            preferences={preferences}
+            onPreferencesChange={onPreferencesChange}
             onLlmConfigSaved={llmWiki.refresh}
           />
-          <button
-            type="button"
-            className="h-7 px-2 text-xs text-base-content/70 hover:bg-base-300"
+          <IconButton
+            label={rightPanel.isCollapsed ? "展开目录" : "收起目录"}
+            icon="☰"
             onClick={rightPanel.toggleCollapsed}
-            aria-label={rightPanel.isCollapsed ? "展开目录" : "收起目录"}
-            title={rightPanel.isCollapsed ? "展开目录" : "收起目录"}
-          >
-            目录
-          </button>
+          />
         </div>
       </header>
 
-      <div className="grid min-h-0" style={{ gridTemplateColumns }}>
+      <div
+        ref={workspaceBodyRef}
+        className="grid min-h-0"
+        style={{ gridTemplateColumns }}
+      >
         <div className="min-h-0 overflow-hidden" style={{ gridColumn: 1 }}>
           <FileTreePanel
             rootPath={workspace.rootPath}
@@ -445,7 +513,7 @@ export function WorkspaceShell({
             searchQuery={workspace.search.query}
             collapsed={leftPanel.isCollapsed}
             dispatch={dispatchAndMirror}
-            onToggleCollapsed={leftPanel.toggleCollapsed}
+            preferences={preferences}
             activeTabPath={activeTab?.path ?? null}
             onActionsChange={setFileTreeActions}
             resizeHandleProps={leftPanel.resizeHandleProps}
@@ -468,6 +536,10 @@ export function WorkspaceShell({
             dispatch={dispatchAndMirror}
             editorViewportRef={editorViewportRef}
             pendingCliCommand={pendingCliCommand}
+            onCreateMarkdownFile={fileTreeActions?.createMarkdownFile}
+            onInitialMarkdownLoadSettled={() =>
+              setInitialEditorLoadSettled(true)
+            }
             onPendingCliCommandHandled={handlePendingCliCommandHandled}
             onSelectionChange={handleSelectionChange}
           />
@@ -479,12 +551,11 @@ export function WorkspaceShell({
         >
           {rightPanel.isCollapsed ? null : (
             <aside className="h-full min-h-0 overflow-hidden border-l border-base-300 bg-base-100">
-              <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto]">
+              <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_minmax(0,1fr)]">
                 <div className="min-h-0 overflow-hidden [&>aside]:border-l-0 [&>aside>div:last-child]:hidden">
                   <OutlinePanel
                     headings={activeHeadings}
                     collapsed={false}
-                    onToggleCollapsed={rightPanel.toggleCollapsed}
                     onHeadingClick={scrollToHeading}
                     resizeHandleProps={{}}
                   />
@@ -510,16 +581,15 @@ async function refreshTree(
   rootPath: string,
   getCurrentRootPath: () => string,
   dispatch: (action: WorkspaceAction) => void,
+  preferences: AppPreferences,
 ) {
   const { invoke } = await tauriCore();
   const scanned = await invoke<ScanWorkspaceResult>("scan_workspace", {
     rootPath,
+    options: {
+      excludeDirs: preferences.fileTreeExcludeDirs,
+    },
   });
-  const built = buildFileTree(scanned.nodes);
-
-  if (!built.ok) {
-    throw new Error(built.error.message);
-  }
 
   if (getCurrentRootPath() !== rootPath) {
     return;
@@ -527,7 +597,7 @@ async function refreshTree(
 
   dispatch({
     type: "tree/loaded",
-    fileTree: built.nodes,
+    fileTree: scanned.nodes,
   });
 }
 
@@ -667,6 +737,7 @@ async function handleCliFileCreated(
   workspace: WorkspaceState,
   dispatch: (action: WorkspaceAction) => void,
   queuePendingCommand: (command: PendingCliEditorCommand) => void,
+  preferences: AppPreferences,
 ) {
   const tabId = nanoid(8);
   dispatch({
@@ -686,21 +757,23 @@ async function handleCliFileCreated(
     tabId,
   });
 
-  await refreshTree(workspace.rootPath, () => workspace.rootPath, dispatch);
+  await refreshTree(workspace.rootPath, () => workspace.rootPath, dispatch, preferences);
 }
 
 async function handleCliFolderCreated(
   _payload: CliFolderCreatedEvent,
   workspace: WorkspaceState,
   dispatch: (action: WorkspaceAction) => void,
+  preferences: AppPreferences,
 ) {
-  await refreshTree(workspace.rootPath, () => workspace.rootPath, dispatch);
+  await refreshTree(workspace.rootPath, () => workspace.rootPath, dispatch, preferences);
 }
 
 async function handleCliPathRenamed(
   payload: CliPathRenamedEvent,
   workspace: WorkspaceState,
   dispatch: (action: WorkspaceAction) => void,
+  preferences: AppPreferences,
 ) {
   dispatch(
     payload.affectedPrefix
@@ -715,5 +788,5 @@ async function handleCliPathRenamed(
         },
   );
 
-  await refreshTree(workspace.rootPath, () => workspace.rootPath, dispatch);
+  await refreshTree(workspace.rootPath, () => workspace.rootPath, dispatch, preferences);
 }

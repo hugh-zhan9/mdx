@@ -1,6 +1,7 @@
 use crate::llm_wiki_fs::{
     append_log_entry, build_knowledge_graph_markdown, detect_llm_wiki_workspace,
-    initialize_llm_wiki_workspace, read_knowledge_config, scan_raw_files, update_progress_markdown,
+    initialize_llm_wiki_workspace, raw_file_hash, raw_file_metadata, read_knowledge_config,
+    read_llm_wiki_log, scan_raw_file_metadata, update_progress_markdown, write_knowledge_config,
     write_knowledge_graph_markdown,
 };
 use crate::llm_wiki_ingest::{
@@ -13,8 +14,9 @@ use crate::llm_wiki_llm::{
     load_optional_llm_config_from_path, save_llm_config_to_path, LlmChatMessage,
 };
 use crate::llm_wiki_models::{
-    InitializeLlmWikiResult, LlmProviderConfig, LlmProviderConfigUpdate, LlmWikiQueryResponse,
-    LlmWikiWorkspaceStatus, PublicLlmProviderConfig, RawScanResult, WikiSearchResult,
+    InitializeLlmWikiResult, LlmProviderConfig, LlmProviderConfigUpdate, LlmWikiKnowledgeConfig,
+    LlmWikiQueryResponse, LlmWikiWorkspaceStatus, PublicLlmProviderConfig, RawScanResult,
+    WikiSearchResult,
 };
 use crate::llm_wiki_query::{
     mechanical_lint_report, read_required_managed_text, safe_read_regular_text, search_wiki_pages,
@@ -22,6 +24,24 @@ use crate::llm_wiki_query::{
 };
 use crate::models::WorkspaceError;
 use crate::path_guard::canonicalize_workspace_root;
+
+const RAW_RESCAN_PENDING_BATCH_SIZE: usize = 5;
+
+async fn run_blocking<T>(
+    task: impl FnOnce() -> Result<T, WorkspaceError> + Send + 'static,
+) -> Result<T, WorkspaceError>
+where
+    T: Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(task)
+        .await
+        .map_err(|error| {
+            WorkspaceError::new(
+                "background_task_failed",
+                format!("failed to join llm wiki background task: {error}"),
+            )
+        })?
+}
 
 #[tauri::command]
 pub fn llm_wiki_detect_workspace(
@@ -40,7 +60,11 @@ pub fn llm_wiki_initialize_workspace(
 }
 
 #[tauri::command]
-pub fn llm_wiki_rescan_raw(root_path: String) -> Result<RawScanResult, WorkspaceError> {
+pub async fn llm_wiki_rescan_raw(root_path: String) -> Result<RawScanResult, WorkspaceError> {
+    run_blocking(move || llm_wiki_rescan_raw_sync(root_path)).await
+}
+
+pub fn llm_wiki_rescan_raw_sync(root_path: String) -> Result<RawScanResult, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
     let config = read_knowledge_config(&root)?;
     if config.paused {
@@ -48,22 +72,28 @@ pub fn llm_wiki_rescan_raw(root_path: String) -> Result<RawScanResult, Workspace
         return Ok(RawScanResult {
             total: 0,
             pending: Vec::new(),
+            completed: Vec::new(),
             skipped: config.skip_paths,
         });
     }
 
-    let files = scan_raw_files(&root, &config)?;
+    let files = scan_raw_file_metadata(&root, &config)?;
     let cache = read_cache(&root)?;
     let mut pending = Vec::new();
     let mut completed = Vec::new();
 
     for file in &files {
         match cache.entries.get(&file.relative_path) {
-            Some(entry) if entry.hash == file.hash => {
+            Some(entry)
+                if entry.raw_size == Some(file.size)
+                    && entry.raw_modified_ms == file.modified_ms =>
+            {
                 completed.push(file.relative_path.clone());
             }
             _ => {
-                pending.push(file.relative_path.clone());
+                if pending.len() < RAW_RESCAN_PENDING_BATCH_SIZE {
+                    pending.push(file.relative_path.clone());
+                }
             }
         }
     }
@@ -80,12 +110,17 @@ pub fn llm_wiki_rescan_raw(root_path: String) -> Result<RawScanResult, Workspace
     Ok(RawScanResult {
         total: files.len(),
         pending,
+        completed,
         skipped: config.skip_paths,
     })
 }
 
 #[tauri::command]
-pub fn llm_wiki_refresh_graph(root_path: String) -> Result<String, WorkspaceError> {
+pub async fn llm_wiki_refresh_graph(root_path: String) -> Result<String, WorkspaceError> {
+    run_blocking(move || llm_wiki_refresh_graph_sync(root_path)).await
+}
+
+pub fn llm_wiki_refresh_graph_sync(root_path: String) -> Result<String, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
     let markdown = build_knowledge_graph_markdown(&root)?;
     write_knowledge_graph_markdown(&root, &markdown)?;
@@ -106,7 +141,14 @@ pub fn llm_wiki_ingest_mock_output(
 }
 
 #[tauri::command]
-pub fn llm_wiki_ingest_raw_file(
+pub async fn llm_wiki_ingest_raw_file(
+    root_path: String,
+    raw_relative_path: String,
+) -> Result<(), WorkspaceError> {
+    run_blocking(move || llm_wiki_ingest_raw_file_sync(root_path, raw_relative_path)).await
+}
+
+pub fn llm_wiki_ingest_raw_file_sync(
     root_path: String,
     raw_relative_path: String,
 ) -> Result<(), WorkspaceError> {
@@ -114,17 +156,23 @@ pub fn llm_wiki_ingest_raw_file(
     let config = load_llm_config_from_path(default_llm_config_path()?)?;
     let knowledge_config = read_knowledge_config(&root)?;
     let raw_relative_path = validate_raw_relative_path(&root, &raw_relative_path)?;
-    let hash = scan_raw_files(&root, &knowledge_config)?
-        .into_iter()
-        .find(|file| file.relative_path == raw_relative_path)
-        .map(|file| file.hash)
-        .ok_or_else(|| {
-            WorkspaceError::new(
-                "invalid_llm_wiki_raw_path",
-                "llm wiki raw path is not included in the current raw scan",
-            )
-        })?;
+    if knowledge_config
+        .skip_paths
+        .iter()
+        .map(|path| path.trim().trim_matches('/').replace('\\', "/"))
+        .any(|skip_path| {
+            raw_relative_path == skip_path
+                || raw_relative_path.starts_with(&format!("{skip_path}/"))
+        })
+    {
+        return Err(WorkspaceError::new(
+            "invalid_llm_wiki_raw_path",
+            "llm wiki raw path is skipped by the current config",
+        ));
+    }
+    raw_file_metadata(&root, &raw_relative_path)?;
     let raw = safe_read_regular_text(&root, &root.join(&raw_relative_path), "llm wiki raw file")?;
+    let hash = raw_file_hash(&raw_relative_path, raw.as_bytes());
     let purpose = read_optional_managed_text(&root, "purpose.md")?;
     let agents = read_optional_managed_text(&root, "AGENTS.md")?;
     let index = read_optional_managed_text(&root, "index.md")?;
@@ -161,7 +209,14 @@ pub fn llm_wiki_search(
 }
 
 #[tauri::command]
-pub fn llm_wiki_query(
+pub async fn llm_wiki_query(
+    root_path: String,
+    question: String,
+) -> Result<LlmWikiQueryResponse, WorkspaceError> {
+    run_blocking(move || llm_wiki_query_sync(root_path, question)).await
+}
+
+pub fn llm_wiki_query_sync(
     root_path: String,
     question: String,
 ) -> Result<LlmWikiQueryResponse, WorkspaceError> {
@@ -198,7 +253,15 @@ pub fn llm_wiki_query(
 }
 
 #[tauri::command]
-pub fn llm_wiki_digest(
+pub async fn llm_wiki_digest(
+    root_path: String,
+    title: String,
+    prompt: String,
+) -> Result<String, WorkspaceError> {
+    run_blocking(move || llm_wiki_digest_sync(root_path, title, prompt)).await
+}
+
+pub fn llm_wiki_digest_sync(
     root_path: String,
     title: String,
     prompt: String,
@@ -209,7 +272,7 @@ pub fn llm_wiki_digest(
     if references.is_empty() {
         return Err(WorkspaceError::new(
             "insufficient_context",
-            "当前知识库中没有足够上下文生成 digest。",
+            "当前知识库中没有足够上下文生成综述。",
         ));
     }
 
@@ -244,6 +307,34 @@ pub fn llm_wiki_lint(root_path: String) -> Result<String, WorkspaceError> {
     let report = mechanical_lint_report(&root)?;
     append_log_entry(&root, "lint")?;
     Ok(report)
+}
+
+#[tauri::command]
+pub fn llm_wiki_get_config(root_path: String) -> Result<LlmWikiKnowledgeConfig, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    read_knowledge_config(root)
+}
+
+#[tauri::command]
+pub fn llm_wiki_update_config(
+    root_path: String,
+    paused: bool,
+    skip_paths: Option<Vec<String>>,
+) -> Result<LlmWikiKnowledgeConfig, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    let mut config = read_knowledge_config(&root)?;
+    config.paused = paused;
+    if let Some(skip_paths) = skip_paths {
+        config.skip_paths = skip_paths;
+    }
+    write_knowledge_config(&root, &config)?;
+    Ok(config)
+}
+
+#[tauri::command]
+pub fn llm_wiki_get_log(root_path: String) -> Result<String, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    read_llm_wiki_log(root)
 }
 
 #[tauri::command]

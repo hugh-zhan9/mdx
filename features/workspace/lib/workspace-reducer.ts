@@ -13,9 +13,9 @@ import type {
 
 const DEFAULT_PANEL_STATE = {
     leftCollapsed: false,
-    leftWidth: 280,
+    leftWidth: 300,
     rightCollapsed: false,
-    rightWidth: 240,
+    rightWidth: 300,
 };
 const MIN_PANEL_WIDTH = 160;
 const MAX_PANEL_WIDTH = 640;

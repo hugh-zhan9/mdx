@@ -3,9 +3,12 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { RefObject } from "react";
 import { tauriCore } from "@/common/lib/tauri";
+import { EmptyState, TextControlButton } from "../../../common/components/ui-controls";
 import { useWorkspaceBootstrap } from "../hooks/use-workspace-bootstrap";
 import { syncCliWorkspaceSnapshot } from "../lib/cli-sync";
+import { createWorkspaceEmptyState } from "../lib/empty-state-copy";
 import type {
+    AppPreferences,
     WorkspaceMenuActions,
     WorkspaceState,
     WorkspaceTab,
@@ -36,6 +39,8 @@ function WorkspaceAppInner() {
         chooseWorkspace,
         canChooseWorkspace,
         message,
+        preferences,
+        updatePreferences,
     } = useWorkspaceBootstrap();
     useEffect(() => {
         workspaceRef.current = workspace;
@@ -87,6 +92,8 @@ function WorkspaceAppInner() {
                     onChooseWorkspace={chooseWorkspaceWithGuard}
                     canChooseWorkspace={canChooseWorkspace}
                     message={message}
+                    preferences={preferences}
+                    onPreferencesChange={updatePreferences}
                     onActionsChange={handleActionsChange}
                 />
             ) : (
@@ -95,6 +102,8 @@ function WorkspaceAppInner() {
                     message={message}
                     onChooseWorkspace={chooseWorkspaceWithGuard}
                     canChooseWorkspace={canChooseWorkspace}
+                    preferences={preferences}
+                    onPreferencesChange={updatePreferences}
                 />
             )}
         </main>
@@ -306,13 +315,22 @@ function WorkspaceEmptyState({
     message,
     onChooseWorkspace,
     canChooseWorkspace,
+    preferences,
+    onPreferencesChange,
 }: {
     status: string;
     message: string | null;
     onChooseWorkspace: () => void;
     canChooseWorkspace: boolean;
+    preferences: AppPreferences;
+    onPreferencesChange: (preferences: AppPreferences) => Promise<void>;
 }) {
     const isLoading = status === "loading";
+    const emptyState = createWorkspaceEmptyState({
+        status,
+        canChooseWorkspace,
+        message,
+    });
 
     return (
         <div className="grid h-full min-h-0 grid-rows-[44px_minmax(0,1fr)]">
@@ -320,37 +338,32 @@ function WorkspaceEmptyState({
                 <div />
                 <div className="flex items-center gap-2">
                     {canChooseWorkspace ? (
-                        <button
-                            type="button"
-                            className="h-7 px-2 text-xs text-base-content/70 hover:bg-base-300 disabled:text-base-content/30"
+                        <TextControlButton
                             onClick={onChooseWorkspace}
                             disabled={isLoading}
                         >
                             打开文件夹
-                        </button>
+                        </TextControlButton>
                     ) : (
-                        <div className="text-xs text-base-content/50">
+                        <div className="text-xs text-base-content/65">
                             需要桌面版
                         </div>
                     )}
-                    <SettingsButton />
+                    <SettingsButton
+                        preferences={preferences}
+                        onPreferencesChange={onPreferencesChange}
+                    />
                 </div>
             </header>
 
             <section className="flex min-h-0 items-center justify-center px-6">
-                <div className="max-w-md text-center">
-                    <div className="text-sm font-medium">
-                        {isLoading
-                            ? "正在恢复工作区..."
-                            : "未打开工作区"}
-                    </div>
-                    <div className="mt-2 text-sm text-base-content/55">
-                        {message ??
-                            (canChooseWorkspace
-                                ? "请选择一个文件夹以打开工作区。"
-                                : "请在桌面版中选择并恢复工作区文件夹。")}
-                    </div>
-                </div>
+                <EmptyState
+                    title={emptyState.title}
+                    description={emptyState.description}
+                    actionLabel={emptyState.actionLabel}
+                    onAction={canChooseWorkspace ? onChooseWorkspace : undefined}
+                    actionDisabled={isLoading}
+                />
             </section>
         </div>
     );

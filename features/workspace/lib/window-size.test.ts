@@ -13,7 +13,7 @@ describe("normalizePersistedWindowSize", () => {
         expect(
             normalizePersistedWindowSize({
                 width: Number.NaN,
-                height: 700,
+                height: 820,
             }),
         ).toEqual(DEFAULT_WINDOW_SIZE);
     });
@@ -30,11 +30,11 @@ describe("normalizePersistedWindowSize", () => {
     it("rounds valid physical window sizes", () => {
         expect(
             normalizePersistedWindowSize({
-                width: 1024.4,
+                width: 1280.4,
                 height: 768.6,
             }),
         ).toEqual({
-            width: 1024,
+            width: 1280,
             height: 769,
         });
     });

@@ -1,8 +1,8 @@
 use tempfile::tempdir;
 
 use crate::state_store::{
-    load_state_from_path, save_state_to_path, AppState, PersistedPanelState, PersistedWindowSize,
-    PersistedWorkspaceState, PersistedWorkspaceTab,
+    load_state_from_path, save_state_to_path, AppPreferences, AppState, PersistedPanelState,
+    PersistedWindowSize, PersistedWorkspaceState, PersistedWorkspaceTab,
 };
 
 #[test]
@@ -14,8 +14,8 @@ fn loads_empty_state_when_state_file_is_missing() {
     assert_eq!(state.state_version, 1);
     assert!(state.recent_workspace_root.is_none());
     assert!(state.workspaces.is_empty());
-    assert_eq!(state.window_size.width, 900.0);
-    assert_eq!(state.window_size.height, 700.0);
+    assert_eq!(state.window_size.width, 1280.0);
+    assert_eq!(state.window_size.height, 820.0);
 }
 
 #[test]
@@ -44,6 +44,9 @@ fn saves_and_reloads_workspace_state() {
     let state = AppState {
         state_version: 1,
         recent_workspace_root: Some("/tmp/ws".to_string()),
+        preferences: AppPreferences {
+            file_tree_exclude_dirs: vec!["vendor".to_string(), "docs/archive".to_string()],
+        },
         workspaces: vec![PersistedWorkspaceState {
             root_path: "/tmp/ws".to_string(),
             tabs: vec![
@@ -82,12 +85,17 @@ fn saves_and_reloads_workspace_state() {
         serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
     assert_eq!(raw_json["stateVersion"], 1);
     assert_eq!(raw_json["recentWorkspaceRoot"], "/tmp/ws");
+    assert_eq!(raw_json["preferences"]["fileTreeExcludeDirs"][0], "vendor");
     assert_eq!(raw_json["workspaces"][0]["activeTabId"], "tab-2");
     assert_eq!(raw_json["workspaces"][0]["panels"]["leftCollapsed"], true);
     assert_eq!(raw_json["windowSize"]["width"], 1440.0);
 
     let reloaded = load_state_from_path(&path).unwrap();
     assert_eq!(reloaded.recent_workspace_root.as_deref(), Some("/tmp/ws"));
+    assert_eq!(
+        reloaded.preferences.file_tree_exclude_dirs,
+        vec!["vendor".to_string(), "docs/archive".to_string()]
+    );
     assert_eq!(reloaded.workspaces.len(), 1);
 
     let workspace = &reloaded.workspaces[0];

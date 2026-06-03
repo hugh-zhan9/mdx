@@ -89,6 +89,54 @@ export function isMarkdownFilePath(path: string) {
     return normalized.endsWith(".md") || normalized.endsWith(".markdown");
 }
 
+export function isPdfFilePath(path: string) {
+    return normalizeWorkspacePath(path).toLowerCase().endsWith(".pdf");
+}
+
+export function isPlainTextFilePath(path: string) {
+    return normalizeWorkspacePath(path).toLowerCase().endsWith(".txt");
+}
+
+export function isHtmlFilePath(path: string) {
+    const normalized = normalizeWorkspacePath(path).toLowerCase();
+
+    return normalized.endsWith(".html") || normalized.endsWith(".htm");
+}
+
+export function isImageFilePath(path: string) {
+    const normalized = normalizeWorkspacePath(path).toLowerCase();
+
+    return (
+        normalized.endsWith(".png") ||
+        normalized.endsWith(".jpg") ||
+        normalized.endsWith(".jpeg") ||
+        normalized.endsWith(".gif") ||
+        normalized.endsWith(".webp") ||
+        normalized.endsWith(".svg")
+    );
+}
+
+export function isEditableFilePath(path: string) {
+    return isMarkdownFilePath(path);
+}
+
+export function isPreviewableFilePath(path: string) {
+    return (
+        isMarkdownFilePath(path) ||
+        isPdfFilePath(path) ||
+        isPlainTextFilePath(path) ||
+        isHtmlFilePath(path) ||
+        isImageFilePath(path)
+    );
+}
+
+export function isHiddenFileTreeEntry(path: string) {
+    const normalized = normalizeWorkspacePath(path);
+    const name = normalized.split("/").pop() ?? normalized;
+
+    return name.length > 0 && name.startsWith(".");
+}
+
 function stripTrailingSlash(path: string) {
     if (path === "/" || /^[A-Za-z]:\/?$/.test(path)) {
         return path;

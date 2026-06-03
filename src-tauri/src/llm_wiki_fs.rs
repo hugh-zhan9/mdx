@@ -7,8 +7,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::llm_wiki_models::{
     InitializeLlmWikiResult, LlmWikiCache, LlmWikiKnowledgeConfig, LlmWikiWorkspaceStatus,
-    RawScanFile,
+    RawScanFileMetadata,
 };
+#[cfg(test)]
+use crate::llm_wiki_models::RawScanFile;
 use crate::models::WorkspaceError;
 use crate::path_guard::is_allowed_markdown_file;
 use sha2::{Digest, Sha256};
@@ -202,6 +204,31 @@ pub fn read_knowledge_config(
     })
 }
 
+pub fn write_knowledge_config(
+    root: impl AsRef<Path>,
+    config: &LlmWikiKnowledgeConfig,
+) -> Result<(), WorkspaceError> {
+    let root = root.as_ref();
+    ensure_directory(root)?;
+    let contents = serde_json::to_vec_pretty(config).map_err(|error| {
+        WorkspaceError::new(
+            "config_serialize_failed",
+            format!("failed to serialize llm wiki config: {error}"),
+        )
+    })?;
+    write_managed_file(root, ".llm-wiki/config.json", &contents)
+}
+
+pub fn read_llm_wiki_log(root: impl AsRef<Path>) -> Result<String, WorkspaceError> {
+    let root = root.as_ref();
+    ensure_directory(root)?;
+    ensure_managed_file_target(root, "log.md")?;
+    fs::read_to_string(root.join("log.md")).map_err(|error| {
+        WorkspaceError::from_io("read_failed", "failed to read llm wiki log", &error)
+    })
+}
+
+#[cfg(test)]
 pub fn scan_raw_files(
     root: impl AsRef<Path>,
     config: &LlmWikiKnowledgeConfig,
@@ -212,6 +239,20 @@ pub fn scan_raw_files(
     let raw_dir = managed_directory(root, "raw")?;
     let mut files = Vec::new();
     scan_raw_dir(root, &raw_dir, config, &mut files)?;
+    files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+    Ok(files)
+}
+
+pub fn scan_raw_file_metadata(
+    root: impl AsRef<Path>,
+    config: &LlmWikiKnowledgeConfig,
+) -> Result<Vec<RawScanFileMetadata>, WorkspaceError> {
+    let root = root.as_ref();
+    ensure_directory(root)?;
+
+    let raw_dir = managed_directory(root, "raw")?;
+    let mut files = Vec::new();
+    scan_raw_metadata_dir(root, &raw_dir, config, &mut files)?;
     files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
     Ok(files)
 }
@@ -509,6 +550,7 @@ fn ensure_managed_parent_directories(
     Ok(())
 }
 
+#[cfg(test)]
 fn scan_raw_dir(
     root: &Path,
     dir: &Path,
@@ -548,6 +590,50 @@ fn scan_raw_dir(
                 hash: raw_file_hash(&relative_path, &contents),
                 absolute_path: path.to_string_lossy().into_owned(),
                 relative_path,
+            });
+        }
+    }
+
+    Ok(())
+}
+
+fn scan_raw_metadata_dir(
+    root: &Path,
+    dir: &Path,
+    config: &LlmWikiKnowledgeConfig,
+    files: &mut Vec<RawScanFileMetadata>,
+) -> Result<(), WorkspaceError> {
+    for entry in fs::read_dir(dir).map_err(|error| {
+        WorkspaceError::from_io(
+            "scan_failed",
+            "failed to scan llm wiki raw directory",
+            &error,
+        )
+    })? {
+        let entry = entry.map_err(|error| {
+            WorkspaceError::from_io("scan_failed", "failed to read llm wiki raw entry", &error)
+        })?;
+        let path = entry.path();
+        let relative_path = relative_path(root, &path)?;
+        if should_skip_path(&relative_path, &config.skip_paths) {
+            continue;
+        }
+
+        let metadata = fs::symlink_metadata(&path).map_err(|error| {
+            WorkspaceError::from_io("path_failed", "failed to inspect llm wiki raw path", &error)
+        })?;
+        let file_type = metadata.file_type();
+        if file_type.is_symlink() {
+            continue;
+        }
+        if file_type.is_dir() {
+            scan_raw_metadata_dir(root, &path, config, files)?;
+        } else if file_type.is_file() && is_allowed_markdown_file(&path) {
+            files.push(RawScanFileMetadata {
+                absolute_path: path.to_string_lossy().into_owned(),
+                relative_path,
+                size: metadata.len(),
+                modified_ms: modified_ms(&metadata),
             });
         }
     }
@@ -627,12 +713,43 @@ pub(crate) fn relative_path(root: &Path, path: &Path) -> Result<String, Workspac
         .map_err(|_| WorkspaceError::new("outside_workspace", "path is outside llm wiki root"))
 }
 
-fn raw_file_hash(relative_path: &str, contents: &[u8]) -> String {
+pub(crate) fn raw_file_hash(relative_path: &str, contents: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(relative_path.as_bytes());
     hasher.update([0]);
     hasher.update(contents);
     format!("sha256:{:x}", hasher.finalize())
+}
+
+pub(crate) fn raw_file_metadata(
+    root: &Path,
+    raw_relative_path: &str,
+) -> Result<RawScanFileMetadata, WorkspaceError> {
+    let path = root.join(raw_relative_path);
+    let metadata = fs::symlink_metadata(&path).map_err(|error| {
+        WorkspaceError::from_io("path_failed", "failed to inspect llm wiki raw path", &error)
+    })?;
+    if !metadata.file_type().is_file() || !is_allowed_markdown_file(&path) {
+        return Err(WorkspaceError::new(
+            "invalid_llm_wiki_raw_path",
+            "llm wiki raw path must point to a markdown file",
+        ));
+    }
+
+    Ok(RawScanFileMetadata {
+        absolute_path: path.to_string_lossy().into_owned(),
+        relative_path: raw_relative_path.to_string(),
+        size: metadata.len(),
+        modified_ms: modified_ms(&metadata),
+    })
+}
+
+fn modified_ms(metadata: &fs::Metadata) -> Option<u128> {
+    metadata
+        .modified()
+        .ok()
+        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis())
 }
 
 #[derive(Debug)]

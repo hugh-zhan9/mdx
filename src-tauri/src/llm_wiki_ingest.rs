@@ -5,7 +5,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::llm_wiki_fs::{
     append_log_entry, ensure_directory, ensure_managed_file_target, existing_path_kind,
-    managed_directory, path_type_conflict, relative_path, write_managed_file, ExistingPathKind,
+    managed_directory, path_type_conflict, raw_file_metadata, relative_path, write_managed_file,
+    ExistingPathKind,
 };
 use crate::llm_wiki_models::{LlmWikiCache, LlmWikiCacheEntry};
 use crate::models::WorkspaceError;
@@ -231,6 +232,7 @@ pub fn write_ingest_outputs(
     }
     let source_page = source_page(blocks)?;
     let raw_relative_path = validate_raw_relative_path(root, raw_relative_path)?;
+    let raw_metadata = raw_file_metadata(root, &raw_relative_path)?;
     for block in blocks {
         ensure_managed_file_target(root, &block.path)?;
     }
@@ -249,6 +251,8 @@ pub fn write_ingest_outputs(
             source_page: source_page.clone(),
             ingested_at: timestamp_millis().to_string(),
             model: model.to_string(),
+            raw_size: Some(raw_metadata.size),
+            raw_modified_ms: raw_metadata.modified_ms,
         },
     );
     write_cache(root, &cache)?;

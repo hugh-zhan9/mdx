@@ -4,7 +4,9 @@ import {
     useCallback,
     useEffect,
     useMemo,
+    useRef,
     useState,
+    useTransition,
 } from "react";
 import { nanoid } from "nanoid";
 import type {
@@ -15,16 +17,17 @@ import type {
     SetStateAction,
 } from "react";
 import {
-    buildFileTree,
     getFileTreeParentPath,
     isPathWithinFolder,
 } from "../lib/file-tree";
 import {
     isMarkdownFilePath,
+    isPreviewableFilePath,
     normalizeWorkspacePath,
 } from "../lib/path";
 import { filterTreeByName } from "../lib/tree-filter";
 import type {
+    AppPreferences,
     FileTreeNode,
     FilteredFileTreeNode,
     PathChangeResult,
@@ -35,6 +38,8 @@ import { FileTreeContextMenu } from "./file-tree-context-menu";
 import { FileTreeNodeView } from "./file-tree-node";
 import { FileTreeToolbar } from "./file-tree-toolbar";
 import { useAppDialogs } from "./app-dialogs";
+import { EmptyState } from "../../../common/components/ui-controls";
+import { createFileTreeEmptyState } from "../lib/empty-state-copy";
 
 interface FileTreePanelProps {
     rootPath: string;
@@ -42,7 +47,7 @@ interface FileTreePanelProps {
     searchQuery: string;
     collapsed: boolean;
     dispatch: (action: WorkspaceAction) => void;
-    onToggleCollapsed: () => void;
+    preferences: AppPreferences;
     activeTabPath: string | null;
     onActionsChange: (actions: WorkspaceFileTreeActions | null) => void;
     resizeHandleProps: HTMLAttributes<HTMLDivElement>;
@@ -77,7 +82,7 @@ export function FileTreePanel({
     searchQuery,
     collapsed,
     dispatch,
-    onToggleCollapsed,
+    preferences,
     activeTabPath,
     onActionsChange,
     resizeHandleProps,
@@ -91,22 +96,18 @@ export function FileTreePanel({
         null,
     );
     const [message, setMessage] = useState<string | null>(null);
-    const builtTree = useMemo(() => buildFileTree(fileTree), [fileTree]);
+    const refreshSequenceRef = useRef(0);
+    const refreshPromiseRef = useRef<Promise<void> | null>(null);
+    const refreshPendingRef = useRef(false);
+    const [refreshing, setRefreshing] = useState(false);
+    const [, startRefreshTransition] = useTransition();
     const searchActive = searchQuery.trim().length > 0;
     const visibleNodes = useMemo(() => {
-        if (!builtTree.ok) {
-            return [];
-        }
-
-        return filterTreeByName(builtTree.nodes, searchQuery);
-    }, [builtTree, searchQuery]);
+        return filterTreeByName(fileTree, searchQuery);
+    }, [fileTree, searchQuery]);
     const actionTargetNode = useMemo(() => {
-        if (!builtTree.ok) {
-            return null;
-        }
-
         if (selectedPath) {
-            const selectedNode = findNodeByPath(builtTree.nodes, selectedPath);
+            const selectedNode = findNodeByPath(fileTree, selectedPath);
 
             if (selectedNode) {
                 return selectedNode;
@@ -114,9 +115,9 @@ export function FileTreePanel({
         }
 
         return activeTabPath
-            ? findNodeByPath(builtTree.nodes, activeTabPath)
+            ? findNodeByPath(fileTree, activeTabPath)
             : null;
-    }, [activeTabPath, builtTree, selectedPath]);
+    }, [activeTabPath, fileTree, selectedPath]);
 
     useEffect(() => {
         setContextMenu(null);
@@ -149,26 +150,63 @@ export function FileTreePanel({
     }, [dialogs]);
 
     const refreshTree = useCallback(async () => {
-        try {
-            const scanned = await invokeTauri<ScanWorkspaceResult>(
-                "scan_workspace",
-                { rootPath },
-            );
-            const result = buildFileTree(scanned.nodes);
-
-            if (!result.ok) {
-                throw new Error(result.error.message);
-            }
-
-            dispatch({
-                type: "tree/loaded",
-                fileTree: result.nodes,
-            });
-            setMessage(null);
-        } catch (error) {
-            showError(error, "刷新工作区失败。");
+        if (refreshPromiseRef.current) {
+            refreshPendingRef.current = true;
+            return refreshPromiseRef.current;
         }
-    }, [dispatch, rootPath, showError]);
+
+        const refreshSequence = refreshSequenceRef.current + 1;
+        refreshSequenceRef.current = refreshSequence;
+        setRefreshing(true);
+
+        const refreshPromise = (async () => {
+            try {
+                do {
+                    refreshPendingRef.current = false;
+                    const scanned = await invokeTauri<ScanWorkspaceResult>(
+                        "scan_workspace",
+                        {
+                            rootPath,
+                            options: {
+                                excludeDirs: preferences.fileTreeExcludeDirs,
+                            },
+                        },
+                    );
+
+                    if (refreshSequenceRef.current !== refreshSequence) {
+                        return;
+                    }
+
+                    startRefreshTransition(() => {
+                        dispatch({
+                            type: "tree/loaded",
+                            fileTree: scanned.nodes,
+                        });
+                    });
+                    setMessage(null);
+                } while (refreshPendingRef.current);
+            } catch (error) {
+                if (refreshSequenceRef.current === refreshSequence) {
+                    showError(error, "刷新工作区失败。");
+                }
+            } finally {
+                refreshPromiseRef.current = null;
+                if (refreshSequenceRef.current === refreshSequence) {
+                    setRefreshing(false);
+                }
+            }
+        })();
+
+        refreshPromiseRef.current = refreshPromise;
+
+        return refreshPromise;
+    }, [
+        dispatch,
+        preferences.fileTreeExcludeDirs,
+        rootPath,
+        showError,
+        startRefreshTransition,
+    ]);
 
     const createFolder = useCallback(
         async (parentDir: string) => {
@@ -406,7 +444,7 @@ export function FileTreePanel({
                 });
 
                 const movedNode = findNodeByPath(
-                    builtTree.ok ? builtTree.nodes : [],
+                    fileTree,
                     normalizedFromPath,
                 );
                 const movedFile =
@@ -436,7 +474,7 @@ export function FileTreePanel({
                 showError(error, "移动失败。");
             }
         },
-        [builtTree, dispatch, refreshTree, rootPath, showError],
+        [dispatch, fileTree, refreshTree, rootPath, showError],
     );
 
     const toggleFolder = useCallback((path: string) => {
@@ -481,21 +519,11 @@ export function FileTreePanel({
     if (collapsed) {
         return null;
     }
+    const emptyState = createFileTreeEmptyState({ searchActive });
 
     return (
         <aside className="relative h-full min-h-0 overflow-hidden border-r border-base-300 bg-base-100">
             <div className="flex h-full min-h-0 flex-col">
-                <div className="flex h-8 shrink-0 items-center justify-end border-b border-base-300 px-2">
-                    <button
-                        type="button"
-                        className="h-7 shrink-0 px-2 text-xs text-base-content/65 hover:bg-base-200"
-                        onClick={onToggleCollapsed}
-                        aria-label="收起文件树"
-                        title="收起文件树"
-                    >
-                        &lt;
-                    </button>
-                </div>
                 <FileTreeToolbar
                     query={searchQuery}
                     canMutateSelection={Boolean(actionTargetNode)}
@@ -506,6 +534,7 @@ export function FileTreePanel({
                     onRename={() => void renameSelection()}
                     onDelete={() => void deleteSelection()}
                     onRefresh={() => void refreshTree()}
+                    refreshing={refreshing}
                     onQueryChange={(query) =>
                         dispatch({
                             type: "search/queryChanged",
@@ -515,21 +544,24 @@ export function FileTreePanel({
                 />
 
                 <div className="min-h-0 flex-1 overflow-auto py-1">
-                    {builtTree.ok ? null : (
-                        <div className="px-3 py-2 text-xs text-error">
-                            {builtTree.error.message}
-                        </div>
-                    )}
                     {message ? (
                         <div className="border-b border-base-300 px-3 py-2 text-xs text-warning">
                             {message}
                         </div>
                     ) : null}
                     {visibleNodes.length === 0 ? (
-                        <div className="px-3 py-2 text-sm text-base-content/50">
-                            {searchActive
-                                ? "未找到匹配的 Markdown 文件。"
-                                : "未找到 Markdown 文件。"}
+                        <div className="py-8">
+                            <EmptyState
+                                title={emptyState.title}
+                                description={emptyState.description}
+                                actionLabel={searchActive ? null : "新建文档"}
+                                onAction={
+                                    searchActive
+                                        ? undefined
+                                        : () =>
+                                              void createMarkdownFileAtSelection()
+                                }
+                            />
                         </div>
                     ) : (
                         visibleNodes.map((node) => (
@@ -543,7 +575,10 @@ export function FileTreePanel({
                                 onSelect={(selected) => {
                                     setSelectedPath(selected.path);
 
-                                    if (selected.kind === "file") {
+                                    if (
+                                        selected.kind === "file" &&
+                                        isPreviewableFilePath(selected.path)
+                                    ) {
                                         dispatch({
                                             type: "tab/opened",
                                             tab: {

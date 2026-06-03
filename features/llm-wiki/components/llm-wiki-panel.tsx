@@ -1,7 +1,14 @@
 "use client";
 
 import { type FormEvent, useCallback, useState } from "react";
+import {
+  EmptyState,
+  IconButton,
+  PanelHeader,
+  TextControlButton,
+} from "../../../common/components/ui-controls";
 import type { LlmWikiWorkspaceHook } from "../hooks/use-llm-wiki-workspace";
+import type { LlmWikiPanelModeId } from "../lib/types";
 
 interface LlmWikiPanelProps {
   llmWiki: LlmWikiWorkspaceHook;
@@ -17,6 +24,9 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
     isReady,
     isLoading,
     isQuerying,
+    isProcessing,
+    activeOperation,
+    activeOperationLabel,
     initialize,
     rescan,
     lint,
@@ -25,6 +35,8 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
     query,
     refresh,
   } = llmWiki;
+  const [activeMode, setActiveMode] =
+    useState<LlmWikiPanelModeId>("status");
   const [question, setQuestion] = useState("");
   const [digestTitle, setDigestTitle] = useState("");
   const [digestPrompt, setDigestPrompt] = useState("");
@@ -69,10 +81,25 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
   );
 
   const panelMessage = message;
-  const actionsDisabled = !isReady || isLoading;
+  const actionsDisabled = !isReady || isLoading || isProcessing;
+  const primaryActionLabel = activeOperationLabel ?? viewModel.primaryAction;
+  const emptyStateActionLabel =
+    viewModel.emptyState?.actionLabel === "初始化 LLM Wiki" &&
+    activeOperation === "initialize"
+      ? (activeOperationLabel ?? viewModel.emptyState.actionLabel)
+      : viewModel.emptyState?.actionLabel;
+  const askMode = viewModel.modes.find((mode) => mode.id === "ask");
+  const digestMode = viewModel.modes.find((mode) => mode.id === "digest");
+  const effectiveMode =
+    activeMode === "ask" && askMode?.disabled
+      ? "status"
+      : activeMode === "digest" && digestMode?.disabled
+        ? "status"
+        : activeMode;
   const queryDisabled =
     actionsDisabled ||
     status?.mode !== "llmWiki" ||
+    isProcessing ||
     isQuerying ||
     question.trim().length === 0;
   const digestDisabled =
@@ -83,110 +110,167 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
 
   return (
     <section className="min-h-0 border-t border-base-300 bg-base-100">
-      <div className="flex h-10 min-w-0 items-center justify-between border-b border-base-300 px-3">
-        <div className="min-w-0 truncate text-xs font-semibold uppercase text-base-content/60">
-          LLM Wiki
-        </div>
-        <button
-          type="button"
-          className="h-7 px-2 text-xs text-base-content/65 hover:bg-base-200"
-          onClick={() => void refresh()}
-          disabled={isLoading}
-          title="刷新状态"
-        >
-          {isLoading ? "加载" : "刷新"}
-        </button>
-      </div>
+      <PanelHeader
+        title="LLM Wiki"
+        actions={
+          <>
+            <IconButton
+              label="刷新状态"
+              icon={isLoading ? "…" : "↻"}
+              onClick={() => void refresh()}
+              disabled={isLoading || isProcessing}
+            />
+          </>
+        }
+      />
 
       <div className="space-y-3 overflow-auto p-3 text-xs">
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold text-base-content">
-            {viewModel.title}
-          </div>
-          <div className="mt-2 space-y-1 text-base-content/65">
-            {viewModel.statusLines.map((line) => (
-              <div key={line} className="truncate" title={line}>
-                {line}
+        <div className="grid grid-cols-3 gap-1 bg-base-200 p-1">
+          {viewModel.modes.map((mode) => (
+            <button
+              key={mode.id}
+              type="button"
+              className={[
+                "h-7 truncate px-2 text-xs outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:text-base-content/40",
+                effectiveMode === mode.id
+                  ? "bg-base-100 text-base-content shadow-sm"
+                  : "text-base-content/70 hover:text-base-content",
+              ].join(" ")}
+              disabled={mode.disabled}
+              onClick={() => setActiveMode(mode.id)}
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
+
+        {effectiveMode === "status" ? (
+          <div className="space-y-3">
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold text-base-content">
+                {viewModel.title}
               </div>
-            ))}
+              <div className="mt-2 space-y-1 text-base-content/70">
+                {viewModel.statusLines.map((line) => (
+                  <div key={line} className="truncate" title={line}>
+                    {line}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {viewModel.emptyState ? (
+              <div className="border border-base-300 bg-base-200/60 py-3">
+                <EmptyState
+                  title={viewModel.emptyState.title}
+                  description={viewModel.emptyState.description}
+                  actionLabel={emptyStateActionLabel}
+                  onAction={
+                    viewModel.emptyState.actionLabel === "配置 LLM"
+                      ? handleConfigure
+                      : handlePrimaryAction
+                  }
+                  actionDisabled={actionsDisabled}
+                />
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="h-8 w-full border border-base-content bg-base-content px-3 text-xs text-base-100 outline-none transition-colors hover:bg-base-content/85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:border-base-content/30 disabled:bg-base-content/30"
+                disabled={actionsDisabled}
+                onClick={handlePrimaryAction}
+              >
+                {primaryActionLabel}
+              </button>
+            )}
+
+            <div className="grid grid-cols-2 gap-2">
+              {viewModel.secondaryActions.map((action) => (
+                <TextControlButton
+                  key={action.id}
+                  disabled={actionsDisabled || action.disabled}
+                  onClick={() =>
+                    action.id === "lint" ? void lint() : void graph()
+                  }
+                >
+                  {activeOperation === action.id
+                    ? (activeOperationLabel ?? action.label)
+                    : action.label}
+                </TextControlButton>
+              ))}
+            </div>
           </div>
-        </div>
+        ) : null}
 
-        <div className="grid grid-cols-1 gap-2">
-          <button
-            type="button"
-            className="btn btn-primary btn-sm min-h-8 h-8 text-xs"
-            disabled={actionsDisabled}
-            onClick={
-              viewModel.primaryAction === "配置 LLM"
-                ? handleConfigure
-                : handlePrimaryAction
-            }
-          >
-            <span className="truncate">{viewModel.primaryAction}</span>
-          </button>
-          <div className="grid grid-cols-2 gap-2">
+        {effectiveMode === "ask" ? (
+          <form className="space-y-2" onSubmit={handleQuerySubmit}>
+            <label className="block space-y-1.5 text-xs text-base-content/70">
+              <span>问题</span>
+              <textarea
+                className="textarea textarea-bordered min-h-24 w-full resize-y text-xs leading-relaxed placeholder:text-base-content/65 focus:outline focus:outline-2 focus:outline-offset-1 focus:outline-primary"
+                value={question}
+                onChange={(event) => setQuestion(event.target.value)}
+                disabled={
+                  actionsDisabled ||
+                  status?.mode !== "llmWiki" ||
+                  isProcessing
+                }
+                placeholder="询问当前 Wiki"
+                rows={4}
+              />
+            </label>
             <button
-              type="button"
-              className="btn btn-sm min-h-8 h-8 text-xs"
-              disabled={actionsDisabled}
-              onClick={() => void lint()}
+              type="submit"
+              className="h-8 w-full border border-base-content bg-base-content px-3 text-xs text-base-100 outline-none transition-colors hover:bg-base-content/85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:border-base-content/30 disabled:bg-base-content/30"
+              disabled={queryDisabled}
             >
-              Lint
+              {isQuerying ? "正在查询" : "查询 Wiki"}
             </button>
+          </form>
+        ) : null}
+
+        {effectiveMode === "digest" ? (
+          <form className="space-y-2" onSubmit={handleDigestSubmit}>
+            <label className="block space-y-1.5 text-xs text-base-content/70">
+              <span>文件名</span>
+              <input
+                className="input input-bordered h-8 min-h-8 w-full text-xs placeholder:text-base-content/65 focus:outline focus:outline-2 focus:outline-offset-1 focus:outline-primary"
+                value={digestTitle}
+                onChange={(event) => setDigestTitle(event.target.value)}
+                disabled={
+                  actionsDisabled ||
+                  status?.mode !== "llmWiki" ||
+                  isProcessing
+                }
+                placeholder="project-summary"
+              />
+            </label>
+            <label className="block space-y-1.5 text-xs text-base-content/70">
+              <span>主题</span>
+              <textarea
+                className="textarea textarea-bordered min-h-20 w-full resize-y text-xs leading-relaxed placeholder:text-base-content/65 focus:outline focus:outline-2 focus:outline-offset-1 focus:outline-primary"
+                value={digestPrompt}
+                onChange={(event) => setDigestPrompt(event.target.value)}
+                disabled={
+                  actionsDisabled ||
+                  status?.mode !== "llmWiki" ||
+                  isProcessing
+                }
+                placeholder="生成综述的问题或主题"
+                rows={3}
+              />
+            </label>
             <button
-              type="button"
-              className="btn btn-sm min-h-8 h-8 text-xs"
-              disabled={actionsDisabled}
-              onClick={() => void graph()}
+              type="submit"
+              className="h-8 w-full border border-base-content bg-base-content px-3 text-xs text-base-100 outline-none transition-colors hover:bg-base-content/85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:border-base-content/30 disabled:bg-base-content/30"
+              disabled={digestDisabled}
             >
-              图谱
+              {activeOperation === "digest"
+                ? (activeOperationLabel ?? "正在生成")
+                : "生成综述"}
             </button>
-          </div>
-        </div>
-
-        <form className="space-y-2" onSubmit={handleQuerySubmit}>
-          <textarea
-            className="textarea textarea-bordered min-h-20 w-full resize-y text-xs leading-relaxed"
-            value={question}
-            onChange={(event) => setQuestion(event.target.value)}
-            disabled={actionsDisabled || status?.mode !== "llmWiki"}
-            placeholder="询问当前 Wiki"
-            rows={3}
-          />
-          <button
-            type="submit"
-            className="btn btn-sm min-h-8 h-8 w-full text-xs"
-            disabled={queryDisabled}
-          >
-            {isQuerying ? "查询中" : "查询 Wiki"}
-          </button>
-        </form>
-
-        <form className="space-y-2" onSubmit={handleDigestSubmit}>
-          <input
-            className="input input-bordered h-8 min-h-8 w-full text-xs"
-            value={digestTitle}
-            onChange={(event) => setDigestTitle(event.target.value)}
-            disabled={actionsDisabled || status?.mode !== "llmWiki"}
-            placeholder="Digest slug，例如 project-summary"
-          />
-          <textarea
-            className="textarea textarea-bordered min-h-16 w-full resize-y text-xs leading-relaxed"
-            value={digestPrompt}
-            onChange={(event) => setDigestPrompt(event.target.value)}
-            disabled={actionsDisabled || status?.mode !== "llmWiki"}
-            placeholder="生成 synthesis 的问题或主题"
-            rows={2}
-          />
-          <button
-            type="submit"
-            className="btn btn-sm min-h-8 h-8 w-full text-xs"
-            disabled={digestDisabled}
-          >
-            生成 Digest
-          </button>
-        </form>
+          </form>
+        ) : null}
 
         {queryAnswer ? (
           <div className="space-y-2 rounded border border-base-300 p-2">
@@ -194,7 +278,7 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
               {queryAnswer.answer}
             </div>
             {queryAnswer.references.length > 0 ? (
-              <div className="space-y-1 border-t border-base-300 pt-2 text-base-content/60">
+              <div className="space-y-1 border-t border-base-300 pt-2 text-base-content/70">
                 {queryAnswer.references.map((reference) => (
                   <div
                     key={reference.path}

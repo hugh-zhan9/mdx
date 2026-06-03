@@ -29,6 +29,12 @@ describe("filterTreeByName", () => {
         expect(result[0]).toMatchObject({
             children: [{ name: "Idea.md" }],
         });
+        expect(result[0].kind).toBe("folder");
+        if (result[0].kind === "folder") {
+            expect(result[0].children[0].nameSegments).toEqual([
+                { text: "Idea.md", highlighted: false },
+            ]);
+        }
     });
 
     it("keeps ancestors for matching descendants", () => {

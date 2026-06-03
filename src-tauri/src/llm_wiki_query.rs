@@ -90,7 +90,7 @@ pub fn mechanical_lint_report(root: impl AsRef<Path>) -> Result<String, Workspac
     broken.sort();
     broken.dedup();
 
-    let mut report = "# LLM Wiki Lint Report\n\n## 断链\n".to_string();
+    let mut report = "# 知识库检查报告\n\n## 断链\n".to_string();
     if broken.is_empty() {
         report.push_str("无\n");
     } else {
@@ -487,7 +487,7 @@ fn safe_digest_title(title: &str) -> Result<String, WorkspaceError> {
     {
         return Err(WorkspaceError::new(
             "invalid_llm_wiki_digest_title",
-            "digest title must be a non-empty ASCII slug",
+            "综述文件名不能为空，只能包含英文字母、数字、连字符或下划线",
         ));
     }
     Ok(title.to_string())

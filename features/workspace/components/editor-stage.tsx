@@ -1,9 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import { tauriCore } from "@/common/lib/tauri";
 import { EditorPane } from "@/features/editor/components/editor-pane";
+import { EmptyState } from "../../../common/components/ui-controls";
+import { createEditorEmptyState } from "../lib/empty-state-copy";
+import {
+  isHtmlFilePath,
+  isImageFilePath,
+  isMarkdownFilePath,
+  isPdfFilePath,
+  isPlainTextFilePath,
+} from "../lib/path";
 import type {
   PendingCliEditorCommand,
   WorkspaceAction,
@@ -16,6 +25,8 @@ interface EditorStageProps {
   dispatch: (action: WorkspaceAction) => void;
   editorViewportRef?: RefObject<HTMLDivElement | null>;
   pendingCliCommand: PendingCliEditorCommand | null;
+  onCreateMarkdownFile?: () => Promise<void> | void;
+  onInitialMarkdownLoadSettled?: () => void;
   onPendingCliCommandHandled: (commandId: string) => void;
   onSelectionChange: (
     tabId: string,
@@ -29,6 +40,8 @@ export function EditorStage({
   dispatch,
   editorViewportRef,
   pendingCliCommand,
+  onCreateMarkdownFile,
+  onInitialMarkdownLoadSettled,
   onPendingCliCommandHandled,
   onSelectionChange,
 }: EditorStageProps) {
@@ -38,7 +51,11 @@ export function EditorStage({
   } | null>(null);
 
   useEffect(() => {
-    if (!activeTab || activeTab.markdown !== undefined) {
+    if (
+      !activeTab ||
+      activeTab.markdown !== undefined ||
+      !isMarkdownFilePath(activeTab.path)
+    ) {
       return;
     }
 
@@ -65,12 +82,14 @@ export function EditorStage({
         setLoadError((current) =>
           current?.tabId === loadingTab.tabId ? null : current,
         );
+        onInitialMarkdownLoadSettled?.();
       } catch (error) {
         if (!cancelled) {
           setLoadError({
             tabId: loadingTab.tabId,
             text: formatError(error, "加载文件失败。"),
           });
+          onInitialMarkdownLoadSettled?.();
         }
       }
     }
@@ -80,7 +99,7 @@ export function EditorStage({
     return () => {
       cancelled = true;
     };
-  }, [activeTab, dispatch, rootPath]);
+  }, [activeTab, dispatch, onInitialMarkdownLoadSettled, rootPath]);
 
   const handleMarkdownChange = useCallback(
     (tabId: string, markdown: string) => {
@@ -94,21 +113,70 @@ export function EditorStage({
   );
 
   if (!activeTab) {
+    const emptyState = createEditorEmptyState({
+      canCreateMarkdownFile: Boolean(onCreateMarkdownFile),
+    });
+
     return (
-      <section className="flex min-h-0 flex-1 items-center justify-center bg-base-100 px-6 text-sm text-base-content/50">
-        选择一个 Markdown 文件开始编辑。
+      <section className="flex min-h-0 flex-1 items-center justify-center bg-base-100 px-6">
+        <EmptyState
+          title={emptyState.title}
+          description={emptyState.description}
+          actionLabel={emptyState.actionLabel}
+          onAction={onCreateMarkdownFile}
+        />
       </section>
     );
   }
 
   const activeLoadError =
     loadError?.tabId === activeTab.tabId ? loadError.text : null;
+  const activeTabKind = getTabKind(activeTab.path);
 
   return (
     <section className="flex min-h-0 flex-1 flex-col bg-base-100">
       <div className="min-h-0 flex-1 overflow-hidden">
-        {activeTab.markdown === undefined ? (
-          <div className="flex h-full items-center justify-center px-6 text-sm text-base-content/50">
+        {activeTabKind === "pdf" ? (
+          <BinaryBlobPreview
+            rootPath={rootPath}
+            path={activeTab.path}
+            mimeType="application/pdf"
+            loadingText="正在加载 PDF..."
+            errorPrefix="加载 PDF 失败。"
+            render={(source) => (
+              <iframe
+                title="PDF 预览"
+                src={source}
+                className="h-full w-full border-0 bg-base-100"
+              />
+            )}
+          />
+        ) : activeTabKind === "image" ? (
+          <BinaryBlobPreview
+            rootPath={rootPath}
+            path={activeTab.path}
+            mimeType={imageMimeType(activeTab.path)}
+            loadingText="正在加载图片..."
+            errorPrefix="加载图片失败。"
+            render={(source) => (
+              <div className="flex h-full items-center justify-center overflow-auto bg-base-100 p-6">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={source}
+                  alt=""
+                  className="max-h-full max-w-full object-contain"
+                />
+              </div>
+            )}
+          />
+        ) : activeTabKind === "text" ? (
+          <TextPreview rootPath={rootPath} path={activeTab.path} />
+        ) : activeTabKind === "html" ? (
+          <TextPreview rootPath={rootPath} path={activeTab.path} />
+        ) : activeTabKind === "unsupported" ? (
+          <UnsupportedPreview title={activeTab.title} />
+        ) : activeTab.markdown === undefined ? (
+          <div className="flex h-full items-center justify-center px-6 text-sm text-base-content/70">
             {activeLoadError ?? "正在加载文件..."}
           </div>
         ) : (
@@ -125,6 +193,191 @@ export function EditorStage({
       </div>
     </section>
   );
+}
+
+function BinaryBlobPreview({
+  rootPath,
+  path,
+  mimeType,
+  loadingText,
+  errorPrefix,
+  render,
+}: {
+  rootPath: string;
+  path: string;
+  mimeType: string;
+  loadingText: string;
+  errorPrefix: string;
+  render: (source: string) => ReactNode;
+}) {
+  const [source, setSource] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl: string | null = null;
+
+    async function loadSource() {
+      try {
+        const { invoke } = await tauriCore();
+        const bytes = await invoke<number[]>("read_preview_binary_file", {
+          rootPath,
+          path,
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        objectUrl = URL.createObjectURL(
+          new Blob([new Uint8Array(bytes)], { type: mimeType }),
+        );
+        setSource(objectUrl);
+        setLoadError(null);
+      } catch (error) {
+        if (!cancelled) {
+          setLoadError(formatError(error, errorPrefix));
+        }
+      }
+    }
+
+    void loadSource();
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [errorPrefix, mimeType, path, rootPath]);
+
+  if (loadError) {
+    return (
+      <div className="flex h-full items-center justify-center px-6 text-sm text-base-content/70">
+        {loadError}
+      </div>
+    );
+  }
+
+  if (!source) {
+    return (
+      <div className="flex h-full items-center justify-center px-6 text-sm text-base-content/70">
+        {loadingText}
+      </div>
+    );
+  }
+
+  return render(source);
+}
+
+function TextPreview({ rootPath, path }: { rootPath: string; path: string }) {
+  const [content, setContent] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadText() {
+      try {
+        const { invoke } = await tauriCore();
+        const text = await invoke<string>("read_preview_text_file", {
+          rootPath,
+          path,
+        });
+
+        if (!cancelled) {
+          setContent(text);
+          setLoadError(null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setLoadError(formatError(error, "加载文本失败。"));
+        }
+      }
+    }
+
+    void loadText();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [path, rootPath]);
+
+  if (loadError) {
+    return (
+      <div className="flex h-full items-center justify-center px-6 text-sm text-base-content/70">
+        {loadError}
+      </div>
+    );
+  }
+
+  if (content === null) {
+    return (
+      <div className="flex h-full items-center justify-center px-6 text-sm text-base-content/70">
+        正在加载文本...
+      </div>
+    );
+  }
+
+  return (
+    <pre className="h-full overflow-auto whitespace-pre-wrap break-words bg-base-100 p-5 font-mono text-sm leading-relaxed text-base-content">
+      {content}
+    </pre>
+  );
+}
+
+function UnsupportedPreview({ title }: { title: string }) {
+  return (
+    <div className="flex h-full items-center justify-center px-6 text-sm text-base-content/70">
+      {title} 暂不支持预览。
+    </div>
+  );
+}
+
+function getTabKind(path: string) {
+  if (isMarkdownFilePath(path)) {
+    return "markdown";
+  }
+
+  if (isPdfFilePath(path)) {
+    return "pdf";
+  }
+
+  if (isImageFilePath(path)) {
+    return "image";
+  }
+
+  if (isPlainTextFilePath(path)) {
+    return "text";
+  }
+
+  if (isHtmlFilePath(path)) {
+    return "html";
+  }
+
+  return "unsupported";
+}
+
+function imageMimeType(path: string) {
+  const normalized = path.toLowerCase();
+
+  if (normalized.endsWith(".jpg") || normalized.endsWith(".jpeg")) {
+    return "image/jpeg";
+  }
+
+  if (normalized.endsWith(".gif")) {
+    return "image/gif";
+  }
+
+  if (normalized.endsWith(".webp")) {
+    return "image/webp";
+  }
+
+  if (normalized.endsWith(".svg")) {
+    return "image/svg+xml";
+  }
+
+  return "image/png";
 }
 
 function formatError(error: unknown, fallback: string) {

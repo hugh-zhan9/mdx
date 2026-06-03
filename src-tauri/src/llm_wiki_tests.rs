@@ -2,12 +2,13 @@ use sha2::{Digest, Sha256};
 use tempfile::tempdir;
 
 use crate::llm_wiki::{
-    llm_config_to_public, llm_wiki_ingest_mock_output, llm_wiki_lint, llm_wiki_query,
-    llm_wiki_refresh_graph, llm_wiki_rescan_raw,
+    llm_config_to_public, llm_wiki_get_config, llm_wiki_get_log, llm_wiki_ingest_mock_output,
+    llm_wiki_lint, llm_wiki_query_sync, llm_wiki_refresh_graph_sync, llm_wiki_rescan_raw_sync,
+    llm_wiki_update_config,
 };
 use crate::llm_wiki_fs::{
     build_knowledge_graph_markdown, detect_llm_wiki_workspace, initialize_llm_wiki_workspace,
-    read_knowledge_config, scan_raw_files, update_progress_markdown,
+    read_knowledge_config, scan_raw_file_metadata, scan_raw_files, update_progress_markdown,
     write_knowledge_graph_markdown, write_managed_file,
 };
 use crate::llm_wiki_ingest::{
@@ -385,7 +386,7 @@ fn llm_wiki_query_returns_insufficient_context_without_llm_call_when_search_is_e
     let root = tempdir().unwrap();
     initialize_llm_wiki_workspace(root.path()).unwrap();
 
-    let response = llm_wiki_query(
+    let response = llm_wiki_query_sync(
         root.path().to_string_lossy().into_owned(),
         "missing-topic".to_string(),
     )
@@ -408,6 +409,42 @@ fn llm_wiki_lint_records_log_entry() {
     assert!(report.contains("无"));
     let log = std::fs::read_to_string(root.path().join("log.md")).unwrap();
     assert!(log.contains("- lint"));
+}
+
+#[test]
+fn llm_wiki_config_update_toggles_paused_and_preserves_skip_paths() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::write(
+        root.path().join(".llm-wiki/config.json"),
+        r#"{"paused":false,"skipPaths":["raw/archive"]}"#,
+    )
+    .unwrap();
+
+    let updated = llm_wiki_update_config(
+        root.path().to_string_lossy().into_owned(),
+        true,
+        None,
+    )
+    .unwrap();
+
+    assert!(updated.paused);
+    assert_eq!(updated.skip_paths, vec!["raw/archive".to_string()]);
+    assert_eq!(read_knowledge_config(root.path()).unwrap(), updated);
+
+    let loaded = llm_wiki_get_config(root.path().to_string_lossy().into_owned()).unwrap();
+    assert_eq!(loaded, updated);
+}
+
+#[test]
+fn llm_wiki_get_log_reads_managed_log_file() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::write(root.path().join("log.md"), "# Log\n\n- hello\n").unwrap();
+
+    let log = llm_wiki_get_log(root.path().to_string_lossy().into_owned()).unwrap();
+
+    assert!(log.contains("- hello"));
 }
 
 #[test]
@@ -655,6 +692,39 @@ fn scan_raw_files_only_includes_markdown_under_raw_and_respects_skip() {
     assert!(files[0].hash.starts_with("sha256:"));
 }
 
+#[test]
+fn scan_raw_file_metadata_does_not_read_markdown_contents() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    let unreadable = root.path().join("raw/notes/unreadable.md");
+    std::fs::write(&unreadable, "# Unreadable\n").unwrap();
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let mut permissions = std::fs::metadata(&unreadable).unwrap().permissions();
+        permissions.set_mode(0o000);
+        std::fs::set_permissions(&unreadable, permissions).unwrap();
+    }
+
+    let config = read_knowledge_config(root.path()).unwrap();
+    let files = scan_raw_file_metadata(root.path(), &config).unwrap();
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let mut permissions = std::fs::metadata(&unreadable).unwrap().permissions();
+        permissions.set_mode(0o644);
+        std::fs::set_permissions(&unreadable, permissions).unwrap();
+    }
+
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].relative_path, "raw/notes/unreadable.md");
+    assert!(files[0].size > 0);
+}
+
 #[cfg(unix)]
 #[test]
 fn read_knowledge_config_rejects_llm_wiki_symlink() {
@@ -729,7 +799,7 @@ fn rescan_raw_returns_no_pending_files_when_config_is_paused() {
     )
     .unwrap();
 
-    let result = llm_wiki_rescan_raw(root.path().to_string_lossy().into_owned()).unwrap();
+    let result = llm_wiki_rescan_raw_sync(root.path().to_string_lossy().into_owned()).unwrap();
 
     assert_eq!(result.total, 0);
     assert!(result.pending.is_empty());
@@ -748,13 +818,32 @@ fn rescan_raw_marks_cached_files_completed_instead_of_pending() {
     let blocks = parse_file_blocks("---FILE: wiki/sources/a.md---\n# A\n---END FILE---").unwrap();
     write_ingest_outputs(root.path(), "raw/notes/a.md", &hash, "test-model", &blocks).unwrap();
 
-    let result = llm_wiki_rescan_raw(root.path().to_string_lossy().into_owned()).unwrap();
+    let result = llm_wiki_rescan_raw_sync(root.path().to_string_lossy().into_owned()).unwrap();
 
     assert_eq!(result.total, 1);
     assert!(result.pending.is_empty());
     let progress = std::fs::read_to_string(root.path().join("llm-wiki-progress.md")).unwrap();
     assert!(progress.contains("## Completed"));
     assert!(progress.contains("raw/notes/a.md"));
+}
+
+#[test]
+fn rescan_raw_returns_bounded_pending_batch_for_large_raw_trees() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    for index in 0..8 {
+        std::fs::write(
+            root.path().join(format!("raw/notes/note-{index}.md")),
+            format!("# Note {index}\n"),
+        )
+        .unwrap();
+    }
+
+    let result = llm_wiki_rescan_raw_sync(root.path().to_string_lossy().into_owned()).unwrap();
+
+    assert_eq!(result.total, 8);
+    assert_eq!(result.pending.len(), 5);
+    assert!(result.completed.is_empty());
 }
 
 #[cfg(unix)]
@@ -771,7 +860,7 @@ fn rescan_raw_does_not_scan_invalid_raw_when_config_is_paused() {
     std::fs::remove_dir_all(root.path().join("raw")).unwrap();
     std::os::unix::fs::symlink(outside.path(), root.path().join("raw")).unwrap();
 
-    let result = llm_wiki_rescan_raw(root.path().to_string_lossy().into_owned()).unwrap();
+    let result = llm_wiki_rescan_raw_sync(root.path().to_string_lossy().into_owned()).unwrap();
 
     assert_eq!(result.total, 0);
     assert!(result.pending.is_empty());
@@ -986,8 +1075,8 @@ fn refresh_graph_is_idempotent_and_excludes_generated_graph_page() {
     std::fs::write(root.path().join("wiki/entities/A.md"), "# A\n\n[[B]]\n").unwrap();
     std::fs::write(root.path().join("wiki/concepts/B.md"), "# B\n").unwrap();
 
-    let first = llm_wiki_refresh_graph(root.path().to_string_lossy().into_owned()).unwrap();
-    let second = llm_wiki_refresh_graph(root.path().to_string_lossy().into_owned()).unwrap();
+    let first = llm_wiki_refresh_graph_sync(root.path().to_string_lossy().into_owned()).unwrap();
+    let second = llm_wiki_refresh_graph_sync(root.path().to_string_lossy().into_owned()).unwrap();
 
     assert_eq!(first, second);
     assert!(!second.contains("knowledge-graph"));
@@ -1036,7 +1125,7 @@ fn refresh_graph_rejects_wiki_symlink_without_external_write() {
     std::fs::remove_dir_all(root.path().join("wiki")).unwrap();
     std::os::unix::fs::symlink(outside.path(), root.path().join("wiki")).unwrap();
 
-    let error = llm_wiki_refresh_graph(root.path().to_string_lossy().into_owned()).unwrap_err();
+    let error = llm_wiki_refresh_graph_sync(root.path().to_string_lossy().into_owned()).unwrap_err();
 
     assert_eq!(error.error_code(), "path_type_conflict");
     assert!(!outside.path().join("knowledge-graph.md").exists());
@@ -1053,7 +1142,7 @@ fn refresh_graph_rejects_symlinked_graph_file_without_external_write() {
     std::fs::remove_file(root.path().join("wiki/knowledge-graph.md")).ok();
     std::os::unix::fs::symlink(&outside_file, root.path().join("wiki/knowledge-graph.md")).unwrap();
 
-    let error = llm_wiki_refresh_graph(root.path().to_string_lossy().into_owned()).unwrap_err();
+    let error = llm_wiki_refresh_graph_sync(root.path().to_string_lossy().into_owned()).unwrap_err();
 
     assert_eq!(error.error_code(), "path_type_conflict");
     assert_eq!(

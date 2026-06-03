@@ -14,8 +14,10 @@
       {
         "title": "MDX",
         "url": "/",
-        "width": 900,
-        "height": 700,
+        "width": 1280,
+        "height": 820,
+        "minWidth": 1100,
+        "minHeight": 640,
         "resizable": true,
         "fullscreen": false
       }

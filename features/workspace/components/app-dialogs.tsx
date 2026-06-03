@@ -401,7 +401,7 @@ function DialogBody({
                             ))}
                             <button
                                 type="button"
-                                className="h-8 px-3 text-sm text-base-content/55 hover:bg-base-200"
+                                className="h-8 px-3 text-sm text-base-content/70 hover:bg-base-200"
                                 onClick={() => onClose(null)}
                             >
                                 {dialog.cancelLabel ?? "取消"}

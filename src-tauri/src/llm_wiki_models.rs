@@ -56,6 +56,10 @@ pub struct LlmWikiCacheEntry {
     pub source_page: String,
     pub ingested_at: String,
     pub model: String,
+    #[serde(default)]
+    pub raw_size: Option<u64>,
+    #[serde(default)]
+    pub raw_modified_ms: Option<u128>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -101,6 +105,7 @@ pub struct PublicLlmProviderConfig {
     pub has_api_key: bool,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct RawScanFile {
@@ -111,9 +116,19 @@ pub struct RawScanFile {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct RawScanFileMetadata {
+    pub relative_path: String,
+    pub absolute_path: String,
+    pub size: u64,
+    pub modified_ms: Option<u128>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct RawScanResult {
     pub total: usize,
     pub pending: Vec<String>,
+    pub completed: Vec<String>,
     pub skipped: Vec<String>,
 }
 
