@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { type FormEvent, useCallback, useState } from "react";
 import type { LlmWikiWorkspaceHook } from "../hooks/use-llm-wiki-workspace";
 
 interface LlmWikiPanelProps {
@@ -13,14 +13,18 @@ export function LlmWikiPanel({ rootPath, llmWiki }: LlmWikiPanelProps) {
         status,
         viewModel,
         message,
+        queryAnswer,
         isReady,
         isLoading,
+        isQuerying,
         initialize,
         rescan,
         lint,
         graph,
+        query,
         refresh,
     } = llmWiki;
+    const [question, setQuestion] = useState("");
     const [localMessage, setLocalMessage] = useState<{
         rootPath: string;
         text: string;
@@ -50,9 +54,22 @@ export function LlmWikiPanel({ rootPath, llmWiki }: LlmWikiPanelProps) {
         });
     }, [rootPath]);
 
+    const handleQuerySubmit = useCallback(
+        (event: FormEvent<HTMLFormElement>) => {
+            event.preventDefault();
+            void query(question);
+        },
+        [query, question],
+    );
+
     const panelMessage =
         message ?? (localMessage?.rootPath === rootPath ? localMessage.text : null);
     const actionsDisabled = !isReady || isLoading;
+    const queryDisabled =
+        actionsDisabled ||
+        status?.mode !== "llmWiki" ||
+        isQuerying ||
+        question.trim().length === 0;
 
     return (
         <section className="min-h-0 border-t border-base-300 bg-base-100">
@@ -121,6 +138,48 @@ export function LlmWikiPanel({ rootPath, llmWiki }: LlmWikiPanelProps) {
                 {viewModel.primaryAction === "配置 LLM" ? (
                     <div className="rounded border border-base-300 p-2 text-base-content/65">
                         LLM 配置入口待接入。
+                    </div>
+                ) : null}
+
+                <form className="space-y-2" onSubmit={handleQuerySubmit}>
+                    <textarea
+                        className="textarea textarea-bordered min-h-20 w-full resize-y text-xs leading-relaxed"
+                        value={question}
+                        onChange={(event) => setQuestion(event.target.value)}
+                        disabled={actionsDisabled || status?.mode !== "llmWiki"}
+                        placeholder="询问当前 Wiki"
+                        rows={3}
+                    />
+                    <button
+                        type="submit"
+                        className="btn btn-sm min-h-8 h-8 w-full text-xs"
+                        disabled={queryDisabled}
+                    >
+                        {isQuerying ? "查询中" : "查询 Wiki"}
+                    </button>
+                </form>
+
+                {queryAnswer ? (
+                    <div className="space-y-2 rounded border border-base-300 p-2">
+                        <div className="whitespace-pre-wrap break-words text-xs leading-relaxed text-base-content/80">
+                            {queryAnswer.answer}
+                        </div>
+                        {queryAnswer.references.length > 0 ? (
+                            <div className="space-y-1 border-t border-base-300 pt-2 text-base-content/60">
+                                {queryAnswer.references.map((reference) => (
+                                    <div
+                                        key={reference.path}
+                                        className="min-w-0"
+                                        title={`${reference.title}\n${reference.path}`}
+                                    >
+                                        <div className="truncate font-medium text-base-content/70">
+                                            {reference.title || reference.path}
+                                        </div>
+                                        <div className="truncate">{reference.snippet}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : null}
                     </div>
                 ) : null}
 

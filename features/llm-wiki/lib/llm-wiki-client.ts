@@ -2,6 +2,7 @@ import { tauriCore } from "@/common/lib/tauri";
 import type {
     InitializeLlmWikiResult,
     LlmWikiLintResult,
+    LlmWikiQueryResponse,
     LlmWikiWorkspaceStatus,
     PublicLlmProviderConfig,
     RawScanResult,
@@ -50,6 +51,13 @@ export function searchWiki(
     query: string,
 ): Promise<WikiSearchResult[]> {
     return invokeCommand("llm_wiki_search", { rootPath, query });
+}
+
+export function queryWiki(
+    rootPath: string,
+    question: string,
+): Promise<LlmWikiQueryResponse> {
+    return invokeCommand("llm_wiki_query", { rootPath, question });
 }
 
 export async function writeDigestMock(

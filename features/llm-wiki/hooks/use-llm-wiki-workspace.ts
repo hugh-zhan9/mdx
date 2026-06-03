@@ -13,13 +13,16 @@ import {
     detectLlmWikiWorkspace,
     getLlmConfig,
     initializeLlmWikiWorkspace,
+    queryWiki,
     refreshKnowledgeGraph,
     rescanRaw,
     runLint,
 } from "../lib/llm-wiki-client";
+import { canRunLlmWikiQuery } from "../lib/query-eligibility";
 import { createLlmWikiStatusViewModel } from "../lib/status-view-model";
 import type {
     LlmWikiPanelState,
+    LlmWikiQueryResponse,
     LlmWikiStatusViewModel,
     LlmWikiWorkspaceStatus,
     PublicLlmProviderConfig,
@@ -30,12 +33,15 @@ export interface LlmWikiWorkspaceHook {
     status: LlmWikiWorkspaceStatus | null;
     viewModel: LlmWikiStatusViewModel;
     message: string | null;
+    queryAnswer: LlmWikiQueryResponse | null;
     isReady: boolean;
     isLoading: boolean;
+    isQuerying: boolean;
     initialize: () => Promise<void>;
     rescan: () => Promise<void>;
     lint: () => Promise<void>;
     graph: () => Promise<void>;
+    query: (question: string) => Promise<void>;
     refresh: () => Promise<void>;
     handleRawFileSaved: (path: string) => void;
 }
@@ -52,7 +58,9 @@ interface RootSnapshot {
     config: PublicLlmProviderConfig | null;
     scan: RawScanResult;
     message: string | null;
+    queryAnswer: LlmWikiQueryResponse | null;
     isLoading: boolean;
+    isQuerying: boolean;
 }
 
 export function useLlmWikiWorkspace(rootPath: string): LlmWikiWorkspaceHook {
@@ -70,7 +78,8 @@ export function useLlmWikiWorkspace(rootPath: string): LlmWikiWorkspaceHook {
         snapshot.rootPath === rootPath
             ? snapshot
             : createInitialSnapshot(rootPath);
-    const { status, config, scan, message } = currentSnapshot;
+    const { status, config, scan, message, queryAnswer, isQuerying } =
+        currentSnapshot;
     const isLoading = currentSnapshot.isLoading || snapshot.rootPath !== rootPath;
     const isReady = Boolean(rootPath) && !isLoading && snapshot.rootPath === rootPath;
 
@@ -112,7 +121,9 @@ export function useLlmWikiWorkspace(rootPath: string): LlmWikiWorkspaceHook {
                     config: nextConfig,
                     scan: EMPTY_SCAN,
                     message: null,
+                    queryAnswer: null,
                     isLoading: false,
+                    isQuerying: false,
                 });
             }
         } catch (error) {
@@ -157,7 +168,9 @@ export function useLlmWikiWorkspace(rootPath: string): LlmWikiWorkspaceHook {
                     config: nextConfig,
                     scan: EMPTY_SCAN,
                     message: null,
+                    queryAnswer: null,
                     isLoading: false,
+                    isQuerying: false,
                 });
             } catch (error) {
                 if (
@@ -353,6 +366,72 @@ export function useLlmWikiWorkspace(rootPath: string): LlmWikiWorkspaceHook {
         }
     }, [isReady, rootPath, setMessageForError]);
 
+    const query = useCallback(
+        async (question: string) => {
+            const queryRootPath = rootPath;
+            const trimmedQuestion = question.trim();
+
+            if (
+                !canRunLlmWikiQuery({
+                    isReady,
+                    mode: status?.mode ?? "ordinary",
+                    question: trimmedQuestion,
+                })
+            ) {
+                return;
+            }
+
+            setSnapshot((current) =>
+                current.rootPath === queryRootPath
+                    ? {
+                          ...current,
+                          message: null,
+                          queryAnswer: null,
+                          isQuerying: true,
+                      }
+                    : current,
+            );
+
+            try {
+                const result = await queryWiki(queryRootPath, trimmedQuestion);
+
+                if (activeRootPathRef.current !== queryRootPath) {
+                    return;
+                }
+
+                setSnapshot((current) =>
+                    current.rootPath === queryRootPath
+                        ? {
+                              ...current,
+                              queryAnswer: result,
+                              isQuerying: false,
+                          }
+                        : current,
+                );
+            } catch (error) {
+                setSnapshot((current) => {
+                    if (current.rootPath !== queryRootPath) {
+                        return current;
+                    }
+
+                    if (activeRootPathRef.current !== queryRootPath) {
+                        return {
+                            ...current,
+                            isQuerying: false,
+                        };
+                    }
+
+                    return {
+                        ...current,
+                        message: `查询 LLM Wiki 失败：${formatError(error)}`,
+                        isQuerying: false,
+                    };
+                });
+            }
+        },
+        [isReady, rootPath, status?.mode],
+    );
+
     const panelState = useMemo<LlmWikiPanelState>(
         () => ({
             mode: status?.mode ?? "ordinary",
@@ -378,12 +457,15 @@ export function useLlmWikiWorkspace(rootPath: string): LlmWikiWorkspaceHook {
         status,
         viewModel,
         message,
+        queryAnswer,
         isReady,
         isLoading,
+        isQuerying,
         initialize,
         rescan,
         lint,
         graph,
+        query,
         refresh,
         handleRawFileSaved,
     };
@@ -463,7 +545,9 @@ function createLoadingSnapshot(rootPath: string): RootSnapshot {
         config: null,
         scan: EMPTY_SCAN,
         message: null,
+        queryAnswer: null,
         isLoading: Boolean(rootPath),
+        isQuerying: false,
     };
 }
 
@@ -474,7 +558,9 @@ function createMissingRootSnapshot(rootPath: string): RootSnapshot {
         config: null,
         scan: EMPTY_SCAN,
         message: "请先打开工作区。",
+        queryAnswer: null,
         isLoading: false,
+        isQuerying: false,
     };
 }
 
