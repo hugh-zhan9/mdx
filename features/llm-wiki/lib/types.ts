@@ -1,4 +1,4 @@
-export type LlmWikiMode = "ordinary" | "llm_wiki";
+export type LlmWikiMode = "ordinary" | "llmWiki";
 
 export interface LlmWikiWorkspaceStatus {
     mode: LlmWikiMode;

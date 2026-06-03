@@ -22,7 +22,7 @@ describe("createLlmWikiStatusViewModel", () => {
 
     it("describes an llm wiki workspace without provider config", () => {
         const state: LlmWikiPanelState = {
-            mode: "llm_wiki",
+            mode: "llmWiki",
             llmConfigured: false,
             paused: false,
             totalRawFiles: 5,
@@ -41,7 +41,7 @@ describe("createLlmWikiStatusViewModel", () => {
 
     it("describes a paused llm wiki workspace", () => {
         const viewModel = createLlmWikiStatusViewModel({
-            mode: "llm_wiki",
+            mode: "llmWiki",
             llmConfigured: true,
             paused: true,
             totalRawFiles: 4,
