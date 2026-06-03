@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
 import { nanoid } from "nanoid";
 import { tauriCore } from "@/common/lib/tauri";
 import { LlmWikiPanel, useLlmWikiWorkspace } from "@/features/llm-wiki";
@@ -62,6 +69,7 @@ export function WorkspaceShell({
     const workspaceRef = useRef(workspace);
     const saveQueueRef = useRef<SaveQueue | null>(null);
     const workspaceRootRef = useRef<string | null>(null);
+    const syncedCliWorkspaceRootRef = useRef<string | null>(null);
     const editorViewportRef = useRef<HTMLDivElement | null>(null);
     const selectionByTabRef = useRef<Record<string, CliSelectionSnapshot | null>>({});
     const llmWiki = useLlmWikiWorkspace(workspace.rootPath);
@@ -84,24 +92,30 @@ export function WorkspaceShell({
         [activeTab],
     );
 
-    useEffect(() => {
-        handleRawFileSavedRef.current = llmWiki.handleRawFileSaved;
-    }, [llmWiki.handleRawFileSaved]);
-
-    useEffect(() => {
+    useLayoutEffect(() => {
         workspaceRef.current = workspace;
+        handleRawFileSavedRef.current = llmWiki.handleRawFileSaved;
         if (workspaceRootRef.current !== workspace.rootPath) {
             workspaceRootRef.current = workspace.rootPath;
             saveQueueRef.current = null;
-            if (isTauriRuntime()) {
-                void syncCliWorkspaceSnapshot(
-                    workspace,
-                    selectionByTabRef.current,
-                ).catch((error) => {
-                    console.warn("Failed to sync CLI workspace snapshot.", error);
-                });
-            }
         }
+    }, [llmWiki.handleRawFileSaved, workspace]);
+
+    useEffect(() => {
+        if (
+            syncedCliWorkspaceRootRef.current === workspace.rootPath ||
+            !isTauriRuntime()
+        ) {
+            return;
+        }
+
+        syncedCliWorkspaceRootRef.current = workspace.rootPath;
+        void syncCliWorkspaceSnapshot(
+            workspace,
+            selectionByTabRef.current,
+        ).catch((error) => {
+            console.warn("Failed to sync CLI workspace snapshot.", error);
+        });
     }, [workspace]);
 
     const dispatchAndMirror = useCallback(
@@ -161,8 +175,12 @@ export function WorkspaceShell({
                         () => workspaceRef.current.rootPath,
                         dispatchAndMirror,
                     ),
-                afterSave: ({ path }) => {
-                    handleRawFileSavedRef.current(path);
+                afterSave: (event) => {
+                    if (event.rootPath !== workspaceRef.current.rootPath) {
+                        return;
+                    }
+
+                    handleRawFileSavedRef.current(event.path);
                 },
             });
 

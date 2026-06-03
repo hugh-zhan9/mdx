@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
 import { normalizeWorkspacePath } from "@/features/workspace/lib/path";
 import {
     detectLlmWikiWorkspace,
@@ -51,6 +58,11 @@ interface RootSnapshot {
 export function useLlmWikiWorkspace(rootPath: string): LlmWikiWorkspaceHook {
     const activeRootPathRef = useRef(rootPath);
     const requestIdRef = useRef(0);
+    const autoRescanRef = useRef({
+        running: false,
+        pending: false,
+        rootPath: "",
+    });
     const [snapshot, setSnapshot] = useState<RootSnapshot>(() =>
         createInitialSnapshot(rootPath),
     );
@@ -62,7 +74,7 @@ export function useLlmWikiWorkspace(rootPath: string): LlmWikiWorkspaceHook {
     const isLoading = currentSnapshot.isLoading || snapshot.rootPath !== rootPath;
     const isReady = Boolean(rootPath) && !isLoading && snapshot.rootPath === rootPath;
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         activeRootPathRef.current = rootPath;
     }, [rootPath]);
 
@@ -234,6 +246,48 @@ export function useLlmWikiWorkspace(rootPath: string): LlmWikiWorkspaceHook {
         }
     }, [isReady, rootPath, setMessageForError]);
 
+    const runQueuedRawSaveRescans = useCallback(async () => {
+        const queue = autoRescanRef.current;
+
+        queue.rootPath = rootPath;
+        if (queue.running) {
+            queue.pending = true;
+            return;
+        }
+
+        queue.running = true;
+        queue.pending = true;
+
+        while (queue.pending) {
+            queue.pending = false;
+            const scanRootPath = queue.rootPath;
+
+            try {
+                const result = await rescanRaw(scanRootPath);
+
+                if (activeRootPathRef.current !== scanRootPath) {
+                    continue;
+                }
+
+                setSnapshot((current) =>
+                    current.rootPath === scanRootPath
+                        ? {
+                              ...current,
+                              scan: result,
+                              message: `raw 扫描完成：${result.total} 个文件，${result.pending.length} 个待处理。`,
+                          }
+                        : current,
+                );
+            } catch (error) {
+                if (activeRootPathRef.current === scanRootPath) {
+                    setMessageForError("扫描 raw 失败", error);
+                }
+            }
+        }
+
+        queue.running = false;
+    }, [rootPath, setMessageForError]);
+
     const handleRawFileSaved = useCallback(
         (path: string) => {
             if (!isReady || status?.mode !== "llmWiki") {
@@ -244,9 +298,9 @@ export function useLlmWikiWorkspace(rootPath: string): LlmWikiWorkspaceHook {
                 return;
             }
 
-            void rescan();
+            void runQueuedRawSaveRescans();
         },
-        [isReady, rescan, rootPath, status?.mode],
+        [isReady, rootPath, runQueuedRawSaveRescans, status?.mode],
     );
 
     const lint = useCallback(async () => {
