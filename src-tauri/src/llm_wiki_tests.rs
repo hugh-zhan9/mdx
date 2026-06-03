@@ -2,7 +2,8 @@ use sha2::{Digest, Sha256};
 use tempfile::tempdir;
 
 use crate::llm_wiki::{
-    llm_config_to_public, llm_wiki_ingest_mock_output, llm_wiki_refresh_graph, llm_wiki_rescan_raw,
+    llm_config_to_public, llm_wiki_ingest_mock_output, llm_wiki_query, llm_wiki_refresh_graph,
+    llm_wiki_rescan_raw,
 };
 use crate::llm_wiki_fs::{
     build_knowledge_graph_markdown, detect_llm_wiki_workspace, initialize_llm_wiki_workspace,
@@ -10,7 +11,8 @@ use crate::llm_wiki_fs::{
     write_knowledge_graph_markdown, write_managed_file,
 };
 use crate::llm_wiki_ingest::{
-    is_safe_llm_wiki_output_path, parse_file_blocks, write_ingest_outputs, LlmWikiFileBlock,
+    build_ingest_analysis_prompt, build_ingest_generation_prompt, is_safe_llm_wiki_output_path,
+    parse_file_blocks, write_ingest_outputs, LlmWikiFileBlock,
 };
 use crate::llm_wiki_llm::{
     build_openai_chat_request, load_llm_config_from_path, load_optional_llm_config_from_path,
@@ -247,6 +249,28 @@ fn openai_chat_request_uses_model_and_messages() {
 }
 
 #[test]
+fn ingest_prompts_analysis_includes_context_and_extraction_targets() {
+    let prompt = build_ingest_analysis_prompt("# Raw", "# Purpose", "# AGENTS", "# Index");
+
+    assert!(prompt.contains("# Raw"));
+    assert!(prompt.contains("# Purpose"));
+    assert!(prompt.contains("# AGENTS"));
+    assert!(prompt.contains("# Index"));
+    assert!(prompt.contains("entities"));
+    assert!(prompt.contains("concepts"));
+}
+
+#[test]
+fn ingest_prompts_generation_requires_file_blocks_and_sources_paths() {
+    let prompt = build_ingest_generation_prompt("{}", "# Existing");
+
+    assert!(prompt.contains("{}"));
+    assert!(prompt.contains("# Existing"));
+    assert!(prompt.contains("---FILE:"));
+    assert!(prompt.contains("wiki/sources"));
+}
+
+#[test]
 fn detect_reports_ordinary_workspace_before_initialization() {
     let root = tempdir().unwrap();
 
@@ -354,6 +378,22 @@ fn search_wiki_pages_skips_symlinked_wiki_file_without_reading_target() {
     let results = search_wiki_pages(root.path(), "outside term").unwrap();
 
     assert!(results.is_empty());
+}
+
+#[test]
+fn llm_wiki_query_returns_insufficient_context_without_llm_call_when_search_is_empty() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+
+    let response = llm_wiki_query(
+        root.path().to_string_lossy().into_owned(),
+        "missing-topic".to_string(),
+    )
+    .unwrap();
+
+    assert!(response.insufficient_context);
+    assert!(response.references.is_empty());
+    assert!(response.answer.contains("没有足够上下文"));
 }
 
 #[test]

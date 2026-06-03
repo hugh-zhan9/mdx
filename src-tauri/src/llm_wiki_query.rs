@@ -150,7 +150,11 @@ fn safe_read_wiki_markdown(root: &Path, path: &Path) -> Result<String, Workspace
     safe_read_regular_text(root, path, "wiki page")
 }
 
-fn safe_read_regular_text(root: &Path, path: &Path, noun: &str) -> Result<String, WorkspaceError> {
+pub(crate) fn safe_read_regular_text(
+    root: &Path,
+    path: &Path,
+    noun: &str,
+) -> Result<String, WorkspaceError> {
     let metadata = fs::symlink_metadata(path).map_err(|error| {
         let code = if error.kind() == std::io::ErrorKind::NotFound {
             "not_found"
@@ -489,7 +493,10 @@ fn safe_digest_title(title: &str) -> Result<String, WorkspaceError> {
     Ok(title.to_string())
 }
 
-fn read_required_managed_text(root: &Path, relative: &str) -> Result<String, WorkspaceError> {
+pub(crate) fn read_required_managed_text(
+    root: &Path,
+    relative: &str,
+) -> Result<String, WorkspaceError> {
     let path = root.join(relative);
     safe_read_regular_text(root, &path, "llm wiki managed file")
 }

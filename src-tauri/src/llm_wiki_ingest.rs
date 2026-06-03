@@ -16,6 +16,63 @@ pub struct LlmWikiFileBlock {
     pub content: String,
 }
 
+pub fn build_ingest_analysis_prompt(raw: &str, purpose: &str, agents: &str, index: &str) -> String {
+    format!(
+        r#"You are analyzing one raw source for an LLM Wiki workspace.
+
+Return strict JSON only. Do not include markdown fences.
+Identify:
+- source_summary: concise summary of the raw source.
+- entities: important people, projects, files, systems, organizations, and other named things.
+- concepts: reusable ideas, terms, workflows, constraints, and decisions.
+- suggested_source_slug: one ASCII lowercase slug using only a-z, 0-9, hyphen, or underscore.
+- suggested_entity_slugs: ASCII slugs for useful wiki/entities pages.
+- suggested_concept_slugs: ASCII slugs for useful wiki/concepts pages.
+
+Workspace purpose:
+{purpose}
+
+Workspace instructions:
+{agents}
+
+Existing index:
+{index}
+
+Raw source:
+{raw}
+"#
+    )
+}
+
+pub fn build_ingest_generation_prompt(analysis_json: &str, existing_context: &str) -> String {
+    format!(
+        r#"Generate LLM Wiki markdown files from the analysis JSON and existing context.
+
+Output only strict file blocks compatible with this format:
+---FILE: wiki/sources/ascii-slug.md---
+# Title
+Markdown content
+---END FILE---
+
+Rules:
+- Produce at least one wiki/sources/*.md source page.
+- You may also produce wiki/entities/*.md, wiki/concepts/*.md, wiki/syntheses/*.md, index.md, log.md, or llm-wiki-progress.md when useful.
+- Do not produce purpose.md.
+- File paths must be ASCII only and use only letters, digits, '/', '.', '_', and '-'.
+- File paths must end in .md and must not contain spaces, backslashes, dot segments, hidden path segments, absolute paths, or non-ASCII characters.
+- Keep filenames descriptive ASCII slugs.
+- Use wikilinks such as [[Name]] where helpful.
+- Do not write any text outside file blocks.
+
+Analysis JSON:
+{analysis_json}
+
+Existing wiki context:
+{existing_context}
+"#
+    )
+}
+
 pub fn parse_file_blocks(output: &str) -> Result<Vec<LlmWikiFileBlock>, WorkspaceError> {
     let mut blocks = Vec::new();
     let mut seen_paths = BTreeSet::new();
@@ -213,7 +270,7 @@ fn canonicalize_root(root: &Path) -> Result<PathBuf, WorkspaceError> {
     })
 }
 
-fn validate_raw_relative_path(
+pub(crate) fn validate_raw_relative_path(
     root: &Path,
     raw_relative_path: &str,
 ) -> Result<String, WorkspaceError> {

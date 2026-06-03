@@ -2,7 +2,7 @@ use std::fs;
 use std::io;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
@@ -118,6 +118,78 @@ pub fn build_openai_chat_request(model: &str, messages: Vec<LlmChatMessage>) -> 
         "messages": messages,
         "temperature": 0.2,
     })
+}
+
+pub fn call_chat_completion(
+    config: &LlmProviderConfig,
+    messages: Vec<LlmChatMessage>,
+) -> Result<String, WorkspaceError> {
+    let url = chat_completions_url(&config.base_url)?;
+    let body = build_openai_chat_request(&config.model, messages);
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(60))
+        .build()
+        .map_err(|error| {
+            WorkspaceError::new(
+                "llm_failed",
+                format!("failed to create llm http client: {error}"),
+            )
+        })?;
+
+    let mut request = client.post(url).json(&body);
+    if let Some(api_key) = config
+        .api_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|key| !key.is_empty())
+    {
+        request = request.bearer_auth(api_key);
+    }
+
+    let response = request.send().map_err(|error| {
+        WorkspaceError::new(
+            "llm_failed",
+            format!("llm chat completion request failed: {error}"),
+        )
+    })?;
+    let status = response.status();
+    let bytes = response.bytes().map_err(|error| {
+        WorkspaceError::new(
+            "llm_failed",
+            format!("failed to read llm response: {error}"),
+        )
+    })?;
+
+    if !status.is_success() {
+        let message = parse_openai_error_message(&bytes)
+            .unwrap_or_else(|| String::from_utf8_lossy(&bytes).trim().to_string());
+        let message = if message.is_empty() {
+            format!("llm chat completion returned status {status}")
+        } else {
+            format!("llm chat completion returned status {status}: {message}")
+        };
+        return Err(WorkspaceError::new("llm_failed", message));
+    }
+
+    let response: OpenAiChatCompletionResponse =
+        serde_json::from_slice(&bytes).map_err(|error| {
+            WorkspaceError::new(
+                "llm_failed",
+                format!("failed to parse llm chat completion response: {error}"),
+            )
+        })?;
+    response
+        .choices
+        .into_iter()
+        .next()
+        .and_then(|choice| choice.message.content)
+        .filter(|content| !content.trim().is_empty())
+        .ok_or_else(|| {
+            WorkspaceError::new(
+                "llm_failed",
+                "llm chat completion response did not include message content",
+            )
+        })
 }
 
 pub fn default_llm_config_path() -> Result<PathBuf, WorkspaceError> {
@@ -348,6 +420,46 @@ fn timestamp_nanos() -> u128 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos()
+}
+
+fn chat_completions_url(base_url: &str) -> Result<String, WorkspaceError> {
+    let base_url = base_url.trim();
+    if base_url.is_empty() {
+        return Err(WorkspaceError::new(
+            "llm_failed",
+            "llm base url must not be empty",
+        ));
+    }
+    Ok(format!(
+        "{}/chat/completions",
+        base_url.trim_end_matches('/')
+    ))
+}
+
+fn parse_openai_error_message(bytes: &[u8]) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    value
+        .get("error")
+        .and_then(|error| error.get("message").or(Some(error)))
+        .and_then(|message| message.as_str())
+        .map(str::trim)
+        .filter(|message| !message.is_empty())
+        .map(str::to_string)
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiChatCompletionResponse {
+    choices: Vec<OpenAiChatChoice>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiChatChoice {
+    message: OpenAiChatChoiceMessage,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiChatChoiceMessage {
+    content: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
