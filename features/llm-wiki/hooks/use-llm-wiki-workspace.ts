@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { normalizeWorkspacePath } from "@/features/workspace/lib/path";
 import {
     detectLlmWikiWorkspace,
     getLlmConfig,
@@ -18,7 +19,7 @@ import type {
     RawScanResult,
 } from "../lib/types";
 
-interface LlmWikiWorkspaceHook {
+export interface LlmWikiWorkspaceHook {
     status: LlmWikiWorkspaceStatus | null;
     viewModel: LlmWikiStatusViewModel;
     message: string | null;
@@ -29,6 +30,7 @@ interface LlmWikiWorkspaceHook {
     lint: () => Promise<void>;
     graph: () => Promise<void>;
     refresh: () => Promise<void>;
+    handleRawFileSaved: (path: string) => void;
 }
 
 const EMPTY_SCAN: RawScanResult = {
@@ -232,6 +234,21 @@ export function useLlmWikiWorkspace(rootPath: string): LlmWikiWorkspaceHook {
         }
     }, [isReady, rootPath, setMessageForError]);
 
+    const handleRawFileSaved = useCallback(
+        (path: string) => {
+            if (!isReady || status?.mode !== "llmWiki") {
+                return;
+            }
+
+            if (!isPathInsideRawDirectory(rootPath, path)) {
+                return;
+            }
+
+            void rescan();
+        },
+        [isReady, rescan, rootPath, status?.mode],
+    );
+
     const lint = useCallback(async () => {
         if (!isReady) {
             return;
@@ -314,7 +331,71 @@ export function useLlmWikiWorkspace(rootPath: string): LlmWikiWorkspaceHook {
         lint,
         graph,
         refresh,
+        handleRawFileSaved,
     };
+}
+
+function isPathInsideRawDirectory(rootPath: string, path: string) {
+    const root = stripTrailingSlash(normalizeWorkspacePath(rootPath));
+    const saved = normalizeWorkspacePath(path);
+
+    if (!root || !saved) {
+        return false;
+    }
+
+    const relative = getPathRelativeToRoot(root, saved);
+
+    if (relative === null) {
+        return false;
+    }
+
+    const parts = relative.split("/").filter(Boolean);
+
+    return parts[0] === "raw" && parts.length > 1;
+}
+
+function getPathRelativeToRoot(rootPath: string, path: string) {
+    const candidateRootRelative = normalizeWorkspacePath(path);
+
+    if (!isAbsolutePath(candidateRootRelative)) {
+        return candidateRootRelative;
+    }
+
+    const [root, candidate] = normalizeCaseForPlatform(rootPath, candidateRootRelative);
+    const rootWithSeparator = root.endsWith("/") ? root : `${root}/`;
+
+    if (candidate === root) {
+        return "";
+    }
+
+    if (!candidate.startsWith(rootWithSeparator)) {
+        return null;
+    }
+
+    return candidateRootRelative.slice(rootWithSeparator.length);
+}
+
+function isAbsolutePath(path: string) {
+    return path.startsWith("/") || /^[A-Za-z]:\//.test(path);
+}
+
+function stripTrailingSlash(path: string) {
+    if (path === "/" || /^[A-Za-z]:\/?$/.test(path)) {
+        return path;
+    }
+
+    return path.replace(/\/+$/, "");
+}
+
+function normalizeCaseForPlatform(
+    rootPath: string,
+    candidatePath: string,
+): [string, string] {
+    if (/^[A-Za-z]:/.test(rootPath) || /^[A-Za-z]:/.test(candidatePath)) {
+        return [rootPath.toLowerCase(), candidatePath.toLowerCase()];
+    }
+
+    return [rootPath, candidatePath];
 }
 
 function createInitialSnapshot(rootPath: string): RootSnapshot {

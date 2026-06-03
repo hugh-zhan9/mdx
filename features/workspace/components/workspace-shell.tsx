@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { nanoid } from "nanoid";
 import { tauriCore } from "@/common/lib/tauri";
-import { LlmWikiPanel } from "@/features/llm-wiki";
+import { LlmWikiPanel, useLlmWikiWorkspace } from "@/features/llm-wiki";
 import { usePanelResize } from "../hooks/use-panel-resize";
 import { syncCliWorkspaceSnapshot } from "../lib/cli-sync";
 import { buildFileTree } from "../lib/file-tree";
@@ -64,6 +64,8 @@ export function WorkspaceShell({
     const workspaceRootRef = useRef<string | null>(null);
     const editorViewportRef = useRef<HTMLDivElement | null>(null);
     const selectionByTabRef = useRef<Record<string, CliSelectionSnapshot | null>>({});
+    const llmWiki = useLlmWikiWorkspace(workspace.rootPath);
+    const handleRawFileSavedRef = useRef(llmWiki.handleRawFileSaved);
     const [fileTreeActions, setFileTreeActions] =
         useState<WorkspaceFileTreeActions | null>(null);
     const [pendingCliCommand, setPendingCliCommand] =
@@ -81,6 +83,10 @@ export function WorkspaceShell({
                 : parseMarkdownOutline(activeTab.markdown),
         [activeTab],
     );
+
+    useEffect(() => {
+        handleRawFileSavedRef.current = llmWiki.handleRawFileSaved;
+    }, [llmWiki.handleRawFileSaved]);
 
     useEffect(() => {
         workspaceRef.current = workspace;
@@ -155,6 +161,9 @@ export function WorkspaceShell({
                         () => workspaceRef.current.rootPath,
                         dispatchAndMirror,
                     ),
+                afterSave: ({ path }) => {
+                    handleRawFileSavedRef.current(path);
+                },
             });
 
             return saveQueueRef.current.saveTab(tabId);
@@ -497,7 +506,10 @@ export function WorkspaceShell({
                                         resizeHandleProps={{}}
                                     />
                                 </div>
-                                <LlmWikiPanel rootPath={workspace.rootPath} />
+                                <LlmWikiPanel
+                                    rootPath={workspace.rootPath}
+                                    llmWiki={llmWiki}
+                                />
                             </div>
                             <div
                                 {...rightPanel.resizeHandleProps}

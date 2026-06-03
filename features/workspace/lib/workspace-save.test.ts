@@ -4,6 +4,7 @@ import {
     isCurrentTabSnapshot,
 } from "./workspace-save";
 import { createWorkspaceState, workspaceReducer } from "./workspace-reducer";
+import type { SaveInvoke } from "./workspace-save";
 import type {
     WorkspaceAction,
     WorkspaceState,
@@ -43,11 +44,11 @@ describe("workspace save coordination", () => {
             }),
         );
         const writes: string[] = [];
-        let firstWriteStarted: (() => void) | null = null;
+        let firstWriteStarted: () => void = () => {};
         const firstWriteStartedPromise = new Promise<void>((resolve) => {
             firstWriteStarted = resolve;
         });
-        let releaseFirstWrite: (() => void) | null = null;
+        let releaseFirstWrite: () => void = () => {};
         const releaseFirstWritePromise = new Promise<void>((resolve) => {
             releaseFirstWrite = resolve;
         });
@@ -57,12 +58,12 @@ describe("workspace save coordination", () => {
         const queue = createTabSaveQueue({
             getWorkspace: () => workspace,
             dispatch,
-            invoke: vi.fn(async (command, args) => {
+            invoke: createInvoke(async (command, args) => {
                 if (command === "write_markdown_file") {
                     writes.push(String(args.content));
 
                     if (writes.length === 1) {
-                        firstWriteStarted?.();
+                        firstWriteStarted();
                         await releaseFirstWritePromise;
                     }
                 }
@@ -83,13 +84,42 @@ describe("workspace save coordination", () => {
             markdown: "second",
         });
         const secondSave = queue.saveTab("tab-1");
-        releaseFirstWrite?.();
+        releaseFirstWrite();
 
         await expect(firstSave).resolves.toBe(false);
         await expect(secondSave).resolves.toBe(true);
         expect(writes).toEqual(["first", "second"]);
         expect(workspace.tabs["tab-1"].dirty).toBe(false);
         expect(workspace.tabs["tab-1"].markdown).toBe("second");
+    });
+
+    it("calls afterSave once after a successful current save", async () => {
+        const workspace = withTab(
+            createWorkspaceState("/tmp/ws"),
+            createTab({
+                path: "/tmp/ws/raw/Note.md",
+                markdown: "body",
+            }),
+        );
+        const afterSave = vi.fn();
+        const queue = createTabSaveQueue({
+            getWorkspace: () => workspace,
+            dispatch: vi.fn(),
+            invoke: createInvoke(),
+            promptName: () => null,
+            alert: vi.fn(),
+            warn: vi.fn(),
+            refreshTree: vi.fn(async () => {}),
+            afterSave,
+        });
+
+        await expect(queue.saveTab("tab-1")).resolves.toBe(true);
+
+        expect(afterSave).toHaveBeenCalledOnce();
+        expect(afterSave).toHaveBeenCalledWith({
+            rootPath: "/tmp/ws",
+            path: "/tmp/ws/raw/Note.md",
+        });
     });
 
     it("refreshes the original root after a first-save rename", async () => {
@@ -108,7 +138,7 @@ describe("workspace save coordination", () => {
             dispatch: (action) => {
                 workspace = workspaceReducer(workspace, action);
             },
-            invoke: vi.fn(async (command) => {
+            invoke: createInvoke((command) => {
                 if (command === "rename_path") {
                     return {
                         oldPath: "/tmp/ws/Untitled.md",
@@ -146,7 +176,7 @@ describe("workspace save coordination", () => {
                 dispatched.push(action);
                 workspace = workspaceReducer(workspace, action);
             },
-            invoke: vi.fn(async (command) => {
+            invoke: createInvoke((command) => {
                 if (command === "rename_path") {
                     workspace = workspaceReducer(workspace, {
                         type: "tab/renamed",
@@ -194,13 +224,14 @@ describe("workspace save coordination", () => {
         let afterWrite = false;
         const dispatched: WorkspaceAction[] = [];
         const refreshTree = vi.fn(async () => {});
+        const afterSave = vi.fn();
         const queue = createTabSaveQueue({
             getWorkspace: () => workspace,
             dispatch: (action) => {
                 dispatched.push(action);
                 workspace = workspaceReducer(workspace, action);
             },
-            invoke: vi.fn(async (command) => {
+            invoke: createInvoke((command) => {
                 if (command === "rename_path") {
                     return {
                         oldPath: "/tmp/ws/Untitled.md",
@@ -219,6 +250,7 @@ describe("workspace save coordination", () => {
             alert: vi.fn(),
             warn: vi.fn(),
             refreshTree,
+            afterSave,
         });
 
         await expect(queue.saveTab("tab-1")).resolves.toBe(false);
@@ -227,6 +259,7 @@ describe("workspace save coordination", () => {
             dispatched.some((action) => action.type === "tab/savedIfUnchanged"),
         ).toBe(false);
         expect(refreshTree).not.toHaveBeenCalled();
+        expect(afterSave).not.toHaveBeenCalled();
     });
 
     it("does not clear dirty when path changes during write", async () => {
@@ -238,13 +271,14 @@ describe("workspace save coordination", () => {
             }),
         );
         const dispatched: WorkspaceAction[] = [];
+        const afterSave = vi.fn();
         const queue = createTabSaveQueue({
             getWorkspace: () => workspace,
             dispatch: (action) => {
                 dispatched.push(action);
                 workspace = workspaceReducer(workspace, action);
             },
-            invoke: vi.fn(async (command) => {
+            invoke: createInvoke((command) => {
                 if (command === "write_markdown_file") {
                     workspace = workspaceReducer(workspace, {
                         type: "tab/renamed",
@@ -259,14 +293,51 @@ describe("workspace save coordination", () => {
             alert: vi.fn(),
             warn: vi.fn(),
             refreshTree: vi.fn(async () => {}),
+            afterSave,
         });
 
         await expect(queue.saveTab("tab-1")).resolves.toBe(false);
         expect(
             dispatched.some((action) => action.type === "tab/savedIfUnchanged"),
         ).toBe(false);
+        expect(afterSave).not.toHaveBeenCalled();
         expect(workspace.tabs["tab-1"].path).toBe("/tmp/ws/Moved.md");
         expect(workspace.tabs["tab-1"].dirty).toBe(true);
+    });
+
+    it("keeps save successful when afterSave throws after disk write", async () => {
+        let workspace = withTab(
+            createWorkspaceState("/tmp/ws"),
+            createTab({
+                path: "/tmp/ws/raw/Note.md",
+                markdown: "body",
+            }),
+        );
+        const alert = vi.fn();
+        const warn = vi.fn();
+        const queue = createTabSaveQueue({
+            getWorkspace: () => workspace,
+            dispatch: (action) => {
+                workspace = workspaceReducer(workspace, action);
+            },
+            invoke: createInvoke(),
+            promptName: () => null,
+            alert,
+            warn,
+            refreshTree: vi.fn(async () => {}),
+            afterSave: vi.fn(async () => {
+                throw new Error("scan failed");
+            }),
+        });
+
+        await expect(queue.saveTab("tab-1")).resolves.toBe(true);
+
+        expect(workspace.tabs["tab-1"].dirty).toBe(false);
+        expect(warn).toHaveBeenCalledWith(
+            "文件已保存，但保存后处理失败。",
+            expect.any(Error),
+        );
+        expect(alert).not.toHaveBeenCalled();
     });
 });
 
@@ -287,4 +358,16 @@ function withTab(state: WorkspaceState, tab: WorkspaceTab) {
         type: "tab/opened",
         tab,
     });
+}
+
+function createInvoke(
+    handler: (
+        command: string,
+        args: Record<string, unknown>,
+    ) => Promise<unknown> | unknown = () => undefined,
+): SaveInvoke {
+    return async <T = unknown>(
+        command: string,
+        args: Record<string, unknown>,
+    ) => (await handler(command, args)) as T;
 }

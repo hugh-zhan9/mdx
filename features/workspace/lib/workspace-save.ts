@@ -14,6 +14,11 @@ export type SaveInvoke = <T = unknown>(
 
 export type MaybePromise<T> = T | Promise<T>;
 
+export interface SaveCompletedEvent {
+    rootPath: string;
+    path: string;
+}
+
 export interface SaveTabEnvironment {
     getWorkspace: () => WorkspaceState;
     dispatch: (action: WorkspaceAction) => void;
@@ -22,6 +27,7 @@ export interface SaveTabEnvironment {
     alert: (message: string) => MaybePromise<void>;
     warn: (message: string, error: unknown) => void;
     refreshTree: (rootPath: string) => Promise<void>;
+    afterSave?: (event: SaveCompletedEvent) => MaybePromise<void>;
 }
 
 export interface SaveQueue {
@@ -173,6 +179,17 @@ export async function performSaveTab(
                 tabId,
                 markdown,
             });
+            try {
+                await environment.afterSave?.({
+                    rootPath: writePlan.rootPath,
+                    path: writePlan.path,
+                });
+            } catch (afterSaveError) {
+                environment.warn(
+                    "文件已保存，但保存后处理失败。",
+                    afterSaveError,
+                );
+            }
         }
 
         if (

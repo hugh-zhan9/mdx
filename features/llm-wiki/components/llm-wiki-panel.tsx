@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { useLlmWikiWorkspace } from "../hooks/use-llm-wiki-workspace";
+import type { LlmWikiWorkspaceHook } from "../hooks/use-llm-wiki-workspace";
 
 interface LlmWikiPanelProps {
     rootPath: string;
+    llmWiki: LlmWikiWorkspaceHook;
 }
 
-export function LlmWikiPanel({ rootPath }: LlmWikiPanelProps) {
+export function LlmWikiPanel({ rootPath, llmWiki }: LlmWikiPanelProps) {
     const {
         status,
         viewModel,
@@ -19,7 +20,7 @@ export function LlmWikiPanel({ rootPath }: LlmWikiPanelProps) {
         lint,
         graph,
         refresh,
-    } = useLlmWikiWorkspace(rootPath);
+    } = llmWiki;
     const [localMessage, setLocalMessage] = useState<{
         rootPath: string;
         text: string;
