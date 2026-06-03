@@ -626,7 +626,7 @@ function normalizePanelWidth(width: number | undefined, fallback: number) {
         return fallback;
     }
 
-    return Math.min(Math.max(width, 160), 640);
+    return Math.round(Math.min(Math.max(width, 160), 640));
 }
 
 function getCurrentWindowSize(fallback: PersistedWindowSize) {

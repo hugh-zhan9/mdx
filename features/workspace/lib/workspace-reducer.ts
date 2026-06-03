@@ -530,5 +530,5 @@ function normalizePanelWidth(width: number) {
         return null;
     }
 
-    return Math.min(Math.max(width, MIN_PANEL_WIDTH), MAX_PANEL_WIDTH);
+    return Math.round(Math.min(Math.max(width, MIN_PANEL_WIDTH), MAX_PANEL_WIDTH));
 }

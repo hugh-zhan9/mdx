@@ -455,8 +455,14 @@ describe("workspaceReducer", () => {
             side: "right",
             width: 800,
         });
+        const decimal = workspaceReducer(tooLarge, {
+            type: "panel/resized",
+            side: "right",
+            width: 295.42578125,
+        });
 
         expect(tooSmall.panel.rightWidth).toBe(160);
         expect(tooLarge.panel.rightWidth).toBe(640);
+        expect(decimal.panel.rightWidth).toBe(295);
     });
 });
