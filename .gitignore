@@ -39,6 +39,7 @@ CLAUDE.md
 .claude/
 .omc/
 .impeccable/
+.superpowers/
 ref/
 rust_out
 

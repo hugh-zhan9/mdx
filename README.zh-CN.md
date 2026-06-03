@@ -53,22 +53,30 @@ mdx-cli rename <path> <new-name>
 
 ## 构建
 
-### 开发用 Web Shell
+### 桌面开发
 
 ```bash
 npm install
+npx tauri dev
+```
+
+Tauri 会自动启动 Next.js 渲染层开发服务。
+
+### 渲染层调试
+
+```bash
 npm run dev
 ```
 
-然后打开 http://localhost:3000。
+该命令只启动 Next.js renderer。在浏览器中打开 `http://localhost:3000` 只适合调试 UI，不是独立 Web 产品入口，也不能使用文件夹选择、文件系统命令、LLM Wiki 后端命令和本地 CLI socket 等桌面能力。
 
-### 原生桌面应用
+### 原生目标
 
 macOS 是当前 MVP 支持的原生目标。
 
 ```bash
 npm install
-npx tauri dev
+npx tauri build
 ```
 
 ## 验证

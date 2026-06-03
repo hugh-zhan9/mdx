@@ -53,22 +53,30 @@ mdx-cli rename <path> <new-name>
 
 ## ビルド
 
-### 開発用 Web Shell
+### デスクトップ開発
 
 ```bash
 npm install
+npx tauri dev
+```
+
+Tauri が Next.js のレンダラー開発サーバーを自動で起動します。
+
+### レンダラーのデバッグ
+
+```bash
 npm run dev
 ```
 
-その後 http://localhost:3000 を開きます。
+このコマンドは Next.js renderer だけを起動します。ブラウザーで `http://localhost:3000` を開くのは UI デバッグには使えますが、独立した Web 製品ではありません。フォルダー選択、ファイルシステムコマンド、LLM Wiki のバックエンドコマンド、ローカル CLI socket などのデスクトップ専用機能は使えません。
 
-### ネイティブデスクトップアプリ
+### ネイティブターゲット
 
 この MVP のネイティブターゲットは macOS です。
 
 ```bash
 npm install
-npx tauri dev
+npx tauri build
 ```
 
 ## 検証

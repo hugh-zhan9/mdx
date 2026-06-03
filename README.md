@@ -53,22 +53,30 @@ mdx-cli rename <path> <new-name>
 
 ## Build
 
-### Web Shell For Development
+### Desktop Development
 
 ```bash
 npm install
+npx tauri dev
+```
+
+Tauri starts the Next.js renderer development server automatically.
+
+### Renderer Debugging
+
+```bash
 npm run dev
 ```
 
-Then open http://localhost:3000.
+This only starts the Next.js renderer. Opening `http://localhost:3000` in a browser is useful for UI debugging, but it is not a standalone web product and cannot use desktop-only capabilities such as folder selection, file-system commands, LLM Wiki backend commands, or the local CLI socket.
 
-### Native Desktop App
+### Native Target
 
 macOS is the supported native target for this MVP.
 
 ```bash
 npm install
-npx tauri dev
+npx tauri build
 ```
 
 ## Verification
