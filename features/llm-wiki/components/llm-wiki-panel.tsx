@@ -8,13 +8,29 @@ interface LlmWikiPanelProps {
 }
 
 export function LlmWikiPanel({ rootPath }: LlmWikiPanelProps) {
-    const { status, viewModel, message, initialize, rescan, lint, graph, refresh } =
-        useLlmWikiWorkspace(rootPath);
-    const [localMessage, setLocalMessage] = useState<string | null>(null);
+    const {
+        status,
+        viewModel,
+        message,
+        isReady,
+        isLoading,
+        initialize,
+        rescan,
+        lint,
+        graph,
+        refresh,
+    } = useLlmWikiWorkspace(rootPath);
+    const [localMessage, setLocalMessage] = useState<{
+        rootPath: string;
+        text: string;
+    } | null>(null);
 
     const handlePrimaryAction = useCallback(() => {
         if (viewModel.primaryAction === "配置 LLM") {
-            setLocalMessage("LLM 配置入口待接入。");
+            setLocalMessage({
+                rootPath,
+                text: "LLM 配置入口待接入。",
+            });
             return;
         }
 
@@ -24,13 +40,18 @@ export function LlmWikiPanel({ rootPath }: LlmWikiPanelProps) {
         }
 
         void rescan();
-    }, [initialize, rescan, status?.mode, viewModel.primaryAction]);
+    }, [initialize, rescan, rootPath, status?.mode, viewModel.primaryAction]);
 
     const handleConfigure = useCallback(() => {
-        setLocalMessage("LLM 配置入口待接入。");
-    }, []);
+        setLocalMessage({
+            rootPath,
+            text: "LLM 配置入口待接入。",
+        });
+    }, [rootPath]);
 
-    const panelMessage = message ?? localMessage;
+    const panelMessage =
+        message ?? (localMessage?.rootPath === rootPath ? localMessage.text : null);
+    const actionsDisabled = !isReady || isLoading;
 
     return (
         <section className="min-h-0 border-t border-base-300 bg-base-100">
@@ -42,9 +63,10 @@ export function LlmWikiPanel({ rootPath }: LlmWikiPanelProps) {
                     type="button"
                     className="h-7 px-2 text-xs text-base-content/65 hover:bg-base-200"
                     onClick={() => void refresh()}
+                    disabled={isLoading}
                     title="刷新状态"
                 >
-                    刷新
+                    {isLoading ? "加载" : "刷新"}
                 </button>
             </div>
 
@@ -66,6 +88,7 @@ export function LlmWikiPanel({ rootPath }: LlmWikiPanelProps) {
                     <button
                         type="button"
                         className="btn btn-primary btn-sm min-h-8 h-8 text-xs"
+                        disabled={actionsDisabled}
                         onClick={
                             viewModel.primaryAction === "配置 LLM"
                                 ? handleConfigure
@@ -78,6 +101,7 @@ export function LlmWikiPanel({ rootPath }: LlmWikiPanelProps) {
                         <button
                             type="button"
                             className="btn btn-sm min-h-8 h-8 text-xs"
+                            disabled={actionsDisabled}
                             onClick={() => void lint()}
                         >
                             Lint
@@ -85,6 +109,7 @@ export function LlmWikiPanel({ rootPath }: LlmWikiPanelProps) {
                         <button
                             type="button"
                             className="btn btn-sm min-h-8 h-8 text-xs"
+                            disabled={actionsDisabled}
                             onClick={() => void graph()}
                         >
                             图谱

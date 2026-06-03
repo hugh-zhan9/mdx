@@ -22,6 +22,8 @@ interface LlmWikiWorkspaceHook {
     status: LlmWikiWorkspaceStatus | null;
     viewModel: LlmWikiStatusViewModel;
     message: string | null;
+    isReady: boolean;
+    isLoading: boolean;
     initialize: () => Promise<void>;
     rescan: () => Promise<void>;
     lint: () => Promise<void>;
@@ -35,27 +37,47 @@ const EMPTY_SCAN: RawScanResult = {
     skipped: [],
 };
 
+interface RootSnapshot {
+    rootPath: string;
+    status: LlmWikiWorkspaceStatus | null;
+    config: PublicLlmProviderConfig | null;
+    scan: RawScanResult;
+    message: string | null;
+    isLoading: boolean;
+}
+
 export function useLlmWikiWorkspace(rootPath: string): LlmWikiWorkspaceHook {
     const activeRootPathRef = useRef(rootPath);
-    const [status, setStatus] = useState<LlmWikiWorkspaceStatus | null>(null);
-    const [config, setConfig] = useState<PublicLlmProviderConfig | null>(null);
-    const [scan, setScan] = useState<RawScanResult>(EMPTY_SCAN);
-    const [message, setMessage] = useState<string | null>(null);
+    const requestIdRef = useRef(0);
+    const [snapshot, setSnapshot] = useState<RootSnapshot>(() =>
+        createInitialSnapshot(rootPath),
+    );
+    const currentSnapshot =
+        snapshot.rootPath === rootPath
+            ? snapshot
+            : createInitialSnapshot(rootPath);
+    const { status, config, scan, message } = currentSnapshot;
+    const isLoading = currentSnapshot.isLoading || snapshot.rootPath !== rootPath;
+    const isReady = Boolean(rootPath) && !isLoading && snapshot.rootPath === rootPath;
 
     useEffect(() => {
         activeRootPathRef.current = rootPath;
     }, [rootPath]);
 
     const setMessageForError = useCallback((prefix: string, error: unknown) => {
-        setMessage(`${prefix}：${formatError(error)}`);
+        setSnapshot((current) => ({
+            ...current,
+            message: `${prefix}：${formatError(error)}`,
+            isLoading: false,
+        }));
     }, []);
 
     const refresh = useCallback(async () => {
+        const requestId = ++requestIdRef.current;
+        setSnapshot(createLoadingSnapshot(rootPath));
+
         if (!rootPath) {
-            setStatus(null);
-            setConfig(null);
-            setScan(EMPTY_SCAN);
-            setMessage("请先打开工作区。");
+            setSnapshot(createMissingRootSnapshot(rootPath));
             return;
         }
 
@@ -69,10 +91,21 @@ export function useLlmWikiWorkspace(rootPath: string): LlmWikiWorkspaceHook {
                 return;
             }
 
-            setStatus(nextStatus);
-            setConfig(nextConfig);
+            if (requestIdRef.current === requestId) {
+                setSnapshot({
+                    rootPath,
+                    status: nextStatus,
+                    config: nextConfig,
+                    scan: EMPTY_SCAN,
+                    message: null,
+                    isLoading: false,
+                });
+            }
         } catch (error) {
-            if (activeRootPathRef.current === rootPath) {
+            if (
+                activeRootPathRef.current === rootPath &&
+                requestIdRef.current === requestId
+            ) {
                 setMessageForError("加载 LLM Wiki 状态失败", error);
             }
         }
@@ -80,40 +113,50 @@ export function useLlmWikiWorkspace(rootPath: string): LlmWikiWorkspaceHook {
 
     useEffect(() => {
         let disposed = false;
+        const requestId = ++requestIdRef.current;
 
         const load = async () => {
+            setSnapshot(createLoadingSnapshot(rootPath));
+
+            if (!rootPath) {
+                setSnapshot(createMissingRootSnapshot(rootPath));
+                return;
+            }
+
             try {
                 const [nextStatus, nextConfig] = await Promise.all([
                     detectLlmWikiWorkspace(rootPath),
                     getLlmConfig(),
                 ]);
 
-                if (disposed || activeRootPathRef.current !== rootPath) {
+                if (
+                    disposed ||
+                    activeRootPathRef.current !== rootPath ||
+                    requestIdRef.current !== requestId
+                ) {
                     return;
                 }
 
-                setStatus(nextStatus);
-                setConfig(nextConfig);
-                setMessage(null);
+                setSnapshot({
+                    rootPath,
+                    status: nextStatus,
+                    config: nextConfig,
+                    scan: EMPTY_SCAN,
+                    message: null,
+                    isLoading: false,
+                });
             } catch (error) {
-                if (!disposed && activeRootPathRef.current === rootPath) {
+                if (
+                    !disposed &&
+                    activeRootPathRef.current === rootPath &&
+                    requestIdRef.current === requestId
+                ) {
                     setMessageForError("加载 LLM Wiki 状态失败", error);
                 }
             }
         };
 
-        const reset = async () => {
-            setStatus(null);
-            setConfig(null);
-            setScan(EMPTY_SCAN);
-            setMessage("请先打开工作区。");
-        };
-
-        if (rootPath) {
-            void load();
-        } else {
-            void reset();
-        }
+        void load();
 
         return () => {
             disposed = true;
@@ -121,6 +164,10 @@ export function useLlmWikiWorkspace(rootPath: string): LlmWikiWorkspaceHook {
     }, [rootPath, setMessageForError]);
 
     const initialize = useCallback(async () => {
+        if (!isReady) {
+            return;
+        }
+
         try {
             const result = await initializeLlmWikiWorkspace(rootPath);
 
@@ -128,20 +175,40 @@ export function useLlmWikiWorkspace(rootPath: string): LlmWikiWorkspaceHook {
                 return;
             }
 
-            setStatus(result.status);
+            setSnapshot((current) =>
+                current.rootPath === rootPath
+                    ? {
+                          ...current,
+                          status: result.status,
+                      }
+                    : current,
+            );
             await refresh();
 
             if (activeRootPathRef.current === rootPath) {
-                setMessage(formatInitializeMessage(result.createdPaths.length));
+                setSnapshot((current) =>
+                    current.rootPath === rootPath
+                        ? {
+                              ...current,
+                              message: formatInitializeMessage(
+                                  result.createdPaths.length,
+                              ),
+                          }
+                        : current,
+                );
             }
         } catch (error) {
             if (activeRootPathRef.current === rootPath) {
                 setMessageForError("初始化 LLM Wiki 失败", error);
             }
         }
-    }, [refresh, rootPath, setMessageForError]);
+    }, [isReady, refresh, rootPath, setMessageForError]);
 
     const rescan = useCallback(async () => {
+        if (!isReady) {
+            return;
+        }
+
         try {
             const result = await rescanRaw(rootPath);
 
@@ -149,44 +216,71 @@ export function useLlmWikiWorkspace(rootPath: string): LlmWikiWorkspaceHook {
                 return;
             }
 
-            setScan(result);
-            setMessage(
-                `raw 扫描完成：${result.total} 个文件，${result.pending.length} 个待处理。`,
+            setSnapshot((current) =>
+                current.rootPath === rootPath
+                    ? {
+                          ...current,
+                          scan: result,
+                          message: `raw 扫描完成：${result.total} 个文件，${result.pending.length} 个待处理。`,
+                      }
+                    : current,
             );
         } catch (error) {
             if (activeRootPathRef.current === rootPath) {
                 setMessageForError("扫描 raw 失败", error);
             }
         }
-    }, [rootPath, setMessageForError]);
+    }, [isReady, rootPath, setMessageForError]);
 
     const lint = useCallback(async () => {
+        if (!isReady) {
+            return;
+        }
+
         try {
             const result = await runLint(rootPath);
 
             if (activeRootPathRef.current === rootPath) {
-                setMessage(result.report || "Lint 完成，未返回报告。");
+                setSnapshot((current) =>
+                    current.rootPath === rootPath
+                        ? {
+                              ...current,
+                              message: result.report || "Lint 完成，未返回报告。",
+                          }
+                        : current,
+                );
             }
         } catch (error) {
             if (activeRootPathRef.current === rootPath) {
                 setMessageForError("运行 LLM Wiki lint 失败", error);
             }
         }
-    }, [rootPath, setMessageForError]);
+    }, [isReady, rootPath, setMessageForError]);
 
     const graph = useCallback(async () => {
+        if (!isReady) {
+            return;
+        }
+
         try {
             await refreshKnowledgeGraph(rootPath);
 
             if (activeRootPathRef.current === rootPath) {
-                setMessage("知识图谱已刷新。");
+                setSnapshot((current) =>
+                    current.rootPath === rootPath
+                        ? {
+                              ...current,
+                              message: "知识图谱已刷新。",
+                          }
+                        : current,
+                );
             }
         } catch (error) {
             if (activeRootPathRef.current === rootPath) {
                 setMessageForError("刷新知识图谱失败", error);
             }
         }
-    }, [rootPath, setMessageForError]);
+    }, [isReady, rootPath, setMessageForError]);
 
     const panelState = useMemo<LlmWikiPanelState>(
         () => ({
@@ -213,11 +307,39 @@ export function useLlmWikiWorkspace(rootPath: string): LlmWikiWorkspaceHook {
         status,
         viewModel,
         message,
+        isReady,
+        isLoading,
         initialize,
         rescan,
         lint,
         graph,
         refresh,
+    };
+}
+
+function createInitialSnapshot(rootPath: string): RootSnapshot {
+    return rootPath ? createLoadingSnapshot(rootPath) : createMissingRootSnapshot(rootPath);
+}
+
+function createLoadingSnapshot(rootPath: string): RootSnapshot {
+    return {
+        rootPath,
+        status: null,
+        config: null,
+        scan: EMPTY_SCAN,
+        message: null,
+        isLoading: Boolean(rootPath),
+    };
+}
+
+function createMissingRootSnapshot(rootPath: string): RootSnapshot {
+    return {
+        rootPath,
+        status: null,
+        config: null,
+        scan: EMPTY_SCAN,
+        message: "请先打开工作区。",
+        isLoading: false,
     };
 }
 
