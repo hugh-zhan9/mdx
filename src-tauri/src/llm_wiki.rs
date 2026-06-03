@@ -1,10 +1,11 @@
 use crate::llm_wiki_fs::{
-    build_knowledge_graph_markdown, detect_llm_wiki_workspace, initialize_llm_wiki_workspace,
-    read_knowledge_config, scan_raw_files, update_progress_markdown,
+    append_log_entry, build_knowledge_graph_markdown, detect_llm_wiki_workspace,
+    initialize_llm_wiki_workspace, read_knowledge_config, scan_raw_files, update_progress_markdown,
     write_knowledge_graph_markdown,
 };
 use crate::llm_wiki_ingest::{
-    build_ingest_analysis_prompt, build_ingest_generation_prompt, validate_raw_relative_path,
+    build_ingest_analysis_prompt, build_ingest_generation_prompt, read_cache,
+    validate_raw_relative_path,
 };
 use crate::llm_wiki_ingest::{parse_file_blocks, write_ingest_outputs};
 use crate::llm_wiki_llm::{
@@ -12,8 +13,8 @@ use crate::llm_wiki_llm::{
     load_optional_llm_config_from_path, save_llm_config_to_path, LlmChatMessage,
 };
 use crate::llm_wiki_models::{
-    InitializeLlmWikiResult, LlmProviderConfig, LlmWikiQueryResponse, LlmWikiWorkspaceStatus,
-    PublicLlmProviderConfig, RawScanResult, WikiSearchResult,
+    InitializeLlmWikiResult, LlmProviderConfig, LlmProviderConfigUpdate, LlmWikiQueryResponse,
+    LlmWikiWorkspaceStatus, PublicLlmProviderConfig, RawScanResult, WikiSearchResult,
 };
 use crate::llm_wiki_query::{
     mechanical_lint_report, read_required_managed_text, safe_read_regular_text, search_wiki_pages,
@@ -52,15 +53,32 @@ pub fn llm_wiki_rescan_raw(root_path: String) -> Result<RawScanResult, Workspace
     }
 
     let files = scan_raw_files(&root, &config)?;
-    let pending = files
-        .iter()
-        .map(|file| file.relative_path.clone())
-        .collect::<Vec<_>>();
+    let cache = read_cache(&root)?;
+    let mut pending = Vec::new();
+    let mut completed = Vec::new();
 
-    update_progress_markdown(&root, "scanning", &pending, &[], &[], &config.skip_paths)?;
+    for file in &files {
+        match cache.entries.get(&file.relative_path) {
+            Some(entry) if entry.hash == file.hash => {
+                completed.push(file.relative_path.clone());
+            }
+            _ => {
+                pending.push(file.relative_path.clone());
+            }
+        }
+    }
+
+    update_progress_markdown(
+        &root,
+        "scanning",
+        &pending,
+        &completed,
+        &[],
+        &config.skip_paths,
+    )?;
 
     Ok(RawScanResult {
-        total: pending.len(),
+        total: files.len(),
         pending,
         skipped: config.skip_paths,
     })
@@ -91,11 +109,21 @@ pub fn llm_wiki_ingest_mock_output(
 pub fn llm_wiki_ingest_raw_file(
     root_path: String,
     raw_relative_path: String,
-    hash: String,
 ) -> Result<(), WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
     let config = load_llm_config_from_path(default_llm_config_path()?)?;
+    let knowledge_config = read_knowledge_config(&root)?;
     let raw_relative_path = validate_raw_relative_path(&root, &raw_relative_path)?;
+    let hash = scan_raw_files(&root, &knowledge_config)?
+        .into_iter()
+        .find(|file| file.relative_path == raw_relative_path)
+        .map(|file| file.hash)
+        .ok_or_else(|| {
+            WorkspaceError::new(
+                "invalid_llm_wiki_raw_path",
+                "llm wiki raw path is not included in the current raw scan",
+            )
+        })?;
     let raw = safe_read_regular_text(&root, &root.join(&raw_relative_path), "llm wiki raw file")?;
     let purpose = read_optional_managed_text(&root, "purpose.md")?;
     let agents = read_optional_managed_text(&root, "AGENTS.md")?;
@@ -139,6 +167,7 @@ pub fn llm_wiki_query(
 ) -> Result<LlmWikiQueryResponse, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
     let references = search_wiki_pages(&root, &question)?;
+    append_log_entry(&root, &format!("query {}", question.trim()))?;
     if references.is_empty() {
         return Ok(LlmWikiQueryResponse {
             answer: "当前知识库中没有足够上下文回答这个问题。".to_string(),
@@ -169,6 +198,37 @@ pub fn llm_wiki_query(
 }
 
 #[tauri::command]
+pub fn llm_wiki_digest(
+    root_path: String,
+    title: String,
+    prompt: String,
+) -> Result<String, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    let config = load_llm_config_from_path(default_llm_config_path()?)?;
+    let references = search_wiki_pages(&root, &format!("{title}\n{prompt}"))?;
+    if references.is_empty() {
+        return Err(WorkspaceError::new(
+            "insufficient_context",
+            "当前知识库中没有足够上下文生成 digest。",
+        ));
+    }
+
+    let context = build_query_context(&root, &references)?;
+    let content = call_chat_completion(
+        &config,
+        vec![
+            system_message(
+                "You write concise LLM Wiki synthesis pages using only the supplied wiki context. Use Markdown and wikilinks where useful.",
+            ),
+            user_message(format!(
+                "Digest title:\n{title}\n\nDigest request:\n{prompt}\n\nWiki context:\n{context}\n\nWrite the complete markdown page in Chinese. Do not use information outside the wiki context."
+            )),
+        ],
+    )?;
+    write_digest_page(root, &title, &content)
+}
+
+#[tauri::command]
 pub fn llm_wiki_digest_mock(
     root_path: String,
     title: String,
@@ -181,7 +241,9 @@ pub fn llm_wiki_digest_mock(
 #[tauri::command]
 pub fn llm_wiki_lint(root_path: String) -> Result<String, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
-    mechanical_lint_report(root)
+    let report = mechanical_lint_report(&root)?;
+    append_log_entry(&root, "lint")?;
+    Ok(report)
 }
 
 #[tauri::command]
@@ -192,6 +254,34 @@ pub fn llm_config_get() -> Result<Option<PublicLlmProviderConfig>, WorkspaceErro
 #[tauri::command]
 pub fn llm_config_set(config: LlmProviderConfig) -> Result<(), WorkspaceError> {
     save_llm_config_to_path(default_llm_config_path()?, &config)
+}
+
+#[tauri::command]
+pub fn llm_config_update(
+    config: LlmProviderConfigUpdate,
+) -> Result<PublicLlmProviderConfig, WorkspaceError> {
+    let path = default_llm_config_path()?;
+    let existing = if config.preserve_api_key {
+        load_optional_llm_config_from_path(&path)?
+    } else {
+        None
+    };
+    let api_key = if config.preserve_api_key {
+        existing.and_then(|config| config.api_key)
+    } else {
+        config
+            .api_key
+            .map(|api_key| api_key.trim().to_string())
+            .filter(|api_key| !api_key.is_empty())
+    };
+    let next = LlmProviderConfig {
+        base_url: config.base_url.trim().to_string(),
+        model: config.model.trim().to_string(),
+        api_key,
+    };
+
+    save_llm_config_to_path(path, &next)?;
+    Ok(llm_config_to_public(next))
 }
 
 pub fn llm_config_to_public(config: LlmProviderConfig) -> PublicLlmProviderConfig {

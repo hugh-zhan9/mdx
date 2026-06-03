@@ -53,6 +53,11 @@ fn emit_menu_event(app: &AppHandle, event: &str) {
     }
 }
 
+#[tauri::command]
+fn quit_app(app: AppHandle) {
+    app.exit(0);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -159,10 +164,13 @@ pub fn run() {
             llm_wiki::llm_wiki_ingest_raw_file,
             llm_wiki::llm_wiki_search,
             llm_wiki::llm_wiki_query,
+            llm_wiki::llm_wiki_digest,
             llm_wiki::llm_wiki_digest_mock,
             llm_wiki::llm_wiki_lint,
             llm_wiki::llm_config_get,
             llm_wiki::llm_config_set,
+            llm_wiki::llm_config_update,
+            quit_app,
             workspace_fs::scan_workspace,
             workspace_fs::read_markdown_file,
             workspace_fs::write_markdown_file,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import type { RefObject } from "react";
 import { loadImage } from "@/common/lib/image-storage";
 import { tokenize } from "@/common/lib/prism";
@@ -88,16 +88,6 @@ function EditorPaneInner({
         onMarkdownChange,
     });
     const { focus, insertText } = bridge;
-    const statusText = tab.dirty ? "未保存更改" : "已保存";
-    const selectionText = useMemo(() => {
-        if (!bridge.selection) {
-            return "未选择";
-        }
-
-        return bridge.selection.has_selection
-            ? `已选择 ${bridge.selection.selected_text.length} 个字符`
-            : "光标就绪";
-    }, [bridge.selection]);
 
     useEffect(() => {
         onSelectionChange(
@@ -128,10 +118,6 @@ function EditorPaneInner({
 
     return (
         <div className="flex h-full min-h-0 flex-col">
-            <div className="flex h-8 shrink-0 items-center justify-between border-b border-base-300 px-3 text-xs text-base-content/55">
-                <div className="truncate">{statusText}</div>
-                <div className="truncate">{selectionText}</div>
-            </div>
             <div
                 ref={editorViewportRef}
                 className="min-h-0 flex-1 overflow-auto bg-base-100"

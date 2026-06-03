@@ -1,134 +1,86 @@
-<img width="928" height="720" alt="cf0de0fa6d1db4ab27f3f992bf8c81bb_WC-EditVideo_1_30fps" src="https://github.com/user-attachments/assets/ede74d56-f5a8-4e3a-9b6b-6c71bc4cdd22" />
+# MDX
 
-# DOMD
+**MDX is a local desktop Markdown workspace editor.**
 
-**DOMD is a WYSIWYG editor built on a from-scratch, Markdown-native rendering engine.**
+It combines a Markdown-native WYSIWYG editing kernel with a Tauri desktop shell for working with folders on your own machine.
 
-- 20 KB gzipped kernel (zero runtime dependencies beyond React)
-- Input and rendering happen in lockstep — cursor stays steady, no lag, no flicker
+## Features
 
-[**Try on Web**](https://www.domd.app/editor)
+- Single-root workspace for local Markdown notes
+- Left file tree for folders, `.md`, and `.markdown` files
+- Multi-tab editing with dirty-state tracking
+- Right outline panel generated from H1-H6 headings
+- Local app state saved under `~/.mdx/state.json`
+- Image assets saved into the workspace `.assets/` directory, with a global fallback under `~/.mdx/assets`
+- `mdx-cli` for local automation and agent-driven editing
 
-Download for Mac: [Apple Silicon](https://github.com/do-md/domd/releases/latest/download/DOMD_aarch64.dmg) · [Intel](https://github.com/do-md/domd/releases/latest/download/DOMD_x86_64.dmg)
+## Scope
 
-<sub>English · [简体中文](./README.zh-CN.md) · [日本語](./README.ja.md)</sub>
+MDX is desktop-first. The current app does not provide a web product, Quick Look extension, auto-update flow, multi-root workspaces, full-text search, or live file-system watching.
 
-> [!WARNING]
-> **v0.2.0 is out** — improved editing experience (Enter / Tab / Delete bugs fixed) plus built-in auto-update (no more manual DMG re-downloads). [Update now](https://github.com/do-md/domd/releases/latest).
+The editor currently supports `.md` and `.markdown` files. It does not display `.mdx` files in this MVP.
 
----
+## Architecture
 
-## Markdown-native
+- Frontend: Next.js 16, React 19, TypeScript, Tailwind CSS
+- Desktop shell: Tauri 2 and Rust
+- Editor adapter: `@do-md/react`
+- Syntax highlighting: Prism
+- Tests: Vitest for frontend logic, Rust tests for Tauri-side workspace behavior
 
-DOMD's WYSIWYG happens directly on Markdown.
-
-Parsing, rendering, editing — engineered for Markdown WYSIWYG from the first line of code.
-
-It is not built on top of ProseMirror, Slate, Lexical, or any general-purpose rich-text framework.
-
-DOMD's edit model serves Markdown directly.
-
----
-
-## Kernel
-
-DOMD's kernel is a from-scratch Markdown WYSIWYG editor engine.
-
-It is driven by a single source of truth — data — with immutable state. Typing, undo/redo, incremental streaming AI injection, and chunked file loading are all modeled as the same kind of state change inside the kernel.
-
-This makes editing behavior deterministic, state always traceable, and rendering happens only where changes occur.
-
-The entire editing stack fits in 20 KB gzipped.
-
----
-
-## Instant 1 MB open
-
-https://github.com/user-attachments/assets/d4cb6d94-6efe-4d5d-8a67-846be7f3cd45
-
-A 5 KB note and a 1 MB document open at virtually the same perceptual speed.
-
-In Finder, press space — DOMD's own Quick Look extension takes over rendering.
-
----
-
-## macOS
-
-The Mac experience is built to the bar of system apps. Loading a rendered `.md` feels close to the system opening a `.txt`.
-
-The purest Markdown preview and editing — no project tree, no sidebar, no tabs, no sync, no account. Files stay on your device.
-
-Download for macOS: [**Apple Silicon**](https://github.com/do-md/domd/releases/latest/download/DOMD_aarch64.dmg) · [**Intel**](https://github.com/do-md/domd/releases/latest/download/DOMD_x86_64.dmg)
-
-## Web
-
-Open the editor and start writing WYSIWYG in the browser — or drag a `.md` straight onto the page to edit it in place. Everything runs locally; files never leave your device.
-
-https://www.domd.app
-
----
+The frontend owns workspace UI state, tabs, outline parsing, panel sizing, and editor integration. Rust/Tauri owns protected file-system access, app-state persistence, image assets, trash operations, and the local CLI socket.
 
 ## CLI
 
-The macOS build ships with a command-line tool `domd-cli` that lets agents drive the window directly.
+The macOS build includes `mdx-cli`, which talks to the running app over a local Unix socket at `~/.mdx/cli.sock`.
 
-It supports opening new windows, streaming writes, and rewriting selections. A model's streaming response can be piped straight into `domd-cli insert` — tokens land in the document as they arrive and render as rich text in real time.
+Supported commands include:
 
-The demo at the top of the page was recorded from an Alfred workflow that calls the GPT API and streams the response incrementally into the document.
-
----
+```bash
+mdx-cli new
+mdx-cli list
+mdx-cli open <path>
+mdx-cli content [--tab <id>]
+mdx-cli selection [--tab <id>]
+mdx-cli insert [--tab <id>] <text>
+mdx-cli save [--tab <id>]
+mdx-cli focus [--tab <id>]
+mdx-cli close [--tab <id>] [--force]
+mdx-cli create-file <dir> [name]
+mdx-cli create-folder <dir> <name>
+mdx-cli rename <path> <new-name>
+```
 
 ## Build
 
-### Web app (Windows)
-
-**Prerequisites**
-- Windows 10/11
-- Node.js (LTS) with npm
-- Git (optional, for cloning)
-
-**Steps**
-1. Open PowerShell or Windows Terminal in the repo root.
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Start the dev server:
-   ```bash
-   npm run dev
-   ```
-   Then open http://localhost:3000.
-4. Build and run production:
-   ```bash
-   npm run build
-   npm run start
-   ```
-5. Optional lint:
-   ```bash
-   npm run lint
-   ```
-
-### Native (macOS only)
+### Web Shell For Development
 
 ```bash
-npm run tauri dev
+npm install
+npm run dev
 ```
 
-Windows native builds are not currently supported.
+Then open http://localhost:3000.
 
----
+### Native Desktop App
+
+macOS is the supported native target for this MVP.
+
+```bash
+npm install
+npx tauri dev
+```
+
+## Verification
+
+```bash
+npm run lint
+npm run test
+cd src-tauri && cargo test
+```
 
 ## License
 
-DOMD is dual-licensed.
+The application layer and helper libraries in this repository are MIT licensed; see [LICENSE](LICENSE).
 
-**Application layer & helper libraries** — All source in this repository, including `@do-md/utils` and `@do-md/zenith`, is MIT licensed; see [LICENSE](LICENSE). Free to read, modify, and self-host.
-
-**Core rendering engine** — `@do-md/dist` is distributed as a build artifact only, under [PolyForm Noncommercial 1.0.0](.packages/@do-md/dist/LICENSE). **Any commercial use requires prior written authorization.**
-
----
-
-## Feedback
-
-- [GitHub Issues](https://github.com/do-md/domd/issues)
-- [GitHub Discussions](https://github.com/do-md/domd/discussions)
+The compiled editor kernel under `.packages/@do-md/dist/` is distributed separately under its own license. Commercial use of that kernel requires prior written authorization.

@@ -19,6 +19,13 @@ export interface PublicLlmProviderConfig {
     hasApiKey: boolean;
 }
 
+export interface LlmProviderConfigForm {
+    baseUrl: string;
+    model: string;
+    apiKey: string;
+    preserveApiKey: boolean;
+}
+
 export interface RawScanResult {
     total: number;
     pending: string[];

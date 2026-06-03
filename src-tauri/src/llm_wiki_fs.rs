@@ -237,6 +237,23 @@ pub fn update_progress_markdown(
     write_managed_file(root.as_ref(), "llm-wiki-progress.md", markdown.as_bytes())
 }
 
+pub(crate) fn append_log_entry(root: impl AsRef<Path>, entry: &str) -> Result<(), WorkspaceError> {
+    let root = root.as_ref();
+    ensure_directory(root)?;
+    ensure_managed_file_target(root, "log.md")?;
+
+    let mut log = fs::read_to_string(root.join("log.md")).map_err(|error| {
+        WorkspaceError::from_io("read_failed", "failed to read llm wiki log", &error)
+    })?;
+    if !log.is_empty() && !log.ends_with('\n') {
+        log.push('\n');
+    }
+    log.push_str("- ");
+    log.push_str(entry.trim());
+    log.push('\n');
+    write_managed_file(root, "log.md", log.as_bytes())
+}
+
 pub fn build_knowledge_graph_markdown(root: impl AsRef<Path>) -> Result<String, WorkspaceError> {
     let root = root.as_ref();
     ensure_directory(root)?;

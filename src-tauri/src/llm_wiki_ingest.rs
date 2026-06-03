@@ -4,8 +4,8 @@ use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::llm_wiki_fs::{
-    ensure_directory, ensure_managed_file_target, existing_path_kind, managed_directory,
-    path_type_conflict, relative_path, write_managed_file, ExistingPathKind,
+    append_log_entry, ensure_directory, ensure_managed_file_target, existing_path_kind,
+    managed_directory, path_type_conflict, relative_path, write_managed_file, ExistingPathKind,
 };
 use crate::llm_wiki_models::{LlmWikiCache, LlmWikiCacheEntry};
 use crate::models::WorkspaceError;
@@ -246,12 +246,16 @@ pub fn write_ingest_outputs(
         raw_relative_path.clone(),
         LlmWikiCacheEntry {
             hash: hash.to_string(),
-            source_page,
+            source_page: source_page.clone(),
             ingested_at: timestamp_millis().to_string(),
             model: model.to_string(),
         },
     );
-    write_cache(root, &cache)
+    write_cache(root, &cache)?;
+    append_log_entry(
+        root,
+        &format!("ingest {raw_relative_path} -> {source_page} ({model})"),
+    )
 }
 
 struct OpenFileBlock {
@@ -350,7 +354,7 @@ fn ensure_cache_file_target(root: &Path) -> Result<(), WorkspaceError> {
     ensure_managed_file_target(root, ".llm-wiki/cache.json")
 }
 
-fn read_cache(root: &Path) -> Result<LlmWikiCache, WorkspaceError> {
+pub(crate) fn read_cache(root: &Path) -> Result<LlmWikiCache, WorkspaceError> {
     ensure_cache_file_target(root)?;
     let path = root.join(".llm-wiki/cache.json");
     match existing_path_kind(&path)? {

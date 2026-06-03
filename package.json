@@ -13,7 +13,7 @@
         "test:workspace": "vitest run features/workspace/lib/*.test.ts"
     },
     "dependencies": {
-        "@tauri-apps/api": "^2.10.1",
+        "@tauri-apps/api": "2.10.1",
         "@tauri-apps/plugin-dialog": "^2.7.0",
         "daisyui": "^5.5.19",
         "immer": "^11.1.4",
@@ -25,7 +25,7 @@
     },
     "devDependencies": {
         "@tailwindcss/postcss": "^4",
-        "@tauri-apps/cli": "^2.10.1",
+        "@tauri-apps/cli": "2.10.1",
         "@types/node": "^20",
         "@types/prismjs": "^1.26.6",
         "@types/react": "^19",

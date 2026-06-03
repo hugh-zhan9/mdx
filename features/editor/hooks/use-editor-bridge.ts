@@ -32,6 +32,7 @@ export function useEditorBridge({
     );
     const loadedMarkdownRef = useRef<string | null>(null);
     const emittedMarkdownRef = useRef<string>("");
+    const skipNextMarkdownEmissionRef = useRef(false);
     const disposedRef = useRef(false);
 
     useEffect(() => {
@@ -58,6 +59,7 @@ export function useEditorBridge({
         resetMD(editorStore, markdown);
         loadedMarkdownRef.current = markdown;
         emittedMarkdownRef.current = markdown;
+        skipNextMarkdownEmissionRef.current = true;
         queueMicrotask(() => {
             if (!disposedRef.current) {
                 setSelection(getSelectionState(editorStore));
@@ -87,7 +89,18 @@ export function useEditorBridge({
     );
 
     useEffect(() => {
-        if (!editorStore || currentMarkdown === emittedMarkdownRef.current) {
+        if (!editorStore) {
+            return;
+        }
+
+        if (currentMarkdown === emittedMarkdownRef.current) {
+            skipNextMarkdownEmissionRef.current = false;
+            return;
+        }
+
+        if (skipNextMarkdownEmissionRef.current) {
+            skipNextMarkdownEmissionRef.current = false;
+            emittedMarkdownRef.current = currentMarkdown;
             return;
         }
 

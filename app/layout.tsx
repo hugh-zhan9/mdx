@@ -9,13 +9,13 @@ export const metadata: Metadata = {
 
 /**
  * Runs synchronously before React hydrates so `data-theme` is set on the
- * first paint (no FOUC). localStorage wins over OS; if the user hasn't
- * opted-in, we follow `prefers-color-scheme` and stay subscribed to OS flips.
+ * first paint (no FOUC). The preference can be light, dark, or system.
+ * Legacy `theme` values are accepted as a migration fallback.
  */
 const themeInitScript = `
 (function () {
   var read = function () {
-    try { return localStorage.getItem("theme"); } catch (_) { return null; }
+    try { return localStorage.getItem("themePreference") || localStorage.getItem("theme") || "system"; } catch (_) { return "system"; }
   };
   var osDark = function () {
     return matchMedia("(prefers-color-scheme: dark)").matches;
@@ -24,9 +24,14 @@ const themeInitScript = `
     document.documentElement.dataset.theme = theme;
     document.documentElement.style.colorScheme = theme;
   };
-  apply(read() || (osDark() ? "dark" : "light"));
+  var resolve = function () {
+    var preference = read();
+    if (preference === "dark" || preference === "light") return preference;
+    return osDark() ? "dark" : "light";
+  };
+  apply(resolve());
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function (e) {
-    if (read()) return;
+    if (read() !== "system") return;
     apply(e.matches ? "dark" : "light");
   });
 })();

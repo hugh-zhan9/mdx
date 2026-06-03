@@ -1,11 +1,8 @@
 "use client";
 
 interface FileTreeToolbarProps {
-    rootPath: string;
     query: string;
-    canChooseWorkspace: boolean;
     canMutateSelection: boolean;
-    onChooseWorkspace: () => void;
     onNewFolder: () => void;
     onNewMarkdownFile: () => void;
     onRename: () => void;
@@ -15,11 +12,8 @@ interface FileTreeToolbarProps {
 }
 
 export function FileTreeToolbar({
-    rootPath,
     query,
-    canChooseWorkspace,
     canMutateSelection,
-    onChooseWorkspace,
     onNewFolder,
     onNewMarkdownFile,
     onRename,
@@ -33,15 +27,6 @@ export function FileTreeToolbar({
                 <div className="text-xs font-semibold uppercase text-base-content/60">
                     文件树
                 </div>
-                <button
-                    type="button"
-                    className="block w-full min-w-0 truncate text-left text-[11px] text-base-content/45 hover:text-base-content/75 disabled:hover:text-base-content/45"
-                    onClick={onChooseWorkspace}
-                    disabled={!canChooseWorkspace}
-                    title={rootPath}
-                >
-                    {rootPath}
-                </button>
             </div>
             <div className="grid min-w-0 grid-cols-3 gap-1">
                 <button

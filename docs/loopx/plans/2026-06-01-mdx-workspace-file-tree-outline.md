@@ -6,7 +6,7 @@
 
 **Goal:** 在 `/Users/hugh/project/mdx` 落地一个仅面向桌面的 MDX 编辑器：单根工作区、多标签页、左侧文件夹树、右侧文档标题目录、工作区状态恢复、图片资产管理和 `mdx-cli`。
 
-**Architecture:** 复制 `ref/domd` 作为起点，但只保留桌面壳和 `@do-md/react` 黑盒编辑内核。前端改成单窗口工作区壳，Rust/Tauri 负责文件树、状态持久化、废纸篓、CLI socket 和命令边界；前端负责 tabs、outline、面板折叠与编辑器适配。Web、Quick Look、更新器和多窗口模型都从 MVP 中移除。
+**Architecture:** 复制 `ref-editor` 作为起点，但只保留桌面壳和 `@do-md/react` 黑盒编辑内核。前端改成单窗口工作区壳，Rust/Tauri 负责文件树、状态持久化、废纸篓、CLI socket 和命令边界；前端负责 tabs、outline、面板折叠与编辑器适配。Web、Quick Look、更新器和多窗口模型都从 MVP 中移除。
 
 **Tech Stack:** Next.js 16, React 19, Tauri 2, TypeScript, Rust, `@do-md/react`, `prismjs`, `nanoid`, `vitest`, `tempfile`, `trash`.
 
@@ -24,7 +24,7 @@
 - Tauri 配置：`src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, `src-tauri/capabilities/default.json`
 - 类型声明：`types/do-md-react.d.ts`
 - 测试：`features/workspace/lib/*.test.ts`, `src-tauri/src/*_tests.rs` 或模块内 `#[cfg(test)]`
-- 删除项：`app/editor/page.tsx`, `app/preview/page.tsx`, `features/editor/**`, `features/landing/**`, `features/preview/**`, `features/updater/**`, `src-tauri/preview-extension/**`, 旧的 DOMD 专属脚本和路由入口
+- 删除项：`app/editor/page.tsx`, `app/preview/page.tsx`, `features/editor/**`, `features/landing/**`, `features/preview/**`, `features/updater/**`, `src-tauri/preview-extension/**`, 旧参考项目专属脚本和路由入口
 
 ## 任务 1: 迁移骨架并去掉 Web 壳
 
@@ -56,7 +56,7 @@ rsync -a \
   --exclude out \
   --exclude target \
   --exclude src-tauri/preview-extension \
-  ref/domd/ mdx/
+  ref-editor/ mdx/
 ```
 Expected: `mdx/` 变成可编辑项目骨架，但 `.loopx/` 和 `docs/` 仍然保留。
 
@@ -89,9 +89,9 @@ Expected: 根路由就是工作区壳，没有 Web 营销页。
 
 Expected: `tauri dev` 打开后直接进入工作区壳，不再经过 `/editor`。
 
-- [ ] **Step 4: 清理 DOMD 专属依赖和脚本**
+- [ ] **Step 4: 清理旧参考项目专属依赖和脚本**
 
-在 `package.json` 中移除 `@tauri-apps/plugin-updater`、`@tauri-apps/plugin-deep-link`、DOMD 发布脚本和 Web 保存相关脚本，增加 `test` 脚本指向 `vitest run`，并把 `vitest` 加入 devDependencies。`dexie` 先保留到任务 4，因为复制过来的 `common/lib/image-storage.ts` 在替换前仍会被 TypeScript 检查。`tsconfig.json` 里保留 `@do-md/react` 路径映射，删除任何只服务于 Web 产品页的入口依赖。
+在 `package.json` 中移除 `@tauri-apps/plugin-updater`、`@tauri-apps/plugin-deep-link`、旧发布脚本和 Web 保存相关脚本，增加 `test` 脚本指向 `vitest run`，并把 `vitest` 加入 devDependencies。`dexie` 先保留到任务 4，因为复制过来的 `common/lib/image-storage.ts` 在替换前仍会被 TypeScript 检查。`tsconfig.json` 里保留 `@do-md/react` 路径映射，删除任何只服务于 Web 产品页的入口依赖。
 
 Expected: npm 依赖只保留桌面编辑器需要的包。
 
@@ -667,7 +667,7 @@ Expected: 新建 tab 的第一次保存行为先被测试固定下来。
 
 在 `editor-kernel-adapter.tsx` 里集中封装：
 
-- `DOMDProvider`
+- `editor provider`
 - `toMarkdown`
 - `useEditor`
 - `useEditorStoreApi`
@@ -906,7 +906,7 @@ Expected: 桌面交互和文件树操作入口一致。
 
 - [ ] **Step 2: 清掉最终残留的 Web 路由和旧逻辑**
 
-确认没有任何 Web landing、URL 打开、GitHub README 加载、Quick Look、updater、旧 DOMD window 状态代码还在生产路径里。`common/lib/image-storage.ts` 只保留桌面/工作区资产逻辑。
+确认没有任何 Web landing、URL 打开、GitHub README 加载、Quick Look、updater、旧编辑器窗口 状态代码还在生产路径里。`common/lib/image-storage.ts` 只保留桌面/工作区资产逻辑。
 
 Expected: 产品形态只剩桌面工作区。
 

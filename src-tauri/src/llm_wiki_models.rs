@@ -73,6 +73,15 @@ pub struct LlmProviderConfig {
     pub api_key: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct LlmProviderConfigUpdate {
+    pub base_url: String,
+    pub model: String,
+    pub api_key: Option<String>,
+    pub preserve_api_key: bool,
+}
+
 impl fmt::Debug for LlmProviderConfig {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter

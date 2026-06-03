@@ -64,10 +64,7 @@ export function workspaceReducer(
         case "tab/closedByPrefix":
             return closeTabsByPrefix(state, action.prefix);
         case "tab/contentChanged":
-            return updateTab(state, action.tabId, {
-                dirty: true,
-                markdown: action.markdown,
-            });
+            return changeTabContent(state, action.tabId, action.markdown);
         case "tab/saved":
             return updateTab(state, action.tabId, {
                 dirty: false,
@@ -186,6 +183,23 @@ function updateTab(
             },
         },
     };
+}
+
+function changeTabContent(
+    state: WorkspaceState,
+    tabId: string,
+    markdown: string,
+): WorkspaceState {
+    const tab = state.tabs[tabId];
+
+    if (!tab || tab.markdown === markdown) {
+        return state;
+    }
+
+    return updateTab(state, tabId, {
+        dirty: true,
+        markdown,
+    });
 }
 
 function saveTabIfUnchanged(

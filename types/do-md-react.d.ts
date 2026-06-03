@@ -42,7 +42,7 @@ declare module "@do-md/react" {
          *  using as a filename. */
         getTitle(): string;
         /** Read the current selection / cursor snapshot. Used by the CLI
-         *  server to answer `domd-cli selection` queries. */
+         *  server to answer `mdx-cli selection` queries. */
         getSelectionState(contextChars?: number): SelectionState;
         /** Listen for any store change. Returns the unsubscribe function.
          *  Inherited from BaseStore. */

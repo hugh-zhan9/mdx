@@ -10,19 +10,19 @@
 
 ### 2.1 需求背景
 
-- 背景：DOMD 当前更接近单文件 Markdown 编辑器。用户希望基于 DOMD 参考源码，在 `/Users/hugh/project/mdx` 创建自己的桌面编辑器，并将最重要的能力定为“左侧文件夹树 + 右侧文档标题目录”。
+- 背景：参考编辑器当前更接近单文件 Markdown 编辑器。用户希望基于参考编辑器源码，在 `/Users/hugh/project/mdx` 创建自己的桌面编辑器，并将最重要的能力定为“左侧文件夹树 + 右侧文档标题目录”。
 - 需求目的：把编辑器从单文件模型升级为桌面工作区模型，支持单根文件夹、多标签编辑、文件树操作、标题目录导航和 CLI 自动化。
 - 目标用户/使用方：用户本人，以及后续可能通过 `mdx-cli` 驱动编辑器的本地自动化/Agent。
 - 需求链接：无外部 PRD。
 - 关联原始材料：
-  - 参考仓库：`/Users/hugh/project/ref/domd`
+  - 参考仓库：`/Users/hugh/project/ref-editor`
   - 新项目目录：`/Users/hugh/project/mdx`
   - 澄清记录：`.loopx/intake/clarify-workspace-tabs-outline-2026-06-01-215630.md`
 
 ### 2.2 需求范围
 
 - 本期范围：
-  - 在 `/Users/hugh/project/mdx` 创建独立项目，复制 DOMD 应用层和 Tauri 壳作为起点。
+  - 在 `/Users/hugh/project/mdx` 创建独立项目，复制参考应用层和 Tauri 壳作为起点。
   - App 名为 `MDX`，bundle identifier 为 `com.hugh.mdx`，CLI 为 `mdx-cli`，本地配置目录为 `~/.mdx`。
   - 桌面版/Tauri 优先；Web 产品形态移除。
   - 单窗口单根文件夹工作区。
@@ -34,7 +34,7 @@
   - 图片优先保存到工作区 `.assets/` 并写相对路径，异常时退回 `~/.mdx/assets`。
   - 保留并扩展 CLI socket / CLI 能力。
 - 非目标：
-  - 不修改 `ref/domd`。
+  - 不修改 `ref-editor`。
   - 不发布 Web 产品；不保留 landing、Web 保存、URL 打开、GitHub README 加载。
   - 不做 Quick Look 扩展。
   - 不做自动更新、签名、公证发布脚本迁移。
@@ -60,8 +60,8 @@
 ### 2.3 可行性分析
 
 - 业务可行性：目标清晰，用户已接受桌面优先、Web 移除、Quick Look 不做、黑盒内核继续使用等关键取舍。
-- 技术可行性：文件树、tabs、标题目录、CLI 扩展均可在 DOMD 应用层和 Tauri 壳基础上实现，不要求修改编辑核心。
-- 团队接受能力：新项目从 DOMD 复制改造，初期成本低于从零搭建。
+- 技术可行性：文件树、tabs、标题目录、CLI 扩展均可在参考应用层和 Tauri 壳基础上实现，不要求修改编辑核心。
+- 团队接受能力：新项目从参考项目复制改造，初期成本低于从零搭建。
 - 时间成本：中等偏高，核心复杂度在 workspace/tab 状态模型、Tauri 文件 API、CLI 协议重塑和 dirty 状态一致性。
 - 资源成本：本地单机应用，无后端资源。
 - 替代方案：
@@ -79,15 +79,15 @@
 ### 3.1 方案总述
 
 - 设计目标：
-  - 将 DOMD 单文件编辑体验迁移为 MDX 桌面工作区编辑器。
+  - 将单文件编辑体验迁移为 MDX 桌面工作区编辑器。
   - 建立稳定 workspace、file tree、tabs、outline、CLI 的状态模型。
   - 保留 `@do-md/react` 编辑体验，同时隔离编辑核心依赖。
 - 总体思路：
-  - 复制 DOMD 到 `mdx`，删除 Web/Quick Look/自动更新等非目标能力。
+  - 复制参考项目到 `mdx`，删除 Web/Quick Look/自动更新等非目标能力。
   - 前端建立 `WorkspaceShell`，包含左侧 `FileTreePanel`、中间 `TabbedEditorArea`、右侧 `OutlinePanel`。
   - Rust 提供 workspace 文件系统 commands 和 CLI socket server。
   - 本地状态持久化到 `~/.mdx/state.json`。
-  - 对 `@do-md/react` 建立 `EditorKernelAdapter`，封装 `DOMDProvider`、`toMarkdown`、selection、insert、reset。
+  - 对 `@do-md/react` 建立 `EditorKernelAdapter`，封装 `editor provider`、`toMarkdown`、selection、insert、reset。
 - 核心模块：
   - Workspace State
   - File Tree
@@ -153,11 +153,11 @@
 
 | 模块 | 职责 | 关键功能 | 依赖 | 备注 |
 |---|---|---|---|---|
-| WorkspaceShell | 桌面主 UI 容器 | 三栏布局、折叠、拖拽宽度、启动恢复 | StateStore | 替代 DOMD landing/editor page 结构 |
+| WorkspaceShell | 桌面主 UI 容器 | 三栏布局、折叠、拖拽宽度、启动恢复 | StateStore | 替代 旧编辑器页面 结构 |
 | WorkspaceStore | 前端工作区状态 | rootPath、fileTree、tabs、activeTab、panel UI | Tauri commands | 可用 React reducer/context 或轻量 store |
 | FileTreePanel | 左侧文件树 | 展示、搜索、高亮、新建、重命名、删除、拖拽移动、刷新 | WorkspaceStore, FS commands | 搜索仅名称 |
 | TabManager | 多标签 | 打开/复用/关闭/切换/dirty/保存状态 | EditorAdapter | tab 只对应文件 |
-| EditorKernelAdapter | 黑盒编辑器适配 | DOMDProvider、toMarkdown、insert、selection、reset、change subscribe | `@do-md/react` | 后续替换核心的隔离层 |
+| EditorKernelAdapter | 黑盒编辑器适配 | editor provider、toMarkdown、insert、selection、reset、change subscribe | `@do-md/react` | 后续替换核心的隔离层 |
 | OutlinePanel | 右侧标题目录 | 解析 H1-H6、实时更新、点击滚动 | EditorAdapter, DOM 查询 | 同名按顺序 |
 | ImageAssetManager | 图片资产 | 粘贴/拖入、hash、写 `.assets/`、fallback 全局 | FS commands | Markdown 写相对路径 |
 | TauriFsApi | 文件系统后端 | scan/read/write/create/rename/move/trash/state | Rust std/fs + dialog | 不做实时 watch |
@@ -184,14 +184,14 @@
 
 - 入口：`/Users/hugh/project/mdx`
 - 操作人/调用方：开发者、本地用户
-- 前置条件：`ref/domd` 已克隆且只读参考；`mdx` 目录为空。
+- 前置条件：`ref-editor` 已克隆且只读参考；`mdx` 目录为空。
 - 输出结果：独立 MDX 桌面项目，可运行 Tauri UI。
 
 #### 4.1.2 方案设计
 
 - 核心逻辑：
-  - 复制 DOMD 基础结构到 `mdx`。
-  - 将 package、Tauri productName、identifier、CLI binary 从 DOMD/domd 改为 MDX/mdx。
+  - 复制参考项目基础结构到 `mdx`。
+  - 将 package、Tauri productName、identifier、CLI binary 从参考项目/旧 CLI 改为 MDX/mdx。
   - 删除 landing、Web 保存、URL 打开、Quick Look、updater、release 脚本的 MVP 依赖。
   - 保留 Next/Tauri 开发链路，仍使用静态导出给 Tauri。
 - 状态流转：无运行时状态。
@@ -353,7 +353,7 @@
     - subscribe 内容变化。
   - Outline 不直接依赖黑盒 AST，从当前 Markdown 文本解析标题。
   - 标题正则以 CommonMark 基础 ATX heading 为主：`^(#{1,6})\s+(.+?)\s*#*\s*$`。
-  - 点击 outline 时，查询 DOMD 渲染出的 `h1`-`h6` 元素，按出现顺序定位。
+  - 点击 outline 时，查询 参考编辑器 渲染出的 `h1`-`h6` 元素，按出现顺序定位。
 - 状态流转：
   - `markdown` 变化 -> parse outline -> render outline。
   - 点击 outline -> scroll editor container。
@@ -436,7 +436,7 @@
 #### 4.6.2 方案设计
 
 - 核心逻辑：
-  - 继承 DOMD JSON lines Unix socket 模式。
+  - 继承 JSON lines Unix socket 模式。
   - socket 路径改为 `~/.mdx/cli.sock`。
   - CLI 与 Rust server 使用 serde 枚举定义协议。
   - 默认目标为当前 focused window + active tab。
@@ -525,8 +525,8 @@ erDiagram
 - DDL：不涉及。
 - DML：不涉及。
 - 数据回填：无旧 MDX 状态。首次启动创建 `~/.mdx/state.json`。
-- 老数据兼容：不兼容 DOMD 旧状态；DOMD 旧项目无同名 `~/.mdx` 状态。
-- 新老系统读写关系：MDX 不读写 DOMD 的 `~/.domd` 状态和 assets；图片 fallback 使用 `~/.mdx/assets`。
+- 老数据兼容：不兼容 旧参考项目状态；旧参考项目无同名 `~/.mdx` 状态。
+- 新老系统读写关系：MDX 不读写 参考编辑器 的 `~/.old-editor` 状态和 assets；图片 fallback 使用 `~/.mdx/assets`。
 
 ### 5.3 缓存设计
 
@@ -760,9 +760,9 @@ MVP CLI 命令建议：
 
 | 系统/功能 | 影响 | 依赖动作 | 负责人 | 验证方式 |
 |---|---|---|---|---|
-| DOMD 参考项目 | 不修改 | 无 | 不涉及 | git status 保持干净 |
+| 参考编辑器项目 | 不修改 | 无 | 不涉及 | git status 保持干净 |
 | `@do-md/react` | 继续依赖 | 复制 dist 和类型声明或保持路径映射 | 开发者 | 编辑器可打开和保存 |
-| CLI | 从 domd-cli 改为 mdx-cli | Rust bin/协议改造 | 开发者 | CLI smoke test |
+| CLI | 从旧 CLI 改为 mdx-cli | Rust bin/协议改造 | 开发者 | CLI smoke test |
 | Quick Look | 不迁移 | 删除构建依赖 | 开发者 | 项目不引用 preview-extension |
 
 ### 8.4 回滚方案
@@ -770,7 +770,7 @@ MVP CLI 命令建议：
 - 回滚条件：MDX 项目迁移不可用或设计方向变化。
 - 回滚步骤：
   - 删除或重置 `/Users/hugh/project/mdx` 中未需要的生成文件。
-  - 保留 `ref/domd` 不变，可重新复制。
+  - 保留 `ref-editor` 不变，可重新复制。
 - 数据回滚：
   - 删除或备份 `~/.mdx/state.json` 和 `~/.mdx/assets`。
   - 用户工作区文件操作无法自动回滚；计划阶段需避免 destructive 操作测试真实重要目录。
@@ -824,7 +824,7 @@ MVP CLI 命令建议：
 - 字段兜底：
   - stateVersion 不识别时备份并使用空状态。
   - tabs 指向不存在文件时启动时跳过并提示。
-- 老新数据兼容：不读取 DOMD 状态。
+- 老新数据兼容：不读取参考编辑器状态。
 
 ## 十、排期与规划
 
@@ -832,12 +832,12 @@ MVP CLI 命令建议：
 
 | 任务 | 范围 | 负责人 | 工作量 | 依赖 | 备注 |
 |---|---|---|---|---|---|
-| 项目迁移与裁剪 | 复制 DOMD、改名、删除 Web/Quick Look/updater | 开发者 | 中 | DOMD 参考项目 | 需保持可运行 |
+| 项目迁移与裁剪 | 复制参考项目、改名、删除 Web/Quick Look/updater | 开发者 | 中 | 参考编辑器项目 | 需保持可运行 |
 | Tauri 文件系统 API | scan/read/write/create/rename/move/trash/state/assets | 开发者 | 中高 | Rust/Tauri | 文件安全边界重要 |
 | Workspace UI | 三栏布局、侧栏折叠/拖宽、状态恢复 | 开发者 | 中 | FS API | 桌面优先 |
 | File Tree | 展示、搜索、新建、重命名、删除、拖拽、刷新 | 开发者 | 高 | Workspace UI, FS API | 拖拽边界复杂 |
 | Tab Manager | 多 tab、dirty、保存、首次命名、关闭保护 | 开发者 | 高 | EditorAdapter | 核心状态机 |
-| EditorAdapter | 封装 DOMDProvider/toMarkdown/insert/selection | 开发者 | 中 | @do-md/react | 为未来替换内核铺垫 |
+| EditorAdapter | 封装 editor provider/toMarkdown/insert/selection | 开发者 | 中 | @do-md/react | 为未来替换内核铺垫 |
 | Outline | H1-H6 解析、实时更新、点击滚动 | 开发者 | 中 | EditorAdapter | DOM 匹配有风险 |
 | Image Assets | `.assets` 写入、fallback、插入链接 | 开发者 | 中 | FS API, EditorAdapter | 路径策略明确 |
 | CLI 改造 | `mdx-cli`、workspace/tab 协议、create/rename | 开发者 | 高 | Tauri state, TabManager | 需 smoke test |

@@ -2,8 +2,8 @@ use sha2::{Digest, Sha256};
 use tempfile::tempdir;
 
 use crate::llm_wiki::{
-    llm_config_to_public, llm_wiki_ingest_mock_output, llm_wiki_query, llm_wiki_refresh_graph,
-    llm_wiki_rescan_raw,
+    llm_config_to_public, llm_wiki_ingest_mock_output, llm_wiki_lint, llm_wiki_query,
+    llm_wiki_refresh_graph, llm_wiki_rescan_raw,
 };
 use crate::llm_wiki_fs::{
     build_knowledge_graph_markdown, detect_llm_wiki_workspace, initialize_llm_wiki_workspace,
@@ -394,6 +394,20 @@ fn llm_wiki_query_returns_insufficient_context_without_llm_call_when_search_is_e
     assert!(response.insufficient_context);
     assert!(response.references.is_empty());
     assert!(response.answer.contains("没有足够上下文"));
+    let log = std::fs::read_to_string(root.path().join("log.md")).unwrap();
+    assert!(log.contains("- query missing-topic"));
+}
+
+#[test]
+fn llm_wiki_lint_records_log_entry() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+
+    let report = llm_wiki_lint(root.path().to_string_lossy().into_owned()).unwrap();
+
+    assert!(report.contains("无"));
+    let log = std::fs::read_to_string(root.path().join("log.md")).unwrap();
+    assert!(log.contains("- lint"));
 }
 
 #[test]
@@ -722,6 +736,25 @@ fn rescan_raw_returns_no_pending_files_when_config_is_paused() {
     let progress = std::fs::read_to_string(root.path().join("llm-wiki-progress.md")).unwrap();
     assert!(progress.contains("paused"));
     assert!(!progress.contains("raw/notes/a.md"));
+}
+
+#[test]
+fn rescan_raw_marks_cached_files_completed_instead_of_pending() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    let raw_path = root.path().join("raw/notes/a.md");
+    std::fs::write(&raw_path, "# Raw A\n").unwrap();
+    let hash = raw_scan_hash("raw/notes/a.md", &raw_path);
+    let blocks = parse_file_blocks("---FILE: wiki/sources/a.md---\n# A\n---END FILE---").unwrap();
+    write_ingest_outputs(root.path(), "raw/notes/a.md", &hash, "test-model", &blocks).unwrap();
+
+    let result = llm_wiki_rescan_raw(root.path().to_string_lossy().into_owned()).unwrap();
+
+    assert_eq!(result.total, 1);
+    assert!(result.pending.is_empty());
+    let progress = std::fs::read_to_string(root.path().join("llm-wiki-progress.md")).unwrap();
+    assert!(progress.contains("## Completed"));
+    assert!(progress.contains("raw/notes/a.md"));
 }
 
 #[cfg(unix)]
@@ -1256,6 +1289,8 @@ fn ingest_write_outputs_writes_files_and_updates_cache_entry() {
     assert_eq!(entry.hash, "sha256:test");
     assert_eq!(entry.model, "test-model");
     assert_ne!(entry.ingested_at, "now");
+    let log = std::fs::read_to_string(root.path().join("log.md")).unwrap();
+    assert!(log.contains("- ingest raw/notes/a.md -> wiki/sources/a.md (test-model)"));
 }
 
 #[test]
@@ -1599,4 +1634,18 @@ fn graph_id(relative_path: &str) -> String {
         id.push_str(&format!("{byte:02x}"));
     }
     id
+}
+
+fn raw_scan_hash(relative_path: &str, path: &std::path::Path) -> String {
+    let bytes = std::fs::read(path).unwrap();
+    let mut hasher = Sha256::new();
+    hasher.update(relative_path.as_bytes());
+    hasher.update([0]);
+    hasher.update(&bytes);
+    let digest = hasher.finalize();
+    let mut hash = String::from("sha256:");
+    for byte in digest {
+        hash.push_str(&format!("{byte:02x}"));
+    }
+    hash
 }

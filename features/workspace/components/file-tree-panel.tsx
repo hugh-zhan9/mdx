@@ -41,9 +41,7 @@ interface FileTreePanelProps {
     fileTree: FileTreeNode[];
     searchQuery: string;
     collapsed: boolean;
-    canChooseWorkspace: boolean;
     dispatch: (action: WorkspaceAction) => void;
-    onChooseWorkspace: () => void;
     onToggleCollapsed: () => void;
     activeTabPath: string | null;
     onActionsChange: (actions: WorkspaceFileTreeActions | null) => void;
@@ -78,9 +76,7 @@ export function FileTreePanel({
     fileTree,
     searchQuery,
     collapsed,
-    canChooseWorkspace,
     dispatch,
-    onChooseWorkspace,
     onToggleCollapsed,
     activeTabPath,
     onActionsChange,
@@ -501,11 +497,8 @@ export function FileTreePanel({
                     </button>
                 </div>
                 <FileTreeToolbar
-                    rootPath={rootPath}
                     query={searchQuery}
-                    canChooseWorkspace={canChooseWorkspace}
                     canMutateSelection={Boolean(actionTargetNode)}
-                    onChooseWorkspace={onChooseWorkspace}
                     onNewFolder={() => void createFolderAtSelection()}
                     onNewMarkdownFile={() =>
                         void createMarkdownFileAtSelection()

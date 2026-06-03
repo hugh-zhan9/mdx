@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import type { RefObject } from "react";
+import { tauriCore } from "@/common/lib/tauri";
 import { useWorkspaceBootstrap } from "../hooks/use-workspace-bootstrap";
 import { syncCliWorkspaceSnapshot } from "../lib/cli-sync";
 import type {
@@ -13,7 +14,7 @@ import {
     AppDialogProvider,
     useAppDialogs,
 } from "./app-dialogs";
-import { ThemeToggleButton } from "./theme-toggle-button";
+import { SettingsButton } from "./settings-button";
 import { WorkspaceShell } from "./workspace-shell";
 
 export function WorkspaceApp() {
@@ -189,7 +190,7 @@ function useWorkspaceCloseGuard(
     workspaceRef: RefObject<WorkspaceState | null>,
     dialogs: ReturnType<typeof useAppDialogs>,
 ) {
-    const allowCloseRef = useRef(false);
+    const closingRef = useRef(false);
 
     useEffect(() => {
         if (!isTauriRuntime()) {
@@ -206,15 +207,17 @@ function useWorkspaceCloseGuard(
                 (event) => {
                     const workspace = workspaceRef.current;
 
-                    if (allowCloseRef.current) {
+                    if (closingRef.current) {
                         return;
                     }
+
+                    event.preventDefault();
+                    closingRef.current = true;
 
                     if (
                         workspace &&
                         hasDirtyTabs(workspace)
                     ) {
-                        event.preventDefault();
                         void dialogs.confirm({
                             title: "关闭窗口",
                             message:
@@ -223,15 +226,25 @@ function useWorkspaceCloseGuard(
                             destructive: true,
                         }).then((confirmed) => {
                             if (!confirmed) {
+                                closingRef.current = false;
                                 return;
                             }
 
-                            allowCloseRef.current = true;
-                            void currentWindow.close().finally(() => {
-                                allowCloseRef.current = false;
-                            });
+                            void quitApp();
+                        }).catch((error) => {
+                            closingRef.current = false;
+                            console.warn(
+                                "Failed to confirm workspace close.",
+                                error,
+                            );
                         });
+                        return;
                     }
+
+                    void quitApp().catch((error) => {
+                        closingRef.current = false;
+                        console.warn("Failed to quit application.", error);
+                    });
                 },
             );
 
@@ -252,6 +265,11 @@ function useWorkspaceCloseGuard(
             unlisten?.();
         };
     }, [dialogs, workspaceRef]);
+}
+
+async function quitApp() {
+    const { invoke } = await tauriCore();
+    await invoke("quit_app");
 }
 
 function useCliWorkspaceSync(workspace: WorkspaceState | null) {
@@ -299,9 +317,8 @@ function WorkspaceEmptyState({
     return (
         <div className="grid h-full min-h-0 grid-rows-[44px_minmax(0,1fr)]">
             <header className="flex items-center justify-between border-b border-base-300 bg-base-200 px-3">
-                <div className="text-sm font-semibold">MDX</div>
+                <div />
                 <div className="flex items-center gap-2">
-                    <ThemeToggleButton />
                     {canChooseWorkspace ? (
                         <button
                             type="button"
@@ -316,6 +333,7 @@ function WorkspaceEmptyState({
                             需要桌面版
                         </div>
                     )}
+                    <SettingsButton />
                 </div>
             </header>
 

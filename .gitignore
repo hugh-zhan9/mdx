@@ -37,6 +37,11 @@ yarn-error.log*
 AGENTS.md
 CLAUDE.md
 .claude/
+.loopx/memory/
+.omc/
+.impeccable/
+ref/
+rust_out
 
 # vercel
 .vercel

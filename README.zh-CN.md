@@ -1,134 +1,86 @@
-<img width="928" height="720" alt="cf0de0fa6d1db4ab27f3f992bf8c81bb_WC-EditVideo_1_30fps" src="https://github.com/user-attachments/assets/ede74d56-f5a8-4e3a-9b6b-6c71bc4cdd22" />
+# MDX
 
-# DOMD
+**MDX 是一个本地桌面 Markdown 工作区编辑器。**
 
-**DOMD 是一款基于自研原生 Markdown 渲染引擎的 WYSIWYG 编辑器。**
+它把 Markdown 原生所见即所得编辑内核，和 Tauri 桌面壳结合起来，用来编辑本机文件夹里的 Markdown 文档。
 
-- 20 KB gzipped 内核（除 React 外零运行时依赖）
-- 输入与渲染同步发生，光标始终稳定，编辑无延迟、无抖动
+## 功能
 
-[**Try on Web**](https://www.domd.app/editor)
+- 单根本地工作区
+- 左侧文件树，显示文件夹、`.md` 和 `.markdown` 文件
+- 多标签编辑，跟踪未保存状态
+- 右侧标题目录，从当前文档的 H1-H6 实时生成
+- 应用状态保存到 `~/.mdx/state.json`
+- 图片优先保存到工作区 `.assets/`，异常时退回 `~/.mdx/assets`
+- 提供 `mdx-cli`，支持本地自动化和 Agent 驱动编辑
 
-Download for Mac: [Apple Silicon](https://github.com/do-md/domd/releases/latest/download/DOMD_aarch64.dmg) · [Intel](https://github.com/do-md/domd/releases/latest/download/DOMD_x86_64.dmg)
+## 范围
 
-<sub>[English](./README.md) · 简体中文 · [日本語](./README.ja.md)</sub>
+MDX 当前优先服务桌面端。本期不提供 Web 产品形态、Quick Look 扩展、自动更新流程、多根工作区、全文搜索和实时文件系统监听。
 
-> [!WARNING]
-> **v0.2.0 已发布** —— 优化编辑体验（修复回车 / Tab / 删除键的 bug），并新增自动更新（以后无需手动下载 DMG）。建议[立即更新](https://github.com/do-md/domd/releases/latest)。
+当前编辑器支持 `.md` 和 `.markdown` 文件。这个 MVP 不显示 `.mdx` 文件。
 
----
+## 架构
 
-## Markdown 原生
+- 前端：Next.js 16、React 19、TypeScript、Tailwind CSS
+- 桌面壳：Tauri 2、Rust
+- 编辑器适配：`@do-md/react`
+- 代码高亮：Prism
+- 测试：前端逻辑使用 Vitest，Tauri 侧工作区行为使用 Rust tests
 
-DOMD 的所见即所得，直接发生在 Markdown 上。
-
-解析、渲染、编辑，从第一行代码起就是为 Markdown 所见即所得而构建。
-
-它不建立在 ProseMirror、Slate、Lexical 这类通用富文本引擎之上。
-
-DOMD 的编辑模型，直接服务于 Markdown。
-
----
-
-## 内核
-
-DOMD 的内核是一套从零实现的 Markdown WYSIWYG 编辑器引擎。
-
-它以"数据"为唯一驱动源，状态不可变。输入、撤销还原、AI 流式增量注入、文件分块加载，在内核中被统一建模为同一类状态变更。
-
-这使得编辑行为具备确定性，状态始终可追溯，渲染只发生在变化的部分。
-
-整个编辑栈，被压进 20 KB gzipped。
-
----
-
-## 1 MB 秒开
-
-https://github.com/user-attachments/assets/d4cb6d94-6efe-4d5d-8a67-846be7f3cd45
-
-5 KB 笔记和 1 MB 文档，打开体验几乎没有区别。
-
-Finder 里按空格，DOMD 自己的 Quick Look 扩展接管渲染。
-
----
-
-## macOS
-
-Mac 上的体验对标系统应用。一份渲染好的 `.md`，加载体验接近系统打开一份 `.txt`。
-
-最纯粹的 Markdown 预览和编辑，没有项目树、侧栏、标签页、同步、账号。文件在你电脑上。
-
-Download for macOS: [**Apple Silicon**](https://github.com/do-md/domd/releases/latest/download/DOMD_aarch64.dmg) · [**Intel**](https://github.com/do-md/domd/releases/latest/download/DOMD_x86_64.dmg)
-
-## Web
-
-打开编辑器即可在浏览器里直接所见即所得编辑，也可以把 `.md` 拖到页面上原地打开继续写。全部在本地运行，文件不上传、不离开你的设备。
-
-https://www.domd.app
-
----
+前端负责工作区 UI 状态、标签页、标题目录解析、面板尺寸和编辑器集成。Rust/Tauri 负责受保护的文件系统访问、应用状态持久化、图片资产、废纸篓操作和本地 CLI socket。
 
 ## CLI
 
-macOS 版本附带一个命令行工具 `domd-cli`，让 Agent 直接驱动窗口。
+macOS 构建包含 `mdx-cli`，它通过 `~/.mdx/cli.sock` 连接正在运行的应用。
 
-支持新建窗口、流式写入、重写选区。AI 模型的流式响应可直接管道至 `domd-cli insert`，token 抵达即写入文档，直接渲染为富文本。
+支持的命令包括：
 
-页面顶部的演示，是由一个调用 GPT API 的 Alfred workflow，将流式响应直接增量写入文档录制而成。
-
----
+```bash
+mdx-cli new
+mdx-cli list
+mdx-cli open <path>
+mdx-cli content [--tab <id>]
+mdx-cli selection [--tab <id>]
+mdx-cli insert [--tab <id>] <text>
+mdx-cli save [--tab <id>]
+mdx-cli focus [--tab <id>]
+mdx-cli close [--tab <id>] [--force]
+mdx-cli create-file <dir> [name]
+mdx-cli create-folder <dir> <name>
+mdx-cli rename <path> <new-name>
+```
 
 ## 构建
 
-### Web 应用（Windows）
-
-**前置要求**
-- Windows 10/11
-- Node.js（LTS）及 npm
-- Git（可选，用于克隆仓库）
-
-**步骤**
-1. 在仓库根目录打开 PowerShell 或 Windows Terminal。
-2. 安装依赖：
-   ```bash
-   npm install
-   ```
-3. 启动开发服务器：
-   ```bash
-   npm run dev
-   ```
-   然后打开 http://localhost:3000。
-4. 构建并运行生产版本：
-   ```bash
-   npm run build
-   npm run start
-   ```
-5. 可选 lint：
-   ```bash
-   npm run lint
-   ```
-
-### 原生应用（仅 macOS）
+### 开发用 Web Shell
 
 ```bash
-npm run tauri dev
+npm install
+npm run dev
 ```
 
-Windows 原生构建暂不支持。
+然后打开 http://localhost:3000。
 
----
+### 原生桌面应用
+
+macOS 是当前 MVP 支持的原生目标。
+
+```bash
+npm install
+npx tauri dev
+```
+
+## 验证
+
+```bash
+npm run lint
+npm run test
+cd src-tauri && cargo test
+```
 
 ## 许可
 
-DOMD 采用双重许可。
+本仓库的应用层与辅助库采用 MIT 协议，见 [LICENSE](LICENSE)。
 
-**应用层与工具库** —— 本仓库源码（含 `@do-md/utils`、`@do-md/zenith`）以 MIT 协议开源，见 [LICENSE](LICENSE)。可自由阅读、修改、自建分发。
-
-**核心渲染引擎** —— `@do-md/dist` 仅以构建产物形式分发，采用 [PolyForm Noncommercial 1.0.0](.packages/@do-md/dist/LICENSE)。**任何商业用途须事先获得书面授权**。
-
----
-
-## 反馈
-
-- [GitHub Issues](https://github.com/do-md/domd/issues)
-- [GitHub Discussions](https://github.com/do-md/domd/discussions)
+`.packages/@do-md/dist/` 下的编译版编辑器内核使用其单独许可分发。该内核的商业使用需要事先获得书面授权。
