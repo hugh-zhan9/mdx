@@ -1,5 +1,6 @@
 use std::fs;
 use std::io;
+use std::io::Read;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -12,6 +13,9 @@ use serde_json::json;
 
 use crate::llm_wiki_models::LlmProviderConfig;
 use crate::models::WorkspaceError;
+
+const LLM_RESPONSE_BODY_LIMIT_BYTES: usize = 2 * 1024 * 1024;
+const LLM_ERROR_BODY_PREVIEW_LIMIT_BYTES: usize = 16 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -153,14 +157,13 @@ pub fn call_chat_completion(
         )
     })?;
     let status = response.status();
-    let bytes = response.bytes().map_err(|error| {
-        WorkspaceError::new(
-            "llm_failed",
-            format!("failed to read llm response: {error}"),
-        )
-    })?;
 
     if !status.is_success() {
+        let bytes = read_limited_response_body(
+            response,
+            LLM_ERROR_BODY_PREVIEW_LIMIT_BYTES,
+            "llm error response",
+        )?;
         let message = parse_openai_error_message(&bytes)
             .unwrap_or_else(|| String::from_utf8_lossy(&bytes).trim().to_string());
         let message = if message.is_empty() {
@@ -171,6 +174,8 @@ pub fn call_chat_completion(
         return Err(WorkspaceError::new("llm_failed", message));
     }
 
+    let bytes =
+        read_limited_response_body(response, LLM_RESPONSE_BODY_LIMIT_BYTES, "llm response")?;
     let response: OpenAiChatCompletionResponse =
         serde_json::from_slice(&bytes).map_err(|error| {
             WorkspaceError::new(
@@ -447,6 +452,28 @@ fn parse_openai_error_message(bytes: &[u8]) -> Option<String> {
         .map(str::to_string)
 }
 
+fn read_limited_response_body(
+    mut reader: impl Read,
+    limit: usize,
+    noun: &str,
+) -> Result<Vec<u8>, WorkspaceError> {
+    let mut bytes = Vec::new();
+    reader
+        .by_ref()
+        .take(limit.saturating_add(1) as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|error| {
+            WorkspaceError::new("llm_failed", format!("failed to read {noun}: {error}"))
+        })?;
+    if bytes.len() > limit {
+        return Err(WorkspaceError::new(
+            "llm_failed",
+            format!("{noun} exceeded {limit} byte limit"),
+        ));
+    }
+    Ok(bytes)
+}
+
 #[derive(Debug, Deserialize)]
 struct OpenAiChatCompletionResponse {
     choices: Vec<OpenAiChatChoice>,
@@ -528,4 +555,29 @@ fn path_type_conflict(expected: &str, actual: &str) -> WorkspaceError {
         "path_type_conflict",
         format!("expected llm config {expected}, found {actual}"),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn llm_response_reader_accepts_body_at_limit() {
+        let body = vec![b'a'; 4];
+
+        let read = read_limited_response_body(Cursor::new(body.clone()), 4, "llm response")
+            .expect("body at limit should be accepted");
+
+        assert_eq!(read, body);
+    }
+
+    #[test]
+    fn llm_response_reader_rejects_body_over_limit() {
+        let error =
+            read_limited_response_body(Cursor::new(vec![b'a'; 5]), 4, "llm response").unwrap_err();
+
+        assert_eq!(error.error_code(), "llm_failed");
+        assert!(error.to_string().contains("exceeded"));
+    }
 }
