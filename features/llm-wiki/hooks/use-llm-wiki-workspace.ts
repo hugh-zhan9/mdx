@@ -18,7 +18,10 @@ import {
     rescanRaw,
     runLint,
 } from "../lib/llm-wiki-client";
-import { canRunLlmWikiQuery } from "../lib/query-eligibility";
+import {
+    canRunLlmWikiQuery,
+    isCurrentLlmWikiQueryRequest,
+} from "../lib/query-eligibility";
 import { createLlmWikiStatusViewModel } from "../lib/status-view-model";
 import type {
     LlmWikiPanelState,
@@ -66,6 +69,7 @@ interface RootSnapshot {
 export function useLlmWikiWorkspace(rootPath: string): LlmWikiWorkspaceHook {
     const activeRootPathRef = useRef(rootPath);
     const requestIdRef = useRef(0);
+    const queryGenerationRef = useRef(0);
     const autoRescanRef = useRef({
         running: false,
         pending: false,
@@ -84,6 +88,10 @@ export function useLlmWikiWorkspace(rootPath: string): LlmWikiWorkspaceHook {
     const isReady = Boolean(rootPath) && !isLoading && snapshot.rootPath === rootPath;
 
     useLayoutEffect(() => {
+        if (activeRootPathRef.current !== rootPath) {
+            queryGenerationRef.current += 1;
+        }
+
         activeRootPathRef.current = rootPath;
     }, [rootPath]);
 
@@ -381,6 +389,8 @@ export function useLlmWikiWorkspace(rootPath: string): LlmWikiWorkspaceHook {
                 return;
             }
 
+            const queryGeneration = ++queryGenerationRef.current;
+
             setSnapshot((current) =>
                 current.rootPath === queryRootPath
                     ? {
@@ -395,37 +405,51 @@ export function useLlmWikiWorkspace(rootPath: string): LlmWikiWorkspaceHook {
             try {
                 const result = await queryWiki(queryRootPath, trimmedQuestion);
 
-                if (activeRootPathRef.current !== queryRootPath) {
+                if (
+                    !isCurrentLlmWikiQueryRequest({
+                        activeRootPath: activeRootPathRef.current,
+                        requestRootPath: queryRootPath,
+                        activeGeneration: queryGenerationRef.current,
+                        requestGeneration: queryGeneration,
+                    })
+                ) {
                     return;
                 }
 
-                setSnapshot((current) =>
-                    current.rootPath === queryRootPath
-                        ? {
-                              ...current,
-                              queryAnswer: result,
-                              isQuerying: false,
-                          }
-                        : current,
-                );
-            } catch (error) {
                 setSnapshot((current) => {
-                    if (current.rootPath !== queryRootPath) {
+                    if (
+                        current.rootPath !== queryRootPath ||
+                        !isCurrentLlmWikiQueryRequest({
+                            activeRootPath: activeRootPathRef.current,
+                            requestRootPath: queryRootPath,
+                            activeGeneration: queryGenerationRef.current,
+                            requestGeneration: queryGeneration,
+                        })
+                    ) {
                         return current;
-                    }
-
-                    if (activeRootPathRef.current !== queryRootPath) {
-                        return {
-                            ...current,
-                            isQuerying: false,
-                        };
                     }
 
                     return {
                         ...current,
-                        message: `查询 LLM Wiki 失败：${formatError(error)}`,
+                        queryAnswer: result,
                         isQuerying: false,
                     };
+                });
+            } catch (error) {
+                setSnapshot((current) => {
+                    return current.rootPath === queryRootPath &&
+                        isCurrentLlmWikiQueryRequest({
+                            activeRootPath: activeRootPathRef.current,
+                            requestRootPath: queryRootPath,
+                            activeGeneration: queryGenerationRef.current,
+                            requestGeneration: queryGeneration,
+                        })
+                        ? {
+                              ...current,
+                              message: `查询 LLM Wiki 失败：${formatError(error)}`,
+                              isQuerying: false,
+                          }
+                        : current;
                 });
             }
         },
