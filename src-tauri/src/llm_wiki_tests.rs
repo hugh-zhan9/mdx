@@ -446,6 +446,43 @@ fn mechanical_lint_accepts_heading_alias_and_extension_links() {
     assert!(!report.contains("[[Page"));
 }
 
+#[test]
+fn mechanical_lint_accepts_wiki_root_qualified_path_links() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    write_managed_file(root.path(), "wiki/concepts/B.md", "# B\n".as_bytes()).unwrap();
+    write_managed_file(
+        root.path(),
+        "wiki/entities/A.md",
+        "[[wiki/concepts/B.md#Heading|B]]\n[[concepts/B]]\n".as_bytes(),
+    )
+    .unwrap();
+
+    let report = mechanical_lint_report(root.path()).unwrap();
+
+    assert!(report.contains("无"));
+    assert!(!report.contains("[[wiki/concepts/B"));
+    assert!(!report.contains("[[concepts/B"));
+}
+
+#[test]
+fn mechanical_lint_accepts_source_relative_path_links() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    write_managed_file(root.path(), "wiki/entities/B.md", "# B\n".as_bytes()).unwrap();
+    write_managed_file(
+        root.path(),
+        "wiki/entities/A.md",
+        "[[B.markdown#Heading|B]]\n".as_bytes(),
+    )
+    .unwrap();
+
+    let report = mechanical_lint_report(root.path()).unwrap();
+
+    assert!(report.contains("无"));
+    assert!(!report.contains("[[B"));
+}
+
 #[cfg(unix)]
 #[test]
 fn mechanical_lint_skips_symlinked_wiki_file_without_reading_target() {
