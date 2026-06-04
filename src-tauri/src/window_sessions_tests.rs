@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use tauri::Url;
 
 use crate::window_sessions::{
-    is_supported_document_path, normalize_opened_url_path, StartupOpenRoutingState, WindowRole,
-    WindowSessionRegistry,
+    is_supported_document_path, normalize_opened_url_path, StartupOpenRoutingState,
+    WindowSession, WindowRole, WindowSessionRegistry,
 };
 
 #[test]
@@ -37,6 +37,24 @@ fn registry_deduplicates_document_windows_by_real_path() {
         Some(WindowRole::Document)
     );
     assert_eq!(registry.role_for_label("document-1"), None);
+}
+
+#[test]
+fn registry_returns_document_session_for_window_label() {
+    let mut registry = WindowSessionRegistry::default();
+    let real_path = PathBuf::from("/tmp/note.md");
+
+    let label = registry.claim_document_window(real_path.clone(), "document-0".to_string());
+    let session = registry.session_for_label(&label);
+
+    assert_eq!(
+        session,
+        Some(WindowSession::Document {
+            file_name: "note.md".to_string(),
+            display_path: "/tmp/note.md".to_string(),
+            real_path: "/tmp/note.md".to_string(),
+        })
+    );
 }
 
 #[test]

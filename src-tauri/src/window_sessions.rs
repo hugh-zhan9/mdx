@@ -11,6 +11,16 @@ pub enum WindowRole {
     Document,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WindowSession {
+    Workspace,
+    Document {
+        file_name: String,
+        display_path: String,
+        real_path: String,
+    },
+}
+
 #[derive(Debug, Default)]
 pub struct WindowSessionRegistry {
     workspace_window_label: Option<String>,
@@ -47,6 +57,25 @@ impl WindowSessionRegistry {
         None
     }
 
+    pub fn session_for_label(&self, label: &str) -> Option<WindowSession> {
+        if self.workspace_window_label.as_deref() == Some(label) {
+            return Some(WindowSession::Workspace);
+        }
+
+        self.document_windows
+            .iter()
+            .find(|(_, window_label)| window_label.as_str() == label)
+            .map(|(real_path, _)| WindowSession::Document {
+                file_name: real_path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("Markdown")
+                    .to_string(),
+                display_path: path_to_string(real_path),
+                real_path: path_to_string(real_path),
+            })
+    }
+
     pub fn remove_label(&mut self, label: &str) {
         if self.workspace_window_label.as_deref() == Some(label) {
             self.workspace_window_label = None;
@@ -58,6 +87,10 @@ impl WindowSessionRegistry {
     pub fn has_document_windows(&self) -> bool {
         !self.document_windows.is_empty()
     }
+}
+
+fn path_to_string(path: &Path) -> String {
+    path.to_string_lossy().into_owned()
 }
 
 #[derive(Debug, Default)]

@@ -5,7 +5,7 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use window_sessions::{
     is_supported_document_path, normalize_opened_url_path, StartupOpenRoutingState,
-    WindowSessionRegistry,
+    WindowSession, WindowSessionRegistry,
 };
 
 mod assets;
@@ -201,6 +201,32 @@ fn quit_app(app: AppHandle) {
     app.exit(0);
 }
 
+#[tauri::command]
+fn get_window_session(
+    window: tauri::Window,
+    state: tauri::State<'_, Mutex<WindowSessionRegistry>>,
+) -> serde_json::Value {
+    let registry = state
+        .lock()
+        .expect("window session registry poisoned");
+
+    match registry.session_for_label(window.label()) {
+        Some(WindowSession::Document {
+            file_name,
+            display_path,
+            real_path,
+        }) => serde_json::json!({
+            "kind": "document",
+            "fileName": file_name,
+            "displayPath": display_path,
+            "realPath": real_path,
+        }),
+        Some(WindowSession::Workspace) | None => serde_json::json!({
+            "kind": "workspace",
+        }),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(target_os = "macos")]
@@ -312,6 +338,7 @@ pub fn run() {
             document::read_document_file,
             document::save_document_file,
             document::overwrite_document_file,
+            get_window_session,
             llm_wiki::llm_wiki_detect_workspace,
             llm_wiki::llm_wiki_initialize_workspace,
             llm_wiki::llm_wiki_rescan_raw,
