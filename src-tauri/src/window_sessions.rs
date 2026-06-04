@@ -51,6 +51,10 @@ impl DirtyWorkspacePaths {
         let normalized = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
         self.paths.contains(&normalized)
     }
+
+    pub fn clear(&mut self) {
+        self.paths.clear();
+    }
 }
 
 impl WindowSessionRegistry {

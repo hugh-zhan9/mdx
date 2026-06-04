@@ -169,3 +169,14 @@ fn dirty_workspace_paths_keeps_raw_path_when_canonicalization_fails() {
 
     assert!(dirty.contains(&file));
 }
+
+#[test]
+fn dirty_workspace_paths_clear_removes_stored_paths() {
+    let file = PathBuf::from("/tmp/mdx-dirty-note.md");
+
+    let mut dirty = DirtyWorkspacePaths::default();
+    dirty.update(vec![file.to_string_lossy().into_owned()]);
+    dirty.clear();
+
+    assert!(!dirty.contains(&file));
+}

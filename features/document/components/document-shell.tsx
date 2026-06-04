@@ -11,6 +11,7 @@ import { OutlinePanel } from "@/features/workspace/components/outline-panel";
 import { parseMarkdownOutline } from "@/features/workspace/lib/outline";
 import { scrollRenderedHeadingIntoView } from "@/features/workspace/lib/outline-scroll";
 import {
+    isWorkspacePathDirty,
     overwriteDocumentFile,
     readDocumentFile,
     saveDocumentFile,
@@ -34,6 +35,9 @@ export function DocumentShell({
     const [state, setState] = useState<LoadedDocumentState | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
+    const [workspaceDirty, setWorkspaceDirty] = useState(
+        session.workspaceDirty === true,
+    );
     const stateRef = useRef<LoadedDocumentState | null>(null);
     const saveRef = useRef<() => Promise<boolean>>(async () => false);
     const closePromptInFlightRef = useRef(false);
@@ -69,6 +73,32 @@ export function DocumentShell({
             cancelled = true;
         };
     }, [session.realPath]);
+
+    useEffect(() => {
+        setWorkspaceDirty(session.workspaceDirty === true);
+
+        if (!isTauriRuntime()) {
+            return;
+        }
+
+        let cancelled = false;
+        void isWorkspacePathDirty(session.realPath)
+            .then((dirty) => {
+                if (!cancelled && dirty) {
+                    setWorkspaceDirty(true);
+                }
+            })
+            .catch((dirtyCheckError) => {
+                console.warn(
+                    "Failed to check workspace dirty state.",
+                    dirtyCheckError,
+                );
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [session.realPath, session.workspaceDirty]);
 
     useEffect(() => {
         if (!state || typeof document === "undefined") {
@@ -161,7 +191,7 @@ export function DocumentShell({
 
     useEffect(() => {
         if (
-            !session.workspaceDirty ||
+            !workspaceDirty ||
             workspaceDirtyWarningShownRef.current
         ) {
             return;
@@ -173,7 +203,7 @@ export function DocumentShell({
             message:
                 "这个文件已在工作区标签页中打开且有未保存修改。单文档窗口不会自动同步该内容。",
         });
-    }, [dialogs, session.workspaceDirty]);
+    }, [dialogs, workspaceDirty]);
 
     const closeDocumentWindow = useCallback(async () => {
         confirmedCloseRef.current = true;

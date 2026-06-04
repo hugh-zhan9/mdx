@@ -26,3 +26,8 @@ export async function overwriteDocumentFile(realPath: string, content: string) {
         content,
     });
 }
+
+export async function isWorkspacePathDirty(realPath: string) {
+    const { invoke } = await tauriCore();
+    return invoke<boolean>("is_workspace_path_dirty", { realPath });
+}

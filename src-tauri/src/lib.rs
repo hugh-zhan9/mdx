@@ -303,6 +303,17 @@ fn update_workspace_dirty_paths(
     dirty_paths.update(paths);
 }
 
+#[tauri::command]
+fn is_workspace_path_dirty(
+    real_path: String,
+    dirty_paths: tauri::State<'_, Mutex<DirtyWorkspacePaths>>,
+) -> bool {
+    let dirty_paths = dirty_paths
+        .lock()
+        .expect("dirty workspace paths registry poisoned");
+    dirty_paths.contains(std::path::Path::new(&real_path))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(target_os = "macos")]
@@ -413,6 +424,7 @@ pub fn run() {
             focus_or_create_workspace_window,
             get_window_session,
             update_workspace_dirty_paths,
+            is_workspace_path_dirty,
             llm_wiki::llm_wiki_detect_workspace,
             llm_wiki::llm_wiki_initialize_workspace,
             llm_wiki::llm_wiki_rescan_raw,
@@ -482,7 +494,14 @@ pub fn run() {
             } => {
                 let state = app.state::<Mutex<WindowSessionRegistry>>();
                 let mut registry = state.lock().unwrap();
+                let was_workspace =
+                    registry.role_for_label(&label) == Some(WindowRole::Workspace);
                 registry.remove_label(&label);
+                if was_workspace {
+                    let dirty_paths = app.state::<Mutex<DirtyWorkspacePaths>>();
+                    let mut dirty_paths = dirty_paths.lock().unwrap();
+                    dirty_paths.clear();
+                }
             }
             _ => {}
         });
