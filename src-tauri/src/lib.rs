@@ -1,8 +1,11 @@
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri::{
+    AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent, Wry,
+};
 use window_sessions::{
     is_supported_document_path, normalize_opened_url_path, DirtyWorkspacePaths,
     StartupOpenRoutingState, WindowRole, WindowSession, WindowSessionRegistry,
@@ -44,6 +47,21 @@ mod workspace_fs_tests;
 
 static WIN_ID: AtomicU32 = AtomicU32::new(0);
 
+#[derive(Clone)]
+struct MenuState {
+    workspace_only_items: Vec<MenuItem<Wry>>,
+}
+
+impl MenuState {
+    fn set_workspace_items_enabled(&self, enabled: bool) {
+        for item in &self.workspace_only_items {
+            if let Err(error) = item.set_enabled(enabled) {
+                log::warn!("failed to update menu item state: {error}");
+            }
+        }
+    }
+}
+
 pub(crate) fn new_workspace_window(app: &AppHandle) -> tauri::Result<String> {
     new_workspace_window_with_route(app, "/")
 }
@@ -71,13 +89,14 @@ fn new_workspace_window_with_route(app: &AppHandle, route: &str) -> tauri::Resul
 
 pub(crate) fn new_document_window(
     app: &AppHandle,
-    real_path: std::path::PathBuf,
+    display_path: PathBuf,
+    real_path: PathBuf,
 ) -> tauri::Result<String> {
     let requested_label = format!("document-{}", WIN_ID.fetch_add(1, Ordering::SeqCst));
     let label = {
         let state = app.state::<Mutex<WindowSessionRegistry>>();
         let mut registry = state.lock().unwrap();
-        registry.claim_document_window(real_path.clone(), requested_label)
+        registry.claim_document_window(display_path.clone(), real_path.clone(), requested_label)
     };
 
     if let Some(window) = app.get_webview_window(&label) {
@@ -99,6 +118,34 @@ pub(crate) fn new_document_window(
         .title(&title)
         .inner_size(1280.0, 820.0)
         .min_inner_size(760.0, 520.0)
+        .resizable(true)
+        .build()?;
+    let _ = window.set_focus();
+    Ok(label)
+}
+
+fn new_document_error_window(
+    app: &AppHandle,
+    display_path: Option<PathBuf>,
+    message: String,
+) -> tauri::Result<String> {
+    let label = format!("document-error-{}", WIN_ID.fetch_add(1, Ordering::SeqCst));
+    {
+        let state = app.state::<Mutex<WindowSessionRegistry>>();
+        let mut registry = state.lock().unwrap();
+        registry.claim_document_error_window(label.clone(), message, display_path.clone());
+    }
+
+    let mut route = "/?mode=documentError".to_string();
+    if let Some(path) = &display_path {
+        route.push_str("&path=");
+        route.push_str(&encode_query_component(&path.to_string_lossy()));
+    }
+
+    let window = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(route.into()))
+        .title("无法打开文档 - MDX")
+        .inner_size(720.0, 420.0)
+        .min_inner_size(520.0, 320.0)
         .resizable(true)
         .build()?;
     let _ = window.set_focus();
@@ -155,17 +202,38 @@ fn open_supported_document_urls(app: &AppHandle, urls: &[tauri::Url]) -> bool {
         if !is_supported_document_path(&path) {
             continue;
         }
-        let Ok(real_path) = path.canonicalize() else {
-            log::warn!(
-                "failed to canonicalize opened document path: {}",
-                path.display()
-            );
-            continue;
+        let real_path = match path.canonicalize() {
+            Ok(real_path) => real_path,
+            Err(error) => {
+                log::warn!(
+                    "failed to canonicalize opened document path {}: {error}",
+                    path.display()
+                );
+                if let Err(error) = new_document_error_window(
+                    app,
+                    Some(path),
+                    "无法解析这个 Markdown 文档路径。".to_string(),
+                ) {
+                    log::error!("failed to open document error window: {error}");
+                } else {
+                    opened_supported_document = true;
+                }
+                continue;
+            }
         };
         if !real_path.is_file() {
+            if let Err(error) = new_document_error_window(
+                app,
+                Some(path),
+                "这个 Markdown 路径不是一个普通文件。".to_string(),
+            ) {
+                log::error!("failed to open document error window: {error}");
+            } else {
+                opened_supported_document = true;
+            }
             continue;
         }
-        if let Err(error) = new_document_window(app, real_path) {
+        if let Err(error) = new_document_window(app, path, real_path) {
             log::error!("failed to open document window: {error}");
         } else {
             opened_supported_document = true;
@@ -217,6 +285,21 @@ fn focused_window_with_role(app: &AppHandle) -> Option<(tauri::WebviewWindow, Wi
     let role = registry.role_for_label(window.label())?;
 
     Some((window.clone(), role))
+}
+
+fn window_role_for_label(app: &AppHandle, label: &str) -> Option<WindowRole> {
+    let state = app.state::<Mutex<WindowSessionRegistry>>();
+    let registry = state.lock().unwrap();
+    registry.role_for_label(label)
+}
+
+fn update_menu_state_for_role(app: &AppHandle, role: Option<WindowRole>) {
+    let state = app.state::<MenuState>();
+    state.set_workspace_items_enabled(role == Some(WindowRole::Workspace));
+}
+
+fn update_menu_state_for_focused_window(app: &AppHandle) {
+    update_menu_state_for_role(app, focused_window_with_role(app).map(|(_, role)| role));
 }
 
 fn dispatch_menu_event(app: &AppHandle, menu_id: &str) {
@@ -285,6 +368,11 @@ fn get_window_session(
             "displayPath": display_path,
             "realPath": real_path,
             "workspaceDirty": dirty_paths.contains(std::path::Path::new(&real_path)),
+        }),
+        Some(WindowSession::DocumentError { message, path }) => serde_json::json!({
+            "kind": "documentError",
+            "message": message,
+            "path": path,
         }),
         Some(WindowSession::Workspace) | None => serde_json::json!({
             "kind": "workspace",
@@ -367,6 +455,15 @@ pub fn run() {
             let save_item = MenuItem::with_id(app, "save", "保存", true, Some("CmdOrCtrl+S"))?;
             let close_tab_item =
                 MenuItem::with_id(app, "close-tab", "关闭标签页", true, Some("CmdOrCtrl+W"))?;
+            app.manage(MenuState {
+                workspace_only_items: vec![
+                    new_markdown_item.clone(),
+                    new_folder_item.clone(),
+                    rename_item.clone(),
+                    trash_item.clone(),
+                    refresh_item.clone(),
+                ],
+            });
             let file_menu = Submenu::with_items(
                 app,
                 "文件",
@@ -402,6 +499,7 @@ pub fn run() {
             )?;
 
             app.set_menu(Menu::with_items(app, &[&file_menu, &edit_menu])?)?;
+            update_menu_state_for_focused_window(app.handle());
             app.on_menu_event(|app, event| match event.id().as_ref() {
                 "open-folder" | "new-folder" | "new-markdown-file" | "rename" | "trash"
                 | "refresh" | "save" | "close-tab" => dispatch_menu_event(app, event.id().as_ref()),
@@ -489,19 +587,26 @@ pub fn run() {
             }
             RunEvent::WindowEvent {
                 label,
+                event: WindowEvent::Focused(true),
+                ..
+            } => {
+                update_menu_state_for_role(app, window_role_for_label(app, &label));
+            }
+            RunEvent::WindowEvent {
+                label,
                 event: WindowEvent::Destroyed,
                 ..
             } => {
                 let state = app.state::<Mutex<WindowSessionRegistry>>();
                 let mut registry = state.lock().unwrap();
-                let was_workspace =
-                    registry.role_for_label(&label) == Some(WindowRole::Workspace);
+                let was_workspace = registry.role_for_label(&label) == Some(WindowRole::Workspace);
                 registry.remove_label(&label);
                 if was_workspace {
                     let dirty_paths = app.state::<Mutex<DirtyWorkspacePaths>>();
                     let mut dirty_paths = dirty_paths.lock().unwrap();
                     dirty_paths.clear();
                 }
+                update_menu_state_for_focused_window(app);
             }
             _ => {}
         });

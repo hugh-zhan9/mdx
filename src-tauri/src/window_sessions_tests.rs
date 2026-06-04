@@ -27,8 +27,13 @@ fn registry_deduplicates_document_windows_by_real_path() {
     let mut registry = WindowSessionRegistry::default();
     let real_path = PathBuf::from("/tmp/note.md");
 
-    let first = registry.claim_document_window(real_path.clone(), "document-0".to_string());
-    let second = registry.claim_document_window(real_path, "document-1".to_string());
+    let first = registry.claim_document_window(
+        real_path.clone(),
+        real_path.clone(),
+        "document-0".to_string(),
+    );
+    let second =
+        registry.claim_document_window(real_path.clone(), real_path, "document-1".to_string());
 
     assert_eq!(first, "document-0");
     assert_eq!(second, "document-0");
@@ -42,18 +47,43 @@ fn registry_deduplicates_document_windows_by_real_path() {
 #[test]
 fn registry_returns_document_session_for_window_label() {
     let mut registry = WindowSessionRegistry::default();
+    let display_path = PathBuf::from("/tmp/link.md");
     let real_path = PathBuf::from("/tmp/note.md");
 
-    let label = registry.claim_document_window(real_path.clone(), "document-0".to_string());
+    let label = registry.claim_document_window(display_path, real_path, "document-0".to_string());
     let session = registry.session_for_label(&label);
 
     assert_eq!(
         session,
         Some(WindowSession::Document {
             file_name: "note.md".to_string(),
-            display_path: "/tmp/note.md".to_string(),
+            display_path: "/tmp/link.md".to_string(),
             real_path: "/tmp/note.md".to_string(),
         })
+    );
+}
+
+#[test]
+fn registry_returns_document_error_session_for_window_label() {
+    let mut registry = WindowSessionRegistry::default();
+
+    let label = registry.claim_document_error_window(
+        "document-error-0".to_string(),
+        "无法解析这个 Markdown 文档路径。".to_string(),
+        Some(PathBuf::from("/tmp/missing.md")),
+    );
+    let session = registry.session_for_label(&label);
+
+    assert_eq!(
+        session,
+        Some(WindowSession::DocumentError {
+            message: "无法解析这个 Markdown 文档路径。".to_string(),
+            path: Some("/tmp/missing.md".to_string()),
+        })
+    );
+    assert_eq!(
+        registry.role_for_label("document-error-0"),
+        Some(WindowRole::Document)
     );
 }
 
@@ -62,9 +92,14 @@ fn registry_removes_document_when_window_is_destroyed() {
     let mut registry = WindowSessionRegistry::default();
     let real_path = PathBuf::from("/tmp/note.md");
 
-    let first = registry.claim_document_window(real_path.clone(), "document-0".to_string());
+    let first = registry.claim_document_window(
+        real_path.clone(),
+        real_path.clone(),
+        "document-0".to_string(),
+    );
     registry.remove_label(&first);
-    let second = registry.claim_document_window(real_path, "document-1".to_string());
+    let second =
+        registry.claim_document_window(real_path.clone(), real_path, "document-1".to_string());
 
     assert_eq!(second, "document-1");
     assert_eq!(registry.role_for_label("document-0"), None);

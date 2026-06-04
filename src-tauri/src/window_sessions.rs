@@ -19,12 +19,30 @@ pub enum WindowSession {
         display_path: String,
         real_path: String,
     },
+    DocumentError {
+        message: String,
+        path: Option<String>,
+    },
 }
 
 #[derive(Debug, Default)]
 pub struct WindowSessionRegistry {
     workspace_window_label: Option<String>,
-    document_windows: BTreeMap<PathBuf, String>,
+    document_windows: BTreeMap<PathBuf, DocumentWindowSession>,
+    document_error_windows: BTreeMap<String, DocumentErrorWindowSession>,
+}
+
+#[derive(Debug, Clone)]
+struct DocumentWindowSession {
+    label: String,
+    display_path: PathBuf,
+    real_path: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+struct DocumentErrorWindowSession {
+    message: String,
+    path: Option<PathBuf>,
 }
 
 #[derive(Debug, Default)]
@@ -64,11 +82,32 @@ impl WindowSessionRegistry {
             .clone()
     }
 
-    pub fn claim_document_window(&mut self, real_path: PathBuf, label: String) -> String {
+    pub fn claim_document_window(
+        &mut self,
+        display_path: PathBuf,
+        real_path: PathBuf,
+        label: String,
+    ) -> String {
         self.document_windows
-            .entry(real_path)
-            .or_insert(label)
+            .entry(real_path.clone())
+            .or_insert(DocumentWindowSession {
+                label,
+                display_path,
+                real_path,
+            })
+            .label
             .clone()
+    }
+
+    pub fn claim_document_error_window(
+        &mut self,
+        label: String,
+        message: String,
+        path: Option<PathBuf>,
+    ) -> String {
+        self.document_error_windows
+            .insert(label.clone(), DocumentErrorWindowSession { message, path });
+        label
     }
 
     pub fn role_for_label(&self, label: &str) -> Option<WindowRole> {
@@ -79,7 +118,8 @@ impl WindowSessionRegistry {
         if self
             .document_windows
             .values()
-            .any(|window_label| window_label == label)
+            .any(|session| session.label == label)
+            || self.document_error_windows.contains_key(label)
         {
             return Some(WindowRole::Document);
         }
@@ -92,17 +132,28 @@ impl WindowSessionRegistry {
             return Some(WindowSession::Workspace);
         }
 
-        self.document_windows
-            .iter()
-            .find(|(_, window_label)| window_label.as_str() == label)
-            .map(|(real_path, _)| WindowSession::Document {
-                file_name: real_path
+        if let Some(session) = self
+            .document_windows
+            .values()
+            .find(|session| session.label == label)
+        {
+            return Some(WindowSession::Document {
+                file_name: session
+                    .real_path
                     .file_name()
                     .and_then(|name| name.to_str())
                     .unwrap_or("Markdown")
                     .to_string(),
-                display_path: path_to_string(real_path),
-                real_path: path_to_string(real_path),
+                display_path: path_to_string(&session.display_path),
+                real_path: path_to_string(&session.real_path),
+            });
+        }
+
+        self.document_error_windows
+            .get(label)
+            .map(|session| WindowSession::DocumentError {
+                message: session.message.clone(),
+                path: session.path.as_deref().map(path_to_string),
             })
     }
 
@@ -111,11 +162,12 @@ impl WindowSessionRegistry {
             self.workspace_window_label = None;
         }
         self.document_windows
-            .retain(|_, window_label| window_label != label);
+            .retain(|_, session| session.label != label);
+        self.document_error_windows.remove(label);
     }
 
     pub fn has_document_windows(&self) -> bool {
-        !self.document_windows.is_empty()
+        !self.document_windows.is_empty() || !self.document_error_windows.is_empty()
     }
 }
 
