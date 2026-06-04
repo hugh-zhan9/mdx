@@ -34,6 +34,31 @@ fn saves_workspace_asset_once_for_identical_bytes() {
 }
 
 #[test]
+fn saves_workspace_asset_when_stale_predictable_temp_file_exists() {
+    let root = tempdir().unwrap();
+    let bytes = vec![1, 2, 3, 4];
+    let filename = "9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a.png";
+    let assets_dir = root.path().join(".assets");
+    std::fs::create_dir(&assets_dir).unwrap();
+    std::fs::write(
+        assets_dir.join(format!(".{filename}.tmp.{}", std::process::id())),
+        b"stale",
+    )
+    .unwrap();
+
+    let result = save_image_asset(
+        Some(root.path().to_string_lossy().into_owned()),
+        None,
+        "paste.png".to_string(),
+        bytes.clone(),
+    )
+    .unwrap();
+
+    assert_eq!(result.markdown_path, format!(".assets/{filename}"));
+    assert_eq!(std::fs::read(root.path().join(&result.markdown_path)).unwrap(), bytes);
+}
+
+#[test]
 fn falls_back_to_global_assets_without_workspace_root() {
     let global_assets_dir = tempdir().unwrap();
     let result = save_image_asset_with_global_assets_dir(

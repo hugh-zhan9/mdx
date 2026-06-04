@@ -4,6 +4,7 @@ use std::path::{Component, Path, PathBuf};
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use tempfile::Builder as TempFileBuilder;
 
 use crate::models::WorkspaceError;
 use crate::path_guard::canonicalize_workspace_root;
@@ -399,49 +400,45 @@ fn write_deduped_asset(
         return Ok(path);
     }
 
-    let temp_path = assets_dir.join(format!(".{filename}.tmp.{}", std::process::id()));
-    {
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temp_path)
-            .map_err(|error| {
-                WorkspaceError::from_io(
-                    "asset_write_failed",
-                    "failed to create temporary image asset",
-                    &error,
-                )
-            })?;
-        file.write_all(bytes).map_err(|error| {
+    let mut temp_file = TempFileBuilder::new()
+        .prefix(&format!(".{filename}.tmp-"))
+        .tempfile_in(assets_dir)
+        .map_err(|error| {
             WorkspaceError::from_io(
                 "asset_write_failed",
-                "failed to write temporary image asset",
+                "failed to create temporary image asset",
                 &error,
             )
         })?;
-        file.sync_all().map_err(|error| {
-            WorkspaceError::from_io(
-                "asset_write_failed",
-                "failed to sync temporary image asset",
-                &error,
-            )
-        })?;
-    }
+    temp_file.write_all(bytes).map_err(|error| {
+        WorkspaceError::from_io(
+            "asset_write_failed",
+            "failed to write temporary image asset",
+            &error,
+        )
+    })?;
+    temp_file.flush().map_err(|error| {
+        WorkspaceError::from_io(
+            "asset_write_failed",
+            "failed to flush temporary image asset",
+            &error,
+        )
+    })?;
+    temp_file.as_file().sync_all().map_err(|error| {
+        WorkspaceError::from_io(
+            "asset_write_failed",
+            "failed to sync temporary image asset",
+            &error,
+        )
+    })?;
 
-    match fs::rename(&temp_path, &path) {
-        Ok(()) => Ok(path),
-        Err(error) if path.exists() => {
-            let _ = fs::remove_file(&temp_path);
-            Ok(path)
-        }
-        Err(error) => {
-            let _ = fs::remove_file(&temp_path);
-            Err(WorkspaceError::from_io(
-                "asset_write_failed",
-                "failed to store image asset",
-                &error,
-            ))
-        }
+    match temp_file.persist_noclobber(&path) {
+        Ok(_) => Ok(path),
+        Err(error) if path.exists() => Ok(path),
+        Err(error) => Err(WorkspaceError::new(
+            "asset_write_failed",
+            format!("failed to store image asset: {}", error.error),
+        )),
     }
 }
 
