@@ -59,6 +59,19 @@ function textContent(node: ReactNode): string {
     return textContent(children);
 }
 
+function getInputByLabel(node: ReactNode, label: string) {
+    const input = collectElements(node).find(
+        (element) =>
+            element.type === "input" && element.props["aria-label"] === label,
+    );
+
+    if (!input) {
+        throw new Error(`Expected input with aria-label "${label}"`);
+    }
+
+    return input;
+}
+
 describe("EditorFindBar", () => {
     it("renders find controls and count label", () => {
         const bar = renderBar({
@@ -94,18 +107,15 @@ describe("EditorFindBar", () => {
         const onNext = vi.fn();
         const onPrevious = vi.fn();
         const bar = renderBar({ onNext, onPrevious });
-        const findInput = collectElements(bar).find(
-            (element) =>
-                element.type === "input" && element.props["aria-label"] === "查找",
-        );
+        const findInput = getInputByLabel(bar, "查找");
         const preventDefault = vi.fn();
 
-        findInput?.props.onKeyDown({
+        findInput.props.onKeyDown({
             key: "Enter",
             preventDefault,
             shiftKey: false,
         });
-        findInput?.props.onKeyDown({
+        findInput.props.onKeyDown({
             key: "Enter",
             preventDefault,
             shiftKey: true,
@@ -119,13 +129,92 @@ describe("EditorFindBar", () => {
     it("closes on Escape from find input", () => {
         const onClose = vi.fn();
         const bar = renderBar({ onClose });
-        const findInput = collectElements(bar).find(
-            (element) =>
-                element.type === "input" && element.props["aria-label"] === "查找",
-        );
+        const findInput = getInputByLabel(bar, "查找");
         const preventDefault = vi.fn();
 
-        findInput?.props.onKeyDown({
+        findInput.props.onKeyDown({
+            key: "Escape",
+            preventDefault,
+            shiftKey: false,
+        });
+
+        expect(preventDefault).toHaveBeenCalledOnce();
+        expect(onClose).toHaveBeenCalledOnce();
+    });
+
+    it("submits replace current from replacement input when replace is available", () => {
+        const onReplaceCurrent = vi.fn();
+        const bar = renderBar({
+            isReplaceExpanded: true,
+            matchCount: 2,
+            onReplaceCurrent,
+            query: "raw",
+        });
+        const replacementInput = getInputByLabel(bar, "替换为");
+        const preventDefault = vi.fn();
+
+        replacementInput.props.onKeyDown({
+            key: "Enter",
+            preventDefault,
+            shiftKey: false,
+        });
+
+        expect(preventDefault).toHaveBeenCalledOnce();
+        expect(onReplaceCurrent).toHaveBeenCalledOnce();
+    });
+
+    it("does not submit replace current from replacement input when query is empty", () => {
+        const onReplaceCurrent = vi.fn();
+        const bar = renderBar({
+            isReplaceExpanded: true,
+            matchCount: 2,
+            onReplaceCurrent,
+            query: "",
+        });
+        const replacementInput = getInputByLabel(bar, "替换为");
+        const preventDefault = vi.fn();
+
+        replacementInput.props.onKeyDown({
+            key: "Enter",
+            preventDefault,
+            shiftKey: false,
+        });
+
+        expect(preventDefault).toHaveBeenCalledOnce();
+        expect(onReplaceCurrent).not.toHaveBeenCalled();
+    });
+
+    it("does not submit replace current from replacement input when there are no matches", () => {
+        const onReplaceCurrent = vi.fn();
+        const bar = renderBar({
+            isReplaceExpanded: true,
+            matchCount: 0,
+            onReplaceCurrent,
+            query: "raw",
+        });
+        const replacementInput = getInputByLabel(bar, "替换为");
+        const preventDefault = vi.fn();
+
+        replacementInput.props.onKeyDown({
+            key: "Enter",
+            preventDefault,
+            shiftKey: false,
+        });
+
+        expect(preventDefault).toHaveBeenCalledOnce();
+        expect(onReplaceCurrent).not.toHaveBeenCalled();
+    });
+
+    it("closes on Escape from replacement input", () => {
+        const onClose = vi.fn();
+        const bar = renderBar({
+            isReplaceExpanded: true,
+            onClose,
+        });
+        const replacementInput = getInputByLabel(bar, "替换为");
+        const preventDefault = vi.fn();
+
+        replacementInput.props.onKeyDown({
             key: "Escape",
             preventDefault,
             shiftKey: false,

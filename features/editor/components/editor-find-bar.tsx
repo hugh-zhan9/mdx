@@ -60,7 +60,9 @@ export function EditorFindBar({
     function handleReplacementKeyDown(event: KeyboardEvent<HTMLInputElement>) {
         if (event.key === "Enter") {
             event.preventDefault();
-            onReplaceCurrent();
+            if (hasReplaceTarget) {
+                onReplaceCurrent();
+            }
             return;
         }
 
