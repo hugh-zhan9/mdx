@@ -45,6 +45,16 @@ describe("visible text search", () => {
         ).toEqual([{ start: 4, end: 7 }]);
     });
 
+    it("preserves original offsets when lowercase changes string length", () => {
+        const root = element("div", "DOMD-Root");
+        child(root, "p", "DOMD-P", "İraw");
+        const index = buildVisibleTextIndex(root);
+
+        expect(
+            findVisibleTextMatches(index, "raw", { caseSensitive: false }),
+        ).toEqual([{ start: 1, end: 4 }]);
+    });
+
     it("includes visible code block text", () => {
         const root = element("div", "DOMD-Root");
         const pre = child(root, "pre", "DOMD-Pre");
@@ -149,6 +159,42 @@ describe("visible text search", () => {
         expect(range?.startOffset).toBe(5);
         expect(range?.endContainer).toBe(paragraph.firstChild);
         expect(range?.endOffset).toBe(8);
+    });
+
+    it("creates a DOM range for a match spanning text nodes", () => {
+        const root = element("div", "DOMD-Root");
+        const paragraph = child(root, "p", "DOMD-P");
+        const first = child(paragraph, "span", "DOMD-Plain", "Find ra");
+        const second = child(paragraph, "span", "DOMD-Plain", "w here");
+        const index = buildVisibleTextIndex(root);
+        const [match] = findVisibleTextMatches(index, "raw", {
+            caseSensitive: false,
+        });
+
+        const range = rangeForVisibleTextMatch(index, match);
+
+        expect(range?.startContainer).toBe(first.firstChild);
+        expect(range?.startOffset).toBe(5);
+        expect(range?.endContainer).toBe(second.firstChild);
+        expect(range?.endOffset).toBe(1);
+    });
+
+    it("creates a DOM range for a multi-node match ending at a text node boundary", () => {
+        const root = element("div", "DOMD-Root");
+        const paragraph = child(root, "p", "DOMD-P");
+        const first = child(paragraph, "span", "DOMD-Plain", "Find ra");
+        const second = child(paragraph, "span", "DOMD-Plain", "w");
+        const index = buildVisibleTextIndex(root);
+        const [match] = findVisibleTextMatches(index, "raw", {
+            caseSensitive: false,
+        });
+
+        const range = rangeForVisibleTextMatch(index, match);
+
+        expect(range?.startContainer).toBe(first.firstChild);
+        expect(range?.startOffset).toBe(5);
+        expect(range?.endContainer).toBe(second.firstChild);
+        expect(range?.endOffset).toBe(1);
     });
 });
 

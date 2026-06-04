@@ -77,24 +77,25 @@ export function findVisibleTextMatches(
         return [];
     }
 
-    const haystack = options.caseSensitive
-        ? index.text
-        : index.text.toLocaleLowerCase();
-    const needle = options.caseSensitive ? query : query.toLocaleLowerCase();
     const matches: VisibleTextMatch[] = [];
     let cursor = 0;
 
-    while (cursor <= haystack.length - needle.length) {
-        const foundAt = haystack.indexOf(needle, cursor);
+    while (cursor <= index.text.length - query.length) {
+        const foundAt = findMatchAtOrAfter(
+            index.text,
+            query,
+            cursor,
+            options.caseSensitive,
+        );
         if (foundAt === -1) {
             break;
         }
 
         matches.push({
             start: foundAt,
-            end: foundAt + needle.length,
+            end: foundAt + query.length,
         });
-        cursor = foundAt + Math.max(needle.length, 1);
+        cursor = foundAt + Math.max(query.length, 1);
     }
 
     return matches;
@@ -110,10 +111,66 @@ export function rangeForVisibleTextMatch(
         return null;
     }
 
+    if (
+        typeof document === "undefined" ||
+        typeof document.createRange !== "function"
+    ) {
+        return null;
+    }
+
     const range = document.createRange();
     range.setStart(start.node, match.start - start.start);
     range.setEnd(end.node, match.end - end.start);
     return range;
+}
+
+function findMatchAtOrAfter(
+    text: string,
+    query: string,
+    startOffset: number,
+    caseSensitive: boolean,
+): number {
+    for (
+        let candidate = startOffset;
+        candidate <= text.length - query.length;
+        candidate += 1
+    ) {
+        if (matchesAt(text, query, candidate, caseSensitive)) {
+            return candidate;
+        }
+    }
+
+    return -1;
+}
+
+function matchesAt(
+    text: string,
+    query: string,
+    startOffset: number,
+    caseSensitive: boolean,
+): boolean {
+    for (let queryOffset = 0; queryOffset < query.length; queryOffset += 1) {
+        const textUnit = text[startOffset + queryOffset];
+        const queryUnit = query[queryOffset];
+
+        if (caseSensitive) {
+            if (textUnit !== queryUnit) {
+                return false;
+            }
+            continue;
+        }
+
+        if (lowerSingleCodeUnit(textUnit) !== lowerSingleCodeUnit(queryUnit)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+function lowerSingleCodeUnit(value: string): string {
+    const lower = value.toLowerCase();
+    return lower.length === 1 ? lower : value;
 }
 
 function segmentAt(
