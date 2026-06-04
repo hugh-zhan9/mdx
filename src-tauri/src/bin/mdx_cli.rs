@@ -337,11 +337,7 @@ mod tests {
         let command = CommandLine::LlmWiki {
             command: LlmWikiCommand::Query {
                 json: false,
-                question: vec![
-                    "raw".to_string(),
-                    "目录".to_string(),
-                    "是什么".to_string(),
-                ],
+                question: vec!["raw".to_string(), "目录".to_string(), "是什么".to_string()],
             },
         };
 
@@ -452,6 +448,9 @@ mod tests {
             ..CliResponse::default()
         };
 
-        assert_eq!(success_output(&command, &response), r#"{"ok":true,"results":[]}"#);
+        assert_eq!(
+            success_output(&command, &response),
+            r#"{"ok":true,"results":[]}"#
+        );
     }
 }
