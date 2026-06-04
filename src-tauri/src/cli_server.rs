@@ -690,6 +690,10 @@ fn ensure_llm_wiki_ready(root_path: &str) -> Result<(), CliResponse> {
 }
 
 fn llm_wiki_search_response_for_root(root_path: String, query: String) -> CliResponse {
+    if query.trim().is_empty() {
+        return CliResponse::error("invalid_query", "query must not be empty");
+    }
+
     if let Err(response) = ensure_llm_wiki_ready(&root_path) {
         return response;
     }
@@ -705,6 +709,10 @@ fn llm_wiki_search_response_for_root(root_path: String, query: String) -> CliRes
 }
 
 fn llm_wiki_query_response_for_root(root_path: String, question: String) -> CliResponse {
+    if question.trim().is_empty() {
+        return CliResponse::error("invalid_question", "question must not be empty");
+    }
+
     if let Err(response) = ensure_llm_wiki_ready(&root_path) {
         return response;
     }
@@ -854,6 +862,21 @@ mod tests {
     }
 
     #[test]
+    fn llm_wiki_search_response_rejects_blank_query() {
+        let root = TempDir::new().unwrap();
+        initialize_llm_wiki_workspace(root.path()).unwrap();
+
+        let response = llm_wiki_search_response_for_root(
+            root.path().to_string_lossy().into_owned(),
+            "   ".to_string(),
+        );
+
+        assert!(!response.ok);
+        assert_eq!(response.error_code.as_deref(), Some("invalid_query"));
+        assert_eq!(response.error.as_deref(), Some("query must not be empty"));
+    }
+
+    #[test]
     fn llm_wiki_search_response_returns_empty_results() {
         let root = TempDir::new().unwrap();
         initialize_llm_wiki_workspace(root.path()).unwrap();
@@ -865,6 +888,24 @@ mod tests {
 
         assert!(response.ok);
         assert_eq!(response.results, Some(Vec::new()));
+    }
+
+    #[test]
+    fn llm_wiki_query_response_rejects_blank_question() {
+        let root = TempDir::new().unwrap();
+        initialize_llm_wiki_workspace(root.path()).unwrap();
+
+        let response = llm_wiki_query_response_for_root(
+            root.path().to_string_lossy().into_owned(),
+            "   ".to_string(),
+        );
+
+        assert!(!response.ok);
+        assert_eq!(response.error_code.as_deref(), Some("invalid_question"));
+        assert_eq!(
+            response.error.as_deref(),
+            Some("question must not be empty")
+        );
     }
 
     #[test]
