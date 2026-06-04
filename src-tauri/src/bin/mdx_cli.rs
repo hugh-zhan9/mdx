@@ -89,7 +89,7 @@ fn main() -> ExitCode {
     match run() {
         Ok((command, response)) => print_response(command, response),
         Err(error) => {
-            let response = CliResponse::error("io_error", error.to_string());
+            let response = response_from_io_error(&error);
             eprintln!(
                 "{}",
                 serde_json::to_string(&response)
@@ -170,6 +170,21 @@ fn join_required_words(words: &[String], noun: &str) -> io::Result<String> {
     }
 
     Ok(value.to_string())
+}
+
+fn response_from_io_error(error: &io::Error) -> CliResponse {
+    let message = error.to_string();
+    let code = if error.kind() == io::ErrorKind::InvalidInput {
+        match message.as_str() {
+            "question must not be empty" => "invalid_question",
+            "query must not be empty" => "invalid_query",
+            _ => "io_error",
+        }
+    } else {
+        "io_error"
+    };
+
+    CliResponse::error(code, message)
 }
 
 fn print_response(command: CommandLine, response: CliResponse) -> ExitCode {
@@ -373,6 +388,10 @@ mod tests {
         let error = request_from_command(&command).unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
         assert_eq!(error.to_string(), "question must not be empty");
+        assert_eq!(
+            response_from_io_error(&error).error_code.as_deref(),
+            Some("invalid_question")
+        );
     }
 
     #[test]
@@ -386,6 +405,10 @@ mod tests {
         let error = request_from_command(&command).unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
         assert_eq!(error.to_string(), "query must not be empty");
+        assert_eq!(
+            response_from_io_error(&error).error_code.as_deref(),
+            Some("invalid_query")
+        );
     }
 
     #[test]
