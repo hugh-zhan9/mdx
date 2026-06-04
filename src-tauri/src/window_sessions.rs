@@ -60,6 +60,38 @@ impl WindowSessionRegistry {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct StartupOpenRoutingState {
+    workspace_check_scheduled: bool,
+    startup_check_finished: bool,
+    supported_startup_document_opened: bool,
+}
+
+impl StartupOpenRoutingState {
+    pub fn observe_ready(&mut self) -> bool {
+        if self.workspace_check_scheduled {
+            return false;
+        }
+
+        self.workspace_check_scheduled = true;
+        true
+    }
+
+    pub fn observe_supported_document_opened_during_startup(&mut self) {
+        if !self.startup_check_finished {
+            self.supported_startup_document_opened = true;
+        }
+    }
+
+    pub fn should_create_workspace_after_startup_delay(
+        &mut self,
+        has_document_windows: bool,
+    ) -> bool {
+        self.startup_check_finished = true;
+        !has_document_windows && !self.supported_startup_document_opened
+    }
+}
+
 pub fn normalize_opened_url_path(url: &Url) -> Option<PathBuf> {
     if url.scheme() != "file" {
         return None;

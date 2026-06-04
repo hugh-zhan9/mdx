@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use tauri::Url;
 
 use crate::window_sessions::{
-    is_supported_document_path, normalize_opened_url_path, WindowRole, WindowSessionRegistry,
+    is_supported_document_path, normalize_opened_url_path, StartupOpenRoutingState, WindowRole,
+    WindowSessionRegistry,
 };
 
 #[test]
@@ -74,4 +75,14 @@ fn opened_url_path_accepts_file_urls_and_rejects_non_files() {
     assert!(!is_supported_document_path(
         PathBuf::from("/tmp/note.mdx").as_path()
     ));
+}
+
+#[test]
+fn startup_routing_does_not_create_workspace_when_ready_precedes_supported_opened() {
+    let mut state = StartupOpenRoutingState::default();
+
+    assert!(state.observe_ready());
+    state.observe_supported_document_opened_during_startup();
+
+    assert!(!state.should_create_workspace_after_startup_delay(false));
 }

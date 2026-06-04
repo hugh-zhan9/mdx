@@ -1,10 +1,12 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
+use std::time::Duration;
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use window_sessions::{
-    is_supported_document_path, normalize_opened_url_path, WindowSessionRegistry,
+    is_supported_document_path, normalize_opened_url_path, StartupOpenRoutingState,
+    WindowSessionRegistry,
 };
 
 mod assets;
@@ -117,7 +119,8 @@ fn focus_or_create_workspace_window(app: &AppHandle) {
     }
 }
 
-fn open_supported_document_urls(app: &AppHandle, urls: &[tauri::Url]) {
+fn open_supported_document_urls(app: &AppHandle, urls: &[tauri::Url]) -> bool {
+    let mut opened_supported_document = false;
     for url in urls {
         let Some(path) = normalize_opened_url_path(url) else {
             continue;
@@ -137,8 +140,53 @@ fn open_supported_document_urls(app: &AppHandle, urls: &[tauri::Url]) {
         }
         if let Err(error) = new_document_window(app, real_path) {
             log::error!("failed to open document window: {error}");
+        } else {
+            opened_supported_document = true;
         }
     }
+    opened_supported_document
+}
+
+#[cfg(target_os = "macos")]
+fn schedule_initial_workspace_window_check(app: &AppHandle) {
+    let should_schedule = {
+        let state = app.state::<Mutex<StartupOpenRoutingState>>();
+        let mut startup = state.lock().unwrap();
+        startup.observe_ready()
+    };
+    if !should_schedule {
+        return;
+    }
+
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(150));
+        let app_for_main = app.clone();
+        if let Err(error) = app.run_on_main_thread(move || {
+            let has_document_windows = {
+                let state = app_for_main.state::<Mutex<WindowSessionRegistry>>();
+                let registry = state.lock().unwrap();
+                registry.has_document_windows()
+            };
+            let should_create_workspace = {
+                let state = app_for_main.state::<Mutex<StartupOpenRoutingState>>();
+                let mut startup = state.lock().unwrap();
+                startup.should_create_workspace_after_startup_delay(has_document_windows)
+            };
+            if should_create_workspace {
+                focus_or_create_workspace_window(&app_for_main);
+            }
+        }) {
+            log::error!("failed to schedule workspace startup check: {error}");
+        }
+    });
+}
+
+#[cfg(target_os = "macos")]
+fn remember_supported_startup_document_opened(app: &AppHandle) {
+    let state = app.state::<Mutex<StartupOpenRoutingState>>();
+    let mut startup = state.lock().unwrap();
+    startup.observe_supported_document_opened_during_startup();
 }
 
 fn emit_menu_event(app: &AppHandle, event: &str) {
@@ -177,6 +225,7 @@ pub fn run() {
             app.handle().plugin(tauri_plugin_dialog::init())?;
             app.manage(cli_server::CliState::default());
             app.manage(Mutex::new(WindowSessionRegistry::default()));
+            app.manage(Mutex::new(StartupOpenRoutingState::default()));
             cli_server::start(app.handle().clone());
 
             let open_folder_item = MenuItem::with_id(
@@ -299,18 +348,22 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app, event| match event {
             RunEvent::Ready => {
-                let has_document_windows = {
-                    let state = app.state::<Mutex<WindowSessionRegistry>>();
-                    let registry = state.lock().unwrap();
-                    registry.has_document_windows()
-                };
-                if !has_document_windows {
+                #[cfg(target_os = "macos")]
+                {
+                    schedule_initial_workspace_window_check(app);
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
                     focus_or_create_workspace_window(app);
                 }
             }
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             RunEvent::Opened { urls } => {
-                open_supported_document_urls(app, &urls);
+                let opened_supported_document = open_supported_document_urls(app, &urls);
+                #[cfg(target_os = "macos")]
+                if opened_supported_document {
+                    remember_supported_startup_document_opened(app);
+                }
             }
             #[cfg(target_os = "macos")]
             RunEvent::Reopen { .. } => {
