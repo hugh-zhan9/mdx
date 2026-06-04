@@ -31,8 +31,12 @@ export function buildVisibleTextIndex(root: ParentNode): VisibleTextIndex {
     const segments: VisibleTextSegment[] = [];
     let text = "";
 
+    if (isElement(root) && shouldSkipElement(root)) {
+        return { segments, text };
+    }
+
     const visit = (node: Node) => {
-        if (node.nodeType === Node.TEXT_NODE) {
+        if (node.nodeType === 3) {
             const value = node.textContent ?? "";
             if (!value) {
                 return;
@@ -48,7 +52,7 @@ export function buildVisibleTextIndex(root: ParentNode): VisibleTextIndex {
             return;
         }
 
-        if (!(node instanceof Element) || shouldSkipElement(node)) {
+        if (!isElement(node) || shouldSkipElement(node)) {
             return;
         }
 
@@ -124,11 +128,14 @@ function segmentAt(
 }
 
 function shouldSkipElement(element: Element): boolean {
-    if (element instanceof HTMLElement) {
+    if (isHtmlElement(element)) {
         const style = element.style;
+        const computedStyle = getComputedStyleForElement(element);
         if (
             style.display === "none" ||
             style.visibility === "hidden" ||
+            computedStyle?.display === "none" ||
+            computedStyle?.visibility === "hidden" ||
             element.hidden ||
             element.getAttribute("aria-hidden") === "true"
         ) {
@@ -136,7 +143,7 @@ function shouldSkipElement(element: Element): boolean {
         }
     }
 
-    if (element instanceof HTMLImageElement) {
+    if (isImageElement(element)) {
         return true;
     }
 
@@ -147,4 +154,32 @@ function shouldSkipElement(element: Element): boolean {
     }
 
     return false;
+}
+
+function isElement(node: ParentNode | Node): node is Element {
+    return typeof Element !== "undefined" && node instanceof Element;
+}
+
+function isHtmlElement(element: Element): element is HTMLElement {
+    return (
+        typeof HTMLElement !== "undefined" && element instanceof HTMLElement
+    );
+}
+
+function isImageElement(element: Element): element is HTMLImageElement {
+    return (
+        typeof HTMLImageElement !== "undefined" &&
+        element instanceof HTMLImageElement
+    );
+}
+
+function getComputedStyleForElement(element: Element): CSSStyleDeclaration | null {
+    if (
+        typeof window === "undefined" ||
+        typeof window.getComputedStyle !== "function"
+    ) {
+        return null;
+    }
+
+    return window.getComputedStyle(element);
 }

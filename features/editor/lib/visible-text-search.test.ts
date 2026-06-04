@@ -1,6 +1,4 @@
-// @vitest-environment happy-dom
-
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
     buildVisibleTextIndex,
     findVisibleTextMatches,
@@ -8,6 +6,14 @@ import {
 } from "./visible-text-search";
 
 describe("visible text search", () => {
+    beforeEach(() => {
+        installDomFixture();
+    });
+
+    afterEach(() => {
+        uninstallDomFixture();
+    });
+
     it("finds visible paragraph text case-insensitively by default", () => {
         const root = element("div", "DOMD-Root");
         child(root, "p", "DOMD-P", "Raw material lives here.");
@@ -105,6 +111,30 @@ describe("visible text search", () => {
         ).toEqual([]);
     });
 
+    it("excludes nodes hidden by computed styles", () => {
+        const root = element("div", "DOMD-Root");
+        child(root, "p", "DOMD-P", "Visible");
+        const hidden = child(root, "span", "DOMD-Plain", "Hidden raw");
+        hidden.computedStyle.display = "none";
+
+        const index = buildVisibleTextIndex(root);
+
+        expect(index.text).toBe("Visible");
+        expect(
+            findVisibleTextMatches(index, "hidden", { caseSensitive: false }),
+        ).toEqual([]);
+    });
+
+    it("excludes the whole index when the root is hidden", () => {
+        const root = element("div", "DOMD-Root");
+        root.computedStyle.visibility = "hidden";
+        child(root, "p", "DOMD-P", "Hidden raw");
+
+        const index = buildVisibleTextIndex(root);
+
+        expect(index).toEqual({ segments: [], text: "" });
+    });
+
     it("creates a DOM range for a single-node match", () => {
         const root = element("div", "DOMD-Root");
         const paragraph = child(root, "p", "DOMD-P", "Find raw here");
@@ -122,22 +152,193 @@ describe("visible text search", () => {
     });
 });
 
-function element(tagName: string, className = "", text = ""): HTMLElement {
-    const node = document.createElement(tagName);
-    node.className = className;
-    if (text) {
-        node.textContent = text;
-    }
-    return node;
+function element(tagName: string, className = "", text = ""): TestElement {
+    return new TestElement(tagName, className, text);
 }
 
 function child(
-    parent: HTMLElement,
+    parent: TestElement,
     tagName: string,
     className = "",
     text = "",
-): HTMLElement {
+): TestElement {
     const node = element(tagName, className, text);
     parent.appendChild(node);
     return node;
+}
+
+const originalGlobals = {
+    document: globalThis.document,
+    Element: globalThis.Element,
+    HTMLElement: globalThis.HTMLElement,
+    HTMLImageElement: globalThis.HTMLImageElement,
+    Node: globalThis.Node,
+    window: globalThis.window,
+};
+
+function installDomFixture(): void {
+    Object.defineProperties(globalThis, {
+        document: {
+            configurable: true,
+            value: {
+                createRange: () => new TestRange(),
+            },
+        },
+        Element: {
+            configurable: true,
+            value: TestElement,
+        },
+        HTMLElement: {
+            configurable: true,
+            value: TestElement,
+        },
+        HTMLImageElement: {
+            configurable: true,
+            value: TestImageElement,
+        },
+        Node: {
+            configurable: true,
+            value: TestNode,
+        },
+        window: {
+            configurable: true,
+            value: {
+                getComputedStyle: (element: TestElement) =>
+                    element.computedStyle,
+            },
+        },
+    });
+}
+
+function uninstallDomFixture(): void {
+    Object.defineProperties(globalThis, {
+        document: {
+            configurable: true,
+            value: originalGlobals.document,
+        },
+        Element: {
+            configurable: true,
+            value: originalGlobals.Element,
+        },
+        HTMLElement: {
+            configurable: true,
+            value: originalGlobals.HTMLElement,
+        },
+        HTMLImageElement: {
+            configurable: true,
+            value: originalGlobals.HTMLImageElement,
+        },
+        Node: {
+            configurable: true,
+            value: originalGlobals.Node,
+        },
+        window: {
+            configurable: true,
+            value: originalGlobals.window,
+        },
+    });
+}
+
+class TestNode {
+    static readonly TEXT_NODE = 3;
+    readonly nodeType: number;
+
+    constructor(nodeType: number) {
+        this.nodeType = nodeType;
+    }
+}
+
+class TestText extends TestNode {
+    readonly textContent: string;
+
+    constructor(textContent: string) {
+        super(TestNode.TEXT_NODE);
+        this.textContent = textContent;
+    }
+}
+
+class TestElement extends TestNode {
+    readonly childNodes: Array<TestElement | TestText> = [];
+    readonly classList = {
+        contains: (className: string) => this.classNames.includes(className),
+    };
+    readonly computedStyle = {
+        display: "",
+        visibility: "",
+    };
+    readonly style = {
+        display: "",
+        visibility: "",
+    };
+    hidden = false;
+    private readonly attributes = new Map<string, string>();
+    private classNames: string[];
+
+    constructor(
+        readonly tagName: string,
+        className = "",
+        text = "",
+    ) {
+        super(1);
+        this.className = className;
+        if (text) {
+            this.textContent = text;
+        }
+    }
+
+    get className(): string {
+        return this.classNames.join(" ");
+    }
+
+    set className(value: string) {
+        this.classNames = value.split(/\s+/).filter(Boolean);
+    }
+
+    get firstChild(): TestElement | TestText | null {
+        return this.childNodes[0] ?? null;
+    }
+
+    get textContent(): string {
+        return this.childNodes
+            .map((childNode) => childNode.textContent ?? "")
+            .join("");
+    }
+
+    set textContent(value: string) {
+        this.childNodes.length = 0;
+        if (value) {
+            this.childNodes.push(new TestText(value));
+        }
+    }
+
+    appendChild(childNode: TestElement): void {
+        this.childNodes.push(childNode);
+    }
+
+    getAttribute(name: string): string | null {
+        return this.attributes.get(name) ?? null;
+    }
+
+    setAttribute(name: string, value: string): void {
+        this.attributes.set(name, value);
+    }
+}
+
+class TestImageElement extends TestElement {}
+
+class TestRange {
+    endContainer: TestElement | TestText | null = null;
+    endOffset = 0;
+    startContainer: TestElement | TestText | null = null;
+    startOffset = 0;
+
+    setEnd(node: TestElement | TestText, offset: number): void {
+        this.endContainer = node;
+        this.endOffset = offset;
+    }
+
+    setStart(node: TestElement | TestText, offset: number): void {
+        this.startContainer = node;
+        this.startOffset = offset;
+    }
 }
