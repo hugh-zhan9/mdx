@@ -22,14 +22,14 @@ import {
 } from "../lib/keyboard-selection-scope";
 
 interface EditorPaneProps {
-    rootPath: string;
+    rootPath: string | null;
     tab: WorkspaceTab;
     onMarkdownChange: (tabId: string, markdown: string) => void;
     editorViewportRef?: RefObject<HTMLDivElement | null>;
-    pendingCliCommand: PendingCliEditorCommand | null;
-    onPendingCliCommandHandled: (commandId: string) => void;
+    pendingCliCommand?: PendingCliEditorCommand | null;
+    onPendingCliCommandHandled?: (commandId: string) => void;
     onOpenWikilink?: (target: string, sourcePath: string) => void;
-    onSelectionChange: (
+    onSelectionChange?: (
         tabId: string,
         selection: Record<string, unknown> | null,
     ) => void;
@@ -40,7 +40,7 @@ export function EditorPane({
     tab,
     onMarkdownChange,
     editorViewportRef,
-    pendingCliCommand,
+    pendingCliCommand = null,
     onPendingCliCommandHandled,
     onOpenWikilink,
     onSelectionChange,
@@ -86,10 +86,10 @@ function EditorPaneInner({
     tab: WorkspaceTab;
     onMarkdownChange: (tabId: string, markdown: string) => void;
     editorViewportRef?: RefObject<HTMLDivElement | null>;
-    pendingCliCommand: PendingCliEditorCommand | null;
-    onPendingCliCommandHandled: (commandId: string) => void;
+    pendingCliCommand?: PendingCliEditorCommand | null;
+    onPendingCliCommandHandled?: (commandId: string) => void;
     onOpenWikilink?: (target: string, sourcePath: string) => void;
-    onSelectionChange: (
+    onSelectionChange?: (
         tabId: string,
         selection: Record<string, unknown> | null,
     ) => void;
@@ -151,6 +151,10 @@ function EditorPaneInner({
     );
 
     useEffect(() => {
+        if (!onSelectionChange) {
+            return;
+        }
+
         onSelectionChange(
             tab.tabId,
             (bridge.selection as Record<string, unknown> | null) ?? null,
@@ -158,7 +162,11 @@ function EditorPaneInner({
     }, [bridge.selection, onSelectionChange, tab.tabId]);
 
     useEffect(() => {
-        if (!pendingCliCommand || pendingCliCommand.tabId !== tab.tabId) {
+        if (
+            !pendingCliCommand ||
+            !onPendingCliCommandHandled ||
+            pendingCliCommand.tabId !== tab.tabId
+        ) {
             return;
         }
 

@@ -1,15 +1,17 @@
 "use client";
 
 import type { AppWindowSession } from "@/features/app/lib/app-session";
+import { AppDialogProvider } from "@/features/workspace/components/app-dialogs";
+import { DocumentShell } from "./document-shell";
 
-export function DocumentApp({ session }: { session: AppWindowSession }) {
+export function DocumentApp({
+    session,
+}: {
+    session: Extract<AppWindowSession, { kind: "document" }>;
+}) {
     return (
-        <main className="flex h-screen items-center justify-center bg-base-100 text-base-content">
-            <div className="text-sm text-base-content/70">
-                {session.kind === "document"
-                    ? session.fileName
-                    : "正在打开文档..."}
-            </div>
-        </main>
+        <AppDialogProvider>
+            <DocumentShell session={session} />
+        </AppDialogProvider>
     );
 }

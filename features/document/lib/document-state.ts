@@ -1,0 +1,44 @@
+import type { DocumentFileResult, LoadedDocumentState } from "./types";
+
+export function createLoadedDocumentState(
+    file: DocumentFileResult,
+): LoadedDocumentState {
+    return {
+        fileName: file.fileName,
+        displayPath: file.displayPath,
+        realPath: file.realPath,
+        markdown: file.content,
+        savedMarkdown: file.content,
+        fingerprint: file.fingerprint,
+        dirty: false,
+        outlineCollapsed: false,
+    };
+}
+
+export function updateDocumentMarkdown(
+    state: LoadedDocumentState,
+    markdown: string,
+): LoadedDocumentState {
+    return {
+        ...state,
+        markdown,
+        dirty: markdown !== state.savedMarkdown,
+    };
+}
+
+export function markDocumentSaved(
+    state: LoadedDocumentState,
+    fingerprint: string,
+    savedMarkdown = state.markdown,
+): LoadedDocumentState {
+    return {
+        ...state,
+        savedMarkdown,
+        fingerprint,
+        dirty: state.markdown !== savedMarkdown,
+    };
+}
+
+export function documentWindowTitle(state: LoadedDocumentState) {
+    return `${state.dirty ? "● " : ""}${state.fileName} - MDX`;
+}
