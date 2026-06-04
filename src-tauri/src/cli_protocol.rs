@@ -54,6 +54,12 @@ pub enum CliRequest {
         path: Option<String>,
         new_name: String,
     },
+    LlmWikiQuery {
+        question: String,
+    },
+    LlmWikiSearch {
+        query: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -90,6 +96,14 @@ pub struct SelectionSnapshot {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+pub struct CliWikiSearchResult {
+    pub path: String,
+    pub title: String,
+    pub snippet: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
 pub struct CliResponse {
     pub ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -120,6 +134,14 @@ pub struct CliResponse {
     pub content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selection: Option<SelectionSnapshot>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub answer: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub references: Option<Vec<CliWikiSearchResult>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub insufficient_context: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub results: Option<Vec<CliWikiSearchResult>>,
 }
 
 impl CliResponse {
@@ -215,6 +237,19 @@ pub fn list_response_from_snapshot(snapshot: &WorkspaceSnapshot) -> CliResponse 
         tabs: snapshot.tabs.clone(),
         ..CliResponse::default()
     }
+}
+
+pub fn cli_wiki_search_results_from_models(
+    results: Vec<crate::llm_wiki_models::WikiSearchResult>,
+) -> Vec<CliWikiSearchResult> {
+    results
+        .into_iter()
+        .map(|result| CliWikiSearchResult {
+            path: result.path,
+            title: result.title,
+            snippet: result.snippet,
+        })
+        .collect()
 }
 
 pub fn active_or_requested_tab<'a>(

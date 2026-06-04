@@ -252,6 +252,9 @@ fn dispatch(app: &AppHandle, request: CliRequest) -> CliResponse {
             handle_create_folder(app, parent_dir, name)
         }
         CliRequest::Rename { path, new_name } => handle_rename(app, path, new_name),
+        CliRequest::LlmWikiQuery { .. } | CliRequest::LlmWikiSearch { .. } => {
+            CliResponse::error("not_implemented", "llm wiki cli command is not implemented")
+        }
     }
 }
 

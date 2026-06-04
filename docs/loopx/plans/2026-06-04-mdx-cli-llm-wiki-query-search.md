@@ -73,11 +73,11 @@ fn serializes_llm_wiki_query_response_as_snake_case_json() {
     let response = crate::cli_protocol::CliResponse {
         ok: true,
         answer: Some("raw 目录用于存放一手素材。".to_string()),
-        references: vec![CliWikiSearchResult {
+        references: Some(vec![CliWikiSearchResult {
             path: "wiki/concepts/raw.md".to_string(),
             title: "raw".to_string(),
             snippet: "raw 目录用于存放一手素材".to_string(),
-        }],
+        }]),
         insufficient_context: Some(false),
         ..crate::cli_protocol::CliResponse::default()
     };
@@ -147,8 +147,8 @@ Add fields to `CliResponse`:
 ```rust
     #[serde(skip_serializing_if = "Option::is_none")]
     pub answer: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub references: Vec<CliWikiSearchResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub references: Option<Vec<CliWikiSearchResult>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub insufficient_context: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -277,11 +277,11 @@ mod tests {
         let response = CliResponse {
             ok: true,
             answer: Some("raw 目录用于存放一手素材。".to_string()),
-            references: vec![CliWikiSearchResult {
+            references: Some(vec![CliWikiSearchResult {
                 path: "wiki/concepts/raw.md".to_string(),
                 title: "raw".to_string(),
                 snippet: "raw 目录用于存放一手素材".to_string(),
-            }],
+            }]),
             insufficient_context: Some(false),
             ..CliResponse::default()
         };
@@ -667,7 +667,7 @@ fn llm_wiki_query_response_for_root(root_path: String, question: String) -> CliR
         Ok(result) => CliResponse {
             ok: true,
             answer: Some(result.answer),
-            references: cli_wiki_search_results_from_models(result.references),
+            references: Some(cli_wiki_search_results_from_models(result.references)),
             insufficient_context: Some(result.insufficient_context),
             ..CliResponse::default()
         },
