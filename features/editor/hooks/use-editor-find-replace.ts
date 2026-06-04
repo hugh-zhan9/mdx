@@ -80,6 +80,17 @@ export function findBarCountLabel(
     return `${Math.min(currentMatchIndex + 1, total)}/${total}`;
 }
 
+export function matchIndexAfterCurrentReplacement(
+    currentMatchIndex: number,
+    currentMatchCount: number,
+): number {
+    if (currentMatchCount <= 1) {
+        return 0;
+    }
+
+    return Math.min(currentMatchIndex, currentMatchCount - 2);
+}
+
 export function replaceAllMatchesFromEnd(
     matches: VisibleTextMatch[],
     applyReplacement: (match: VisibleTextMatch) => boolean,
@@ -105,13 +116,11 @@ export function useEditorFindReplace({
         createInitialFindReplaceState,
     );
     const visibleTextIndex = useMemo(() => {
-        void markdown;
-
         if (!editorRoot) {
             return { segments: [], text: "" };
         }
 
-        return buildVisibleTextIndex(editorRoot);
+        return buildVisibleTextIndexForMarkdown(editorRoot, markdown);
     }, [editorRoot, markdown]);
     const matches = useMemo(
         () =>
@@ -248,9 +257,9 @@ export function useEditorFindReplace({
 
         setState((current) => ({
             ...current,
-            currentMatchIndex: nextMatchIndex(
+            currentMatchIndex: matchIndexAfterCurrentReplacement(
                 current.currentMatchIndex,
-                Math.max(matchCount - 1, 0),
+                matchCount,
             ),
         }));
         focusEditor();
@@ -307,4 +316,13 @@ export function useEditorFindReplace({
             toggleReplaceExpanded,
         },
     };
+}
+
+function buildVisibleTextIndexForMarkdown(
+    editorRoot: HTMLElement,
+    markdown: string,
+) {
+    void markdown;
+
+    return buildVisibleTextIndex(editorRoot);
 }

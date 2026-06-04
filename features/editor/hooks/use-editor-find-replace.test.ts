@@ -4,6 +4,7 @@ import {
     applyFindBarShortcut,
     createInitialFindReplaceState,
     findBarCountLabel,
+    matchIndexAfterCurrentReplacement,
     nextMatchIndex,
     previousMatchIndex,
     replaceAllMatchesFromEnd,
@@ -49,6 +50,14 @@ describe("editor find replace state", () => {
         expect(findBarCountLabel(0, 0)).toBe("0/0");
         expect(findBarCountLabel(0, 3)).toBe("1/3");
         expect(findBarCountLabel(2, 3)).toBe("3/3");
+    });
+
+    it("keeps the next logical match active after replacing the current match", () => {
+        expect(matchIndexAfterCurrentReplacement(0, 3)).toBe(0);
+        expect(matchIndexAfterCurrentReplacement(1, 3)).toBe(1);
+        expect(matchIndexAfterCurrentReplacement(2, 3)).toBe(1);
+        expect(matchIndexAfterCurrentReplacement(0, 1)).toBe(0);
+        expect(matchIndexAfterCurrentReplacement(0, 0)).toBe(0);
     });
 
     it("applies replacements from the end of the matches", () => {
