@@ -1,7 +1,9 @@
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
+use tempfile::Builder as TempFileBuilder;
 
 use crate::models::{DocumentFileResult, DocumentSaveResult, WorkspaceError};
 
@@ -102,13 +104,37 @@ fn read_document_content(path: &Path) -> Result<String, WorkspaceError> {
 
 fn write_document_content(path: &Path, content: &str) -> Result<(), WorkspaceError> {
     ensure_regular_file(path)?;
-    let temp_path = unique_temp_path(path);
-    fs::write(&temp_path, content).map_err(|error| {
+    let parent = path
+        .parent()
+        .ok_or_else(|| WorkspaceError::new("write_failed", "document path has no parent"))?;
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("document");
+    let mut temp_file = TempFileBuilder::new()
+        .prefix(&format!(".{file_name}.mdx-tmp-"))
+        .tempfile_in(parent)
+        .map_err(|error| {
+            WorkspaceError::from_io(
+                "write_failed",
+                "failed to create document temp file",
+                &error,
+            )
+        })?;
+    temp_file.write_all(content.as_bytes()).map_err(|error| {
         WorkspaceError::from_io("write_failed", "failed to write document temp file", &error)
     })?;
-    fs::rename(&temp_path, path).map_err(|error| {
-        let _ = fs::remove_file(&temp_path);
-        WorkspaceError::from_io("write_failed", "failed to replace document file", &error)
+    temp_file.flush().map_err(|error| {
+        WorkspaceError::from_io("write_failed", "failed to flush document temp file", &error)
+    })?;
+    temp_file.as_file().sync_all().map_err(|error| {
+        WorkspaceError::from_io("write_failed", "failed to sync document temp file", &error)
+    })?;
+    temp_file.persist(path).map_err(|error| {
+        WorkspaceError::new(
+            "write_failed",
+            format!("failed to replace document file: {}", error.error),
+        )
     })?;
 
     Ok(())
@@ -141,14 +167,4 @@ fn ensure_regular_file(path: &Path) -> Result<(), WorkspaceError> {
             "document path must be a regular file",
         ))
     }
-}
-
-fn unique_temp_path(path: &Path) -> PathBuf {
-    let mut temp_path = path.to_path_buf();
-    let file_name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("document");
-    temp_path.set_file_name(format!(".{file_name}.mdx-tmp-{}", std::process::id()));
-    temp_path
 }

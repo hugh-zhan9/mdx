@@ -89,3 +89,26 @@ fn overwrite_document_file_writes_and_updates_fingerprint() {
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "local edit");
     assert_eq!(result.fingerprint, document_fingerprint("local edit"));
 }
+
+#[test]
+#[cfg(unix)]
+fn overwrite_document_file_does_not_follow_predictable_temp_symlink() {
+    use std::os::unix::fs::symlink;
+
+    let root = tempdir().unwrap();
+    let path = root.path().join("note.md");
+    let symlink_target = root.path().join("outside.md");
+    let old_temp_path = root
+        .path()
+        .join(format!(".note.md.mdx-tmp-{}", std::process::id()));
+    std::fs::write(&path, "document").unwrap();
+    std::fs::write(&symlink_target, "outside").unwrap();
+    symlink(&symlink_target, &old_temp_path).unwrap();
+
+    let _ = overwrite_document_file_sync(
+        path.to_string_lossy().into_owned(),
+        "local edit".to_string(),
+    );
+
+    assert_eq!(std::fs::read_to_string(&symlink_target).unwrap(), "outside");
+}
