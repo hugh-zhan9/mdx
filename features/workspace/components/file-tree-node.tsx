@@ -21,6 +21,7 @@ interface FileTreeNodeViewProps {
         node: FilteredFileTreeNode,
         event: ReactMouseEvent<HTMLButtonElement>,
     ) => void;
+    onDoubleClick: (node: FilteredFileTreeNode) => void;
     onDragStart: (
         node: FilteredFileTreeNode,
         event: DragEvent<HTMLButtonElement>,
@@ -37,6 +38,7 @@ export function FileTreeNodeView({
     onSelect,
     onToggleFolder,
     onContextMenu,
+    onDoubleClick,
     onDragStart,
     onDropOnFolder,
 }: FileTreeNodeViewProps) {
@@ -73,6 +75,7 @@ export function FileTreeNodeView({
                     }
                 }}
                 onContextMenu={(event) => onContextMenu(node, event)}
+                onDoubleClick={() => onDoubleClick(node)}
                 onDragStart={(event) => onDragStart(node, event)}
                 onDragOver={
                     isFolder
@@ -124,6 +127,7 @@ export function FileTreeNodeView({
                                 onSelect={onSelect}
                                 onToggleFolder={onToggleFolder}
                                 onContextMenu={onContextMenu}
+                                onDoubleClick={onDoubleClick}
                                 onDragStart={onDragStart}
                                 onDropOnFolder={onDropOnFolder}
                             />

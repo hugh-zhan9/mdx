@@ -185,6 +185,43 @@ pub fn read_preview_binary_file(
 }
 
 #[tauri::command]
+pub fn open_path_with_default_application(
+    root_path: String,
+    path: String,
+) -> Result<(), WorkspaceError> {
+    open_path_with_default_application_impl(root_path, path, open_path_with_default_application_os)
+        .map(|_| ())
+}
+
+pub(crate) fn open_path_with_default_application_impl<T>(
+    root_path: String,
+    path: String,
+    open: impl FnOnce(&Path) -> Result<T, WorkspaceError>,
+) -> Result<T, WorkspaceError> {
+    let target = resolve_existing_workspace_file_path(root_path, path)?;
+    let metadata = fs::metadata(&target.path).map_err(|error| {
+        let code = if error.kind() == io::ErrorKind::PermissionDenied {
+            "permission_denied"
+        } else {
+            "path_failed"
+        };
+        WorkspaceError::from_io(code, "failed to inspect workspace file", &error)
+    })?;
+
+    if !metadata.is_file() {
+        return Err(WorkspaceError::new(
+            "not_file",
+            "only files can be opened with the default application",
+        ));
+    }
+
+    let file = open_workspace_file(&target, WorkspaceOpenMode::Read)?;
+    drop(file);
+
+    open(&target.path)
+}
+
+#[tauri::command]
 pub fn write_markdown_file(
     root_path: String,
     path: String,
@@ -758,6 +795,19 @@ fn resolve_existing_preview_binary_path(
     }
 }
 
+fn resolve_existing_workspace_file_path(
+    root_path: String,
+    path: String,
+) -> Result<WorkspaceFileTarget, WorkspaceError> {
+    match resolve_workspace_file_path(root_path, path)? {
+        ResolvedWorkspacePath::Existing(path) => Ok(path),
+        ResolvedWorkspacePath::Missing(_) => Err(WorkspaceError::new(
+            "not_found",
+            "workspace file does not exist",
+        )),
+    }
+}
+
 fn is_allowed_preview_text_file(path: &Path) -> bool {
     let extension = path
         .extension()
@@ -1031,5 +1081,37 @@ fn trash_path_impl(_path: &Path) -> Result<(), WorkspaceError> {
     Err(WorkspaceError::new(
         "trash_failed",
         "moving files to trash is only enabled on macOS",
+    ))
+}
+
+#[cfg(target_os = "macos")]
+fn open_path_with_default_application_os(path: &Path) -> Result<(), WorkspaceError> {
+    std::process::Command::new("open")
+        .arg(path)
+        .status()
+        .map_err(|error| {
+            WorkspaceError::from_io(
+                "open_failed",
+                "failed to launch default application",
+                &error,
+            )
+        })
+        .and_then(|status| {
+            if status.success() {
+                Ok(())
+            } else {
+                Err(WorkspaceError::new(
+                    "open_failed",
+                    format!("default application exited with status {status}"),
+                ))
+            }
+        })
+}
+
+#[cfg(not(target_os = "macos"))]
+fn open_path_with_default_application_os(_path: &Path) -> Result<(), WorkspaceError> {
+    Err(WorkspaceError::new(
+        "open_failed",
+        "opening files with the default application is only enabled on macOS",
     ))
 }

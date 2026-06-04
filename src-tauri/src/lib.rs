@@ -180,6 +180,7 @@ pub fn run() {
             workspace_fs::read_markdown_file,
             workspace_fs::read_preview_text_file,
             workspace_fs::read_preview_binary_file,
+            workspace_fs::open_path_with_default_application,
             workspace_fs::write_markdown_file,
             workspace_fs::create_markdown_file,
             workspace_fs::create_folder,

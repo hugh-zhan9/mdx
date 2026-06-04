@@ -2,9 +2,10 @@ use tempfile::tempdir;
 
 use crate::models::FileTreeNode;
 use crate::workspace_fs::{
-    create_markdown_file, read_markdown_file, read_preview_binary_file, read_preview_text_file,
-    scan_workspace_sync, scan_workspace_with_limit, scan_workspace_with_options, trash_path,
-    write_markdown_file, ScanWorkspaceOptions,
+    create_markdown_file, open_path_with_default_application_impl, read_markdown_file,
+    read_preview_binary_file, read_preview_text_file, scan_workspace_sync,
+    scan_workspace_with_limit, scan_workspace_with_options, trash_path, write_markdown_file,
+    ScanWorkspaceOptions,
 };
 
 fn collect_tree_names(nodes: &[FileTreeNode]) -> Vec<String> {
@@ -212,6 +213,44 @@ fn read_preview_binary_file_rejects_non_pdf_sources() {
     .unwrap_err();
 
     assert_eq!(err.error_code(), "invalid_name");
+}
+
+#[test]
+fn open_path_with_default_application_resolves_workspace_files() {
+    let root = tempdir().unwrap();
+    let doc_path = root.path().join("brief.docx");
+    std::fs::write(&doc_path, "docx").unwrap();
+
+    let opened_path = open_path_with_default_application_impl(
+        root.path().to_string_lossy().into_owned(),
+        doc_path.to_string_lossy().into_owned(),
+        |path| Ok(path.to_path_buf()),
+    )
+    .unwrap();
+
+    assert_eq!(opened_path, doc_path.canonicalize().unwrap());
+}
+
+#[test]
+#[cfg(unix)]
+fn open_path_with_default_application_rejects_symlink_leaf() {
+    use std::os::unix::fs::symlink;
+
+    let root = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    let outside_target = outside.path().join("brief.docx");
+    std::fs::write(&outside_target, "docx").unwrap();
+    let symlink_path = root.path().join("brief.docx");
+    symlink(&outside_target, &symlink_path).unwrap();
+
+    let err = open_path_with_default_application_impl(
+        root.path().to_string_lossy().into_owned(),
+        symlink_path.to_string_lossy().into_owned(),
+        |path| Ok(path.to_path_buf()),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.error_code(), "outside_workspace");
 }
 
 #[test]

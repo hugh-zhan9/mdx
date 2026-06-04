@@ -24,6 +24,7 @@ import {
     isMarkdownFilePath,
     isPreviewableFilePath,
     normalizeWorkspacePath,
+    shouldOpenWithDefaultApplication,
 } from "../lib/path";
 import { filterTreeByName } from "../lib/tree-filter";
 import type {
@@ -516,6 +517,28 @@ export function FileTreePanel({
         [],
     );
 
+    const openWithDefaultApplication = useCallback(
+        async (node: FilteredFileTreeNode) => {
+            if (
+                node.kind !== "file" ||
+                !shouldOpenWithDefaultApplication(node.path)
+            ) {
+                return;
+            }
+
+            try {
+                await invokeTauri("open_path_with_default_application", {
+                    rootPath,
+                    path: node.path,
+                });
+                setMessage(null);
+            } catch (error) {
+                showError(error, "打开文件失败。");
+            }
+        },
+        [rootPath, showError],
+    );
+
     if (collapsed) {
         return null;
     }
@@ -593,6 +616,9 @@ export function FileTreePanel({
                                 }}
                                 onToggleFolder={toggleFolder}
                                 onContextMenu={openContextMenu}
+                                onDoubleClick={(node) =>
+                                    void openWithDefaultApplication(node)
+                                }
                                 onDragStart={handleDragStart}
                                 onDropOnFolder={(fromPath, targetDir) =>
                                     void moveNode(fromPath, targetDir)

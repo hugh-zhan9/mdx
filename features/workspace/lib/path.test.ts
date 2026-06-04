@@ -7,6 +7,7 @@ import {
     isPathInsideRoot,
     isPlainTextFilePath,
     isPreviewableFilePath,
+    shouldOpenWithDefaultApplication,
     normalizeWorkspacePath,
 } from "./path";
 
@@ -84,6 +85,23 @@ describe("isPreviewableFilePath", () => {
         expect(isPreviewableFilePath("/tmp/ws/archive.mhtml")).toBe(true);
         expect(isPreviewableFilePath("/tmp/ws/photo.jfif")).toBe(true);
         expect(isPreviewableFilePath("/tmp/ws/archive.zip")).toBe(false);
+    });
+});
+
+describe("shouldOpenWithDefaultApplication", () => {
+    it("uses the default application for files without an in-app preview", () => {
+        expect(shouldOpenWithDefaultApplication("/tmp/ws/Brief.doc")).toBe(true);
+        expect(shouldOpenWithDefaultApplication("/tmp/ws/Brief.docx")).toBe(true);
+        expect(shouldOpenWithDefaultApplication("/tmp/ws/Budget.xlsx")).toBe(true);
+        expect(shouldOpenWithDefaultApplication("/tmp/ws/Deck.pptx")).toBe(true);
+        expect(shouldOpenWithDefaultApplication("/tmp/ws/archive.zip")).toBe(true);
+    });
+
+    it("keeps previewable files inside the app", () => {
+        expect(shouldOpenWithDefaultApplication("/tmp/ws/Idea.md")).toBe(false);
+        expect(shouldOpenWithDefaultApplication("/tmp/ws/Book.pdf")).toBe(false);
+        expect(shouldOpenWithDefaultApplication("/tmp/ws/notes.txt")).toBe(false);
+        expect(shouldOpenWithDefaultApplication("/tmp/ws/photo.png")).toBe(false);
     });
 });
 

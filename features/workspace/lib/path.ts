@@ -162,6 +162,10 @@ export function isPreviewableFilePath(path: string) {
     );
 }
 
+export function shouldOpenWithDefaultApplication(path: string) {
+    return !isPreviewableFilePath(path);
+}
+
 export function isHiddenFileTreeEntry(path: string) {
     const normalized = normalizeWorkspacePath(path);
     const name = normalized.split("/").pop() ?? normalized;
