@@ -60,7 +60,12 @@ export function FileTreeNodeView({
                 style={{ paddingLeft }}
                 title={node.path}
                 draggable
-                onClick={() => {
+                onClick={(event) => {
+                    if (shouldOpenFileTreeContextMenuFromClick(event)) {
+                        onContextMenu(node, event);
+                        return;
+                    }
+
                     onSelect(node);
 
                     if (node.kind === "folder") {
@@ -135,6 +140,13 @@ export function FileTreeNodeView({
             ) : null}
         </div>
     );
+}
+
+export function shouldOpenFileTreeContextMenuFromClick(event: {
+    button: number;
+    ctrlKey: boolean;
+}) {
+    return event.ctrlKey && event.button === 0;
 }
 
 function HighlightedName({ segments }: { segments: HighlightSegment[] }) {
