@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { isEditorFindShortcut, isEditorReplaceShortcut } from "./editor-pane";
+import {
+    assignEditorViewportRef,
+    isEditorFindShortcut,
+    isEditorReplaceShortcut,
+    resolveEditorRootFromContent,
+} from "./editor-pane";
 
 vi.mock("@do-md/react", () => ({
     DOMD: () => null,
@@ -65,5 +70,54 @@ describe("editor find/replace shortcuts", () => {
                 metaKey: true,
             }),
         ).toBe(false);
+    });
+});
+
+describe("editor pane root helpers", () => {
+    it("assigns external editor viewport refs", () => {
+        const viewport = {} as HTMLDivElement;
+        const editorViewportRef: { current: HTMLDivElement | null } = {
+            current: null,
+        };
+
+        assignEditorViewportRef(editorViewportRef, viewport);
+
+        expect(editorViewportRef.current).toBe(viewport);
+
+        assignEditorViewportRef(editorViewportRef, null);
+
+        expect(editorViewportRef.current).toBeNull();
+    });
+
+    it("resolves the content wrapper when no DOMD root exists", () => {
+        const wrapper = {
+            querySelector: vi.fn(() => null),
+        } as unknown as HTMLElement;
+
+        expect(resolveEditorRootFromContent(wrapper)).toBe(wrapper);
+        expect(resolveEditorRootFromContent(null)).toBeNull();
+    });
+
+    it("prefers DOMD root inside the content wrapper", () => {
+        const domdRoot = {} as HTMLElement;
+        const wrapper = {
+            querySelector: vi.fn(() => domdRoot),
+        } as unknown as HTMLElement;
+
+        expect(resolveEditorRootFromContent(wrapper)).toBe(domdRoot);
+        expect(wrapper.querySelector).toHaveBeenCalledWith(".DOMD-Root");
+    });
+
+    it("can resolve from wrapper to DOMD root after it appears later", () => {
+        const domdRoot = {} as HTMLElement;
+        const querySelector = vi.fn<() => HTMLElement | null>()
+            .mockReturnValueOnce(null)
+            .mockReturnValueOnce(domdRoot);
+        const wrapper = {
+            querySelector,
+        } as unknown as HTMLElement;
+
+        expect(resolveEditorRootFromContent(wrapper)).toBe(wrapper);
+        expect(resolveEditorRootFromContent(wrapper)).toBe(domdRoot);
     });
 });

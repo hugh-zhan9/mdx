@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { loadImage } from "../../../common/lib/image-storage";
 import { tokenize } from "../../../common/lib/prism";
@@ -59,6 +59,24 @@ export function isEditorReplaceShortcut(event: EditorShortcutLike): boolean {
         !event.altKey &&
         event.code === "KeyR"
     );
+}
+
+export function resolveEditorRootFromContent(
+    contentRoot: HTMLElement | null,
+): HTMLElement | null {
+    return (
+        contentRoot?.querySelector<HTMLElement>(".DOMD-Root") ??
+        contentRoot
+    );
+}
+
+export function assignEditorViewportRef(
+    editorViewportRef: RefObject<HTMLDivElement | null> | undefined,
+    node: HTMLDivElement | null,
+) {
+    if (editorViewportRef) {
+        editorViewportRef.current = node;
+    }
 }
 
 export function EditorPane({
@@ -130,6 +148,9 @@ function EditorPaneInner({
         onMarkdownChange,
     });
     const { focus, insertImage, insertText } = bridge;
+    const contentRootRef = useRef<HTMLDivElement | null>(null);
+    const [contentRootNode, setContentRootNode] =
+        useState<HTMLDivElement | null>(null);
     const [editorRoot, setEditorRoot] = useState<HTMLElement | null>(null);
     const findReplace = useEditorFindReplace({
         editorRoot,
@@ -150,24 +171,28 @@ function EditorPaneInner({
         toggleCaseSensitive,
         toggleReplaceExpanded,
     } = findReplace.actions;
+    const refreshEditorRoot = useCallback(() => {
+        const nextRoot = resolveEditorRootFromContent(contentRootRef.current);
+
+        setEditorRoot((currentRoot) =>
+            currentRoot === nextRoot ? currentRoot : nextRoot,
+        );
+    }, []);
     const handleViewportRef = useCallback(
         (node: HTMLDivElement | null) => {
-            if (editorViewportRef) {
-                editorViewportRef.current = node;
-            }
+            assignEditorViewportRef(editorViewportRef, node);
         },
         [editorViewportRef],
     );
     const handleEditorContentRef = useCallback(
         (node: HTMLDivElement | null) => {
-            const nextRoot =
-                node?.querySelector<HTMLElement>(".DOMD-Root") ?? node;
-
-            setEditorRoot((currentRoot) =>
-                currentRoot === nextRoot ? currentRoot : nextRoot,
+            contentRootRef.current = node;
+            setContentRootNode((currentNode) =>
+                currentNode === node ? currentNode : node,
             );
+            refreshEditorRoot();
         },
-        [],
+        [refreshEditorRoot],
     );
     const storeAndInsertImages = useCallback(
         async (files: File[]) => {
@@ -293,6 +318,31 @@ function EditorPaneInner({
         },
         [storeAndInsertImages, storeImage],
     );
+
+    useEffect(() => {
+        refreshEditorRoot();
+    }, [bridge.currentMarkdown, contentRootNode, refreshEditorRoot]);
+
+    useEffect(() => {
+        if (!contentRootNode) {
+            return;
+        }
+
+        const observer = new MutationObserver(() => {
+            refreshEditorRoot();
+        });
+
+        observer.observe(contentRootNode, {
+            childList: true,
+            subtree: true,
+        });
+
+        refreshEditorRoot();
+
+        return () => {
+            observer.disconnect();
+        };
+    }, [contentRootNode, refreshEditorRoot]);
 
     useEffect(() => {
         if (!onSelectionChange) {
