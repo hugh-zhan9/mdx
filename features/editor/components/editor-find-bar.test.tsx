@@ -84,6 +84,7 @@ describe("EditorFindBar", () => {
         const buttons = elements.filter((element) => element.type === "button");
 
         expect(inputs[0].props.value).toBe("raw");
+        expect(inputs[0].props.autoFocus).toBe(true);
         expect(textContent(bar)).toContain("1/3");
         expect(
             buttons.some((button) => button.props["aria-label"] === "下一处"),

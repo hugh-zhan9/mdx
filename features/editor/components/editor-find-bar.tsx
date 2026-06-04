@@ -83,6 +83,7 @@ export function EditorFindBar({
                 </span>
                 <input
                     aria-label="查找"
+                    autoFocus
                     className="input input-sm input-bordered h-8 min-w-0 flex-1"
                     value={query}
                     onChange={(event: ChangeEvent<HTMLInputElement>) =>
