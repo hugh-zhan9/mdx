@@ -69,6 +69,22 @@ pub struct CreateMarkdownFileResult {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct DocumentFileResult {
+    pub content: String,
+    pub file_name: String,
+    pub display_path: String,
+    pub real_path: String,
+    pub fingerprint: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentSaveResult {
+    pub fingerprint: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateFolderResult {
     pub path: String,
     pub name: String,
