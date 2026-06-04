@@ -203,6 +203,9 @@ fn quit_app(app: AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "macos")]
+    macos_launch::install_launch_observer();
+
     tauri::Builder::default()
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -215,9 +218,12 @@ pub fn run() {
             app.handle().plugin(tauri_plugin_dialog::init())?;
             app.manage(cli_server::CliState::default());
             app.manage(Mutex::new(WindowSessionRegistry::default()));
-            app.manage(Mutex::new(StartupOpenRoutingState::default()));
+            let mut startup_routing = StartupOpenRoutingState::default();
             #[cfg(target_os = "macos")]
-            macos_launch::observe_launch_reason(app.handle().clone());
+            if let Some(default_launch) = macos_launch::observed_launch_reason() {
+                startup_routing.observe_default_launch(default_launch);
+            }
+            app.manage(Mutex::new(startup_routing));
             cli_server::start(app.handle().clone());
 
             let open_folder_item = MenuItem::with_id(

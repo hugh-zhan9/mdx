@@ -92,7 +92,7 @@ impl StartupOpenRoutingState {
         }
 
         self.initial_main_events_cleared = true;
-        self.default_launch.unwrap_or(false)
+        self.default_launch.unwrap_or(true)
             && !has_document_windows
             && !self.supported_startup_document_opened
     }

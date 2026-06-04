@@ -120,3 +120,12 @@ fn startup_routing_creates_workspace_for_default_launch_without_documents() {
 
     assert!(state.should_create_workspace_on_initial_main_events_cleared(false));
 }
+
+#[test]
+fn startup_routing_creates_workspace_when_launch_reason_is_unknown() {
+    let mut state = StartupOpenRoutingState::default();
+
+    state.observe_ready();
+
+    assert!(state.should_create_workspace_on_initial_main_events_cleared(false));
+}

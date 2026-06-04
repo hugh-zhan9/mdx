@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
 use block2::RcBlock;
 use objc2::rc::Retained;
@@ -7,11 +7,9 @@ use objc2_app_kit::{
     NSApplicationDidFinishLaunchingNotification, NSApplicationLaunchIsDefaultLaunchKey,
 };
 use objc2_foundation::{NSNotification, NSNotificationCenter, NSNumber, NSOperationQueue};
-use tauri::{AppHandle, Manager};
+static DEFAULT_LAUNCH: OnceLock<Mutex<Option<bool>>> = OnceLock::new();
 
-use crate::window_sessions::StartupOpenRoutingState;
-
-pub fn observe_launch_reason(app: AppHandle) {
+pub fn install_launch_observer() {
     let center = NSNotificationCenter::defaultCenter();
     let block = RcBlock::new(move |notification: std::ptr::NonNull<NSNotification>| {
         let default_launch = unsafe {
@@ -27,9 +25,8 @@ pub fn observe_launch_reason(app: AppHandle) {
         };
 
         if let Some(default_launch) = default_launch {
-            let state = app.state::<Mutex<StartupOpenRoutingState>>();
-            let mut startup = state.lock().unwrap();
-            startup.observe_default_launch(default_launch);
+            let mut observed = observed_default_launch().lock().unwrap();
+            *observed = Some(default_launch);
         }
     });
 
@@ -45,4 +42,12 @@ pub fn observe_launch_reason(app: AppHandle) {
     // Keep the observer token alive for the app process lifetime; Tauri state
     // requires Send + Sync, while Cocoa observer tokens are main-thread objects.
     std::mem::forget(observer);
+}
+
+pub fn observed_launch_reason() -> Option<bool> {
+    *observed_default_launch().lock().unwrap()
+}
+
+fn observed_default_launch() -> &'static Mutex<Option<bool>> {
+    DEFAULT_LAUNCH.get_or_init(|| Mutex::new(None))
 }
