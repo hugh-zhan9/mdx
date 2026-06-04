@@ -1,24 +1,32 @@
 # MDX
 
-**MDX is a local desktop Markdown workspace editor.**
+**MDX is a local-first Markdown app with two modes: single-document editing and folder workspaces.**
 
-It combines a Markdown-native WYSIWYG editing kernel with a Tauri desktop shell for working with folders on your own machine.
+It combines a Markdown-native WYSIWYG editing kernel with a Tauri desktop shell for working with local folders and individual Markdown documents.
+
+## Modes
+
+- Document Mode: opens when Finder or the system “Open With” flow launches a single `.md` / `.markdown` file. The window contains only the Markdown editor and the current document outline, without the file tree, tabs, or LLM Wiki.
+- Workspace Mode: opens when you launch MDX directly, restore the recent workspace, or open a folder inside the app. The window contains the file tree, tabs, outline, and optional LLM Wiki knowledge-base features.
+
+Document Mode is not controlled by `mdx-cli`, does not restore the recent workspace, and does not support `.mdx`.
 
 ## Features
 
-- Single-root workspace for local Markdown notes
-- Left file tree for folders, `.md`, and `.markdown` files
-- Multi-tab editing with dirty-state tracking
-- Right outline panel generated from H1-H6 headings
+- Document Mode: lightweight single Markdown document window with outline, save, dirty close confirmation, and sibling `.assets/` image assets
+- Workspace Mode: single-root workspace for local Markdown notes
+- Workspace Mode: left file tree for folders, `.md`, and `.markdown` files
+- Workspace Mode: multi-tab editing with dirty-state tracking
+- Workspace Mode: right outline panel generated from H1-H6 headings
 - Local app state saved under `~/.mdx/state.json`
-- Image assets saved into the workspace `.assets/` directory, with a global fallback under `~/.mdx/assets`
-- `mdx-cli` for local automation and agent-driven editing
+- Image assets saved into the current document or workspace `.assets/` directory, with a global fallback under `~/.mdx/assets`
+- `mdx-cli` for Workspace Mode local automation and agent-driven editing
 
 ## Scope
 
 MDX is desktop-first. The current app does not provide a web product, Quick Look extension, auto-update flow, multi-root workspaces, full-text search, or live file-system watching.
 
-The editor currently supports `.md` and `.markdown` files. It does not display `.mdx` files in this MVP.
+The editor currently supports `.md` and `.markdown` files. This MVP does not treat `.mdx` as a Document Mode file and does not display `.mdx` files in the workspace file tree.
 
 ## Architecture
 
@@ -32,7 +40,7 @@ The frontend owns workspace UI state, tabs, outline parsing, panel sizing, and e
 
 ## CLI
 
-The macOS build includes `mdx-cli`, which talks to the running app over a local Unix socket at `~/.mdx/cli.sock`.
+The macOS build includes `mdx-cli`, which talks to the running Workspace Mode app over a local Unix socket at `~/.mdx/cli.sock`.
 
 Supported commands include:
 

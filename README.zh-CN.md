@@ -1,24 +1,32 @@
 # MDX
 
-**MDX 是一个本地桌面 Markdown 工作区编辑器。**
+**MDX 是一个本地优先 Markdown 应用，提供单文档编辑和文件夹工作区两种模式。**
 
-它把 Markdown 原生所见即所得编辑内核，和 Tauri 桌面壳结合起来，用来编辑本机文件夹里的 Markdown 文档。
+它把 Markdown 原生所见即所得编辑内核，和 Tauri 桌面壳结合起来，用来编辑本机文件夹和单个 Markdown 文档。
+
+## 两种模式
+
+- Document Mode：从 Finder 或系统“打开方式”打开单个 `.md` / `.markdown` 文件时进入。界面只包含 Markdown 编辑器和当前文档目录，不显示文件树、标签页或 LLM Wiki。
+- Workspace Mode：直接启动 MDX、恢复最近工作区，或在应用内打开文件夹时进入。界面包含文件树、多标签、目录和可选 LLM Wiki 知识库能力。
+
+Document Mode 不参与 `mdx-cli` 自动化，不恢复为最近工作区，也不支持 `.mdx`。
 
 ## 功能
 
-- 单根本地工作区
-- 左侧文件树，显示文件夹、`.md` 和 `.markdown` 文件
-- 多标签编辑，跟踪未保存状态
-- 右侧标题目录，从当前文档的 H1-H6 实时生成
+- Document Mode：单 Markdown 文档编辑窗口，支持标题目录、保存、关闭前未保存确认和同级 `.assets/` 图片资产
+- Workspace Mode：单根本地工作区
+- Workspace Mode：左侧文件树，显示文件夹、`.md` 和 `.markdown` 文件
+- Workspace Mode：多标签编辑，跟踪未保存状态
+- Workspace Mode：右侧标题目录，从当前文档的 H1-H6 实时生成
 - 应用状态保存到 `~/.mdx/state.json`
-- 图片优先保存到工作区 `.assets/`，异常时退回 `~/.mdx/assets`
-- 提供 `mdx-cli`，支持本地自动化和 Agent 驱动编辑
+- 图片优先保存到当前文档或工作区的 `.assets/`，异常时退回 `~/.mdx/assets`
+- Workspace Mode 提供 `mdx-cli`，支持本地自动化和 Agent 驱动编辑
 
 ## 范围
 
 MDX 当前优先服务桌面端。本期不提供 Web 产品形态、Quick Look 扩展、自动更新流程、多根工作区、全文搜索和实时文件系统监听。
 
-当前编辑器支持 `.md` 和 `.markdown` 文件。这个 MVP 不显示 `.mdx` 文件。
+当前编辑器支持 `.md` 和 `.markdown` 文件。这个 MVP 不把 `.mdx` 作为 Document Mode 文件处理，也不在工作区文件树中显示 `.mdx` 文件。
 
 ## 架构
 
@@ -32,7 +40,7 @@ MDX 当前优先服务桌面端。本期不提供 Web 产品形态、Quick Look 
 
 ## CLI
 
-macOS 构建包含 `mdx-cli`，它通过 `~/.mdx/cli.sock` 连接正在运行的应用。
+macOS 构建包含 `mdx-cli`，它通过 `~/.mdx/cli.sock` 连接正在运行的 Workspace Mode 应用。
 
 支持的命令包括：
 
