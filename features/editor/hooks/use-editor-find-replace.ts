@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { RefObject } from "react";
 import {
     buildVisibleTextIndex,
     findVisibleTextMatches,
@@ -19,10 +18,10 @@ export interface FindReplaceState {
 }
 
 export interface UseEditorFindReplaceOptions {
-    editorRoot: RefObject<ParentNode | null> | ParentNode | null;
+    editorRoot: HTMLElement | null;
     focusEditor: () => void;
     markdown: string;
-    replaceSelectedText: (replacement: string) => boolean;
+    replaceSelectedText: (replacement: string) => void;
 }
 
 type FindBarShortcut = "find" | "replace";
@@ -105,16 +104,15 @@ export function useEditorFindReplace({
     const [state, setState] = useState<FindReplaceState>(
         createInitialFindReplaceState,
     );
-    const root = rootFromOption(editorRoot);
     const visibleTextIndex = useMemo(() => {
         void markdown;
 
-        if (!root) {
+        if (!editorRoot) {
             return { segments: [], text: "" };
         }
 
-        return buildVisibleTextIndex(root);
-    }, [root, markdown]);
+        return buildVisibleTextIndex(editorRoot);
+    }, [editorRoot, markdown]);
     const matches = useMemo(
         () =>
             findVisibleTextMatches(visibleTextIndex, state.query, {
@@ -161,7 +159,8 @@ export function useEditorFindReplace({
                 return false;
             }
 
-            return replaceSelectedText(state.replacement);
+            replaceSelectedText(state.replacement);
+            return true;
         },
         [replaceSelectedText, selectMatch, state.replacement],
     );
@@ -189,8 +188,12 @@ export function useEditorFindReplace({
     }, [matchCount, state.currentMatchIndex]);
 
     useEffect(() => {
+        if (!state.isOpen) {
+            return;
+        }
+
         selectMatch(activeMatch);
-    }, [activeMatch, selectMatch]);
+    }, [activeMatch, selectMatch, state.isOpen]);
 
     const close = useCallback(() => {
         setState((current) => ({
@@ -304,18 +307,4 @@ export function useEditorFindReplace({
             toggleReplaceExpanded,
         },
     };
-}
-
-function rootFromOption(
-    editorRoot: RefObject<ParentNode | null> | ParentNode | null,
-): ParentNode | null {
-    if (!editorRoot) {
-        return null;
-    }
-
-    if ("current" in editorRoot) {
-        return editorRoot.current;
-    }
-
-    return editorRoot;
 }
