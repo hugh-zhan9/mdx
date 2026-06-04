@@ -130,7 +130,7 @@ function resolveBareWikilink(
     });
 
     if (matches.length === 0) {
-        return null;
+        return resolveBareWikilinkBySlug(files, sourcePath, targetPath);
     }
 
     const sourceDir = dirname(sourcePath);
@@ -145,6 +145,47 @@ function resolveBareWikilink(
     });
 
     return wikiMatch?.path ?? matches[0].path;
+}
+
+function resolveBareWikilinkBySlug(
+    files: MarkdownFileEntry[],
+    sourcePath: string,
+    targetPath: string,
+) {
+    const targetSlug = toAsciiSlug(targetPath);
+
+    if (targetSlug.length < 12 || !targetSlug.includes("-")) {
+        return null;
+    }
+
+    const matches = files.filter((file) => {
+        const fileSlug = stripMarkdownExtension(file.name).toLowerCase();
+
+        return fileSlug === targetSlug || fileSlug.startsWith(`${targetSlug}-`);
+    });
+
+    if (matches.length === 0) {
+        return null;
+    }
+
+    const sourceDir = dirname(sourcePath);
+    const sameDirMatches = matches.filter(
+        (file) => dirname(file.path) === sourceDir,
+    );
+
+    if (sameDirMatches.length === 1) {
+        return sameDirMatches[0].path;
+    }
+
+    const wikiMatches = matches.filter((file) => {
+        return normalizeWorkspacePath(file.path).includes("/wiki/");
+    });
+
+    if (wikiMatches.length === 1) {
+        return wikiMatches[0].path;
+    }
+
+    return matches.length === 1 ? matches[0].path : null;
 }
 
 function findExactMarkdownPath(
@@ -223,6 +264,15 @@ function dirname(path: string) {
 
 function stripMarkdownExtension(path: string) {
     return path.replace(/\.(md|markdown)$/i, "");
+}
+
+function toAsciiSlug(value: string) {
+    return stripMarkdownExtension(value)
+        .normalize("NFKD")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .replace(/-{2,}/g, "-");
 }
 
 function splitOnce(value: string, separator: string) {

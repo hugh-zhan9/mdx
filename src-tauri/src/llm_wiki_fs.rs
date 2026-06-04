@@ -70,6 +70,8 @@ pub(crate) const DEFAULT_AGENTS_MARKDOWN: &str = r#"# LLM Wiki Rules
 - Include source provenance in generated source pages.
 "#;
 
+const RAW_INGEST_PDF_EXTENSIONS: &[&str] = &["pdf"];
+
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub fn detect_llm_wiki_workspace(
@@ -640,7 +642,7 @@ fn scan_raw_dir(
         }
         if file_type.is_dir() {
             scan_raw_dir(root, &path, config, files)?;
-        } else if file_type.is_file() && is_allowed_markdown_file(&path) {
+        } else if file_type.is_file() && is_ingestable_raw_file(&path) {
             let contents = fs::read(&path).map_err(|error| {
                 WorkspaceError::from_io("read_failed", "failed to read llm wiki raw file", &error)
             })?;
@@ -686,7 +688,7 @@ fn scan_raw_metadata_dir(
         }
         if file_type.is_dir() {
             scan_raw_metadata_dir(root, &path, config, files)?;
-        } else if file_type.is_file() && is_allowed_markdown_file(&path) {
+        } else if file_type.is_file() && is_ingestable_raw_file(&path) {
             files.push(RawScanFileMetadata {
                 absolute_path: path.to_string_lossy().into_owned(),
                 relative_path,
@@ -787,10 +789,10 @@ pub(crate) fn raw_file_metadata(
     let metadata = fs::symlink_metadata(&path).map_err(|error| {
         WorkspaceError::from_io("path_failed", "failed to inspect llm wiki raw path", &error)
     })?;
-    if !metadata.file_type().is_file() || !is_allowed_markdown_file(&path) {
+    if !metadata.file_type().is_file() || !is_ingestable_raw_file(&path) {
         return Err(WorkspaceError::new(
             "invalid_llm_wiki_raw_path",
-            "llm wiki raw path must point to a markdown file",
+            "llm wiki raw path must point to a supported raw source file",
         ));
     }
 
@@ -800,6 +802,24 @@ pub(crate) fn raw_file_metadata(
         size: metadata.len(),
         modified_ms: modified_ms(&metadata),
     })
+}
+
+pub(crate) fn is_raw_pdf_file(path: impl AsRef<Path>) -> bool {
+    has_extension(path, RAW_INGEST_PDF_EXTENSIONS)
+}
+
+fn is_ingestable_raw_file(path: impl AsRef<Path>) -> bool {
+    is_allowed_markdown_file(path.as_ref()) || is_raw_pdf_file(path)
+}
+
+fn has_extension(path: impl AsRef<Path>, allowed_extensions: &[&str]) -> bool {
+    let Some(extension) = path.as_ref().extension().and_then(|value| value.to_str()) else {
+        return false;
+    };
+
+    allowed_extensions
+        .iter()
+        .any(|allowed| extension.eq_ignore_ascii_case(allowed))
 }
 
 fn modified_ms(metadata: &fs::Metadata) -> Option<u128> {

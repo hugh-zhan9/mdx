@@ -3,7 +3,7 @@ use std::path::Path;
 
 use crate::llm_wiki_fs::{
     append_log_entry, build_knowledge_graph_markdown, detect_llm_wiki_workspace,
-    ensure_default_agents_rules, initialize_llm_wiki_workspace, raw_file_hash, raw_file_metadata,
+    ensure_default_agents_rules, initialize_llm_wiki_workspace, raw_file_metadata,
     read_knowledge_config, read_llm_wiki_log, scan_raw_file_metadata, update_progress_markdown,
     update_progress_markdown_with_processing, write_knowledge_config,
     write_knowledge_graph_markdown,
@@ -26,6 +26,7 @@ use crate::llm_wiki_query::{
     mechanical_lint_report, read_required_managed_text, safe_read_regular_text, search_wiki_pages,
     write_digest_page,
 };
+use crate::llm_wiki_raw::prepare_raw_source;
 use crate::models::WorkspaceError;
 use crate::path_guard::canonicalize_workspace_root;
 
@@ -183,14 +184,13 @@ pub fn llm_wiki_ingest_raw_file_sync(
     }
     raw_file_metadata(&root, &raw_relative_path)?;
     ensure_default_agents_rules(&root)?;
-    let raw = safe_read_regular_text(&root, &root.join(&raw_relative_path), "llm wiki raw file")?;
-    let hash = raw_file_hash(&raw_relative_path, raw.as_bytes());
+    let raw_source = prepare_raw_source(&root, &raw_relative_path)?;
     let purpose = read_optional_managed_text(&root, "purpose.md")?;
     let agents = read_optional_managed_text(&root, "AGENTS.md")?;
     let index = read_optional_managed_text(&root, "index.md")?;
     let _ = update_ingest_processing_progress(&root, &knowledge_config, &raw_relative_path);
 
-    let analysis_prompt = build_ingest_analysis_prompt(&raw, &purpose, &agents, &index);
+    let analysis_prompt = build_ingest_analysis_prompt(&raw_source.text, &purpose, &agents, &index);
     let analysis_json = match call_chat_completion(
         &config,
         vec![
@@ -239,7 +239,13 @@ pub fn llm_wiki_ingest_raw_file_sync(
             return Err(error);
         }
     };
-    write_ingest_outputs(&root, &raw_relative_path, &hash, &config.model, &blocks)
+    write_ingest_outputs(
+        &root,
+        &raw_relative_path,
+        &raw_source.hash,
+        &config.model,
+        &blocks,
+    )
 }
 
 struct RawProgressSnapshot {

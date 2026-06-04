@@ -12,6 +12,7 @@ mod llm_wiki_ingest;
 mod llm_wiki_llm;
 mod llm_wiki_models;
 mod llm_wiki_query;
+mod llm_wiki_raw;
 mod models;
 mod path_guard;
 mod state_store;

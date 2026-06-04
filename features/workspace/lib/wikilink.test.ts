@@ -35,6 +35,11 @@ const fileTree: FileTreeNode[] = [
                         name: "Karpathy.md",
                         path: "/ws/wiki/entities/Karpathy.md",
                     },
+                    {
+                        kind: "file",
+                        name: "android-development-learning-guide-zhihu-post-by-deng-hong.md",
+                        path: "/ws/wiki/entities/android-development-learning-guide-zhihu-post-by-deng-hong.md",
+                    },
                 ],
             },
         ],
@@ -66,6 +71,19 @@ describe("resolveWikilinkFile", () => {
         );
 
         expect(resolved).toBe("/ws/wiki/concepts/Vector DB.md");
+    });
+
+    it("resolves title wikilinks with spaces, parentheses, and Chinese characters to slug filenames", () => {
+        const resolved = resolveWikilinkFile(
+            "/ws",
+            "/ws/wiki/entities/Karpathy.md",
+            fileTree,
+            "Android Development Learning Guide (Zhihu Post by 邓鸿)",
+        );
+
+        expect(resolved).toBe(
+            "/ws/wiki/entities/android-development-learning-guide-zhihu-post-by-deng-hong.md",
+        );
     });
 
     it("resolves root-qualified wikilinks with heading and alias", () => {

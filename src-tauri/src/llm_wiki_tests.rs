@@ -796,6 +796,7 @@ fn scan_raw_files_only_includes_markdown_under_raw_and_respects_skip() {
     let root = tempdir().unwrap();
     initialize_llm_wiki_workspace(root.path()).unwrap();
     std::fs::write(root.path().join("raw/notes/a.md"), "# A\n").unwrap();
+    std::fs::write(root.path().join("raw/articles/report.pdf"), b"%PDF-1.7\n").unwrap();
     std::fs::write(root.path().join("raw/notes/b.txt"), "B\n").unwrap();
     std::fs::create_dir_all(root.path().join("raw/ignored")).unwrap();
     std::fs::write(root.path().join("raw/ignored/c.md"), "# C\n").unwrap();
@@ -813,9 +814,11 @@ fn scan_raw_files_only_includes_markdown_under_raw_and_respects_skip() {
     let config = read_knowledge_config(root.path()).unwrap();
     let files = scan_raw_files(root.path(), &config).unwrap();
 
-    assert_eq!(files.len(), 1);
-    assert_eq!(files[0].relative_path, "raw/notes/a.md");
+    assert_eq!(files.len(), 2);
+    assert_eq!(files[0].relative_path, "raw/articles/report.pdf");
     assert!(files[0].hash.starts_with("sha256:"));
+    assert_eq!(files[1].relative_path, "raw/notes/a.md");
+    assert!(files[1].hash.starts_with("sha256:"));
 }
 
 #[test]
@@ -849,6 +852,20 @@ fn scan_raw_file_metadata_does_not_read_markdown_contents() {
     assert_eq!(files.len(), 1);
     assert_eq!(files[0].relative_path, "raw/notes/unreadable.md");
     assert!(files[0].size > 0);
+}
+
+#[test]
+fn scan_raw_file_metadata_includes_pdf_sources() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::write(root.path().join("raw/articles/report.pdf"), b"%PDF-1.7\n").unwrap();
+
+    let config = read_knowledge_config(root.path()).unwrap();
+    let files = scan_raw_file_metadata(root.path(), &config).unwrap();
+
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].relative_path, "raw/articles/report.pdf");
+    assert_eq!(files[0].size, 9);
 }
 
 #[cfg(unix)]
@@ -1576,6 +1593,37 @@ fn ingest_write_outputs_writes_files_and_updates_cache_entry() {
     assert_ne!(entry.ingested_at, "now");
     let log = std::fs::read_to_string(root.path().join("log.md")).unwrap();
     assert!(log.contains("- ingest raw/notes/a.md -> wiki/sources/a.md (test-model)"));
+}
+
+#[test]
+fn ingest_write_outputs_accepts_pdf_raw_sources() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    let raw_path = root.path().join("raw/articles/report.pdf");
+    std::fs::write(&raw_path, b"%PDF-1.7\n").unwrap();
+    let hash = raw_scan_hash("raw/articles/report.pdf", &raw_path);
+    let blocks =
+        parse_file_blocks("---FILE: wiki/sources/report.md---\n# Report\n---END FILE---").unwrap();
+
+    write_ingest_outputs(
+        root.path(),
+        "raw/articles/report.pdf",
+        &hash,
+        "test-model",
+        &blocks,
+    )
+    .unwrap();
+
+    let cache: LlmWikiCache = serde_json::from_str(
+        &std::fs::read_to_string(root.path().join(".llm-wiki/cache.json")).unwrap(),
+    )
+    .unwrap();
+    let entry = cache.entries.get("raw/articles/report.pdf").unwrap();
+    assert_eq!(entry.source_page, "wiki/sources/report.md");
+    assert_eq!(entry.hash, hash);
+    assert_eq!(entry.raw_size, Some(9));
+    let log = std::fs::read_to_string(root.path().join("log.md")).unwrap();
+    assert!(log.contains("- ingest raw/articles/report.pdf -> wiki/sources/report.md (test-model)"));
 }
 
 #[test]
