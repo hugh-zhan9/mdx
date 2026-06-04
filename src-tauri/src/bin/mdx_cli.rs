@@ -19,7 +19,7 @@ struct Cli {
     command: CommandLine,
 }
 
-#[derive(Subcommand)]
+#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
 enum CommandLine {
     New,
     Open {
@@ -64,6 +64,24 @@ enum CommandLine {
     Rename {
         path: String,
         new_name: String,
+    },
+    LlmWiki {
+        #[command(subcommand)]
+        command: LlmWikiCommand,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
+enum LlmWikiCommand {
+    Query {
+        #[arg(long)]
+        json: bool,
+        #[arg(required = true, num_args = 1..)]
+        question: Vec<String>,
+    },
+    Search {
+        #[arg(required = true, num_args = 1..)]
+        query: Vec<String>,
     },
 }
 
@@ -130,7 +148,28 @@ fn request_from_command(command: &CommandLine) -> io::Result<CliRequest> {
             path: Some(normalize_cli_path(path)?),
             new_name: new_name.clone(),
         },
+        CommandLine::LlmWiki { command } => match command {
+            LlmWikiCommand::Query { question, .. } => CliRequest::LlmWikiQuery {
+                question: join_required_words(question, "question")?,
+            },
+            LlmWikiCommand::Search { query } => CliRequest::LlmWikiSearch {
+                query: join_required_words(query, "query")?,
+            },
+        },
     })
+}
+
+fn join_required_words(words: &[String], noun: &str) -> io::Result<String> {
+    let value = words.join(" ");
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{noun} must not be empty"),
+        ));
+    }
+
+    Ok(value.to_string())
 }
 
 fn print_response(command: CommandLine, response: CliResponse) -> ExitCode {
@@ -141,20 +180,29 @@ fn print_response(command: CommandLine, response: CliResponse) -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    match command {
-        CommandLine::Content { .. } => {
-            if let Some(content) = response.content {
-                print!("{content}");
-                let _ = io::stdout().flush();
+    let output = success_output(&command, &response);
+    print!("{output}");
+    if !matches!(
+        command,
+        CommandLine::Content { .. }
+            | CommandLine::LlmWiki {
+                command: LlmWikiCommand::Query { json: false, .. },
             }
-        }
-        _ => {
-            let json = serde_json::to_string(&response).unwrap_or_else(|_| "{\"ok\":true}".into());
-            println!("{json}");
-        }
+    ) {
+        println!();
     }
-
+    let _ = io::stdout().flush();
     ExitCode::SUCCESS
+}
+
+fn success_output(command: &CommandLine, response: &CliResponse) -> String {
+    match command {
+        CommandLine::Content { .. } => response.content.clone().unwrap_or_default(),
+        CommandLine::LlmWiki {
+            command: LlmWikiCommand::Query { json: false, .. },
+        } => response.answer.clone().unwrap_or_default(),
+        _ => serde_json::to_string(response).unwrap_or_else(|_| "{\"ok\":true}".into()),
+    }
 }
 
 struct Connection {
@@ -277,4 +325,133 @@ fn normalize_cli_path(input: &str) -> io::Result<String> {
     };
 
     Ok(absolute.to_string_lossy().into_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mdx_lib::cli_protocol::{CliResponse, CliWikiSearchResult};
+
+    #[test]
+    fn llm_wiki_query_request_joins_multiword_question() {
+        let command = CommandLine::LlmWiki {
+            command: LlmWikiCommand::Query {
+                json: false,
+                question: vec![
+                    "raw".to_string(),
+                    "目录".to_string(),
+                    "是什么".to_string(),
+                ],
+            },
+        };
+
+        assert!(matches!(
+            request_from_command(&command).unwrap(),
+            CliRequest::LlmWikiQuery { question } if question == "raw 目录 是什么"
+        ));
+    }
+
+    #[test]
+    fn llm_wiki_search_request_joins_multiword_query() {
+        let command = CommandLine::LlmWiki {
+            command: LlmWikiCommand::Search {
+                query: vec!["Document".to_string(), "Mode".to_string()],
+            },
+        };
+
+        assert!(matches!(
+            request_from_command(&command).unwrap(),
+            CliRequest::LlmWikiSearch { query } if query == "Document Mode"
+        ));
+    }
+
+    #[test]
+    fn llm_wiki_query_rejects_blank_question() {
+        let command = CommandLine::LlmWiki {
+            command: LlmWikiCommand::Query {
+                json: false,
+                question: vec!["   ".to_string()],
+            },
+        };
+
+        let error = request_from_command(&command).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(error.to_string(), "question must not be empty");
+    }
+
+    #[test]
+    fn llm_wiki_search_rejects_blank_query() {
+        let command = CommandLine::LlmWiki {
+            command: LlmWikiCommand::Search {
+                query: vec!["   ".to_string()],
+            },
+        };
+
+        let error = request_from_command(&command).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(error.to_string(), "query must not be empty");
+    }
+
+    #[test]
+    fn llm_wiki_query_default_output_is_answer_text_only() {
+        let command = CommandLine::LlmWiki {
+            command: LlmWikiCommand::Query {
+                json: false,
+                question: vec!["raw".to_string()],
+            },
+        };
+        let response = CliResponse {
+            ok: true,
+            answer: Some("raw 目录用于存放一手素材。".to_string()),
+            references: Some(vec![CliWikiSearchResult {
+                path: "wiki/concepts/raw.md".to_string(),
+                title: "raw".to_string(),
+                snippet: "raw 目录用于存放一手素材".to_string(),
+            }]),
+            insufficient_context: Some(false),
+            ..CliResponse::default()
+        };
+
+        assert_eq!(
+            success_output(&command, &response),
+            "raw 目录用于存放一手素材。"
+        );
+    }
+
+    #[test]
+    fn llm_wiki_query_json_output_is_full_response_json() {
+        let command = CommandLine::LlmWiki {
+            command: LlmWikiCommand::Query {
+                json: true,
+                question: vec!["raw".to_string()],
+            },
+        };
+        let response = CliResponse {
+            ok: true,
+            answer: Some("资料不足。".to_string()),
+            insufficient_context: Some(true),
+            ..CliResponse::default()
+        };
+
+        assert_eq!(
+            success_output(&command, &response),
+            r#"{"ok":true,"answer":"资料不足。","insufficient_context":true}"#
+        );
+    }
+
+    #[test]
+    fn llm_wiki_search_output_is_json_with_empty_results() {
+        let command = CommandLine::LlmWiki {
+            command: LlmWikiCommand::Search {
+                query: vec!["missing".to_string()],
+            },
+        };
+        let response = CliResponse {
+            ok: true,
+            results: Some(Vec::new()),
+            ..CliResponse::default()
+        };
+
+        assert_eq!(success_output(&command, &response), r#"{"ok":true,"results":[]}"#);
+    }
 }
