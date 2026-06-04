@@ -388,6 +388,7 @@ pub fn run() {
             state_store::load_app_state,
             state_store::save_app_state,
             assets::save_image_asset,
+            assets::save_document_image_asset,
             assets::load_image_asset,
             document::read_document_file,
             document::save_document_file,

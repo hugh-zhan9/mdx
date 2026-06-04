@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { loadImage, storeImageForWorkspace } from "./image-storage";
+import {
+    loadImage,
+    storeImageForDocument,
+    storeImageForWorkspace,
+} from "./image-storage";
 
 afterEach(() => {
     vi.restoreAllMocks();
@@ -54,6 +58,35 @@ describe("storeImage", () => {
             altText: "fallback.png",
             storedPath: "/Users/test/.mdx/assets/abc123.png",
             usedFallback: true,
+        });
+    });
+
+    it("stores document images through the document asset command", async () => {
+        const invoke = vi.fn(async () => ({
+            markdownPath: ".assets/abc123.png",
+            storedPath: "/tmp/doc/.assets/abc123.png",
+            usedFallback: false,
+        }));
+        const file = new File([new Uint8Array([1, 2, 3])], "paste.png", {
+            type: "image/png",
+        });
+
+        await expect(
+            storeImageForDocument(file, {
+                documentPath: "/tmp/doc/Note.md",
+                invoke,
+            }),
+        ).resolves.toMatchObject({
+            url: ".assets/abc123.png",
+            altText: "paste.png",
+            storedPath: "/tmp/doc/.assets/abc123.png",
+            usedFallback: false,
+        });
+
+        expect(invoke).toHaveBeenCalledWith("save_document_image_asset", {
+            documentPath: "/tmp/doc/Note.md",
+            name: "paste.png",
+            bytes: new Uint8Array([1, 2, 3]),
         });
     });
 

@@ -29,6 +29,11 @@ export interface StoreImageForWorkspaceOptions {
     invoke?: <T>(cmd: string, args: Record<string, unknown>) => Promise<T>;
 }
 
+export interface StoreImageForDocumentOptions {
+    documentPath: string;
+    invoke?: <T>(cmd: string, args: Record<string, unknown>) => Promise<T>;
+}
+
 interface SaveImageAssetResponse {
     markdownPath: string;
     storedPath: string;
@@ -72,6 +77,35 @@ export async function storeImageForWorkspace(
         name,
         bytes,
     });
+
+    return {
+        url: response.markdownPath,
+        altText,
+        storedPath: response.storedPath,
+        usedFallback: response.usedFallback,
+    };
+}
+
+export async function storeImageForDocument(
+    file: File,
+    options: StoreImageForDocumentOptions,
+): Promise<StoredWorkspaceImage> {
+    const ext = extOf(file);
+    const name = file.name || `image.${ext}`;
+    const altText = name;
+    const bytes = new Uint8Array(await file.arrayBuffer());
+
+    const { invoke } = options.invoke
+        ? { invoke: options.invoke }
+        : await tauriCore();
+    const response = await invoke<SaveImageAssetResponse>(
+        "save_document_image_asset",
+        {
+            documentPath: options.documentPath,
+            name,
+            bytes,
+        },
+    );
 
     return {
         url: response.markdownPath,

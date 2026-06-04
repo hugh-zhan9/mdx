@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { storeImageForDocument } from "@/common/lib/image-storage";
 import { tauriCore, tauriWindow } from "@/common/lib/tauri";
 import { TextControlButton } from "@/common/components/ui-controls";
 import type { AppWindowSession } from "@/features/app/lib/app-session";
@@ -405,6 +406,11 @@ export function DocumentShell({
                             markdown: state.markdown,
                         }}
                         onMarkdownChange={handleMarkdownChange}
+                        storeImage={(file) =>
+                            storeImageForDocument(file, {
+                                documentPath: state.realPath,
+                            })
+                        }
                         editorViewportRef={editorViewportRef}
                     />
                 </section>

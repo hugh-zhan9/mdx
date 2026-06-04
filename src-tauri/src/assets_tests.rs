@@ -1,7 +1,8 @@
 use tempfile::tempdir;
 
 use crate::assets::{
-    load_image_asset, load_image_asset_with_global_assets_dir, save_image_asset,
+    load_image_asset, load_image_asset_with_global_assets_dir,
+    save_document_image_asset_with_global_assets_dir, save_image_asset,
     save_image_asset_with_global_assets_dir,
 };
 
@@ -229,4 +230,99 @@ fn rejects_symlinked_global_assets_directory_on_load() {
     .unwrap_err();
 
     assert_eq!(err.error_code(), "outside_workspace");
+}
+
+#[test]
+fn save_document_image_asset_prefers_sibling_assets_directory() {
+    let root = tempdir().unwrap();
+    let document = root.path().join("Note.md");
+    std::fs::write(&document, "# Note\n").unwrap();
+    let global_assets_dir = tempdir().unwrap();
+
+    let result = save_document_image_asset_with_global_assets_dir(
+        document.to_string_lossy().into_owned(),
+        "image.png".to_string(),
+        vec![1, 2, 3],
+        global_assets_dir.path(),
+    )
+    .unwrap();
+
+    assert!(!result.used_fallback);
+    assert!(result.markdown_path.starts_with(".assets/"));
+    assert!(root.path().join(&result.markdown_path).is_file());
+    assert!(global_assets_dir
+        .path()
+        .read_dir()
+        .unwrap()
+        .next()
+        .is_none());
+}
+
+#[test]
+fn save_document_image_asset_falls_back_when_document_parent_is_missing() {
+    let root = tempdir().unwrap();
+    let missing_document = root.path().join("missing").join("Note.md");
+    let global_assets_dir = tempdir().unwrap();
+
+    let result = save_document_image_asset_with_global_assets_dir(
+        missing_document.to_string_lossy().into_owned(),
+        "image.png".to_string(),
+        vec![1, 2, 3],
+        global_assets_dir.path(),
+    )
+    .unwrap();
+
+    assert!(result.used_fallback);
+    assert!(std::path::Path::new(&result.markdown_path).is_absolute());
+    assert!(std::path::Path::new(&result.stored_path).is_file());
+}
+
+#[test]
+#[cfg(unix)]
+fn save_document_image_asset_falls_back_when_sibling_assets_is_a_symlink() {
+    use std::os::unix::fs::symlink;
+
+    let root = tempdir().unwrap();
+    let document = root.path().join("Note.md");
+    std::fs::write(&document, "# Note\n").unwrap();
+    let outside = tempdir().unwrap();
+    symlink(outside.path(), root.path().join(".assets")).unwrap();
+    let global_assets_dir = tempdir().unwrap();
+
+    let result = save_document_image_asset_with_global_assets_dir(
+        document.to_string_lossy().into_owned(),
+        "image.png".to_string(),
+        vec![1, 2, 3],
+        global_assets_dir.path(),
+    )
+    .unwrap();
+
+    assert!(result.used_fallback);
+    assert!(std::path::Path::new(&result.markdown_path).is_absolute());
+    assert!(outside.path().read_dir().unwrap().next().is_none());
+}
+
+#[test]
+fn loads_document_sibling_asset_without_workspace_root() {
+    let root = tempdir().unwrap();
+    let document = root.path().join("Note.md");
+    std::fs::write(&document, "# Note\n").unwrap();
+    let asset_dir = root.path().join(".assets");
+    std::fs::create_dir(&asset_dir).unwrap();
+    let asset_path = asset_dir.join("abc123.png");
+    std::fs::write(&asset_path, [1, 2, 3, 4]).unwrap();
+
+    let loaded = load_image_asset(
+        None,
+        Some(document.to_string_lossy().into_owned()),
+        ".assets/abc123.png".to_string(),
+    )
+    .unwrap();
+
+    assert_eq!(loaded.mime_type, "image/png");
+    assert_eq!(loaded.bytes, vec![1, 2, 3, 4]);
+    assert_eq!(
+        loaded.path,
+        std::fs::canonicalize(asset_path).unwrap().to_string_lossy()
+    );
 }

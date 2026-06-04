@@ -25,6 +25,7 @@ interface EditorPaneProps {
     rootPath: string | null;
     tab: WorkspaceTab;
     onMarkdownChange: (tabId: string, markdown: string) => void;
+    storeImage?: (file: File) => Promise<{ url: string; altText: string }>;
     editorViewportRef?: RefObject<HTMLDivElement | null>;
     pendingCliCommand?: PendingCliEditorCommand | null;
     onPendingCliCommandHandled?: (commandId: string) => void;
@@ -39,6 +40,7 @@ export function EditorPane({
     rootPath,
     tab,
     onMarkdownChange,
+    storeImage,
     editorViewportRef,
     pendingCliCommand = null,
     onPendingCliCommandHandled,
@@ -64,6 +66,7 @@ export function EditorPane({
             <EditorPaneInner
                 tab={tab}
                 onMarkdownChange={onMarkdownChange}
+                storeImage={storeImage}
                 editorViewportRef={editorViewportRef}
                 pendingCliCommand={pendingCliCommand}
                 onPendingCliCommandHandled={onPendingCliCommandHandled}
@@ -77,6 +80,7 @@ export function EditorPane({
 function EditorPaneInner({
     tab,
     onMarkdownChange,
+    storeImage,
     editorViewportRef,
     pendingCliCommand,
     onPendingCliCommandHandled,
@@ -85,6 +89,7 @@ function EditorPaneInner({
 }: {
     tab: WorkspaceTab;
     onMarkdownChange: (tabId: string, markdown: string) => void;
+    storeImage?: (file: File) => Promise<{ url: string; altText: string }>;
     editorViewportRef?: RefObject<HTMLDivElement | null>;
     pendingCliCommand?: PendingCliEditorCommand | null;
     onPendingCliCommandHandled?: (commandId: string) => void;
@@ -99,7 +104,20 @@ function EditorPaneInner({
         markdown: tab.markdown,
         onMarkdownChange,
     });
-    const { focus, insertText } = bridge;
+    const { focus, insertImage, insertText } = bridge;
+    const storeAndInsertImages = useCallback(
+        async (files: File[]) => {
+            if (!storeImage || files.length === 0) {
+                return;
+            }
+
+            for (const file of files) {
+                const stored = await storeImage(file);
+                insertImage(stored.url, stored.altText);
+            }
+        },
+        [insertImage, storeImage],
+    );
     const handleEditorKeyDownCapture = useCallback(
         (event: React.KeyboardEvent<HTMLDivElement>) => {
             if (!isSelectAllShortcut(event.nativeEvent)) {
@@ -149,6 +167,54 @@ function EditorPaneInner({
         },
         [onOpenWikilink, tab.path],
     );
+    const handlePasteCapture = useCallback(
+        (event: React.ClipboardEvent<HTMLDivElement>) => {
+            if (!storeImage) {
+                return;
+            }
+
+            const imageFiles = imageFilesFromList(event.clipboardData.files);
+            if (imageFiles.length === 0) {
+                return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+            void storeAndInsertImages(imageFiles).catch((error) => {
+                console.warn("Failed to store pasted image.", error);
+            });
+        },
+        [storeAndInsertImages, storeImage],
+    );
+    const handleDragOverCapture = useCallback(
+        (event: React.DragEvent<HTMLDivElement>) => {
+            if (!storeImage || !dataTransferHasImage(event.dataTransfer)) {
+                return;
+            }
+
+            event.preventDefault();
+        },
+        [storeImage],
+    );
+    const handleDropCapture = useCallback(
+        (event: React.DragEvent<HTMLDivElement>) => {
+            if (!storeImage) {
+                return;
+            }
+
+            const imageFiles = imageFilesFromList(event.dataTransfer.files);
+            if (imageFiles.length === 0) {
+                return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+            void storeAndInsertImages(imageFiles).catch((error) => {
+                console.warn("Failed to store dropped image.", error);
+            });
+        },
+        [storeAndInsertImages, storeImage],
+    );
 
     useEffect(() => {
         if (!onSelectionChange) {
@@ -194,7 +260,10 @@ function EditorPaneInner({
                 <div
                     className="mx-auto min-h-full w-full max-w-4xl px-6 py-6 sm:px-8 sm:py-8"
                     onClickCapture={handleEditorClickCapture}
+                    onDragOverCapture={handleDragOverCapture}
+                    onDropCapture={handleDropCapture}
                     onKeyDownCapture={handleEditorKeyDownCapture}
+                    onPasteCapture={handlePasteCapture}
                 >
                     <DOMD />
                 </div>
@@ -258,6 +327,16 @@ function caretAtPoint(x: number, y: number) {
     }
 
     return null;
+}
+
+function imageFilesFromList(files: FileList) {
+    return Array.from(files).filter((file) => file.type.startsWith("image/"));
+}
+
+function dataTransferHasImage(dataTransfer: DataTransfer) {
+    return Array.from(dataTransfer.items).some(
+        (item) => item.kind === "file" && item.type.startsWith("image/"),
+    );
 }
 
 function textOffsetWithin(

@@ -38,6 +38,15 @@ pub fn save_image_asset(
     save_image_asset_impl(root_path, current_file_path, name, bytes, None)
 }
 
+#[tauri::command]
+pub fn save_document_image_asset(
+    document_path: String,
+    name: String,
+    bytes: Vec<u8>,
+) -> Result<SaveImageAssetResult, WorkspaceError> {
+    save_document_image_asset_impl(document_path, name, bytes, None)
+}
+
 fn save_image_asset_impl(
     root_path: Option<String>,
     current_file_path: Option<String>,
@@ -53,6 +62,22 @@ fn save_image_asset_impl(
         if let Ok(result) = save_workspace_asset(&root_path, &filename, &bytes) {
             return Ok(result);
         }
+    }
+
+    save_global_asset(&filename, &bytes, global_assets_dir)
+}
+
+fn save_document_image_asset_impl(
+    document_path: String,
+    name: String,
+    bytes: Vec<u8>,
+    global_assets_dir: Option<&Path>,
+) -> Result<SaveImageAssetResult, WorkspaceError> {
+    let extension = image_extension(&name)?;
+    let filename = format!("{}.{}", sha256_hex(&bytes), extension);
+
+    if let Ok(result) = save_document_sibling_asset(&document_path, &filename, &bytes) {
+        return Ok(result);
     }
 
     save_global_asset(&filename, &bytes, global_assets_dir)
@@ -75,6 +100,16 @@ pub fn save_image_asset_with_global_assets_dir(
     )
 }
 
+#[cfg(test)]
+pub fn save_document_image_asset_with_global_assets_dir(
+    document_path: String,
+    name: String,
+    bytes: Vec<u8>,
+    global_assets_dir: &Path,
+) -> Result<SaveImageAssetResult, WorkspaceError> {
+    save_document_image_asset_impl(document_path, name, bytes, Some(global_assets_dir))
+}
+
 #[tauri::command]
 pub fn load_image_asset(
     root_path: Option<String>,
@@ -91,10 +126,18 @@ fn load_image_asset_impl(
     global_assets_dir: Option<&Path>,
 ) -> Result<LoadImageAssetResult, WorkspaceError> {
     let image_extension = image_extension(&src)?;
+    let src_path = Path::new(&src);
     let root = root_path
         .as_deref()
         .map(canonicalize_workspace_root)
         .transpose()?;
+    let document_asset_parent = if root.is_none() && !src_path.is_absolute() {
+        Some(canonical_document_asset_parent(
+            current_file_path.as_deref(),
+        )?)
+    } else {
+        None
+    };
     let candidate = resolve_image_candidate(root.as_deref(), current_file_path.as_deref(), &src)?;
     let image_path = fs::canonicalize(&candidate).map_err(|error| {
         let code = if error.kind() == std::io::ErrorKind::NotFound {
@@ -105,7 +148,12 @@ fn load_image_asset_impl(
         WorkspaceError::from_io(code, "failed to resolve image asset", &error)
     })?;
 
-    if !path_is_allowed_image_location(&image_path, root.as_deref(), global_assets_dir)? {
+    if !path_is_allowed_image_location(
+        &image_path,
+        root.as_deref(),
+        document_asset_parent.as_deref(),
+        global_assets_dir,
+    )? {
         return Err(WorkspaceError::new(
             "outside_workspace",
             "image asset is outside the workspace and global assets directory",
@@ -150,6 +198,32 @@ fn save_workspace_asset(
     })
 }
 
+fn save_document_sibling_asset(
+    document_path: &str,
+    filename: &str,
+    bytes: &[u8],
+) -> Result<SaveImageAssetResult, WorkspaceError> {
+    let document_path = Path::new(document_path);
+    let parent = document_path
+        .parent()
+        .ok_or_else(|| WorkspaceError::new("asset_path_failed", "document path has no parent"))?;
+    let parent = fs::canonicalize(parent).map_err(|error| {
+        WorkspaceError::from_io(
+            "asset_write_failed",
+            "failed to resolve document asset parent directory",
+            &error,
+        )
+    })?;
+    let assets_dir = ensure_assets_dir_under_parent(&parent, ".assets")?;
+    let stored_path = write_deduped_asset(&assets_dir, filename, bytes)?;
+
+    Ok(SaveImageAssetResult {
+        markdown_path: format!(".assets/{filename}"),
+        stored_path: path_to_string(&stored_path),
+        used_fallback: false,
+    })
+}
+
 fn save_global_asset(
     filename: &str,
     bytes: &[u8],
@@ -167,7 +241,11 @@ fn save_global_asset(
 }
 
 fn ensure_workspace_assets_dir(root: &Path) -> Result<PathBuf, WorkspaceError> {
-    let assets_dir = root.join(".assets");
+    ensure_assets_dir_under_parent(root, ".assets")
+}
+
+fn ensure_assets_dir_under_parent(parent: &Path, dirname: &str) -> Result<PathBuf, WorkspaceError> {
+    let assets_dir = parent.join(dirname);
 
     match fs::symlink_metadata(&assets_dir) {
         Ok(metadata) => {
@@ -188,7 +266,7 @@ fn ensure_workspace_assets_dir(root: &Path) -> Result<PathBuf, WorkspaceError> {
             fs::create_dir(&assets_dir).map_err(|error| {
                 WorkspaceError::from_io(
                     "asset_write_failed",
-                    "failed to create workspace assets directory",
+                    "failed to create assets directory",
                     &error,
                 )
             })?;
@@ -196,7 +274,7 @@ fn ensure_workspace_assets_dir(root: &Path) -> Result<PathBuf, WorkspaceError> {
         Err(error) => {
             return Err(WorkspaceError::from_io(
                 "asset_write_failed",
-                "failed to inspect workspace assets directory",
+                "failed to inspect assets directory",
                 &error,
             ));
         }
@@ -205,14 +283,14 @@ fn ensure_workspace_assets_dir(root: &Path) -> Result<PathBuf, WorkspaceError> {
     let assets_dir = fs::canonicalize(&assets_dir).map_err(|error| {
         WorkspaceError::from_io(
             "asset_write_failed",
-            "failed to resolve workspace assets directory",
+            "failed to resolve assets directory",
             &error,
         )
     })?;
-    if !assets_dir.starts_with(root) {
+    if !assets_dir.starts_with(parent) {
         return Err(WorkspaceError::new(
             "outside_workspace",
-            "workspace assets directory escapes the workspace root",
+            "assets directory escapes the expected parent directory",
         ));
     }
 
@@ -394,12 +472,58 @@ fn resolve_image_candidate(
         return Ok(src_path.to_path_buf());
     }
 
-    let root = root.ok_or_else(|| {
+    let current_file_path = current_file_path.ok_or_else(|| {
         WorkspaceError::new(
             "outside_workspace",
-            "workspace root is required for relative image assets",
+            "current file path is required for relative image assets",
         )
     })?;
+
+    let current_dir = if let Some(root) = root {
+        let current_path = Path::new(current_file_path);
+        let current_path = if current_path.is_absolute() {
+            current_path.to_path_buf()
+        } else {
+            root.join(current_path)
+        };
+        let current_dir = current_path.parent().ok_or_else(|| {
+            WorkspaceError::new("outside_workspace", "current file path has no parent")
+        })?;
+        let current_dir = fs::canonicalize(current_dir).map_err(|error| {
+            WorkspaceError::from_io(
+                "outside_workspace",
+                "failed to resolve current file directory",
+                &error,
+            )
+        })?;
+
+        if !current_dir.starts_with(root) {
+            return Err(WorkspaceError::new(
+                "outside_workspace",
+                "current file path is outside the workspace root",
+            ));
+        }
+
+        current_dir
+    } else {
+        canonical_document_asset_parent(Some(current_file_path))?
+    };
+
+    let candidate = current_dir.join(src_path);
+    let allowed_parent = root.unwrap_or(current_dir.as_path());
+    if !normalize_path_lexically(&candidate).starts_with(allowed_parent) {
+        return Err(WorkspaceError::new(
+            "outside_workspace",
+            "image asset path escapes the allowed image directory",
+        ));
+    }
+
+    Ok(candidate)
+}
+
+fn canonical_document_asset_parent(
+    current_file_path: Option<&str>,
+) -> Result<PathBuf, WorkspaceError> {
     let current_file_path = current_file_path.ok_or_else(|| {
         WorkspaceError::new(
             "outside_workspace",
@@ -407,11 +531,12 @@ fn resolve_image_candidate(
         )
     })?;
     let current_path = Path::new(current_file_path);
-    let current_path = if current_path.is_absolute() {
-        current_path.to_path_buf()
-    } else {
-        root.join(current_path)
-    };
+    if !current_path.is_absolute() {
+        return Err(WorkspaceError::new(
+            "outside_workspace",
+            "document image assets require an absolute current file path",
+        ));
+    }
     let current_dir = current_path.parent().ok_or_else(|| {
         WorkspaceError::new("outside_workspace", "current file path has no parent")
     })?;
@@ -422,31 +547,20 @@ fn resolve_image_candidate(
             &error,
         )
     })?;
-
-    if !current_dir.starts_with(root) {
-        return Err(WorkspaceError::new(
-            "outside_workspace",
-            "current file path is outside the workspace root",
-        ));
-    }
-
-    let candidate = current_dir.join(src_path);
-    if !normalize_path_lexically(&candidate).starts_with(root) {
-        return Err(WorkspaceError::new(
-            "outside_workspace",
-            "image asset path escapes the workspace root",
-        ));
-    }
-
-    Ok(candidate)
+    Ok(current_dir)
 }
 
 fn path_is_allowed_image_location(
     image_path: &Path,
     root: Option<&Path>,
+    document_asset_parent: Option<&Path>,
     global_assets_dir: Option<&Path>,
 ) -> Result<bool, WorkspaceError> {
     if root.is_some_and(|root| image_path.starts_with(root)) {
+        return Ok(true);
+    }
+
+    if document_asset_parent.is_some_and(|parent| image_path.starts_with(parent.join(".assets"))) {
         return Ok(true);
     }
 
