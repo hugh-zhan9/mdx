@@ -264,11 +264,6 @@ fn dispatch_menu_event(app: &AppHandle, menu_id: &str) {
 }
 
 #[tauri::command]
-fn quit_app(app: AppHandle) {
-    app.exit(0);
-}
-
-#[tauri::command]
 fn get_window_session(
     window: tauri::Window,
     state: tauri::State<'_, Mutex<WindowSessionRegistry>>,
@@ -416,7 +411,6 @@ pub fn run() {
             llm_wiki::llm_config_get,
             llm_wiki::llm_config_set,
             llm_wiki::llm_config_update,
-            quit_app,
             workspace_fs::scan_workspace,
             workspace_fs::read_markdown_file,
             workspace_fs::read_preview_text_file,

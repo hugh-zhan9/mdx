@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import type { RefObject } from "react";
-import { tauriCore } from "@/common/lib/tauri";
+import { tauriWindow } from "@/common/lib/tauri";
 import { EmptyState, TextControlButton } from "../../../common/components/ui-controls";
 import { useWorkspaceBootstrap } from "../hooks/use-workspace-bootstrap";
 import { syncCliWorkspaceSnapshot } from "../lib/cli-sync";
@@ -130,48 +130,49 @@ function useWorkspaceMenuEvents(
         };
 
         const subscribe = async () => {
-            const { listen } = await import("@tauri-apps/api/event");
+            const { getCurrentWindow } = await tauriWindow();
+            const currentWindow = getCurrentWindow();
 
             const nextUnlisteners = await Promise.all([
-                listen("mdx-menu-open-folder", () => {
+                currentWindow.listen("mdx-menu-open-folder", () => {
                     runAction(chooseWorkspace);
                 }),
-                listen("mdx-menu-new-folder", () => {
+                currentWindow.listen("mdx-menu-new-folder", () => {
                     runAction(
                         workspaceActionsRef.current?.createFolder ??
                             noopAsync,
                     );
                 }),
-                listen("mdx-menu-new-markdown-file", () => {
+                currentWindow.listen("mdx-menu-new-markdown-file", () => {
                     runAction(
                         workspaceActionsRef.current?.createMarkdownFile ??
                             noopAsync,
                     );
                 }),
-                listen("mdx-menu-rename", () => {
+                currentWindow.listen("mdx-menu-rename", () => {
                     runAction(
                         workspaceActionsRef.current?.renameSelection ??
                             noopAsync,
                     );
                 }),
-                listen("mdx-menu-trash", () => {
+                currentWindow.listen("mdx-menu-trash", () => {
                     runAction(
                         workspaceActionsRef.current?.deleteSelection ??
                             noopAsync,
                     );
                 }),
-                listen("mdx-menu-refresh", () => {
+                currentWindow.listen("mdx-menu-refresh", () => {
                     runAction(
                         workspaceActionsRef.current?.refreshTree ?? noopAsync,
                     );
                 }),
-                listen("mdx-menu-save", () => {
+                currentWindow.listen("mdx-menu-save", () => {
                     runAction(
                         workspaceActionsRef.current?.saveActiveTab ??
                             noopAsync,
                     );
                 }),
-                listen("mdx-menu-close-tab", () => {
+                currentWindow.listen("mdx-menu-close-tab", () => {
                     runAction(
                         workspaceActionsRef.current?.closeActiveTab ??
                             noopAsync,
@@ -211,7 +212,7 @@ function useWorkspaceCloseGuard(
         let unlisten: (() => void) | null = null;
 
         const subscribe = async () => {
-            const { getCurrentWindow } = await import("@tauri-apps/api/window");
+            const { getCurrentWindow } = await tauriWindow();
             const currentWindow = getCurrentWindow();
             const nextUnlisten = await currentWindow.onCloseRequested(
                 (event) => {
@@ -240,7 +241,15 @@ function useWorkspaceCloseGuard(
                                 return;
                             }
 
-                            void quitApp();
+                            void closeWorkspaceWindow(currentWindow).catch(
+                                (error) => {
+                                    closingRef.current = false;
+                                    console.warn(
+                                        "Failed to close workspace window.",
+                                        error,
+                                    );
+                                },
+                            );
                         }).catch((error) => {
                             closingRef.current = false;
                             console.warn(
@@ -251,9 +260,9 @@ function useWorkspaceCloseGuard(
                         return;
                     }
 
-                    void quitApp().catch((error) => {
+                    void closeWorkspaceWindow(currentWindow).catch((error) => {
                         closingRef.current = false;
-                        console.warn("Failed to quit application.", error);
+                        console.warn("Failed to close workspace window.", error);
                     });
                 },
             );
@@ -309,9 +318,10 @@ function useWorkspaceOpenFolderStartupAction(
     }, [chooseWorkspace]);
 }
 
-async function quitApp() {
-    const { invoke } = await tauriCore();
-    await invoke("quit_app");
+async function closeWorkspaceWindow(
+    currentWindow: { close: () => Promise<void> },
+) {
+    await currentWindow.close();
 }
 
 function useCliWorkspaceSync(workspace: WorkspaceState | null) {

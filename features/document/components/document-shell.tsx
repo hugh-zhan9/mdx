@@ -275,10 +275,11 @@ export function DocumentShell({
         const unlisteners: Array<() => void> = [];
 
         const subscribe = async () => {
-            const { listen } = await import("@tauri-apps/api/event");
+            const { getCurrentWindow } = await tauriWindow();
+            const currentWindow = getCurrentWindow();
 
             const nextUnlisteners = await Promise.all([
-                listen("mdx-menu-save", () => {
+                currentWindow.listen("mdx-menu-save", () => {
                     void saveRef.current().catch((saveError) => {
                         console.warn(
                             "Failed to run document save menu action.",
@@ -286,7 +287,7 @@ export function DocumentShell({
                         );
                     });
                 }),
-                listen("mdx-menu-open-folder", () => {
+                currentWindow.listen("mdx-menu-open-folder", () => {
                     void focusOrCreateWorkspaceWindow().catch((openError) => {
                         console.warn(
                             "Failed to open workspace window.",
@@ -294,7 +295,7 @@ export function DocumentShell({
                         );
                     });
                 }),
-                listen("mdx-menu-close-document", () => {
+                currentWindow.listen("mdx-menu-close-document", () => {
                     void requestDocumentWindowClose().catch((closeError) => {
                         console.warn(
                             "Failed to close document window.",
