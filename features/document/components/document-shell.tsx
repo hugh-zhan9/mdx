@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { tauriCore, tauriWindow } from "@/common/lib/tauri";
 import { TextControlButton } from "@/common/components/ui-controls";
 import type { AppWindowSession } from "@/features/app/lib/app-session";
 import { EditorPane } from "@/features/editor/components/editor-pane";
@@ -14,6 +15,7 @@ import {
     saveDocumentFile,
 } from "../lib/document-client";
 import {
+    canCloseDocumentWithoutPrompt,
     createLoadedDocumentState,
     documentWindowTitle,
     markDocumentSaved,
@@ -31,6 +33,14 @@ export function DocumentShell({
     const [state, setState] = useState<LoadedDocumentState | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
+    const stateRef = useRef<LoadedDocumentState | null>(null);
+    const saveRef = useRef<() => Promise<boolean>>(async () => false);
+    const closePromptInFlightRef = useRef(false);
+    const confirmedCloseRef = useRef(false);
+
+    useEffect(() => {
+        stateRef.current = state;
+    }, [state]);
 
     useEffect(() => {
         let cancelled = false;
@@ -142,6 +152,176 @@ export function DocumentShell({
             setSaving(false);
         }
     }, [dialogs, saving, state]);
+
+    useEffect(() => {
+        saveRef.current = save;
+    }, [save]);
+
+    const closeDocumentWindow = useCallback(async () => {
+        confirmedCloseRef.current = true;
+        try {
+            const { getCurrentWindow } = await tauriWindow();
+            await getCurrentWindow().close();
+        } catch (closeError) {
+            confirmedCloseRef.current = false;
+            throw closeError;
+        }
+    }, []);
+
+    const requestDocumentWindowClose = useCallback(async () => {
+        const { getCurrentWindow } = await tauriWindow();
+        await getCurrentWindow().close();
+    }, []);
+
+    useEffect(() => {
+        if (!isTauriRuntime()) {
+            return;
+        }
+
+        let disposed = false;
+        let unlisten: (() => void) | null = null;
+
+        const subscribe = async () => {
+            const { getCurrentWindow } = await tauriWindow();
+            const currentWindow = getCurrentWindow();
+            const nextUnlisten = await currentWindow.onCloseRequested(
+                (event) => {
+                    const current = stateRef.current;
+
+                    if (confirmedCloseRef.current) {
+                        return;
+                    }
+
+                    if (
+                        !current ||
+                        canCloseDocumentWithoutPrompt(current)
+                    ) {
+                        return;
+                    }
+
+                    event.preventDefault();
+                    if (closePromptInFlightRef.current) {
+                        return;
+                    }
+
+                    closePromptInFlightRef.current = true;
+                    void dialogs.choice({
+                        title: "关闭文档",
+                        message: "当前文档有未保存更改。请选择如何处理。",
+                        choices: [
+                            { label: "保存", value: "save" },
+                            {
+                                label: "丢弃",
+                                value: "discard",
+                                destructive: true,
+                            },
+                        ],
+                        cancelLabel: "取消",
+                    }).then(async (choice) => {
+                        if (choice === "save") {
+                            const saved = await saveRef.current();
+                            if (saved) {
+                                await closeDocumentWindow();
+                                return;
+                            }
+
+                            closePromptInFlightRef.current = false;
+                            return;
+                        }
+
+                        if (choice === "discard") {
+                            await closeDocumentWindow();
+                            return;
+                        }
+
+                        closePromptInFlightRef.current = false;
+                    }).catch((closeError) => {
+                        closePromptInFlightRef.current = false;
+                        console.warn(
+                            "Failed to handle document close request.",
+                            closeError,
+                        );
+                    });
+                },
+            );
+
+            if (disposed) {
+                nextUnlisten();
+                return;
+            }
+
+            unlisten = nextUnlisten;
+        };
+
+        void subscribe().catch((subscribeError) => {
+            console.warn(
+                "Failed to subscribe to document close requests.",
+                subscribeError,
+            );
+        });
+
+        return () => {
+            disposed = true;
+            unlisten?.();
+        };
+    }, [closeDocumentWindow, dialogs]);
+
+    useEffect(() => {
+        if (!isTauriRuntime()) {
+            return;
+        }
+
+        let disposed = false;
+        const unlisteners: Array<() => void> = [];
+
+        const subscribe = async () => {
+            const { listen } = await import("@tauri-apps/api/event");
+
+            const nextUnlisteners = await Promise.all([
+                listen("mdx-menu-save", () => {
+                    void saveRef.current().catch((saveError) => {
+                        console.warn(
+                            "Failed to run document save menu action.",
+                            saveError,
+                        );
+                    });
+                }),
+                listen("mdx-menu-open-folder", () => {
+                    void focusOrCreateWorkspaceWindow().catch((openError) => {
+                        console.warn(
+                            "Failed to open workspace window.",
+                            openError,
+                        );
+                    });
+                }),
+                listen("mdx-menu-close-document", () => {
+                    void requestDocumentWindowClose().catch((closeError) => {
+                        console.warn(
+                            "Failed to close document window.",
+                            closeError,
+                        );
+                    });
+                }),
+            ]);
+            unlisteners.push(...nextUnlisteners);
+
+            if (disposed) {
+                unlisteners.forEach((unlisten) => unlisten());
+            }
+        };
+
+        void subscribe().catch((subscribeError) => {
+            console.warn(
+                "Failed to subscribe to document menu events.",
+                subscribeError,
+            );
+        });
+
+        return () => {
+            disposed = true;
+            unlisteners.forEach((unlisten) => unlisten());
+        };
+    }, [requestDocumentWindowClose]);
 
     const toggleOutline = useCallback(() => {
         setState((current) =>
@@ -268,4 +448,16 @@ function formatError(error: unknown, fallback: string) {
     }
 
     return fallback;
+}
+
+async function focusOrCreateWorkspaceWindow() {
+    const { invoke } = await tauriCore();
+    await invoke("focus_or_create_workspace_window");
+}
+
+function isTauriRuntime() {
+    return (
+        typeof window !== "undefined" &&
+        "__TAURI_INTERNALS__" in window
+    );
 }

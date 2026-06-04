@@ -42,3 +42,7 @@ export function markDocumentSaved(
 export function documentWindowTitle(state: LoadedDocumentState) {
     return `${state.dirty ? "● " : ""}${state.fileName} - MDX`;
 }
+
+export function canCloseDocumentWithoutPrompt(state: LoadedDocumentState) {
+    return !state.dirty;
+}

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+    canCloseDocumentWithoutPrompt,
     createLoadedDocumentState,
     documentWindowTitle,
     markDocumentSaved,
@@ -68,5 +69,20 @@ describe("document state", () => {
         expect(saved.savedMarkdown).toBe("# Saved\n");
         expect(saved.fingerprint).toBe("fingerprint-b");
         expect(saved.dirty).toBe(true);
+    });
+
+    it("allows clean documents to close without a prompt", () => {
+        const state = createLoadedDocumentState(loadedFile);
+
+        expect(canCloseDocumentWithoutPrompt(state)).toBe(true);
+    });
+
+    it("requires a prompt before closing dirty documents", () => {
+        const state = updateDocumentMarkdown(
+            createLoadedDocumentState(loadedFile),
+            "# Changed\n",
+        );
+
+        expect(canCloseDocumentWithoutPrompt(state)).toBe(false);
     });
 });

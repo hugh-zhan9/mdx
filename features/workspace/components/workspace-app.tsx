@@ -78,6 +78,7 @@ function WorkspaceAppInner() {
         workspaceActionsRef,
         chooseWorkspaceWithGuard,
     );
+    useWorkspaceOpenFolderStartupAction(chooseWorkspaceWithGuard);
     useWorkspaceCloseGuard(workspaceRef, dialogs);
 
     return (
@@ -274,6 +275,38 @@ function useWorkspaceCloseGuard(
             unlisten?.();
         };
     }, [dialogs, workspaceRef]);
+}
+
+function useWorkspaceOpenFolderStartupAction(
+    chooseWorkspace: () => Promise<void>,
+) {
+    useEffect(() => {
+        if (
+            typeof window === "undefined" ||
+            window.location.search.length === 0
+        ) {
+            return;
+        }
+
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("workspaceAction") !== "openFolder") {
+            return;
+        }
+
+        params.delete("workspaceAction");
+        const nextSearch = params.toString();
+        const nextUrl = `${window.location.pathname}${
+            nextSearch ? `?${nextSearch}` : ""
+        }${window.location.hash}`;
+        window.history.replaceState(null, "", nextUrl);
+
+        void chooseWorkspace().catch((error) => {
+            console.warn(
+                "Failed to run workspace startup open-folder action.",
+                error,
+            );
+        });
+    }, [chooseWorkspace]);
 }
 
 async function quitApp() {

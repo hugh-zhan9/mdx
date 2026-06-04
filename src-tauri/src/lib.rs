@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use window_sessions::{
-    is_supported_document_path, normalize_opened_url_path, StartupOpenRoutingState,
+    is_supported_document_path, normalize_opened_url_path, StartupOpenRoutingState, WindowRole,
     WindowSession, WindowSessionRegistry,
 };
 
@@ -45,6 +45,10 @@ mod workspace_fs_tests;
 static WIN_ID: AtomicU32 = AtomicU32::new(0);
 
 pub(crate) fn new_workspace_window(app: &AppHandle) -> tauri::Result<String> {
+    new_workspace_window_with_route(app, "/")
+}
+
+fn new_workspace_window_with_route(app: &AppHandle, route: &str) -> tauri::Result<String> {
     let label = {
         let state = app.state::<Mutex<WindowSessionRegistry>>();
         let mut registry = state.lock().unwrap();
@@ -55,7 +59,7 @@ pub(crate) fn new_workspace_window(app: &AppHandle) -> tauri::Result<String> {
         return Ok(label);
     }
 
-    let window = WebviewWindowBuilder::new(app, &label, WebviewUrl::App("/".into()))
+    let window = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(route.into()))
         .title("MDX")
         .inner_size(1280.0, 820.0)
         .min_inner_size(1100.0, 640.0)
@@ -114,10 +118,32 @@ fn encode_query_component(value: &str) -> String {
     encoded
 }
 
-fn focus_or_create_workspace_window(app: &AppHandle) {
+fn focus_or_create_initial_workspace_window(app: &AppHandle) {
     if let Err(error) = new_workspace_window(app) {
         log::error!("failed to create workspace window: {error}");
     }
+}
+
+#[tauri::command]
+fn focus_or_create_workspace_window(app: AppHandle) -> Result<(), String> {
+    focus_or_create_workspace_window_and_open_folder(&app)
+        .map_err(|error| format!("failed to open workspace window: {error}"))
+}
+
+fn focus_or_create_workspace_window_and_open_folder(app: &AppHandle) -> tauri::Result<()> {
+    let label = {
+        let state = app.state::<Mutex<WindowSessionRegistry>>();
+        let mut registry = state.lock().unwrap();
+        registry.claim_workspace_window()
+    };
+
+    if let Some(window) = app.get_webview_window(&label) {
+        let _ = window.set_focus();
+        let _ = window.emit("mdx-menu-open-folder", ());
+        return Ok(());
+    }
+
+    new_workspace_window_with_route(app, "/?workspaceAction=openFolder").map(|_| ())
 }
 
 fn open_supported_document_urls(app: &AppHandle, urls: &[tauri::Url]) -> bool {
@@ -175,24 +201,65 @@ fn create_initial_workspace_after_startup_events(app: &AppHandle) {
         startup.should_create_workspace_on_initial_main_events_cleared(has_document_windows)
     };
     if should_create_workspace {
-        focus_or_create_workspace_window(app);
+        focus_or_create_initial_workspace_window(app);
     }
 }
 
-fn emit_menu_event(app: &AppHandle, event: &str) {
+fn focused_window_with_role(app: &AppHandle) -> Option<(tauri::WebviewWindow, WindowRole)> {
     let windows = app.webview_windows();
     let window = windows
         .values()
         .find(|window| window.is_focused().unwrap_or(false))
-        .or_else(|| windows.values().next());
+        .or_else(|| windows.values().next())?;
 
-    if let Some(window) = window {
-        let state = app.state::<Mutex<WindowSessionRegistry>>();
-        let registry = state.lock().unwrap();
-        if registry.role_for_label(window.label()).is_none() {
-            return;
+    let state = app.state::<Mutex<WindowSessionRegistry>>();
+    let registry = state.lock().unwrap();
+    let role = registry.role_for_label(window.label())?;
+
+    Some((window.clone(), role))
+}
+
+fn dispatch_menu_event(app: &AppHandle, menu_id: &str) {
+    let Some((window, role)) = focused_window_with_role(app) else {
+        return;
+    };
+
+    match (role, menu_id) {
+        (WindowRole::Workspace, "open-folder") => {
+            let _ = window.emit("mdx-menu-open-folder", ());
         }
-        let _ = window.emit(event, ());
+        (WindowRole::Workspace, "new-folder") => {
+            let _ = window.emit("mdx-menu-new-folder", ());
+        }
+        (WindowRole::Workspace, "new-markdown-file") => {
+            let _ = window.emit("mdx-menu-new-markdown-file", ());
+        }
+        (WindowRole::Workspace, "rename") => {
+            let _ = window.emit("mdx-menu-rename", ());
+        }
+        (WindowRole::Workspace, "trash") => {
+            let _ = window.emit("mdx-menu-trash", ());
+        }
+        (WindowRole::Workspace, "refresh") => {
+            let _ = window.emit("mdx-menu-refresh", ());
+        }
+        (WindowRole::Workspace, "save") => {
+            let _ = window.emit("mdx-menu-save", ());
+        }
+        (WindowRole::Workspace, "close-tab") => {
+            let _ = window.emit("mdx-menu-close-tab", ());
+        }
+        (WindowRole::Workspace, _) => {}
+        (WindowRole::Document, "open-folder") => {
+            let _ = window.emit("mdx-menu-open-folder", ());
+        }
+        (WindowRole::Document, "save") => {
+            let _ = window.emit("mdx-menu-save", ());
+        }
+        (WindowRole::Document, "close-tab") => {
+            let _ = window.emit("mdx-menu-close-document", ());
+        }
+        (WindowRole::Document, _) => {}
     }
 }
 
@@ -206,9 +273,7 @@ fn get_window_session(
     window: tauri::Window,
     state: tauri::State<'_, Mutex<WindowSessionRegistry>>,
 ) -> serde_json::Value {
-    let registry = state
-        .lock()
-        .expect("window session registry poisoned");
+    let registry = state.lock().expect("window session registry poisoned");
 
     match registry.session_for_label(window.label()) {
         Some(WindowSession::Document {
@@ -315,14 +380,8 @@ pub fn run() {
 
             app.set_menu(Menu::with_items(app, &[&file_menu, &edit_menu])?)?;
             app.on_menu_event(|app, event| match event.id().as_ref() {
-                "open-folder" => emit_menu_event(app, "mdx-menu-open-folder"),
-                "new-folder" => emit_menu_event(app, "mdx-menu-new-folder"),
-                "new-markdown-file" => emit_menu_event(app, "mdx-menu-new-markdown-file"),
-                "rename" => emit_menu_event(app, "mdx-menu-rename"),
-                "trash" => emit_menu_event(app, "mdx-menu-trash"),
-                "refresh" => emit_menu_event(app, "mdx-menu-refresh"),
-                "save" => emit_menu_event(app, "mdx-menu-save"),
-                "close-tab" => emit_menu_event(app, "mdx-menu-close-tab"),
+                "open-folder" | "new-folder" | "new-markdown-file" | "rename" | "trash"
+                | "refresh" | "save" | "close-tab" => dispatch_menu_event(app, event.id().as_ref()),
                 _ => {}
             });
 
@@ -338,6 +397,7 @@ pub fn run() {
             document::read_document_file,
             document::save_document_file,
             document::overwrite_document_file,
+            focus_or_create_workspace_window,
             get_window_session,
             llm_wiki::llm_wiki_detect_workspace,
             llm_wiki::llm_wiki_initialize_workspace,
@@ -379,7 +439,7 @@ pub fn run() {
                 }
                 #[cfg(not(target_os = "macos"))]
                 {
-                    focus_or_create_workspace_window(app);
+                    focus_or_create_initial_workspace_window(app);
                 }
             }
             #[cfg(target_os = "macos")]
@@ -400,7 +460,7 @@ pub fn run() {
             }
             #[cfg(target_os = "macos")]
             RunEvent::Reopen { .. } => {
-                focus_or_create_workspace_window(app);
+                focus_or_create_initial_workspace_window(app);
             }
             RunEvent::WindowEvent {
                 label,
