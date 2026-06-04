@@ -4,8 +4,8 @@ use std::sync::Mutex;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use window_sessions::{
-    is_supported_document_path, normalize_opened_url_path, StartupOpenRoutingState, WindowRole,
-    WindowSession, WindowSessionRegistry,
+    is_supported_document_path, normalize_opened_url_path, DirtyWorkspacePaths,
+    StartupOpenRoutingState, WindowRole, WindowSession, WindowSessionRegistry,
 };
 
 mod assets;
@@ -267,8 +267,12 @@ fn dispatch_menu_event(app: &AppHandle, menu_id: &str) {
 fn get_window_session(
     window: tauri::Window,
     state: tauri::State<'_, Mutex<WindowSessionRegistry>>,
+    dirty_paths: tauri::State<'_, Mutex<DirtyWorkspacePaths>>,
 ) -> serde_json::Value {
     let registry = state.lock().expect("window session registry poisoned");
+    let dirty_paths = dirty_paths
+        .lock()
+        .expect("dirty workspace paths registry poisoned");
 
     match registry.session_for_label(window.label()) {
         Some(WindowSession::Document {
@@ -280,11 +284,23 @@ fn get_window_session(
             "fileName": file_name,
             "displayPath": display_path,
             "realPath": real_path,
+            "workspaceDirty": dirty_paths.contains(std::path::Path::new(&real_path)),
         }),
         Some(WindowSession::Workspace) | None => serde_json::json!({
             "kind": "workspace",
         }),
     }
+}
+
+#[tauri::command]
+fn update_workspace_dirty_paths(
+    paths: Vec<String>,
+    dirty_paths: tauri::State<'_, Mutex<DirtyWorkspacePaths>>,
+) {
+    let mut dirty_paths = dirty_paths
+        .lock()
+        .expect("dirty workspace paths registry poisoned");
+    dirty_paths.update(paths);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -304,6 +320,7 @@ pub fn run() {
             app.handle().plugin(tauri_plugin_dialog::init())?;
             app.manage(cli_server::CliState::default());
             app.manage(Mutex::new(WindowSessionRegistry::default()));
+            app.manage(Mutex::new(DirtyWorkspacePaths::default()));
             let mut startup_routing = StartupOpenRoutingState::default();
             #[cfg(target_os = "macos")]
             if let Some(default_launch) = macos_launch::observed_launch_reason() {
@@ -395,6 +412,7 @@ pub fn run() {
             document::overwrite_document_file,
             focus_or_create_workspace_window,
             get_window_session,
+            update_workspace_dirty_paths,
             llm_wiki::llm_wiki_detect_workspace,
             llm_wiki::llm_wiki_initialize_workspace,
             llm_wiki::llm_wiki_rescan_raw,

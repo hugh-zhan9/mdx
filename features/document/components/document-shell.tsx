@@ -38,6 +38,7 @@ export function DocumentShell({
     const saveRef = useRef<() => Promise<boolean>>(async () => false);
     const closePromptInFlightRef = useRef(false);
     const confirmedCloseRef = useRef(false);
+    const workspaceDirtyWarningShownRef = useRef(false);
 
     useEffect(() => {
         stateRef.current = state;
@@ -157,6 +158,22 @@ export function DocumentShell({
     useEffect(() => {
         saveRef.current = save;
     }, [save]);
+
+    useEffect(() => {
+        if (
+            !session.workspaceDirty ||
+            workspaceDirtyWarningShownRef.current
+        ) {
+            return;
+        }
+
+        workspaceDirtyWarningShownRef.current = true;
+        void dialogs.alert({
+            title: "工作区中有未保存版本",
+            message:
+                "这个文件已在工作区标签页中打开且有未保存修改。单文档窗口不会自动同步该内容。",
+        });
+    }, [dialogs, session.workspaceDirty]);
 
     const closeDocumentWindow = useCallback(async () => {
         confirmedCloseRef.current = true;

@@ -19,6 +19,7 @@ import { calculateWorkspacePanelLayout } from "../lib/panel-layout";
 import { isMarkdownFilePath } from "../lib/path";
 import { scrollRenderedHeadingIntoView } from "../lib/outline-scroll";
 import { createTabSaveQueue } from "../lib/workspace-save";
+import { dirtyWorkspacePaths } from "../lib/dirty-paths";
 import { workspaceReducer } from "../lib/workspace-reducer";
 import { resolveWikilinkFile } from "../lib/wikilink";
 import type {
@@ -151,6 +152,35 @@ export function WorkspaceShell({
       },
     );
   }, [workspace]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+
+    const paths = dirtyWorkspacePaths(workspace);
+    void tauriCore()
+      .then(({ invoke }) => invoke("update_workspace_dirty_paths", { paths }))
+      .catch((error) => {
+        console.warn("Failed to update workspace dirty paths.", error);
+      });
+  }, [workspace]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+
+    return () => {
+      void tauriCore()
+        .then(({ invoke }) =>
+          invoke("update_workspace_dirty_paths", { paths: [] }),
+        )
+        .catch((error) => {
+          console.warn("Failed to clear workspace dirty paths.", error);
+        });
+    };
+  }, []);
 
   const dispatchAndMirror = useCallback(
     (action: WorkspaceAction) => {

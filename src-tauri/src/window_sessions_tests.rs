@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use tauri::Url;
 
 use crate::window_sessions::{
-    is_supported_document_path, normalize_opened_url_path, StartupOpenRoutingState,
-    WindowSession, WindowRole, WindowSessionRegistry,
+    is_supported_document_path, normalize_opened_url_path, DirtyWorkspacePaths,
+    StartupOpenRoutingState, WindowRole, WindowSession, WindowSessionRegistry,
 };
 
 #[test]
@@ -146,4 +146,26 @@ fn startup_routing_creates_workspace_when_launch_reason_is_unknown() {
     state.observe_ready();
 
     assert!(state.should_create_workspace_on_initial_main_events_cleared(false));
+}
+
+#[test]
+fn dirty_workspace_paths_canonicalizes_existing_paths() {
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("note.md");
+    std::fs::write(&file, "# Note\n").unwrap();
+
+    let mut dirty = DirtyWorkspacePaths::default();
+    dirty.update(vec![file.to_string_lossy().into_owned()]);
+
+    assert!(dirty.contains(&file.canonicalize().unwrap()));
+}
+
+#[test]
+fn dirty_workspace_paths_keeps_raw_path_when_canonicalization_fails() {
+    let file = PathBuf::from("/tmp/mdx-missing-dirty-note.md");
+
+    let mut dirty = DirtyWorkspacePaths::default();
+    dirty.update(vec![file.to_string_lossy().into_owned()]);
+
+    assert!(dirty.contains(&file));
 }

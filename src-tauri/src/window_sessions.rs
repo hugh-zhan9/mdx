@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use tauri::Url;
@@ -25,6 +25,32 @@ pub enum WindowSession {
 pub struct WindowSessionRegistry {
     workspace_window_label: Option<String>,
     document_windows: BTreeMap<PathBuf, String>,
+}
+
+#[derive(Debug, Default)]
+pub struct DirtyWorkspacePaths {
+    paths: BTreeSet<PathBuf>,
+}
+
+impl DirtyWorkspacePaths {
+    pub fn update(&mut self, paths: Vec<String>) {
+        self.paths = paths
+            .into_iter()
+            .filter_map(|path| {
+                if path.is_empty() {
+                    return None;
+                }
+
+                let raw_path = PathBuf::from(path);
+                Some(raw_path.canonicalize().unwrap_or(raw_path))
+            })
+            .collect();
+    }
+
+    pub fn contains(&self, path: &Path) -> bool {
+        let normalized = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        self.paths.contains(&normalized)
+    }
 }
 
 impl WindowSessionRegistry {

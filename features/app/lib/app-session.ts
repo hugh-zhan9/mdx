@@ -5,6 +5,7 @@ export type AppWindowSession =
           fileName: string;
           displayPath: string;
           realPath: string;
+          workspaceDirty?: boolean;
       }
     | {
           kind: "documentError";
@@ -36,6 +37,7 @@ export function normalizeAppWindowSession(input: unknown): AppWindowSession {
             fileName: raw.fileName,
             displayPath: raw.displayPath,
             realPath: raw.realPath,
+            workspaceDirty: raw.workspaceDirty === true,
         };
     }
 

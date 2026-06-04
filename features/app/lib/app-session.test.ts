@@ -16,12 +16,31 @@ describe("normalizeAppWindowSession", () => {
                 fileName: "Note.md",
                 displayPath: "/tmp/link.md",
                 realPath: "/tmp/Note.md",
+                workspaceDirty: true,
             }),
         ).toEqual({
             kind: "document",
             fileName: "Note.md",
             displayPath: "/tmp/link.md",
             realPath: "/tmp/Note.md",
+            workspaceDirty: true,
+        });
+    });
+
+    it("normalizes missing document workspace dirty flags to false", () => {
+        expect(
+            normalizeAppWindowSession({
+                kind: "document",
+                fileName: "Note.md",
+                displayPath: "/tmp/Note.md",
+                realPath: "/tmp/Note.md",
+            }),
+        ).toEqual({
+            kind: "document",
+            fileName: "Note.md",
+            displayPath: "/tmp/Note.md",
+            realPath: "/tmp/Note.md",
+            workspaceDirty: false,
         });
     });
 
