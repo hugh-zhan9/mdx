@@ -57,7 +57,11 @@ mdx-cli close [--tab <id>] [--force]
 mdx-cli create-file <dir> [name]
 mdx-cli create-folder <dir> <name>
 mdx-cli rename <path> <new-name>
+mdx-cli llm-wiki query [--json] <question...>
+mdx-cli llm-wiki search <query...>
 ```
+
+The LLM Wiki CLI surface is intentionally read/query oriented: it exposes `query` and `search` for the active Workspace Mode root, but does not expose initialization, scanning, ingest, lint, graph, or digest operations.
 
 ## Build
 

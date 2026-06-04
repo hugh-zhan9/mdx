@@ -57,7 +57,11 @@ mdx-cli close [--tab <id>] [--force]
 mdx-cli create-file <dir> [name]
 mdx-cli create-folder <dir> <name>
 mdx-cli rename <path> <new-name>
+mdx-cli llm-wiki query [--json] <question...>
+mdx-cli llm-wiki search <query...>
 ```
+
+LLM Wiki 的 CLI 能力刻意保持为查询/检索入口：只针对当前 Workspace Mode root 暴露 `query` 和 `search`，不对外暴露初始化、扫描、ingest、lint、graph、digest 等操作能力。
 
 ## 构建
 

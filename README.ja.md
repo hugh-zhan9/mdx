@@ -57,7 +57,11 @@ mdx-cli close [--tab <id>] [--force]
 mdx-cli create-file <dir> [name]
 mdx-cli create-folder <dir> <name>
 mdx-cli rename <path> <new-name>
+mdx-cli llm-wiki query [--json] <question...>
+mdx-cli llm-wiki search <query...>
 ```
+
+LLM Wiki の CLI は問い合わせと検索に限定しています。現在の Workspace Mode root に対して `query` と `search` のみを公開し、初期化、スキャン、ingest、lint、graph、digest などの操作系コマンドは公開しません。
 
 ## ビルド
 
