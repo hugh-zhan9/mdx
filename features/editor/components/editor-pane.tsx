@@ -1,19 +1,21 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { RefObject } from "react";
-import { loadImage } from "@/common/lib/image-storage";
-import { tokenize } from "@/common/lib/prism";
+import { loadImage } from "../../../common/lib/image-storage";
+import { tokenize } from "../../../common/lib/prism";
 import type {
     PendingCliEditorCommand,
     WorkspaceTab,
-} from "@/features/workspace/lib/types";
-import { findWikilinkAtTextOffset } from "@/features/workspace/lib/wikilink";
+} from "../../workspace/lib/types";
+import { findWikilinkAtTextOffset } from "../../workspace/lib/wikilink";
 import {
     DOMD,
     DOMDProvider,
 } from "./editor-kernel-adapter";
+import { EditorFindBar } from "./editor-find-bar";
 import { useEditorBridge } from "../hooks/use-editor-bridge";
+import { useEditorFindReplace } from "../hooks/use-editor-find-replace";
 import {
     elementFromNode,
     isSelectAllShortcut,
@@ -34,6 +36,29 @@ interface EditorPaneProps {
         tabId: string,
         selection: Record<string, unknown> | null,
     ) => void;
+}
+
+export interface EditorShortcutLike {
+    altKey: boolean;
+    code: string;
+    ctrlKey: boolean;
+    metaKey: boolean;
+}
+
+export function isEditorFindShortcut(event: EditorShortcutLike): boolean {
+    return (
+        (event.metaKey || event.ctrlKey) &&
+        !event.altKey &&
+        event.code === "KeyF"
+    );
+}
+
+export function isEditorReplaceShortcut(event: EditorShortcutLike): boolean {
+    return (
+        (event.metaKey || event.ctrlKey) &&
+        !event.altKey &&
+        event.code === "KeyR"
+    );
 }
 
 export function EditorPane({
@@ -105,6 +130,45 @@ function EditorPaneInner({
         onMarkdownChange,
     });
     const { focus, insertImage, insertText } = bridge;
+    const [editorRoot, setEditorRoot] = useState<HTMLElement | null>(null);
+    const findReplace = useEditorFindReplace({
+        editorRoot,
+        focusEditor: focus,
+        markdown: bridge.currentMarkdown,
+        replaceSelectedText: insertText,
+    });
+    const {
+        close,
+        goNext,
+        goPrevious,
+        openFind,
+        openReplace,
+        replaceAll,
+        replaceCurrent,
+        setQuery,
+        setReplacement,
+        toggleCaseSensitive,
+        toggleReplaceExpanded,
+    } = findReplace.actions;
+    const handleViewportRef = useCallback(
+        (node: HTMLDivElement | null) => {
+            if (editorViewportRef) {
+                editorViewportRef.current = node;
+            }
+        },
+        [editorViewportRef],
+    );
+    const handleEditorContentRef = useCallback(
+        (node: HTMLDivElement | null) => {
+            const nextRoot =
+                node?.querySelector<HTMLElement>(".DOMD-Root") ?? node;
+
+            setEditorRoot((currentRoot) =>
+                currentRoot === nextRoot ? currentRoot : nextRoot,
+            );
+        },
+        [],
+    );
     const storeAndInsertImages = useCallback(
         async (files: File[]) => {
             if (!storeImage || files.length === 0) {
@@ -120,6 +184,20 @@ function EditorPaneInner({
     );
     const handleEditorKeyDownCapture = useCallback(
         (event: React.KeyboardEvent<HTMLDivElement>) => {
+            if (isEditorFindShortcut(event.nativeEvent)) {
+                event.preventDefault();
+                event.stopPropagation();
+                openFind();
+                return;
+            }
+
+            if (isEditorReplaceShortcut(event.nativeEvent)) {
+                event.preventDefault();
+                event.stopPropagation();
+                openReplace();
+                return;
+            }
+
             if (!isSelectAllShortcut(event.nativeEvent)) {
                 return;
             }
@@ -137,7 +215,7 @@ function EditorPaneInner({
             event.stopPropagation();
             selectElementContents(selectTarget as HTMLElement);
         },
-        [],
+        [openFind, openReplace],
     );
     const handleEditorClickCapture = useCallback(
         (event: React.MouseEvent<HTMLDivElement>) => {
@@ -253,11 +331,31 @@ function EditorPaneInner({
 
     return (
         <div className="flex h-full min-h-0 flex-col">
+            {findReplace.state.isOpen ? (
+                <EditorFindBar
+                    caseSensitive={findReplace.state.caseSensitive}
+                    countLabel={findReplace.countLabel}
+                    isReplaceExpanded={findReplace.state.isReplaceExpanded}
+                    matchCount={findReplace.matchCount}
+                    query={findReplace.state.query}
+                    replacement={findReplace.state.replacement}
+                    onCaseSensitiveToggle={toggleCaseSensitive}
+                    onClose={close}
+                    onNext={goNext}
+                    onPrevious={goPrevious}
+                    onQueryChange={setQuery}
+                    onReplaceAll={replaceAll}
+                    onReplaceCurrent={replaceCurrent}
+                    onReplacementChange={setReplacement}
+                    onReplaceToggle={toggleReplaceExpanded}
+                />
+            ) : null}
             <div
-                ref={editorViewportRef}
+                ref={handleViewportRef}
                 className="min-h-0 flex-1 overflow-auto bg-base-100"
             >
                 <div
+                    ref={handleEditorContentRef}
                     className="mx-auto min-h-full w-full max-w-4xl px-6 py-6 sm:px-8 sm:py-8"
                     onClickCapture={handleEditorClickCapture}
                     onDragOverCapture={handleDragOverCapture}
