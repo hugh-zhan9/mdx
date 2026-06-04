@@ -45,8 +45,7 @@
         "role": "Editor",
         "rank": "Alternate",
         "contentTypes": [
-          "net.daringfireball.markdown",
-          "public.plain-text"
+          "net.daringfireball.markdown"
         ]
       }
     ]

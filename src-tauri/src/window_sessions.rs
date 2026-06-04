@@ -62,33 +62,39 @@ impl WindowSessionRegistry {
 
 #[derive(Debug, Default)]
 pub struct StartupOpenRoutingState {
-    workspace_check_scheduled: bool,
-    startup_check_finished: bool,
+    ready_observed: bool,
+    initial_main_events_cleared: bool,
+    default_launch: Option<bool>,
     supported_startup_document_opened: bool,
 }
 
 impl StartupOpenRoutingState {
-    pub fn observe_ready(&mut self) -> bool {
-        if self.workspace_check_scheduled {
-            return false;
-        }
+    pub fn observe_ready(&mut self) {
+        self.ready_observed = true;
+    }
 
-        self.workspace_check_scheduled = true;
-        true
+    pub fn observe_default_launch(&mut self, default_launch: bool) {
+        self.default_launch = Some(default_launch);
     }
 
     pub fn observe_supported_document_opened_during_startup(&mut self) {
-        if !self.startup_check_finished {
+        if !self.initial_main_events_cleared {
             self.supported_startup_document_opened = true;
         }
     }
 
-    pub fn should_create_workspace_after_startup_delay(
+    pub fn should_create_workspace_on_initial_main_events_cleared(
         &mut self,
         has_document_windows: bool,
     ) -> bool {
-        self.startup_check_finished = true;
-        !has_document_windows && !self.supported_startup_document_opened
+        if !self.ready_observed || self.initial_main_events_cleared {
+            return false;
+        }
+
+        self.initial_main_events_cleared = true;
+        self.default_launch.unwrap_or(false)
+            && !has_document_windows
+            && !self.supported_startup_document_opened
     }
 }
 

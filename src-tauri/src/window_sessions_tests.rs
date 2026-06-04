@@ -81,8 +81,42 @@ fn opened_url_path_accepts_file_urls_and_rejects_non_files() {
 fn startup_routing_does_not_create_workspace_when_ready_precedes_supported_opened() {
     let mut state = StartupOpenRoutingState::default();
 
-    assert!(state.observe_ready());
+    state.observe_ready();
+    state.observe_default_launch(true);
     state.observe_supported_document_opened_during_startup();
 
-    assert!(!state.should_create_workspace_after_startup_delay(false));
+    assert!(!state.should_create_workspace_on_initial_main_events_cleared(false));
+}
+
+#[test]
+fn startup_routing_does_not_commit_workspace_before_initial_main_events_cleared() {
+    let mut state = StartupOpenRoutingState::default();
+
+    state.observe_ready();
+    state.observe_default_launch(true);
+    // No timeout or elapsed-time check commits startup routing before the first
+    // main-event drain, so a later startup Opened event can still suppress it.
+    state.observe_supported_document_opened_during_startup();
+
+    assert!(!state.should_create_workspace_on_initial_main_events_cleared(false));
+}
+
+#[test]
+fn startup_routing_does_not_create_workspace_for_non_default_launch() {
+    let mut state = StartupOpenRoutingState::default();
+
+    state.observe_ready();
+    state.observe_default_launch(false);
+
+    assert!(!state.should_create_workspace_on_initial_main_events_cleared(false));
+}
+
+#[test]
+fn startup_routing_creates_workspace_for_default_launch_without_documents() {
+    let mut state = StartupOpenRoutingState::default();
+
+    state.observe_ready();
+    state.observe_default_launch(true);
+
+    assert!(state.should_create_workspace_on_initial_main_events_cleared(false));
 }

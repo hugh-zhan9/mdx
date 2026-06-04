@@ -1,6 +1,5 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
-use std::time::Duration;
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
@@ -20,6 +19,8 @@ mod llm_wiki_llm;
 mod llm_wiki_models;
 mod llm_wiki_query;
 mod llm_wiki_raw;
+#[cfg(target_os = "macos")]
+mod macos_launch;
 mod models;
 mod path_guard;
 mod state_store;
@@ -148,45 +149,34 @@ fn open_supported_document_urls(app: &AppHandle, urls: &[tauri::Url]) -> bool {
 }
 
 #[cfg(target_os = "macos")]
-fn schedule_initial_workspace_window_check(app: &AppHandle) {
-    let should_schedule = {
-        let state = app.state::<Mutex<StartupOpenRoutingState>>();
-        let mut startup = state.lock().unwrap();
-        startup.observe_ready()
-    };
-    if !should_schedule {
-        return;
-    }
-
-    let app = app.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(150));
-        let app_for_main = app.clone();
-        if let Err(error) = app.run_on_main_thread(move || {
-            let has_document_windows = {
-                let state = app_for_main.state::<Mutex<WindowSessionRegistry>>();
-                let registry = state.lock().unwrap();
-                registry.has_document_windows()
-            };
-            let should_create_workspace = {
-                let state = app_for_main.state::<Mutex<StartupOpenRoutingState>>();
-                let mut startup = state.lock().unwrap();
-                startup.should_create_workspace_after_startup_delay(has_document_windows)
-            };
-            if should_create_workspace {
-                focus_or_create_workspace_window(&app_for_main);
-            }
-        }) {
-            log::error!("failed to schedule workspace startup check: {error}");
-        }
-    });
-}
-
-#[cfg(target_os = "macos")]
 fn remember_supported_startup_document_opened(app: &AppHandle) {
     let state = app.state::<Mutex<StartupOpenRoutingState>>();
     let mut startup = state.lock().unwrap();
     startup.observe_supported_document_opened_during_startup();
+}
+
+#[cfg(target_os = "macos")]
+fn remember_ready_for_startup_routing(app: &AppHandle) {
+    let state = app.state::<Mutex<StartupOpenRoutingState>>();
+    let mut startup = state.lock().unwrap();
+    startup.observe_ready();
+}
+
+#[cfg(target_os = "macos")]
+fn create_initial_workspace_after_startup_events(app: &AppHandle) {
+    let has_document_windows = {
+        let state = app.state::<Mutex<WindowSessionRegistry>>();
+        let registry = state.lock().unwrap();
+        registry.has_document_windows()
+    };
+    let should_create_workspace = {
+        let state = app.state::<Mutex<StartupOpenRoutingState>>();
+        let mut startup = state.lock().unwrap();
+        startup.should_create_workspace_on_initial_main_events_cleared(has_document_windows)
+    };
+    if should_create_workspace {
+        focus_or_create_workspace_window(app);
+    }
 }
 
 fn emit_menu_event(app: &AppHandle, event: &str) {
@@ -226,6 +216,8 @@ pub fn run() {
             app.manage(cli_server::CliState::default());
             app.manage(Mutex::new(WindowSessionRegistry::default()));
             app.manage(Mutex::new(StartupOpenRoutingState::default()));
+            #[cfg(target_os = "macos")]
+            macos_launch::observe_launch_reason(app.handle().clone());
             cli_server::start(app.handle().clone());
 
             let open_folder_item = MenuItem::with_id(
@@ -350,12 +342,20 @@ pub fn run() {
             RunEvent::Ready => {
                 #[cfg(target_os = "macos")]
                 {
-                    schedule_initial_workspace_window_check(app);
+                    remember_ready_for_startup_routing(app);
                 }
                 #[cfg(not(target_os = "macos"))]
                 {
                     focus_or_create_workspace_window(app);
                 }
+            }
+            #[cfg(target_os = "macos")]
+            RunEvent::MainEventsCleared => {
+                // Tauri's Ready event does not include AppKit's launch reason.
+                // The macOS launch observer records that reason separately, so
+                // this first main-event drain can create Workspace only for a
+                // default app launch, never for a file-open launch.
+                create_initial_workspace_after_startup_events(app);
             }
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             RunEvent::Opened { urls } => {
