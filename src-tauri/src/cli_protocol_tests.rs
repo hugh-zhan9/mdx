@@ -45,9 +45,7 @@ fn list_returns_windows_workspace_tabs_and_dirty_state() {
 fn parses_llm_wiki_query_and_search_commands() {
     let query: CliRequest =
         serde_json::from_str(r#"{"cmd":"llm-wiki-query","question":"raw 目录是什么"}"#).unwrap();
-    assert!(
-        matches!(query, CliRequest::LlmWikiQuery { question } if question == "raw 目录是什么")
-    );
+    assert!(matches!(query, CliRequest::LlmWikiQuery { question } if question == "raw 目录是什么"));
 
     let search: CliRequest =
         serde_json::from_str(r#"{"cmd":"llm-wiki-search","query":"Document Mode"}"#).unwrap();
