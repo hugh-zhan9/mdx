@@ -37,8 +37,7 @@ export function EditorMermaidPreviewLayer({
 
         const fences = findMermaidCodeFences(markdown);
         const mappings = mapMermaidFencesToPreElements(editorRoot, fences);
-        const activeIds = new Set(mappings.map((mapping) => mapping.stableId));
-        cleanupStalePreviewNodes(editorRoot, activeIds);
+        cleanupStalePreviewNodes(editorRoot, mappings);
 
         const timers = mappings.map((mapping) => {
             const preview = ensurePreviewNode(mapping.pre, mapping.stableId);
@@ -190,13 +189,18 @@ function renderPreviewNode(
 
 function cleanupStalePreviewNodes(
     editorRoot: HTMLElement,
-    activeIds: Set<string>,
+    mappings: ReturnType<typeof mapMermaidFencesToPreElements>,
 ): void {
     for (const node of Array.from(
         editorRoot.querySelectorAll<HTMLElement>("[data-mdx-mermaid-preview]"),
     )) {
         const id = node.dataset.mdxMermaidPreview;
-        if (!id || !activeIds.has(id)) {
+        const mapping = mappings.find(
+            (currentMapping) => currentMapping.stableId === id,
+        );
+        const expectedPreview = mapping?.pre.nextElementSibling;
+
+        if (!id || !mapping || node !== expectedPreview) {
             node.remove();
         }
     }

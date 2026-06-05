@@ -5,6 +5,9 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EditorMermaidPreviewLayer } from "./editor-mermaid-preview-layer";
 
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
+    .IS_REACT_ACT_ENVIRONMENT = true;
+
 const renderMermaidDiagram = vi.fn();
 
 vi.mock("../lib/mermaid-renderer", () => ({
@@ -77,6 +80,23 @@ describe("EditorMermaidPreviewLayer", () => {
 
         expect(editorRoot.querySelector("pre")?.hidden).toBe(false);
         expect(editorRoot.textContent).toContain("Mermaid 语法无法渲染");
+    });
+
+    it("removes stale previews that are no longer next to the mapped source", async () => {
+        const stalePreview = document.createElement("div");
+        stalePreview.dataset.mdxMermaidPreview = "mermaid-0";
+        editorRoot.prepend(stalePreview);
+
+        await renderLayer("```mermaid\ngraph TD\n  A --> B\n```");
+
+        const previews = editorRoot.querySelectorAll(
+            "[data-mdx-mermaid-preview='mermaid-0']",
+        );
+
+        expect(previews).toHaveLength(1);
+        expect(editorRoot.querySelector("pre")?.nextElementSibling).toBe(
+            previews[0],
+        );
     });
 
     async function renderLayer(markdown: string) {
