@@ -158,3 +158,27 @@ pub struct LlmWikiQueryResponse {
     pub references: Vec<WikiSearchResult>,
     pub insufficient_context: bool,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiContextReference {
+    pub path: String,
+    pub title: String,
+    pub snippet: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiContextSelection {
+    pub paths: Vec<String>,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiContextBundle {
+    pub references: Vec<WikiContextReference>,
+    pub markdown: String,
+    pub selection_reason: Option<String>,
+}

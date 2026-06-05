@@ -16,6 +16,7 @@ pub mod cli_protocol;
 mod cli_server;
 mod document;
 mod llm_wiki;
+mod llm_wiki_context;
 mod llm_wiki_fs;
 mod llm_wiki_ingest;
 mod llm_wiki_links;

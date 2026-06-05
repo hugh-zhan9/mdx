@@ -6,6 +6,9 @@ use crate::llm_wiki::{
     llm_wiki_lint, llm_wiki_query_sync, llm_wiki_refresh_graph_sync, llm_wiki_rescan_raw_sync,
     llm_wiki_rescan_raw_sync_with_exclusions, llm_wiki_update_config,
 };
+use crate::llm_wiki_context::{
+    build_wiki_context_with_selector_output, parse_page_selection, WikiContextRequest,
+};
 use crate::llm_wiki_fs::{
     build_knowledge_graph_markdown, detect_llm_wiki_workspace, initialize_llm_wiki_workspace,
     read_knowledge_config, scan_raw_file_metadata, scan_raw_files, update_progress_markdown,
@@ -487,6 +490,97 @@ fn stable_wikilink_resolution_maps_targets_to_wiki_markdown_paths() {
         "wiki/concepts/llm-wiki.md"
     );
     assert!(resolve_wiki_link_target("Karpathy").is_none());
+}
+
+#[test]
+fn parse_page_selection_accepts_strict_json_paths() {
+    let selection = parse_page_selection(
+        r#"{"paths":["wiki/concepts/llm-wiki.md","wiki/entities/karpathy.md"],"reason":"index match"}"#,
+    )
+    .unwrap();
+
+    assert_eq!(
+        selection.paths,
+        vec![
+            "wiki/concepts/llm-wiki.md".to_string(),
+            "wiki/entities/karpathy.md".to_string()
+        ]
+    );
+    assert_eq!(selection.reason.as_deref(), Some("index match"));
+}
+
+#[test]
+fn parse_page_selection_rejects_non_json_output() {
+    let error = parse_page_selection("Here are the pages:\nwiki/concepts/a.md").unwrap_err();
+
+    assert_eq!(error.error_code(), "llm_wiki_selection_failed");
+}
+
+#[test]
+fn context_selector_reads_selected_pages_and_expands_one_hop_links() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    write_managed_file(
+        root.path(),
+        "wiki/concepts/llm-wiki.md",
+        "# LLM Wiki\n\nSee [[entities/karpathy|Karpathy]].\n".as_bytes(),
+    )
+    .unwrap();
+    write_managed_file(
+        root.path(),
+        "wiki/entities/karpathy.md",
+        "# Karpathy\n\nSource-backed note.\n".as_bytes(),
+    )
+    .unwrap();
+
+    let context = build_wiki_context_with_selector_output(
+        root.path(),
+        WikiContextRequest {
+            purpose: "query".to_string(),
+            prompt: "What is LLM Wiki?".to_string(),
+            max_selected_pages: 8,
+            max_expanded_pages: 8,
+            max_context_bytes: 64 * 1024,
+        },
+        r#"{"paths":["wiki/concepts/llm-wiki.md"],"reason":"index match"}"#,
+    )
+    .unwrap();
+
+    assert_eq!(
+        context
+            .references
+            .iter()
+            .map(|reference| reference.path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["wiki/concepts/llm-wiki.md", "wiki/entities/karpathy.md"]
+    );
+    assert!(context
+        .markdown
+        .contains("---PAGE: wiki/concepts/llm-wiki.md---"));
+    assert!(context
+        .markdown
+        .contains("---PAGE: wiki/entities/karpathy.md---"));
+}
+
+#[test]
+fn context_selector_rejects_paths_outside_wiki() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+
+    let error = build_wiki_context_with_selector_output(
+        root.path(),
+        WikiContextRequest {
+            purpose: "query".to_string(),
+            prompt: "bad".to_string(),
+            max_selected_pages: 8,
+            max_expanded_pages: 8,
+            max_context_bytes: 64 * 1024,
+        },
+        r#"{"paths":["raw/notes/a.md"],"reason":"bad"}"#,
+    )
+    .unwrap_err();
+
+    assert_eq!(error.error_code(), "invalid_llm_wiki_page");
 }
 
 #[test]
