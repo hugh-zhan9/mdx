@@ -1,9 +1,11 @@
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StableWikiLink {
     pub target: String,
     pub label: Option<String>,
 }
 
+#[allow(dead_code)]
 pub fn extract_stable_wikilinks(contents: &str) -> Vec<StableWikiLink> {
     let mut links = Vec::new();
     let mut remaining = contents;
@@ -36,6 +38,7 @@ pub fn extract_stable_wikilinks(contents: &str) -> Vec<StableWikiLink> {
     links
 }
 
+#[allow(dead_code)]
 pub fn is_stable_wiki_link_target(target: &str) -> bool {
     let target = target.split('#').next().unwrap_or("").trim();
     let Some((section, slug)) = target.split_once('/') else {
@@ -46,6 +49,7 @@ pub fn is_stable_wiki_link_target(target: &str) -> bool {
         && is_ascii_slug_path(slug)
 }
 
+#[allow(dead_code)]
 pub fn resolve_wiki_link_target(target: &str) -> Option<String> {
     let target = target.split('#').next().unwrap_or("").trim();
     if !is_stable_wiki_link_target(target) {
@@ -55,6 +59,7 @@ pub fn resolve_wiki_link_target(target: &str) -> Option<String> {
     Some(format!("wiki/{target}.md"))
 }
 
+#[allow(dead_code)]
 fn is_ascii_slug_path(value: &str) -> bool {
     !value.is_empty()
         && !value.contains("//")

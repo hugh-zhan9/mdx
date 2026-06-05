@@ -6,6 +6,7 @@ use crate::llm_wiki_models::{WikiContextBundle, WikiContextReference, WikiContex
 use crate::llm_wiki_query::safe_read_regular_text;
 use crate::models::WorkspaceError;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct WikiContextRequest {
     pub purpose: String,
@@ -15,6 +16,7 @@ pub struct WikiContextRequest {
     pub max_context_bytes: usize,
 }
 
+#[allow(dead_code)]
 pub fn parse_page_selection(output: &str) -> Result<WikiContextSelection, WorkspaceError> {
     serde_json::from_str(output).map_err(|error| {
         WorkspaceError::new(
@@ -24,6 +26,7 @@ pub fn parse_page_selection(output: &str) -> Result<WikiContextSelection, Worksp
     })
 }
 
+#[allow(dead_code)]
 pub fn build_page_selection_prompt(index: &str, request: &WikiContextRequest) -> String {
     format!(
         r#"You are selecting LLM Wiki pages for context.
@@ -54,6 +57,7 @@ Index:
     )
 }
 
+#[allow(dead_code)]
 pub fn build_wiki_context_with_selector_output(
     root: impl AsRef<Path>,
     request: WikiContextRequest,
@@ -74,23 +78,25 @@ pub fn build_wiki_context_with_selector_output(
     }
 
     let mut expanded_paths = Vec::new();
-    let mut expanded_seen = BTreeSet::new();
-    for page in &pages {
-        for link in extract_stable_wikilinks(&page.contents) {
-            let Some(target_path) = resolve_wiki_link_target(&link.target) else {
-                continue;
-            };
-            let target_path = validate_wiki_page_path(&target_path)?;
-            if seen.contains(&target_path) || !expanded_seen.insert(target_path.clone()) {
-                continue;
+    if request.max_expanded_pages > 0 {
+        let mut expanded_seen = BTreeSet::new();
+        for page in &pages {
+            for link in extract_stable_wikilinks(&page.contents) {
+                let Some(target_path) = resolve_wiki_link_target(&link.target) else {
+                    continue;
+                };
+                let target_path = validate_wiki_page_path(&target_path)?;
+                if seen.contains(&target_path) || !expanded_seen.insert(target_path.clone()) {
+                    continue;
+                }
+                expanded_paths.push(target_path);
+                if expanded_paths.len() >= request.max_expanded_pages {
+                    break;
+                }
             }
-            expanded_paths.push(target_path);
             if expanded_paths.len() >= request.max_expanded_pages {
                 break;
             }
-        }
-        if expanded_paths.len() >= request.max_expanded_pages {
-            break;
         }
     }
 
@@ -121,6 +127,7 @@ pub fn build_wiki_context_with_selector_output(
     })
 }
 
+#[allow(dead_code)]
 pub fn validate_wiki_page_path(path: &str) -> Result<String, WorkspaceError> {
     if path.is_empty()
         || path.contains('\\')

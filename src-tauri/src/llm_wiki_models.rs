@@ -159,6 +159,7 @@ pub struct LlmWikiQueryResponse {
     pub insufficient_context: bool,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WikiContextReference {
@@ -167,6 +168,7 @@ pub struct WikiContextReference {
     pub snippet: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WikiContextSelection {
@@ -175,6 +177,7 @@ pub struct WikiContextSelection {
     pub reason: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WikiContextBundle {

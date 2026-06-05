@@ -691,6 +691,84 @@ fn context_selector_skips_missing_expanded_wikilink_targets() {
 }
 
 #[test]
+fn context_selector_respects_zero_expanded_page_limit() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    write_managed_file(
+        root.path(),
+        "wiki/concepts/llm-wiki.md",
+        "# LLM Wiki\n\nSee [[entities/karpathy|Karpathy]].\n".as_bytes(),
+    )
+    .unwrap();
+    write_managed_file(
+        root.path(),
+        "wiki/entities/karpathy.md",
+        "# Karpathy\n\nSource-backed note.\n".as_bytes(),
+    )
+    .unwrap();
+
+    let context = build_wiki_context_with_selector_output(
+        root.path(),
+        WikiContextRequest {
+            purpose: "query".to_string(),
+            prompt: "zero expansion".to_string(),
+            max_selected_pages: 8,
+            max_expanded_pages: 0,
+            max_context_bytes: 64 * 1024,
+        },
+        r#"{"paths":["wiki/concepts/llm-wiki.md"],"reason":"index match"}"#,
+    )
+    .unwrap();
+
+    assert_eq!(
+        context
+            .references
+            .iter()
+            .map(|reference| reference.path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["wiki/concepts/llm-wiki.md"]
+    );
+}
+
+#[test]
+fn context_selector_skips_expanded_directory_targets() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    write_managed_file(
+        root.path(),
+        "wiki/concepts/llm-wiki.md",
+        "# LLM Wiki\n\nSee [[entities/directory-target|Directory Target]].\n".as_bytes(),
+    )
+    .unwrap();
+    std::fs::create_dir(root.path().join("wiki/entities/directory-target.md")).unwrap();
+
+    let context = build_wiki_context_with_selector_output(
+        root.path(),
+        WikiContextRequest {
+            purpose: "query".to_string(),
+            prompt: "directory target".to_string(),
+            max_selected_pages: 8,
+            max_expanded_pages: 8,
+            max_context_bytes: 64 * 1024,
+        },
+        r#"{"paths":["wiki/concepts/llm-wiki.md"],"reason":"index match"}"#,
+    )
+    .unwrap();
+
+    assert_eq!(
+        context
+            .references
+            .iter()
+            .map(|reference| reference.path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["wiki/concepts/llm-wiki.md"]
+    );
+    assert!(!context
+        .markdown
+        .contains("---PAGE: wiki/entities/directory-target.md---"));
+}
+
+#[test]
 fn context_selector_validate_wiki_page_path_rejects_invalid_edges() {
     for path in [
         "/wiki/entities/a.md",
