@@ -77,10 +77,11 @@ pub fn build_wiki_context_with_selector_output(
         pages.push(ContextPage { path, contents });
     }
 
-    let mut expanded_paths = Vec::new();
     if request.max_expanded_pages > 0 {
+        let mut expanded_count = 0;
         let mut expanded_seen = BTreeSet::new();
-        for page in &pages {
+        let selected_pages = pages.clone();
+        for page in &selected_pages {
             for link in extract_stable_wikilinks(&page.contents) {
                 let Some(target_path) = resolve_wiki_link_target(&link.target) else {
                     continue;
@@ -89,23 +90,25 @@ pub fn build_wiki_context_with_selector_output(
                 if seen.contains(&target_path) || !expanded_seen.insert(target_path.clone()) {
                     continue;
                 }
-                expanded_paths.push(target_path);
-                if expanded_paths.len() >= request.max_expanded_pages {
+                match read_wiki_page(root, &target_path) {
+                    Ok(contents) => {
+                        seen.insert(target_path.clone());
+                        pages.push(ContextPage {
+                            path: target_path,
+                            contents,
+                        });
+                        expanded_count += 1;
+                    }
+                    Err(error) if is_skippable_expanded_page_error(&error) => continue,
+                    Err(error) => return Err(error),
+                }
+                if expanded_count >= request.max_expanded_pages {
                     break;
                 }
             }
-            if expanded_paths.len() >= request.max_expanded_pages {
+            if expanded_count >= request.max_expanded_pages {
                 break;
             }
-        }
-    }
-
-    for path in expanded_paths {
-        seen.insert(path.clone());
-        match read_wiki_page(root, &path) {
-            Ok(contents) => pages.push(ContextPage { path, contents }),
-            Err(error) if is_skippable_expanded_page_error(&error) => continue,
-            Err(error) => return Err(error),
         }
     }
 
@@ -154,6 +157,19 @@ pub fn validate_wiki_page_path(path: &str) -> Result<String, WorkspaceError> {
             return Err(invalid_wiki_page_path(path));
         }
     }
+    let Some(file_name) = segments.last() else {
+        return Err(invalid_wiki_page_path(path));
+    };
+    let Some(file_stem) = file_name.strip_suffix(".md") else {
+        return Err(invalid_wiki_page_path(path));
+    };
+    if !segments[2..segments.len() - 1]
+        .iter()
+        .chain(std::iter::once(&file_stem))
+        .all(|segment| is_ascii_slug_segment(segment))
+    {
+        return Err(invalid_wiki_page_path(path));
+    }
 
     Ok(path.to_string())
 }
@@ -184,6 +200,17 @@ fn is_skippable_expanded_page_error(error: &WorkspaceError) -> bool {
     matches!(error.error_code(), "not_found" | "path_type_conflict")
 }
 
+fn is_ascii_slug_segment(value: &str) -> bool {
+    !value.is_empty()
+        && value.bytes().all(|byte| {
+            byte.is_ascii_lowercase()
+                || byte.is_ascii_digit()
+                || byte == b'-'
+                || byte == b'_'
+        })
+}
+
+#[derive(Clone)]
 struct ContextPage {
     path: String,
     contents: String,

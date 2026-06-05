@@ -769,6 +769,47 @@ fn context_selector_skips_expanded_directory_targets() {
 }
 
 #[test]
+fn context_selector_expansion_limit_counts_only_readable_pages() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    write_managed_file(
+        root.path(),
+        "wiki/concepts/llm-wiki.md",
+        "# LLM Wiki\n\nSee [[entities/missing|Missing]] and [[entities/valid|Valid]].\n"
+            .as_bytes(),
+    )
+    .unwrap();
+    write_managed_file(
+        root.path(),
+        "wiki/entities/valid.md",
+        "# Valid\n\nReadable expansion.\n".as_bytes(),
+    )
+    .unwrap();
+
+    let context = build_wiki_context_with_selector_output(
+        root.path(),
+        WikiContextRequest {
+            purpose: "query".to_string(),
+            prompt: "budget readable only".to_string(),
+            max_selected_pages: 8,
+            max_expanded_pages: 1,
+            max_context_bytes: 64 * 1024,
+        },
+        r#"{"paths":["wiki/concepts/llm-wiki.md"],"reason":"index match"}"#,
+    )
+    .unwrap();
+
+    assert_eq!(
+        context
+            .references
+            .iter()
+            .map(|reference| reference.path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["wiki/concepts/llm-wiki.md", "wiki/entities/valid.md"]
+    );
+}
+
+#[test]
 fn context_selector_validate_wiki_page_path_rejects_invalid_edges() {
     for path in [
         "/wiki/entities/a.md",
@@ -777,6 +818,10 @@ fn context_selector_validate_wiki_page_path_rejects_invalid_edges() {
         "wiki/entities//a.md",
         "raw/notes/a.md",
         "wiki/entities/a.txt",
+        "wiki/entities/Uppercase.md",
+        "wiki/entities/has space.md",
+        "wiki/entities/中文.md",
+        "wiki/entities/foo.bar.md",
     ] {
         let error = validate_wiki_page_path(path).unwrap_err();
 
