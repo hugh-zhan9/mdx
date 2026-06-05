@@ -7,7 +7,8 @@ use crate::llm_wiki::{
     llm_wiki_rescan_raw_sync_with_exclusions, llm_wiki_update_config,
 };
 use crate::llm_wiki_context::{
-    build_wiki_context_with_selector_output, parse_page_selection, WikiContextRequest,
+    build_wiki_context_with_selector_output, parse_page_selection, validate_wiki_page_path,
+    WikiContextRequest,
 };
 use crate::llm_wiki_fs::{
     build_knowledge_graph_markdown, detect_llm_wiki_workspace, initialize_llm_wiki_workspace,
@@ -581,6 +582,166 @@ fn context_selector_rejects_paths_outside_wiki() {
     .unwrap_err();
 
     assert_eq!(error.error_code(), "invalid_llm_wiki_page");
+}
+
+#[test]
+fn context_selector_includes_first_selected_page_even_when_over_budget() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    write_managed_file(
+        root.path(),
+        "wiki/concepts/oversized.md",
+        "# Oversized\n\nThis page is larger than the tiny budget.\n".as_bytes(),
+    )
+    .unwrap();
+
+    let context = build_wiki_context_with_selector_output(
+        root.path(),
+        WikiContextRequest {
+            purpose: "query".to_string(),
+            prompt: "oversized".to_string(),
+            max_selected_pages: 8,
+            max_expanded_pages: 8,
+            max_context_bytes: 1,
+        },
+        r#"{"paths":["wiki/concepts/oversized.md"],"reason":"index match"}"#,
+    )
+    .unwrap();
+
+    assert_eq!(
+        context
+            .references
+            .iter()
+            .map(|reference| reference.path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["wiki/concepts/oversized.md"]
+    );
+    assert!(context
+        .markdown
+        .contains("---PAGE: wiki/concepts/oversized.md---"));
+}
+
+#[test]
+fn context_selector_ignores_invalid_selected_paths_beyond_limit() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    write_managed_file(
+        root.path(),
+        "wiki/concepts/kept.md",
+        "# Kept\n\nSelected page.\n".as_bytes(),
+    )
+    .unwrap();
+
+    let context = build_wiki_context_with_selector_output(
+        root.path(),
+        WikiContextRequest {
+            purpose: "query".to_string(),
+            prompt: "limit".to_string(),
+            max_selected_pages: 1,
+            max_expanded_pages: 8,
+            max_context_bytes: 64 * 1024,
+        },
+        r#"{"paths":["wiki/concepts/kept.md","raw/notes/invalid.md"],"reason":"limit"}"#,
+    )
+    .unwrap();
+
+    assert_eq!(
+        context
+            .references
+            .iter()
+            .map(|reference| reference.path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["wiki/concepts/kept.md"]
+    );
+}
+
+#[test]
+fn context_selector_skips_missing_expanded_wikilink_targets() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    write_managed_file(
+        root.path(),
+        "wiki/concepts/llm-wiki.md",
+        "# LLM Wiki\n\nSee [[entities/missing|Missing]].\n".as_bytes(),
+    )
+    .unwrap();
+
+    let context = build_wiki_context_with_selector_output(
+        root.path(),
+        WikiContextRequest {
+            purpose: "query".to_string(),
+            prompt: "missing link".to_string(),
+            max_selected_pages: 8,
+            max_expanded_pages: 8,
+            max_context_bytes: 64 * 1024,
+        },
+        r#"{"paths":["wiki/concepts/llm-wiki.md"],"reason":"index match"}"#,
+    )
+    .unwrap();
+
+    assert_eq!(
+        context
+            .references
+            .iter()
+            .map(|reference| reference.path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["wiki/concepts/llm-wiki.md"]
+    );
+    assert!(!context.markdown.contains("wiki/entities/missing.md"));
+}
+
+#[test]
+fn context_selector_validate_wiki_page_path_rejects_invalid_edges() {
+    for path in [
+        "/wiki/entities/a.md",
+        "wiki/entities/../a.md",
+        "wiki/.hidden/a.md",
+        "wiki/entities//a.md",
+        "raw/notes/a.md",
+        "wiki/entities/a.txt",
+    ] {
+        let error = validate_wiki_page_path(path).unwrap_err();
+
+        assert_eq!(error.error_code(), "invalid_llm_wiki_page");
+    }
+}
+
+#[test]
+fn context_selector_dedupes_selected_and_expanded_pages_and_honors_expansion_limit() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    write_managed_file(
+        root.path(),
+        "wiki/concepts/llm-wiki.md",
+        "# LLM Wiki\n\nSee [[entities/a|A]], [[entities/a|A again]], and [[entities/b|B]].\n"
+            .as_bytes(),
+    )
+    .unwrap();
+    write_managed_file(root.path(), "wiki/entities/a.md", "# A\n".as_bytes()).unwrap();
+    write_managed_file(root.path(), "wiki/entities/b.md", "# B\n".as_bytes()).unwrap();
+
+    let context = build_wiki_context_with_selector_output(
+        root.path(),
+        WikiContextRequest {
+            purpose: "query".to_string(),
+            prompt: "dedupe".to_string(),
+            max_selected_pages: 8,
+            max_expanded_pages: 1,
+            max_context_bytes: 64 * 1024,
+        },
+        r#"{"paths":["wiki/concepts/llm-wiki.md","wiki/concepts/llm-wiki.md"],"reason":"index match"}"#,
+    )
+    .unwrap();
+
+    assert_eq!(
+        context
+            .references
+            .iter()
+            .map(|reference| reference.path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["wiki/concepts/llm-wiki.md", "wiki/entities/a.md"]
+    );
+    assert!(!context.markdown.contains("---PAGE: wiki/entities/b.md---"));
 }
 
 #[test]

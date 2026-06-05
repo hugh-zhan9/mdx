@@ -96,15 +96,18 @@ pub fn build_wiki_context_with_selector_output(
 
     for path in expanded_paths {
         seen.insert(path.clone());
-        let contents = read_wiki_page(root, &path)?;
-        pages.push(ContextPage { path, contents });
+        match read_wiki_page(root, &path) {
+            Ok(contents) => pages.push(ContextPage { path, contents }),
+            Err(error) if is_skippable_expanded_page_error(&error) => continue,
+            Err(error) => return Err(error),
+        }
     }
 
     let mut references = Vec::new();
     let mut markdown = String::new();
     for page in pages {
         let block = page.markdown_block();
-        if markdown.len() + block.len() > request.max_context_bytes {
+        if !references.is_empty() && markdown.len() + block.len() > request.max_context_bytes {
             break;
         }
         references.push(page.reference()?);
@@ -153,10 +156,9 @@ fn selected_page_paths(
     max_selected_pages: usize,
 ) -> Result<Vec<String>, WorkspaceError> {
     let mut paths = Vec::new();
-    for path in &selection.paths {
+    for path in selection.paths.iter().take(max_selected_pages) {
         paths.push(validate_wiki_page_path(path)?);
     }
-    paths.truncate(max_selected_pages);
     Ok(paths)
 }
 
@@ -169,6 +171,10 @@ fn invalid_wiki_page_path(path: &str) -> WorkspaceError {
         "invalid_llm_wiki_page",
         format!("unsafe llm wiki page path: {path}"),
     )
+}
+
+fn is_skippable_expanded_page_error(error: &WorkspaceError) -> bool {
+    matches!(error.error_code(), "not_found" | "path_type_conflict")
 }
 
 struct ContextPage {
