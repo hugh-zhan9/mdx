@@ -97,16 +97,12 @@ pub fn mechanical_lint_report(root: impl AsRef<Path>) -> Result<String, Workspac
                 }
             }
         }
-        let stable_targets = extract_stable_wikilinks(&contents)
-            .into_iter()
-            .map(|link| link.target)
-            .collect::<Vec<_>>();
-        for target in raw_wikilink_targets(&contents) {
-            if is_self_anchor_wikilink(&target) {
+        for link in raw_wikilinks(&contents) {
+            if is_self_anchor_wikilink(&link.target) {
                 continue;
             }
-            if !stable_targets.iter().any(|stable| stable == &target) {
-                unstable_links.push(format!("- {source}: [[{target}]]"));
+            if extract_stable_wikilinks(&format!("[[{}]]", link.raw)).is_empty() {
+                unstable_links.push(format!("- {source}: [[{}]]", link.raw));
             }
         }
         for target in wikilink_targets(&contents) {
@@ -411,8 +407,8 @@ fn wikilink_targets(contents: &str) -> Vec<String> {
     targets
 }
 
-fn raw_wikilink_targets(contents: &str) -> Vec<String> {
-    let mut targets = Vec::new();
+fn raw_wikilinks(contents: &str) -> Vec<RawWikiLink> {
+    let mut links = Vec::new();
     let mut remaining = contents;
     while let Some(start) = remaining.find("[[") {
         remaining = &remaining[start + 2..];
@@ -422,11 +418,19 @@ fn raw_wikilink_targets(contents: &str) -> Vec<String> {
         let raw = &remaining[..end];
         let target = raw.split('|').next().unwrap_or("").trim();
         if !target.is_empty() {
-            targets.push(target.to_string());
+            links.push(RawWikiLink {
+                raw: raw.to_string(),
+                target: target.to_string(),
+            });
         }
         remaining = &remaining[end + 2..];
     }
-    targets
+    links
+}
+
+struct RawWikiLink {
+    raw: String,
+    target: String,
 }
 
 fn is_self_anchor_wikilink(target: &str) -> bool {

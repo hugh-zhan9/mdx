@@ -1,4 +1,5 @@
 use sha2::{Digest, Sha256};
+use std::sync::{Mutex, OnceLock};
 use tempfile::tempdir;
 
 use crate::llm_wiki::{
@@ -43,6 +44,11 @@ fn report_section<'a>(report: &'a str, heading: &str) -> &'a str {
         .split_once("\n## ")
         .map(|(section, _)| section)
         .unwrap_or(after_heading)
+}
+
+fn llm_config_env_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
 }
 
 #[test]
@@ -1143,6 +1149,7 @@ fn llm_wiki_lint_records_log_entry() {
     let home = tempdir().unwrap();
     initialize_llm_wiki_workspace(root.path()).unwrap();
     std::fs::create_dir(home.path().join(".mdx")).unwrap();
+    let _env_guard = llm_config_env_lock().lock().unwrap();
     let original_home = std::env::var_os("HOME");
     let original_userprofile = std::env::var_os("USERPROFILE");
     std::env::set_var("HOME", home.path().canonicalize().unwrap());
@@ -1164,6 +1171,47 @@ fn llm_wiki_lint_records_log_entry() {
     assert!(report.contains("未配置 LLM，已跳过。"));
     let log = std::fs::read_to_string(root.path().join("log.md")).unwrap();
     assert!(log.contains("- lint"));
+}
+
+#[test]
+fn llm_wiki_lint_does_not_record_log_entry_when_semantic_lint_fails() {
+    let root = tempdir().unwrap();
+    let home = tempdir().unwrap();
+    let home_path = home.path().canonicalize().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::create_dir(home_path.join(".mdx")).unwrap();
+    save_llm_config_to_path(
+        home_path.join(".mdx/llm-config.json"),
+        &LlmProviderConfig {
+            base_url: "http://127.0.0.1:9/v1".to_string(),
+            model: "test-model".to_string(),
+            api_key: None,
+            api_mode: "chat".to_string(),
+        },
+    )
+    .unwrap();
+    let _env_guard = llm_config_env_lock().lock().unwrap();
+    let original_home = std::env::var_os("HOME");
+    let original_userprofile = std::env::var_os("USERPROFILE");
+    std::env::set_var("HOME", home_path);
+    std::env::remove_var("USERPROFILE");
+
+    let report = llm_wiki_lint(root.path().to_string_lossy().into_owned()).unwrap();
+
+    if let Some(value) = original_home {
+        std::env::set_var("HOME", value);
+    } else {
+        std::env::remove_var("HOME");
+    }
+    if let Some(value) = original_userprofile {
+        std::env::set_var("USERPROFILE", value);
+    } else {
+        std::env::remove_var("USERPROFILE");
+    }
+    assert!(report.contains("## LLM 语义检查"));
+    assert!(report.contains("LLM 语义检查失败："));
+    let log = std::fs::read_to_string(root.path().join("log.md")).unwrap();
+    assert!(!log.contains("- lint"));
 }
 
 #[test]
@@ -1319,6 +1367,25 @@ fn mechanical_lint_reports_unstable_wikilinks_and_missing_source_provenance() {
     assert!(report.contains("wiki/concepts/llm-wiki.md: [[Karpathy]]"));
     assert!(report.contains("## Source provenance 缺失"));
     assert!(report.contains("wiki/sources/note.md"));
+}
+
+#[test]
+fn mechanical_lint_reports_raw_unstable_wikilink_with_alias() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    write_managed_file(
+        root.path(),
+        "wiki/concepts/llm-wiki.md",
+        "# LLM Wiki\n\nSee [[Karpathy|Andrej Karpathy]].\n".as_bytes(),
+    )
+    .unwrap();
+
+    let report = mechanical_lint_report(root.path()).unwrap();
+    let unstable_section = report_section(&report, "## 非稳定 Wikilink");
+
+    assert!(report.contains("## 非稳定 Wikilink"));
+    assert!(unstable_section.contains("wiki/concepts/llm-wiki.md: [[Karpathy|Andrej Karpathy]]"));
+    assert!(!unstable_section.contains("wiki/concepts/llm-wiki.md: [[Karpathy]]"));
 }
 
 #[test]

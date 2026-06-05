@@ -488,6 +488,7 @@ pub fn llm_wiki_lint(root_path: String) -> Result<String, WorkspaceError> {
             Err(error) => {
                 report.push_str("## LLM 语义检查\n");
                 report.push_str(&format!("LLM 语义检查失败：{error}\n"));
+                return Ok(report);
             }
         }
     } else {
