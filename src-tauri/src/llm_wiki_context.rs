@@ -203,10 +203,7 @@ fn is_skippable_expanded_page_error(error: &WorkspaceError) -> bool {
 fn is_ascii_slug_segment(value: &str) -> bool {
     !value.is_empty()
         && value.bytes().all(|byte| {
-            byte.is_ascii_lowercase()
-                || byte.is_ascii_digit()
-                || byte == b'-'
-                || byte == b'_'
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-' || byte == b'_'
         })
 }
 

@@ -45,8 +45,7 @@ pub fn is_stable_wiki_link_target(target: &str) -> bool {
         return false;
     };
 
-    matches!(section, "sources" | "entities" | "concepts" | "syntheses")
-        && is_ascii_slug_path(slug)
+    matches!(section, "sources" | "entities" | "concepts" | "syntheses") && is_ascii_slug_path(slug)
 }
 
 #[allow(dead_code)]

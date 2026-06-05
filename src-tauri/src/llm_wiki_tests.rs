@@ -775,8 +775,7 @@ fn context_selector_expansion_limit_counts_only_readable_pages() {
     write_managed_file(
         root.path(),
         "wiki/concepts/llm-wiki.md",
-        "# LLM Wiki\n\nSee [[entities/missing|Missing]] and [[entities/valid|Valid]].\n"
-            .as_bytes(),
+        "# LLM Wiki\n\nSee [[entities/missing|Missing]] and [[entities/valid|Valid]].\n".as_bytes(),
     )
     .unwrap();
     write_managed_file(
