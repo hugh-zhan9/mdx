@@ -57,4 +57,9 @@ describe("mermaid code fences", () => {
         ).toHaveLength(1);
         expect(findMermaidCodeFences("```mermaid\ngraph TD")).toEqual([]);
     });
+
+    it("ignores mixed fence markers", () => {
+        expect(findMermaidCodeFences("``~mermaid\ngraph TD\n```")).toEqual([]);
+        expect(findMermaidCodeFences("~~`mermaid\ngraph TD\n~~~")).toEqual([]);
+    });
 });
