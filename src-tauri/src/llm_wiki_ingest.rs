@@ -19,9 +19,10 @@ pub struct LlmWikiFileBlock {
 
 pub fn build_ingest_analysis_prompt(raw: &str, purpose: &str, agents: &str, index: &str) -> String {
     format!(
-        r#"You are analyzing one raw source for an LLM Wiki workspace.
+        r#"Analyze this raw source for ingest into an LLM Wiki workspace.
 
 Return strict JSON only. Do not include markdown fences.
+Do not answer user queries from raw sources. Raw sources are used only during ingest.
 Identify:
 - source_summary: concise summary of the raw source.
 - entities: important people, projects, files, systems, organizations, and other named things.
@@ -64,6 +65,11 @@ Rules:
 - File paths must end in .md and must not contain spaces, backslashes, dot segments, hidden path segments, absolute paths, or non-ASCII characters.
 - Keep filenames descriptive ASCII slugs.
 - Use wikilinks such as [[Name]] where helpful.
+- Update related entity and concept pages when the source adds useful facts, contradictions, or provenance.
+- Preserve existing wiki context instead of replacing it blindly.
+- Use stable wikilinks with aliases, such as [[concepts/example-concept|Readable Label]].
+- Include source provenance for factual claims.
+- If the source conflicts with existing wiki context, record the disagreement instead of erasing either side.
 - Do not write any text outside file blocks.
 
 Analysis JSON:

@@ -393,6 +393,26 @@ fn ingest_prompts_generation_requires_file_blocks_and_sources_paths() {
 }
 
 #[test]
+fn ingest_generation_prompt_includes_related_existing_wiki_context() {
+    let analysis = r#"{"source_summary":"new source","entities":["Karpathy"],"concepts":["LLM Wiki"],"suggested_source_slug":"note"}"#;
+    let existing_context = "# Purpose\nBuild wiki\n\n# Index\n- [[concepts/llm-wiki|LLM Wiki]]\n\n---PAGE: wiki/concepts/llm-wiki.md---\n# LLM Wiki\nExisting page.\n";
+
+    let prompt = build_ingest_generation_prompt(analysis, existing_context);
+
+    assert!(prompt.contains("---PAGE: wiki/concepts/llm-wiki.md---"));
+    assert!(prompt.contains("Update related entity and concept pages"));
+    assert!(prompt.contains("[[concepts/example-concept|Readable Label]]"));
+}
+
+#[test]
+fn ingest_analysis_prompt_reinforces_raw_only_for_ingest() {
+    let prompt = build_ingest_analysis_prompt("# Raw", "# Purpose", "# AGENTS", "# Index");
+
+    assert!(prompt.contains("Analyze this raw source for ingest"));
+    assert!(prompt.contains("Do not answer user queries from raw sources"));
+}
+
+#[test]
 fn detect_reports_ordinary_workspace_before_initialization() {
     let root = tempdir().unwrap();
 

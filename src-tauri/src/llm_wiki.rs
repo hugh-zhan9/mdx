@@ -214,8 +214,13 @@ pub fn llm_wiki_ingest_raw_file_sync(
             return Err(error);
         }
     };
-    let existing_context =
-        format!("# Purpose\n{purpose}\n\n# AGENTS\n{agents}\n\n# Index\n{index}\n");
+    let selection_prompt = format!("{raw_relative_path}\n{analysis_json}");
+    let related_context = select_wiki_context(&root, &config, "ingest", &selection_prompt)
+        .map(|bundle| bundle.markdown)
+        .unwrap_or_default();
+    let existing_context = format!(
+        "# Purpose\n{purpose}\n\n# AGENTS\n{agents}\n\n# Index\n{index}\n\n# Related Wiki Pages\n{related_context}\n"
+    );
     let generation_prompt = build_ingest_generation_prompt(&analysis_json, &existing_context);
     let llm_output = match call_chat_completion(
         &config,
@@ -635,6 +640,16 @@ fn select_wiki_context_with_index(
     )?;
 
     build_wiki_context_with_selector_output(root, request, &selection_output)
+}
+
+fn select_wiki_context(
+    root: &Path,
+    config: &LlmProviderConfig,
+    purpose: &str,
+    prompt: &str,
+) -> Result<WikiContextBundle, WorkspaceError> {
+    let index = read_optional_managed_text(root, "index.md")?;
+    select_wiki_context_with_index(root, config, purpose, prompt, index)
 }
 
 fn index_has_wiki_page_candidates(index: &str) -> bool {
