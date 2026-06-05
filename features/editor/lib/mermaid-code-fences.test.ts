@@ -56,16 +56,21 @@ describe("mermaid code fences", () => {
         ]);
     });
 
-    it("counts backtick fences indented up to three spaces", () => {
+    it("ignores indented fences because the editor kernel only renders column-zero code blocks", () => {
         const markdown = [
-            "   ```ts",
-            "const a = 1;",
+            "   ```mermaid",
+            "graph TD",
+            "  Ignored --> A",
             "   ```",
             "",
-            "  ```mermaid",
+            "```ts",
+            "const a = 1;",
+            "```",
+            "",
+            "```mermaid",
             "graph TD",
             "  A --> B",
-            "  ```",
+            "```",
         ].join("\n");
 
         expect(findMermaidCodeFences(markdown)).toEqual([

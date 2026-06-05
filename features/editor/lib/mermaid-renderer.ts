@@ -41,6 +41,7 @@ export function initializeMermaid(theme: MermaidEditorTheme): void {
     mermaid.initialize({
         securityLevel: "strict",
         startOnLoad: false,
+        suppressErrorRendering: true,
         theme: toMermaidTheme(theme),
     });
     initializedTheme = theme;

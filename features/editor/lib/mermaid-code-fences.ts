@@ -7,7 +7,7 @@ export interface MermaidCodeFence {
     language: "mermaid";
 }
 
-const OPENING_FENCE = /^( {0,3})(`{3,})([^\n`]*)$/;
+const OPENING_FENCE = /^(`{3,})([^\n`]*)$/;
 
 export function isMermaidFenceLanguage(info: string): boolean {
     const firstToken = info.trim().split(/\s+/, 1)[0] ?? "";
@@ -36,14 +36,14 @@ export function findMermaidCodeFences(markdown: string): MermaidCodeFence[] {
                 continue;
             }
 
-            const marker = match[2];
+            const marker = match[1];
             open = {
                 code: [],
                 codeBlockIndex,
                 fenceChar: "`",
                 fenceLength: marker.length,
-                info: match[3].trim(),
-                isMermaid: isMermaidFenceLanguage(match[3]),
+                info: match[2].trim(),
+                isMermaid: isMermaidFenceLanguage(match[2]),
             };
             continue;
         }

@@ -29,6 +29,7 @@ describe("mermaid renderer", () => {
         expect(initialize).toHaveBeenCalledWith({
             securityLevel: "strict",
             startOnLoad: false,
+            suppressErrorRendering: true,
             theme: "dark",
         });
         expect(render).toHaveBeenCalledWith("chart-1", "graph TD\n  A --> B");
@@ -47,6 +48,7 @@ describe("mermaid renderer", () => {
         expect(initialize).toHaveBeenCalledWith({
             securityLevel: "strict",
             startOnLoad: false,
+            suppressErrorRendering: true,
             theme: "default",
         });
     });
@@ -87,11 +89,13 @@ describe("mermaid renderer", () => {
         expect(initialize).toHaveBeenNthCalledWith(1, {
             securityLevel: "strict",
             startOnLoad: false,
+            suppressErrorRendering: true,
             theme: "default",
         });
         expect(initialize).toHaveBeenNthCalledWith(2, {
             securityLevel: "strict",
             startOnLoad: false,
+            suppressErrorRendering: true,
             theme: "dark",
         });
     });
