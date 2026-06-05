@@ -402,6 +402,7 @@ fn ingest_generation_prompt_includes_related_existing_wiki_context() {
     assert!(prompt.contains("---PAGE: wiki/concepts/llm-wiki.md---"));
     assert!(prompt.contains("Update related entity and concept pages"));
     assert!(prompt.contains("[[concepts/example-concept|Readable Label]]"));
+    assert!(!prompt.contains("[[Name]]"));
 }
 
 #[test]

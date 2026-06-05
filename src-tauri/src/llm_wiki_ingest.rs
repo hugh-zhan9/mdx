@@ -64,7 +64,7 @@ Rules:
 - File paths must be ASCII only and use only letters, digits, '/', '.', '_', and '-'.
 - File paths must end in .md and must not contain spaces, backslashes, dot segments, hidden path segments, absolute paths, or non-ASCII characters.
 - Keep filenames descriptive ASCII slugs.
-- Use wikilinks such as [[Name]] where helpful.
+- Use stable path wikilinks with readable aliases when helpful.
 - Update related entity and concept pages when the source adds useful facts, contradictions, or provenance.
 - Preserve existing wiki context instead of replacing it blindly.
 - Use stable wikilinks with aliases, such as [[concepts/example-concept|Readable Label]].
