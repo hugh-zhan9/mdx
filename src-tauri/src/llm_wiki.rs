@@ -17,6 +17,7 @@ use crate::llm_wiki_ingest::{
     validate_raw_relative_path,
 };
 use crate::llm_wiki_ingest::{parse_file_blocks, write_ingest_outputs};
+use crate::llm_wiki_links::{extract_stable_wikilinks, resolve_wiki_link_target};
 use crate::llm_wiki_llm::{
     call_chat_completion, default_llm_config_path, load_llm_config_from_path,
     load_optional_llm_config_from_path, save_llm_config_to_path, LlmChatMessage,
@@ -415,13 +416,21 @@ pub fn llm_wiki_digest_sync(
     prompt: String,
 ) -> Result<String, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
+    let index = read_optional_managed_text(&root, "index.md")?;
+    if !index_has_wiki_page_candidates(&index) {
+        return Err(insufficient_digest_context());
+    }
+
     let config = load_llm_config_from_path(default_llm_config_path()?)?;
-    let context = select_wiki_context(&root, &config, "digest", &format!("{title}\n{prompt}"))?;
+    let context = select_wiki_context_with_index(
+        &root,
+        &config,
+        "digest",
+        &format!("{title}\n{prompt}"),
+        index,
+    )?;
     if context.markdown.trim().is_empty() || context.references.is_empty() {
-        return Err(WorkspaceError::new(
-            "insufficient_context",
-            "当前知识库中没有足够上下文生成综述。",
-        ));
+        return Err(insufficient_digest_context());
     }
 
     let content = call_chat_completion(
@@ -583,6 +592,13 @@ fn insufficient_query_context(references: Vec<WikiSearchResult>) -> LlmWikiQuery
     }
 }
 
+fn insufficient_digest_context() -> WorkspaceError {
+    WorkspaceError::new(
+        "insufficient_context",
+        "当前知识库中没有足够上下文生成综述。",
+    )
+}
+
 fn default_context_request(purpose: &str, prompt: &str) -> WikiContextRequest {
     WikiContextRequest {
         purpose: purpose.to_string(),
@@ -591,16 +607,6 @@ fn default_context_request(purpose: &str, prompt: &str) -> WikiContextRequest {
         max_expanded_pages: DEFAULT_EXPANDED_PAGE_LIMIT,
         max_context_bytes: DEFAULT_CONTEXT_LIMIT_BYTES,
     }
-}
-
-fn select_wiki_context(
-    root: &Path,
-    config: &LlmProviderConfig,
-    purpose: &str,
-    prompt: &str,
-) -> Result<WikiContextBundle, WorkspaceError> {
-    let index = read_optional_managed_text(root, "index.md")?;
-    select_wiki_context_with_index(root, config, purpose, prompt, index)
 }
 
 fn select_wiki_context_with_index(
@@ -632,6 +638,14 @@ fn select_wiki_context_with_index(
 }
 
 fn index_has_wiki_page_candidates(index: &str) -> bool {
+    if extract_stable_wikilinks(index)
+        .into_iter()
+        .filter_map(|link| resolve_wiki_link_target(&link.target))
+        .any(|path| validate_wiki_page_path(&path).is_ok())
+    {
+        return true;
+    }
+
     index
         .split(|character: char| {
             character.is_whitespace()
@@ -660,6 +674,11 @@ fn index_has_wiki_page_candidates(index: &str) -> bool {
 
             validate_wiki_page_path(&path).is_ok()
         })
+}
+
+#[cfg(test)]
+pub(crate) fn index_has_wiki_page_candidates_for_test(index: &str) -> bool {
+    index_has_wiki_page_candidates(index)
 }
 
 #[cfg(test)]

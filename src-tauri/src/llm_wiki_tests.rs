@@ -2,9 +2,9 @@ use sha2::{Digest, Sha256};
 use tempfile::tempdir;
 
 use crate::llm_wiki::{
-    llm_config_to_public, llm_wiki_get_config, llm_wiki_get_log, llm_wiki_ingest_mock_output,
-    llm_wiki_lint, llm_wiki_query_sync, llm_wiki_refresh_graph_sync, llm_wiki_rescan_raw_sync,
-    llm_wiki_rescan_raw_sync_with_exclusions, llm_wiki_update_config,
+    llm_config_to_public, llm_wiki_digest_sync, llm_wiki_get_config, llm_wiki_get_log,
+    llm_wiki_ingest_mock_output, llm_wiki_lint, llm_wiki_query_sync, llm_wiki_refresh_graph_sync,
+    llm_wiki_rescan_raw_sync, llm_wiki_rescan_raw_sync_with_exclusions, llm_wiki_update_config,
 };
 use crate::llm_wiki_context::{
     build_wiki_context_with_selector_output, parse_page_selection, validate_wiki_page_path,
@@ -902,6 +902,16 @@ fn query_context_can_be_built_from_index_selection_without_matching_question_lin
 }
 
 #[test]
+fn index_candidate_detection_recognizes_stable_extensionless_wikilinks() {
+    assert!(crate::llm_wiki::index_has_wiki_page_candidates_for_test(
+        "# Index\n\n- [[concepts/llm-wiki|LLM Wiki]]\n"
+    ));
+    assert!(crate::llm_wiki::index_has_wiki_page_candidates_for_test(
+        "# Index\n\n- [[syntheses/karpathy-llm-wiki|karpathy-llm-wiki]]\n"
+    ));
+}
+
+#[test]
 fn query_context_can_read_existing_uppercase_wiki_page_from_selection() {
     let root = tempdir().unwrap();
     initialize_llm_wiki_workspace(root.path()).unwrap();
@@ -1033,6 +1043,21 @@ fn llm_wiki_query_returns_insufficient_context_without_llm_call_when_index_has_n
     assert!(response.answer.contains("没有足够上下文"));
     let log = std::fs::read_to_string(root.path().join("log.md")).unwrap();
     assert!(log.contains("- query missing-topic"));
+}
+
+#[test]
+fn llm_wiki_digest_returns_insufficient_context_without_llm_config_when_index_has_no_pages() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+
+    let error = llm_wiki_digest_sync(
+        root.path().to_string_lossy().into_owned(),
+        "empty-digest".to_string(),
+        "topic".to_string(),
+    )
+    .unwrap_err();
+
+    assert_eq!(error.error_code(), "insufficient_context");
 }
 
 #[test]
