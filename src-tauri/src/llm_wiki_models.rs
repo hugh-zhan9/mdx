@@ -14,6 +14,15 @@ pub struct LlmWikiWorkspaceStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct LlmWikiOperationState {
+    pub operation_id: String,
+    pub operation: String,
+    pub stage: String,
+    pub cancelled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct InitializeLlmWikiResult {
     pub created_paths: Vec<String>,
     pub preserved_paths: Vec<String>,

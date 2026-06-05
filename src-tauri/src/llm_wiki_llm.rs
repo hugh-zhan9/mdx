@@ -19,7 +19,12 @@ use crate::models::WorkspaceError;
 
 const LLM_RESPONSE_BODY_LIMIT_BYTES: usize = 2 * 1024 * 1024;
 const LLM_ERROR_BODY_PREVIEW_LIMIT_BYTES: usize = 16 * 1024;
-const LLM_REQUEST_TIMEOUT_SECS: u64 = 600;
+const LLM_REQUEST_TIMEOUT_SECS: u64 = 90;
+
+#[cfg(test)]
+pub(crate) fn llm_request_timeout_secs_for_test() -> u64 {
+    LLM_REQUEST_TIMEOUT_SECS
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]

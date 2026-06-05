@@ -37,6 +37,27 @@ use crate::llm_wiki_models::WikiContextBundle;
 use crate::llm_wiki_query::{mechanical_lint_report, search_wiki_pages, write_digest_page};
 use crate::models::WorkspaceError;
 
+#[test]
+fn llm_wiki_operation_registry_tracks_stage_and_cancel() {
+    let registry = crate::llm_wiki_operation::LlmWikiOperationRegistry::new();
+    let id = registry.start("query");
+
+    registry.set_stage(&id, "selecting_pages").unwrap();
+    let state = registry.state(&id).unwrap();
+    assert_eq!(state.operation, "query");
+    assert_eq!(state.stage, "selecting_pages");
+    assert!(!state.cancelled);
+
+    registry.cancel(&id).unwrap();
+    assert!(registry.is_cancelled(&id));
+}
+
+#[test]
+fn llm_timeout_is_not_six_hundred_seconds() {
+    assert!(crate::llm_wiki_llm::llm_request_timeout_secs_for_test() <= 120);
+    assert!(crate::llm_wiki_llm::llm_request_timeout_secs_for_test() >= 60);
+}
+
 fn report_section<'a>(report: &'a str, heading: &str) -> &'a str {
     let Some((_, after_heading)) = report.split_once(heading) else {
         return "";

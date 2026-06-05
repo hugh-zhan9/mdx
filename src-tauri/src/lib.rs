@@ -22,6 +22,7 @@ mod llm_wiki_ingest;
 mod llm_wiki_links;
 mod llm_wiki_llm;
 mod llm_wiki_models;
+mod llm_wiki_operation;
 mod llm_wiki_query;
 mod llm_wiki_raw;
 #[cfg(target_os = "macos")]
@@ -536,6 +537,8 @@ pub fn run() {
             llm_wiki::llm_wiki_digest,
             llm_wiki::llm_wiki_digest_mock,
             llm_wiki::llm_wiki_lint,
+            llm_wiki::llm_wiki_operation_cancel,
+            llm_wiki::llm_wiki_operation_state,
             llm_wiki::llm_wiki_get_config,
             llm_wiki::llm_wiki_update_config,
             llm_wiki::llm_wiki_get_log,

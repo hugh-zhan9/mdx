@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 use std::path::Path;
+use std::sync::OnceLock;
 
 use crate::llm_wiki_context::{
     build_page_selection_prompt, build_wiki_context_with_selector_output, validate_wiki_page_path,
@@ -24,9 +25,10 @@ use crate::llm_wiki_llm::{
 };
 use crate::llm_wiki_models::{
     InitializeLlmWikiResult, LlmProviderConfig, LlmProviderConfigUpdate, LlmWikiKnowledgeConfig,
-    LlmWikiQueryResponse, LlmWikiWorkspaceStatus, PublicLlmProviderConfig, RawScanResult,
-    WikiContextBundle, WikiSearchResult,
+    LlmWikiOperationState, LlmWikiQueryResponse, LlmWikiWorkspaceStatus, PublicLlmProviderConfig,
+    RawScanResult, WikiContextBundle, WikiSearchResult,
 };
+use crate::llm_wiki_operation::{ensure_not_cancelled, LlmWikiOperationRegistry};
 use crate::llm_wiki_query::{
     mechanical_lint_report, read_required_managed_text, search_wiki_pages, write_digest_page,
 };
@@ -38,6 +40,26 @@ const RAW_RESCAN_PENDING_BATCH_SIZE: usize = 5;
 const DEFAULT_SELECTED_PAGE_LIMIT: usize = 8;
 const DEFAULT_EXPANDED_PAGE_LIMIT: usize = 8;
 const DEFAULT_CONTEXT_LIMIT_BYTES: usize = 64 * 1024;
+
+fn operation_registry() -> &'static LlmWikiOperationRegistry {
+    static REGISTRY: OnceLock<LlmWikiOperationRegistry> = OnceLock::new();
+    REGISTRY.get_or_init(LlmWikiOperationRegistry::new)
+}
+
+fn set_operation_stage(operation_id: Option<&str>, stage: &str) -> Result<(), WorkspaceError> {
+    if let Some(operation_id) = operation_id {
+        let registry = operation_registry();
+        registry.set_stage(operation_id, stage)?;
+        ensure_not_cancelled(registry, operation_id)?;
+    }
+    Ok(())
+}
+
+fn finish_operation(operation_id: Option<&str>) {
+    if let Some(operation_id) = operation_id {
+        operation_registry().finish(operation_id);
+    }
+}
 
 async fn run_blocking<T>(
     task: impl FnOnce() -> Result<T, WorkspaceError> + Send + 'static,
@@ -53,6 +75,18 @@ where
                 format!("failed to join llm wiki background task: {error}"),
             )
         })?
+}
+
+#[tauri::command]
+pub fn llm_wiki_operation_cancel(operation_id: String) -> Result<(), WorkspaceError> {
+    operation_registry().cancel(&operation_id)
+}
+
+#[tauri::command]
+pub fn llm_wiki_operation_state(
+    operation_id: String,
+) -> Result<LlmWikiOperationState, WorkspaceError> {
+    operation_registry().state(&operation_id)
 }
 
 #[tauri::command]
@@ -171,6 +205,14 @@ pub fn llm_wiki_ingest_raw_file_sync(
     root_path: String,
     raw_relative_path: String,
 ) -> Result<(), WorkspaceError> {
+    llm_wiki_ingest_raw_file_sync_with_operation(root_path, raw_relative_path, None)
+}
+
+pub(crate) fn llm_wiki_ingest_raw_file_sync_with_operation(
+    root_path: String,
+    raw_relative_path: String,
+    operation_id: Option<String>,
+) -> Result<(), WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
     let config = load_llm_config_from_path(default_llm_config_path()?)?;
     let knowledge_config = read_knowledge_config(&root)?;
@@ -192,11 +234,13 @@ pub fn llm_wiki_ingest_raw_file_sync(
     raw_file_metadata(&root, &raw_relative_path)?;
     ensure_default_agents_rules(&root)?;
     let raw_source = prepare_raw_source(&root, &raw_relative_path)?;
+    set_operation_stage(operation_id.as_deref(), "reading_index")?;
     let purpose = read_optional_managed_text(&root, "purpose.md")?;
     let agents = read_optional_managed_text(&root, "AGENTS.md")?;
     let index = read_optional_managed_text(&root, "index.md")?;
     let _ = update_ingest_processing_progress(&root, &knowledge_config, &raw_relative_path);
 
+    set_operation_stage(operation_id.as_deref(), "analyzing_raw")?;
     let analysis_prompt = build_ingest_analysis_prompt(&raw_source.text, &purpose, &agents, &index);
     let analysis_json = match call_chat_completion(
         &config,
@@ -218,11 +262,19 @@ pub fn llm_wiki_ingest_raw_file_sync(
     let related_context = related_context_or_log_failure(
         &root,
         &raw_relative_path,
-        select_wiki_context_from_index(&root, &config, "ingest", &selection_prompt, index.clone()),
+        select_wiki_context_from_index(
+            &root,
+            &config,
+            "ingest",
+            &selection_prompt,
+            index.clone(),
+            operation_id.as_deref(),
+        ),
     )?;
     let existing_context = format!(
         "# Purpose\n{purpose}\n\n# AGENTS\n{agents}\n\n# Index\n{index}\n\n# Related Wiki Pages\n{related_context}\n"
     );
+    set_operation_stage(operation_id.as_deref(), "generating_updates")?;
     let generation_prompt = build_ingest_generation_prompt(&analysis_json, &existing_context);
     let llm_output = match call_chat_completion(
         &config,
@@ -240,6 +292,7 @@ pub fn llm_wiki_ingest_raw_file_sync(
             return Err(error);
         }
     };
+    set_operation_stage(operation_id.as_deref(), "writing_pages")?;
     let blocks = match parse_file_blocks(&llm_output) {
         Ok(blocks) => blocks,
         Err(error) => {
@@ -259,7 +312,10 @@ pub fn llm_wiki_ingest_raw_file_sync(
         &raw_source.hash,
         &config.model,
         &blocks,
-    )
+    )?;
+    set_operation_stage(operation_id.as_deref(), "completed")?;
+    finish_operation(operation_id.as_deref());
+    Ok(())
 }
 
 struct RawProgressSnapshot {
@@ -366,6 +422,14 @@ pub fn llm_wiki_query_sync(
     root_path: String,
     question: String,
 ) -> Result<LlmWikiQueryResponse, WorkspaceError> {
+    llm_wiki_query_sync_with_operation(root_path, question, None)
+}
+
+pub(crate) fn llm_wiki_query_sync_with_operation(
+    root_path: String,
+    question: String,
+    operation_id: Option<String>,
+) -> Result<LlmWikiQueryResponse, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
     let question = question.trim().to_string();
     if question.is_empty() {
@@ -376,18 +440,31 @@ pub fn llm_wiki_query_sync(
     }
 
     append_log_entry(&root, &format!("query {question}"))?;
+    set_operation_stage(operation_id.as_deref(), "reading_index")?;
     let index = read_optional_managed_text(&root, "index.md")?;
     if !index_has_wiki_page_candidates(&index) {
+        set_operation_stage(operation_id.as_deref(), "completed")?;
+        finish_operation(operation_id.as_deref());
         return Ok(insufficient_query_context(Vec::new()));
     }
 
     let config = load_llm_config_from_path(default_llm_config_path()?)?;
-    let context = select_wiki_context_with_index(&root, &config, "query", &question, index)?;
+    let context = select_wiki_context_with_index(
+        &root,
+        &config,
+        "query",
+        &question,
+        index,
+        operation_id.as_deref(),
+    )?;
     let references = wiki_context_references_to_search_results(context.references);
     if context.markdown.trim().is_empty() || references.is_empty() {
+        set_operation_stage(operation_id.as_deref(), "completed")?;
+        finish_operation(operation_id.as_deref());
         return Ok(insufficient_query_context(references));
     }
 
+    set_operation_stage(operation_id.as_deref(), "answering")?;
     let answer = call_chat_completion(
         &config,
         vec![
@@ -401,11 +478,14 @@ pub fn llm_wiki_query_sync(
         ],
     )?;
 
-    Ok(LlmWikiQueryResponse {
+    let response = LlmWikiQueryResponse {
         answer,
         references,
         insufficient_context: false,
-    })
+    };
+    set_operation_stage(operation_id.as_deref(), "completed")?;
+    finish_operation(operation_id.as_deref());
+    Ok(response)
 }
 
 #[tauri::command]
@@ -422,7 +502,17 @@ pub fn llm_wiki_digest_sync(
     title: String,
     prompt: String,
 ) -> Result<String, WorkspaceError> {
+    llm_wiki_digest_sync_with_operation(root_path, title, prompt, None)
+}
+
+pub(crate) fn llm_wiki_digest_sync_with_operation(
+    root_path: String,
+    title: String,
+    prompt: String,
+    operation_id: Option<String>,
+) -> Result<String, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
+    set_operation_stage(operation_id.as_deref(), "reading_index")?;
     let index = read_optional_managed_text(&root, "index.md")?;
     if !index_has_wiki_page_candidates(&index) {
         return Err(insufficient_digest_context());
@@ -435,11 +525,13 @@ pub fn llm_wiki_digest_sync(
         "digest",
         &format!("{title}\n{prompt}"),
         index,
+        operation_id.as_deref(),
     )?;
     if context.markdown.trim().is_empty() || context.references.is_empty() {
         return Err(insufficient_digest_context());
     }
 
+    set_operation_stage(operation_id.as_deref(), "writing_synthesis")?;
     let content = call_chat_completion(
         &config,
         vec![
@@ -452,7 +544,10 @@ pub fn llm_wiki_digest_sync(
             )),
         ],
     )?;
-    write_digest_page(root, &title, &content)
+    let path = write_digest_page(root, &title, &content)?;
+    set_operation_stage(operation_id.as_deref(), "completed")?;
+    finish_operation(operation_id.as_deref());
+    Ok(path)
 }
 
 #[tauri::command]
@@ -467,10 +562,19 @@ pub fn llm_wiki_digest_mock(
 
 #[tauri::command]
 pub fn llm_wiki_lint(root_path: String) -> Result<String, WorkspaceError> {
+    llm_wiki_lint_with_operation(root_path, None)
+}
+
+pub(crate) fn llm_wiki_lint_with_operation(
+    root_path: String,
+    operation_id: Option<String>,
+) -> Result<String, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
+    set_operation_stage(operation_id.as_deref(), "mechanical_linting")?;
     let mut report = mechanical_lint_report(&root)?;
     let config = load_optional_llm_config_from_path(default_llm_config_path()?)?;
     if let Some(config) = config {
+        set_operation_stage(operation_id.as_deref(), "semantic_linting")?;
         let index = read_optional_managed_text(&root, "index.md")?;
         let prompt = build_semantic_lint_prompt(&index, &report);
         match call_chat_completion(
@@ -488,6 +592,8 @@ pub fn llm_wiki_lint(root_path: String) -> Result<String, WorkspaceError> {
             Err(error) => {
                 report.push_str("## LLM 语义检查\n");
                 report.push_str(&format!("LLM 语义检查失败：{error}\n"));
+                set_operation_stage(operation_id.as_deref(), "completed")?;
+                finish_operation(operation_id.as_deref());
                 return Ok(report);
             }
         }
@@ -496,6 +602,8 @@ pub fn llm_wiki_lint(root_path: String) -> Result<String, WorkspaceError> {
         report.push_str("未配置 LLM，已跳过。\n");
     }
     append_log_entry(&root, "lint")?;
+    set_operation_stage(operation_id.as_deref(), "completed")?;
+    finish_operation(operation_id.as_deref());
     Ok(report)
 }
 
@@ -654,6 +762,7 @@ fn select_wiki_context_with_index(
     purpose: &str,
     prompt: &str,
     index: String,
+    operation_id: Option<&str>,
 ) -> Result<WikiContextBundle, WorkspaceError> {
     if !index_has_wiki_page_candidates(&index) {
         return Ok(WikiContextBundle {
@@ -665,6 +774,7 @@ fn select_wiki_context_with_index(
 
     let request = default_context_request(purpose, prompt);
     let selection_prompt = build_page_selection_prompt(&index, &request);
+    set_operation_stage(operation_id, "selecting_pages")?;
     let selection_output = call_chat_completion(
         config,
         vec![
@@ -673,6 +783,7 @@ fn select_wiki_context_with_index(
         ],
     )?;
 
+    set_operation_stage(operation_id, "reading_pages")?;
     build_wiki_context_with_selector_output(root, request, &selection_output)
 }
 
@@ -682,8 +793,9 @@ fn select_wiki_context_from_index(
     purpose: &str,
     prompt: &str,
     index: String,
+    operation_id: Option<&str>,
 ) -> Result<WikiContextBundle, WorkspaceError> {
-    select_wiki_context_with_index(root, config, purpose, prompt, index)
+    select_wiki_context_with_index(root, config, purpose, prompt, index, operation_id)
 }
 
 pub(crate) fn related_context_or_log_failure(
