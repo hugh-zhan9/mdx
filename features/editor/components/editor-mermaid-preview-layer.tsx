@@ -5,6 +5,7 @@ import { findMermaidCodeFences } from "../lib/mermaid-code-fences";
 import {
     applyMermaidSourceVisibility,
     mapMermaidFencesToPreElements,
+    type MermaidPreMapping,
 } from "../lib/mermaid-dom";
 import {
     renderMermaidDiagram,
@@ -28,6 +29,7 @@ export function EditorMermaidPreviewLayer({
     markdown,
 }: EditorMermaidPreviewLayerProps) {
     const [editingId, setEditingId] = useState<string | null>(null);
+    const generationRef = useRef(0);
     const renderStatesRef = useRef(new Map<string, RenderState>());
 
     useEffect(() => {
@@ -35,9 +37,13 @@ export function EditorMermaidPreviewLayer({
             return;
         }
 
+        const generation = generationRef.current + 1;
+        generationRef.current = generation;
+        let cancelled = false;
         const fences = findMermaidCodeFences(markdown);
         const mappings = mapMermaidFencesToPreElements(editorRoot, fences);
         cleanupStalePreviewNodes(editorRoot, mappings);
+        restoreUnmappedSourceVisibility(editorRoot, mappings);
 
         const timers = mappings.map((mapping) => {
             const preview = ensurePreviewNode(mapping.pre, mapping.stableId);
@@ -63,6 +69,15 @@ export function EditorMermaidPreviewLayer({
                     id: `mdx-${mapping.stableId}`,
                     theme,
                 }).then((result) => {
+                    if (
+                        cancelled ||
+                        generationRef.current !== generation ||
+                        !editorRoot.contains(mapping.pre) ||
+                        mapping.pre.nextElementSibling !== preview
+                    ) {
+                        return;
+                    }
+
                     renderStatesRef.current.set(
                         mapping.stableId,
                         result.ok
@@ -118,6 +133,7 @@ export function EditorMermaidPreviewLayer({
         editorRoot.addEventListener("focusout", handleFocusOut, true);
 
         return () => {
+            cancelled = true;
             for (const timer of timers) {
                 window.clearTimeout(timer);
             }
@@ -189,7 +205,7 @@ function renderPreviewNode(
 
 function cleanupStalePreviewNodes(
     editorRoot: HTMLElement,
-    mappings: ReturnType<typeof mapMermaidFencesToPreElements>,
+    mappings: MermaidPreMapping[],
 ): void {
     for (const node of Array.from(
         editorRoot.querySelectorAll<HTMLElement>("[data-mdx-mermaid-preview]"),
@@ -204,4 +220,37 @@ function cleanupStalePreviewNodes(
             node.remove();
         }
     }
+}
+
+function restoreUnmappedSourceVisibility(
+    editorRoot: HTMLElement,
+    mappings: MermaidPreMapping[],
+): void {
+    const mappedSources = new Set(mappings.map((mapping) => mapping.pre));
+
+    for (const pre of Array.from(
+        editorRoot.querySelectorAll<HTMLPreElement>("pre.DOMD-Pre"),
+    )) {
+        if (mappedSources.has(pre) || !hasMermaidSourceVisibility(pre)) {
+            continue;
+        }
+
+        pre.hidden = false;
+        pre.removeAttribute("aria-hidden");
+        pre.classList.remove(
+            "mdx-mermaid-source-hidden",
+            "mdx-mermaid-source-editing",
+            "mdx-mermaid-source-error",
+        );
+    }
+}
+
+function hasMermaidSourceVisibility(pre: HTMLPreElement): boolean {
+    return (
+        pre.hidden ||
+        pre.getAttribute("aria-hidden") === "true" ||
+        pre.classList.contains("mdx-mermaid-source-hidden") ||
+        pre.classList.contains("mdx-mermaid-source-editing") ||
+        pre.classList.contains("mdx-mermaid-source-error")
+    );
 }

@@ -99,7 +99,73 @@ describe("EditorMermaidPreviewLayer", () => {
         );
     });
 
+    it("ignores stale async render results after newer markdown renders", async () => {
+        const firstRender = deferredRenderResult();
+        const secondRender = deferredRenderResult();
+        renderMermaidDiagram
+            .mockImplementationOnce(() => firstRender.promise)
+            .mockImplementationOnce(() => secondRender.promise);
+
+        await renderLayerWithoutTimers("```mermaid\ngraph TD\n  A --> B\n```");
+        await flushDebounceTimer();
+
+        await renderLayerWithoutTimers("```mermaid\ngraph TD\n  A --> C\n```");
+        await flushDebounceTimer();
+
+        await act(async () => {
+            secondRender.resolve({
+                ok: true,
+                svg: "<svg><text>new</text></svg>",
+            });
+            await Promise.resolve();
+        });
+
+        const preview = editorRoot.querySelector<HTMLElement>(
+            "[data-mdx-mermaid-preview]",
+        );
+        expect(preview?.innerHTML).toContain("new");
+
+        await act(async () => {
+            firstRender.resolve({
+                ok: true,
+                svg: "<svg><text>old</text></svg>",
+            });
+            await Promise.resolve();
+        });
+
+        expect(preview?.innerHTML).toContain("new");
+        expect(preview?.innerHTML).not.toContain("old");
+    });
+
+    it("restores source visibility when the mermaid mapping disappears", async () => {
+        await renderLayer("```mermaid\ngraph TD\n  A --> B\n```");
+
+        const source = editorRoot.querySelector("pre");
+        expect(source?.hidden).toBe(true);
+
+        await renderLayer("```text\ngraph TD\n  A --> B\n```");
+
+        expect(source?.hidden).toBe(false);
+        expect(source?.getAttribute("aria-hidden")).toBeNull();
+        expect(source?.classList.contains("mdx-mermaid-source-hidden")).toBe(
+            false,
+        );
+        expect(source?.classList.contains("mdx-mermaid-source-editing")).toBe(
+            false,
+        );
+        expect(source?.classList.contains("mdx-mermaid-source-error")).toBe(
+            false,
+        );
+    });
+
     async function renderLayer(markdown: string) {
+        await renderLayerWithoutTimers(markdown);
+        await act(async () => {
+            await vi.runAllTimersAsync();
+        });
+    }
+
+    async function renderLayerWithoutTimers(markdown: string) {
         await act(async () => {
             root.render(
                 <EditorMermaidPreviewLayer
@@ -108,8 +174,11 @@ describe("EditorMermaidPreviewLayer", () => {
                 />,
             );
         });
+    }
+
+    async function flushDebounceTimer() {
         await act(async () => {
-            await vi.runAllTimersAsync();
+            await vi.advanceTimersByTimeAsync(300);
         });
     }
 });
@@ -122,4 +191,13 @@ function pre(text: string): HTMLPreElement {
     code.textContent = text;
     element.append(code);
     return element;
+}
+
+function deferredRenderResult() {
+    let resolve: (value: { ok: true; svg: string }) => void = () => {};
+    const promise = new Promise<{ ok: true; svg: string }>((resolvePromise) => {
+        resolve = resolvePromise;
+    });
+
+    return { promise, resolve };
 }
