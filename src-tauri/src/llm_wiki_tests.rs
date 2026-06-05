@@ -35,6 +35,16 @@ use crate::llm_wiki_models::WikiContextBundle;
 use crate::llm_wiki_query::{mechanical_lint_report, search_wiki_pages, write_digest_page};
 use crate::models::WorkspaceError;
 
+fn report_section<'a>(report: &'a str, heading: &str) -> &'a str {
+    let Some((_, after_heading)) = report.split_once(heading) else {
+        return "";
+    };
+    after_heading
+        .split_once("\n## ")
+        .map(|(section, _)| section)
+        .unwrap_or(after_heading)
+}
+
 #[test]
 fn llm_config_round_trips_outside_workspace_files() {
     let dir = tempdir().unwrap();
@@ -1130,11 +1140,28 @@ fn llm_wiki_digest_returns_insufficient_context_without_llm_config_when_index_ha
 #[test]
 fn llm_wiki_lint_records_log_entry() {
     let root = tempdir().unwrap();
+    let home = tempdir().unwrap();
     initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::create_dir(home.path().join(".mdx")).unwrap();
+    let original_home = std::env::var_os("HOME");
+    let original_userprofile = std::env::var_os("USERPROFILE");
+    std::env::set_var("HOME", home.path().canonicalize().unwrap());
+    std::env::remove_var("USERPROFILE");
 
     let report = llm_wiki_lint(root.path().to_string_lossy().into_owned()).unwrap();
 
+    if let Some(value) = original_home {
+        std::env::set_var("HOME", value);
+    } else {
+        std::env::remove_var("HOME");
+    }
+    if let Some(value) = original_userprofile {
+        std::env::set_var("USERPROFILE", value);
+    } else {
+        std::env::remove_var("USERPROFILE");
+    }
     assert!(report.contains("无"));
+    assert!(report.contains("未配置 LLM，已跳过。"));
     let log = std::fs::read_to_string(root.path().join("log.md")).unwrap();
     assert!(log.contains("- lint"));
 }
@@ -1251,6 +1278,50 @@ fn mechanical_lint_reports_broken_wikilinks() {
 }
 
 #[test]
+fn mechanical_lint_reports_orphan_pages_and_missing_index_entries() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    write_managed_file(
+        root.path(),
+        "wiki/concepts/orphan.md",
+        "# Orphan\n\nNo backlinks.\n".as_bytes(),
+    )
+    .unwrap();
+
+    let report = mechanical_lint_report(root.path()).unwrap();
+
+    assert!(report.contains("## 孤儿页面"));
+    assert!(report.contains("wiki/concepts/orphan.md"));
+    assert!(report.contains("## Index 缺失"));
+    assert!(report.contains("[[concepts/orphan|orphan]]"));
+}
+
+#[test]
+fn mechanical_lint_reports_unstable_wikilinks_and_missing_source_provenance() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    write_managed_file(
+        root.path(),
+        "wiki/concepts/llm-wiki.md",
+        "# LLM Wiki\n\nSee [[Karpathy]].\n".as_bytes(),
+    )
+    .unwrap();
+    write_managed_file(
+        root.path(),
+        "wiki/sources/note.md",
+        "# Note\n\nNo raw path here.\n".as_bytes(),
+    )
+    .unwrap();
+
+    let report = mechanical_lint_report(root.path()).unwrap();
+
+    assert!(report.contains("## 非稳定 Wikilink"));
+    assert!(report.contains("wiki/concepts/llm-wiki.md: [[Karpathy]]"));
+    assert!(report.contains("## Source provenance 缺失"));
+    assert!(report.contains("wiki/sources/note.md"));
+}
+
+#[test]
 fn mechanical_lint_accepts_heading_alias_and_extension_links() {
     let root = tempdir().unwrap();
     initialize_llm_wiki_workspace(root.path()).unwrap();
@@ -1268,10 +1339,11 @@ fn mechanical_lint_accepts_heading_alias_and_extension_links() {
     .unwrap();
 
     let report = mechanical_lint_report(root.path()).unwrap();
+    let broken_section = report_section(&report, "## 断链");
 
     assert!(report.contains("断链"));
-    assert!(report.contains("无"));
-    assert!(!report.contains("[[Page"));
+    assert!(broken_section.contains("无"));
+    assert!(!broken_section.contains("[[Page"));
 }
 
 #[test]
@@ -1287,10 +1359,11 @@ fn mechanical_lint_accepts_wiki_root_qualified_path_links() {
     .unwrap();
 
     let report = mechanical_lint_report(root.path()).unwrap();
+    let broken_section = report_section(&report, "## 断链");
 
-    assert!(report.contains("无"));
-    assert!(!report.contains("[[wiki/concepts/B"));
-    assert!(!report.contains("[[concepts/B"));
+    assert!(broken_section.contains("无"));
+    assert!(!broken_section.contains("[[wiki/concepts/B"));
+    assert!(!broken_section.contains("[[concepts/B"));
 }
 
 #[test]
@@ -1306,9 +1379,10 @@ fn mechanical_lint_accepts_source_relative_path_links() {
     .unwrap();
 
     let report = mechanical_lint_report(root.path()).unwrap();
+    let broken_section = report_section(&report, "## 断链");
 
-    assert!(report.contains("无"));
-    assert!(!report.contains("[[B"));
+    assert!(broken_section.contains("无"));
+    assert!(!broken_section.contains("[[B"));
 }
 
 #[cfg(unix)]

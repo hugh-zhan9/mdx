@@ -468,9 +468,40 @@ pub fn llm_wiki_digest_mock(
 #[tauri::command]
 pub fn llm_wiki_lint(root_path: String) -> Result<String, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
-    let report = mechanical_lint_report(&root)?;
+    let mut report = mechanical_lint_report(&root)?;
+    let config = load_optional_llm_config_from_path(default_llm_config_path()?)?;
+    if let Some(config) = config {
+        let index = read_optional_managed_text(&root, "index.md")?;
+        let prompt = build_semantic_lint_prompt(&index, &report);
+        match call_chat_completion(
+            &config,
+            vec![
+                system_message("You review local markdown knowledge base health."),
+                user_message(prompt),
+            ],
+        ) {
+            Ok(semantic_report) => {
+                report.push_str("## LLM 语义检查\n");
+                report.push_str(semantic_report.trim());
+                report.push('\n');
+            }
+            Err(error) => {
+                report.push_str("## LLM 语义检查\n");
+                report.push_str(&format!("LLM 语义检查失败：{error}\n"));
+            }
+        }
+    } else {
+        report.push_str("## LLM 语义检查\n");
+        report.push_str("未配置 LLM，已跳过。\n");
+    }
     append_log_entry(&root, "lint")?;
     Ok(report)
+}
+
+fn build_semantic_lint_prompt(index: &str, mechanical_report: &str) -> String {
+    format!(
+        "Review this LLM Wiki mechanically generated report and index. Report potential contradictions, stale claims, duplicate pages, missing concepts, and follow-up questions in Chinese. Do not modify files.\n\nIndex:\n{index}\n\nMechanical report:\n{mechanical_report}"
+    )
 }
 
 #[tauri::command]

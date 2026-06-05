@@ -4,6 +4,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use crate::llm_wiki_fs::{ensure_managed_file_target, relative_path, write_managed_file};
+use crate::llm_wiki_links::{extract_stable_wikilinks, resolve_wiki_link_target};
 use crate::llm_wiki_models::WikiSearchResult;
 use crate::models::WorkspaceError;
 
@@ -77,13 +78,37 @@ pub fn mechanical_lint_report(root: impl AsRef<Path>) -> Result<String, Workspac
     let files = markdown_wiki_files(root)?;
     let page_index = LintPageIndex::new(root, &files)?;
     let mut broken = Vec::new();
+    let mut orphan_pages = Vec::new();
+    let mut missing_index_entries = Vec::new();
+    let mut unstable_links = Vec::new();
+    let mut source_pages_missing_provenance = Vec::new();
+    let mut incoming_stable_links = BTreeMap::<String, usize>::new();
 
-    for path in files {
+    for path in &files {
         let source = relative_path(root, &path)?;
         if source == "wiki/knowledge-graph.md" {
             continue;
         }
         let contents = safe_read_wiki_markdown(root, &path)?;
+        for link in extract_stable_wikilinks(&contents) {
+            if let Some(target_path) = resolve_wiki_link_target(&link.target) {
+                if target_path != source {
+                    *incoming_stable_links.entry(target_path).or_default() += 1;
+                }
+            }
+        }
+        let stable_targets = extract_stable_wikilinks(&contents)
+            .into_iter()
+            .map(|link| link.target)
+            .collect::<Vec<_>>();
+        for target in raw_wikilink_targets(&contents) {
+            if is_self_anchor_wikilink(&target) {
+                continue;
+            }
+            if !stable_targets.iter().any(|stable| stable == &target) {
+                unstable_links.push(format!("- {source}: [[{target}]]"));
+            }
+        }
         for target in wikilink_targets(&contents) {
             if is_self_anchor_wikilink(&target) {
                 continue;
@@ -92,19 +117,63 @@ pub fn mechanical_lint_report(root: impl AsRef<Path>) -> Result<String, Workspac
                 broken.push(format!("- {source}: [[{target}]]"));
             }
         }
+        if source.starts_with("wiki/sources/") && !has_source_provenance(&contents) {
+            source_pages_missing_provenance.push(format!("- {source}"));
+        }
+    }
+
+    let index = read_required_managed_text(root, "index.md")?;
+    let indexed_pages = extract_stable_wikilinks(&index)
+        .into_iter()
+        .filter_map(|link| resolve_wiki_link_target(&link.target))
+        .collect::<Vec<_>>();
+
+    for path in &files {
+        let source = relative_path(root, path)?;
+        if source == "wiki/knowledge-graph.md" {
+            continue;
+        }
+        if !incoming_stable_links.contains_key(&source) {
+            orphan_pages.push(format!("- {source}"));
+        }
+        if !indexed_pages.iter().any(|indexed| indexed == &source) {
+            missing_index_entries.push(format!("- {}", index_entry_for_page(&source)?));
+        }
     }
 
     broken.sort();
     broken.dedup();
+    orphan_pages.sort();
+    orphan_pages.dedup();
+    missing_index_entries.sort();
+    missing_index_entries.dedup();
+    unstable_links.sort();
+    unstable_links.dedup();
+    source_pages_missing_provenance.sort();
+    source_pages_missing_provenance.dedup();
 
-    let mut report = "# 知识库检查报告\n\n## 断链\n".to_string();
-    if broken.is_empty() {
+    let mut report = "# 知识库检查报告\n\n".to_string();
+    append_report_section(&mut report, "## 断链", &broken);
+    append_report_section(&mut report, "## 孤儿页面", &orphan_pages);
+    append_report_section(&mut report, "## Index 缺失", &missing_index_entries);
+    append_report_section(&mut report, "## 非稳定 Wikilink", &unstable_links);
+    append_report_section(
+        &mut report,
+        "## Source provenance 缺失",
+        &source_pages_missing_provenance,
+    );
+    Ok(report)
+}
+
+fn append_report_section(report: &mut String, heading: &str, lines: &[String]) {
+    report.push_str(heading);
+    report.push('\n');
+    if lines.is_empty() {
         report.push_str("无\n");
     } else {
-        report.push_str(&broken.join("\n"));
+        report.push_str(&lines.join("\n"));
         report.push('\n');
     }
-    Ok(report)
 }
 
 fn markdown_wiki_files(root: &Path) -> Result<Vec<PathBuf>, WorkspaceError> {
@@ -342,6 +411,24 @@ fn wikilink_targets(contents: &str) -> Vec<String> {
     targets
 }
 
+fn raw_wikilink_targets(contents: &str) -> Vec<String> {
+    let mut targets = Vec::new();
+    let mut remaining = contents;
+    while let Some(start) = remaining.find("[[") {
+        remaining = &remaining[start + 2..];
+        let Some(end) = remaining.find("]]") else {
+            break;
+        };
+        let raw = &remaining[..end];
+        let target = raw.split('|').next().unwrap_or("").trim();
+        if !target.is_empty() {
+            targets.push(target.to_string());
+        }
+        remaining = &remaining[end + 2..];
+    }
+    targets
+}
+
 fn is_self_anchor_wikilink(target: &str) -> bool {
     target
         .split('|')
@@ -349,6 +436,24 @@ fn is_self_anchor_wikilink(target: &str) -> bool {
         .unwrap_or("")
         .trim()
         .starts_with('#')
+}
+
+fn has_source_provenance(contents: &str) -> bool {
+    contents.contains("raw/") || contents.contains("Source:") || contents.contains("来源：")
+}
+
+fn index_entry_for_page(source: &str) -> Result<String, WorkspaceError> {
+    let target = source
+        .strip_prefix("wiki/")
+        .and_then(|path| path.strip_suffix(".md"))
+        .ok_or_else(|| {
+            WorkspaceError::new(
+                "invalid_llm_wiki_page",
+                "wiki page path cannot be converted to an index entry",
+            )
+        })?;
+    let label = target.rsplit('/').next().unwrap_or(target);
+    Ok(format!("[[{target}|{label}]]"))
 }
 
 struct LintPageIndex {

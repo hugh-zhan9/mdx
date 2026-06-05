@@ -159,6 +159,14 @@ pub struct LlmWikiQueryResponse {
     pub insufficient_context: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+pub struct LlmWikiLintResponse {
+    pub report: String,
+    pub semantic_ran: bool,
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
