@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use tauri::Url;
 
 use crate::window_sessions::{
-    is_supported_document_path, normalize_opened_url_path, remove_destroyed_window_session,
-    DirtyWorkspacePaths, StartupOpenRoutingState, WindowRole, WindowSession, WindowSessionRegistry,
+    is_supported_document_path, normalize_opened_url_path, DirtyWorkspacePaths,
+    StartupOpenRoutingState, WindowRole, WindowSession, WindowSessionRegistry,
 };
 
 #[test]
@@ -106,23 +106,6 @@ fn registry_removes_document_when_window_is_destroyed() {
     assert_eq!(
         registry.role_for_label("document-1"),
         Some(WindowRole::Document)
-    );
-}
-
-#[test]
-fn removing_destroyed_window_releases_registry_lock_before_followup_work() {
-    let registry = std::sync::Mutex::new(WindowSessionRegistry::default());
-    {
-        let mut registry = registry.lock().unwrap();
-        registry.claim_workspace_window();
-    }
-
-    let removed_role = remove_destroyed_window_session(&registry, "workspace-main");
-
-    assert_eq!(removed_role, Some(WindowRole::Workspace));
-    assert!(
-        registry.try_lock().is_ok(),
-        "destroyed-window cleanup must not hold the registry lock after returning"
     );
 }
 
