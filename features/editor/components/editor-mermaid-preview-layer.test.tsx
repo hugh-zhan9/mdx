@@ -158,6 +158,45 @@ describe("EditorMermaidPreviewLayer", () => {
         );
     });
 
+    it("does not restore visibility on unrelated hidden code blocks", async () => {
+        const unrelated = pre("plain text");
+        unrelated.hidden = true;
+        unrelated.setAttribute("aria-hidden", "true");
+        editorRoot.replaceChildren(unrelated);
+
+        await renderLayer("```text\nplain text\n```");
+
+        expect(unrelated.hidden).toBe(true);
+        expect(unrelated.getAttribute("aria-hidden")).toBe("true");
+    });
+
+    it("does not show cached svg when mermaid source changes at the same index", async () => {
+        await renderLayer("```mermaid\ngraph TD\n  A --> B\n```");
+
+        const preview = editorRoot.querySelector<HTMLElement>(
+            "[data-mdx-mermaid-preview]",
+        );
+        expect(preview?.innerHTML).toContain("A");
+
+        const nextRender = deferredRenderResult();
+        renderMermaidDiagram.mockImplementationOnce(() => nextRender.promise);
+
+        await renderLayerWithoutTimers("```mermaid\ngraph TD\n  A --> C\n```");
+
+        expect(preview?.innerHTML).not.toContain("A");
+
+        await flushDebounceTimer();
+        await act(async () => {
+            nextRender.resolve({
+                ok: true,
+                svg: "<svg><text>B</text></svg>",
+            });
+            await Promise.resolve();
+        });
+
+        expect(preview?.innerHTML).toContain("B");
+    });
+
     async function renderLayer(markdown: string) {
         await renderLayerWithoutTimers(markdown);
         await act(async () => {

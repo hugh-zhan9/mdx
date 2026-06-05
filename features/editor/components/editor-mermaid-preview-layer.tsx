@@ -18,6 +18,7 @@ interface EditorMermaidPreviewLayerProps {
 }
 
 interface RenderState {
+    code: string;
     error: string | null;
     svg: string | null;
 }
@@ -47,14 +48,19 @@ export function EditorMermaidPreviewLayer({
 
         const timers = mappings.map((mapping) => {
             const preview = ensurePreviewNode(mapping.pre, mapping.stableId);
-            const state = renderStatesRef.current.get(mapping.stableId) ?? {
-                error: null,
-                svg: null,
-            };
+            const cachedState = renderStatesRef.current.get(mapping.stableId);
+            const state =
+                cachedState?.code === mapping.fence.code
+                    ? cachedState
+                    : {
+                          code: mapping.fence.code,
+                          error: null,
+                          svg: null,
+                      };
             const isEditing = editingId === mapping.stableId;
             const hasError = Boolean(state.error);
 
-            applyMermaidSourceVisibility(
+            applyManagedMermaidSourceVisibility(
                 mapping.pre,
                 hasError ? "error" : isEditing ? "editing" : "preview",
             );
@@ -81,8 +87,16 @@ export function EditorMermaidPreviewLayer({
                     renderStatesRef.current.set(
                         mapping.stableId,
                         result.ok
-                            ? { error: null, svg: result.svg }
-                            : { error: result.error, svg: null },
+                            ? {
+                                  code: mapping.fence.code,
+                                  error: null,
+                                  svg: result.svg,
+                              }
+                            : {
+                                  code: mapping.fence.code,
+                                  error: result.error,
+                                  svg: null,
+                              },
                     );
                     const nextState = renderStatesRef.current.get(
                         mapping.stableId,
@@ -90,7 +104,7 @@ export function EditorMermaidPreviewLayer({
                     if (!nextState) {
                         return;
                     }
-                    applyMermaidSourceVisibility(
+                    applyManagedMermaidSourceVisibility(
                         mapping.pre,
                         nextState.error
                             ? "error"
@@ -147,6 +161,14 @@ export function EditorMermaidPreviewLayer({
 
 function currentMermaidTheme(): MermaidEditorTheme {
     return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+}
+
+function applyManagedMermaidSourceVisibility(
+    pre: HTMLPreElement,
+    mode: Parameters<typeof applyMermaidSourceVisibility>[1],
+): void {
+    pre.dataset.mdxMermaidSource = "true";
+    applyMermaidSourceVisibility(pre, mode);
 }
 
 function ensurePreviewNode(pre: HTMLPreElement, stableId: string): HTMLElement {
@@ -231,12 +253,13 @@ function restoreUnmappedSourceVisibility(
     for (const pre of Array.from(
         editorRoot.querySelectorAll<HTMLPreElement>("pre.DOMD-Pre"),
     )) {
-        if (mappedSources.has(pre) || !hasMermaidSourceVisibility(pre)) {
+        if (mappedSources.has(pre) || !isManagedMermaidSource(pre)) {
             continue;
         }
 
         pre.hidden = false;
         pre.removeAttribute("aria-hidden");
+        delete pre.dataset.mdxMermaidSource;
         pre.classList.remove(
             "mdx-mermaid-source-hidden",
             "mdx-mermaid-source-editing",
@@ -245,10 +268,9 @@ function restoreUnmappedSourceVisibility(
     }
 }
 
-function hasMermaidSourceVisibility(pre: HTMLPreElement): boolean {
+function isManagedMermaidSource(pre: HTMLPreElement): boolean {
     return (
-        pre.hidden ||
-        pre.getAttribute("aria-hidden") === "true" ||
+        pre.dataset.mdxMermaidSource === "true" ||
         pre.classList.contains("mdx-mermaid-source-hidden") ||
         pre.classList.contains("mdx-mermaid-source-editing") ||
         pre.classList.contains("mdx-mermaid-source-error")
