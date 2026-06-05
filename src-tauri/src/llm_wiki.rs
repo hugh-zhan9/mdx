@@ -215,9 +215,11 @@ pub fn llm_wiki_ingest_raw_file_sync(
         }
     };
     let selection_prompt = format!("{raw_relative_path}\n{analysis_json}");
-    let related_context = select_wiki_context(&root, &config, "ingest", &selection_prompt)
-        .map(|bundle| bundle.markdown)
-        .unwrap_or_default();
+    let related_context = related_context_or_log_failure(
+        &root,
+        &raw_relative_path,
+        select_wiki_context_from_index(&root, &config, "ingest", &selection_prompt, index.clone()),
+    )?;
     let existing_context = format!(
         "# Purpose\n{purpose}\n\n# AGENTS\n{agents}\n\n# Index\n{index}\n\n# Related Wiki Pages\n{related_context}\n"
     );
@@ -642,14 +644,31 @@ fn select_wiki_context_with_index(
     build_wiki_context_with_selector_output(root, request, &selection_output)
 }
 
-fn select_wiki_context(
+fn select_wiki_context_from_index(
     root: &Path,
     config: &LlmProviderConfig,
     purpose: &str,
     prompt: &str,
+    index: String,
 ) -> Result<WikiContextBundle, WorkspaceError> {
-    let index = read_optional_managed_text(root, "index.md")?;
     select_wiki_context_with_index(root, config, purpose, prompt, index)
+}
+
+pub(crate) fn related_context_or_log_failure(
+    root: &Path,
+    raw_relative_path: &str,
+    result: Result<WikiContextBundle, WorkspaceError>,
+) -> Result<String, WorkspaceError> {
+    match result {
+        Ok(bundle) => Ok(bundle.markdown),
+        Err(error) => {
+            let _ = append_log_entry(
+                root,
+                &format!("ingest failed {raw_relative_path} related context: {error}"),
+            );
+            Err(error)
+        }
+    }
 }
 
 fn index_has_wiki_page_candidates(index: &str) -> bool {

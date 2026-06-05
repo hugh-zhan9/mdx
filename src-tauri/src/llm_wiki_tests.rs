@@ -5,6 +5,7 @@ use crate::llm_wiki::{
     llm_config_to_public, llm_wiki_digest_sync, llm_wiki_get_config, llm_wiki_get_log,
     llm_wiki_ingest_mock_output, llm_wiki_lint, llm_wiki_query_sync, llm_wiki_refresh_graph_sync,
     llm_wiki_rescan_raw_sync, llm_wiki_rescan_raw_sync_with_exclusions, llm_wiki_update_config,
+    related_context_or_log_failure,
 };
 use crate::llm_wiki_context::{
     build_wiki_context_with_selector_output, parse_page_selection, validate_wiki_page_path,
@@ -30,6 +31,8 @@ use crate::llm_wiki_llm::{
 };
 use crate::llm_wiki_models::LlmProviderConfig;
 use crate::llm_wiki_models::LlmWikiCache;
+use crate::llm_wiki_models::WikiContextBundle;
+use crate::models::WorkspaceError;
 use crate::llm_wiki_query::{mechanical_lint_report, search_wiki_pages, write_digest_page};
 
 #[test]
@@ -411,6 +414,48 @@ fn ingest_analysis_prompt_reinforces_raw_only_for_ingest() {
 
     assert!(prompt.contains("Analyze this raw source for ingest"));
     assert!(prompt.contains("Do not answer user queries from raw sources"));
+}
+
+#[test]
+fn ingest_related_context_selection_error_is_logged() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+
+    let error = related_context_or_log_failure(
+        root.path(),
+        "raw/notes/a.md",
+        Err(WorkspaceError::new(
+            "llm_wiki_selection_failed",
+            "bad selection",
+        )),
+    )
+    .unwrap_err();
+
+    assert_eq!(error.error_code(), "llm_wiki_selection_failed");
+    let log = std::fs::read_to_string(root.path().join("log.md")).unwrap();
+    assert!(log.contains("ingest failed raw/notes/a.md related context"));
+    assert!(log.contains("bad selection"));
+}
+
+#[test]
+fn ingest_related_context_allows_empty_context() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+
+    let context = related_context_or_log_failure(
+        root.path(),
+        "raw/notes/a.md",
+        Ok(WikiContextBundle {
+            references: Vec::new(),
+            markdown: String::new(),
+            selection_reason: Some("index has no wiki page candidates".to_string()),
+        }),
+    )
+    .unwrap();
+
+    assert_eq!(context, "");
+    let log = std::fs::read_to_string(root.path().join("log.md")).unwrap();
+    assert!(!log.contains("related context"));
 }
 
 #[test]
