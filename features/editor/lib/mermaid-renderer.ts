@@ -1,6 +1,7 @@
 import mermaid from "mermaid";
 
 export type MermaidEditorTheme = "light" | "dark";
+type MermaidRendererTheme = "default" | "dark";
 
 export type MermaidRenderResult =
     | { ok: true; svg: string }
@@ -40,7 +41,11 @@ export function initializeMermaid(theme: MermaidEditorTheme): void {
     mermaid.initialize({
         securityLevel: "strict",
         startOnLoad: false,
-        theme,
+        theme: toMermaidTheme(theme),
     });
     initializedTheme = theme;
+}
+
+function toMermaidTheme(theme: MermaidEditorTheme): MermaidRendererTheme {
+    return theme === "light" ? "default" : "dark";
 }
