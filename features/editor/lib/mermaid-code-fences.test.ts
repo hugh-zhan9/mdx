@@ -53,7 +53,7 @@ describe("mermaid code fences", () => {
 
     it("ignores unclosed fences and longer closing fences are accepted", () => {
         expect(
-            findMermaidCodeFences("````mermaid\ngraph TD\n  A --> B\n````"),
+            findMermaidCodeFences("````mermaid\ngraph TD\n  A --> B\n`````"),
         ).toHaveLength(1);
         expect(findMermaidCodeFences("```mermaid\ngraph TD")).toEqual([]);
     });
