@@ -14,6 +14,7 @@ import {
     DOMDProvider,
 } from "./editor-kernel-adapter";
 import { EditorFindBar } from "./editor-find-bar";
+import { EditorMermaidPreviewLayer } from "./editor-mermaid-preview-layer";
 import { useEditorBridge } from "../hooks/use-editor-bridge";
 import { useEditorFindReplace } from "../hooks/use-editor-find-replace";
 import {
@@ -414,6 +415,10 @@ function EditorPaneInner({
                     onPasteCapture={handlePasteCapture}
                 >
                     <DOMD />
+                    <EditorMermaidPreviewLayer
+                        editorRoot={editorRoot}
+                        markdown={bridge.currentMarkdown}
+                    />
                 </div>
             </div>
         </div>

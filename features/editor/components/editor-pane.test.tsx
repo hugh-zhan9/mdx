@@ -17,6 +17,10 @@ vi.mock("@do-md/react", () => ({
 
 vi.mock("@do-md/react/style.css", () => ({}));
 
+vi.mock("./editor-mermaid-preview-layer", () => ({
+    EditorMermaidPreviewLayer: () => null,
+}));
+
 describe("editor find/replace shortcuts", () => {
     it("recognizes Command+F and Ctrl+F without alt", () => {
         expect(
