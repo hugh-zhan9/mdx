@@ -69,6 +69,22 @@ describe("visible text search", () => {
         expect(matches).toEqual([{ start: 6, end: 9 }]);
     });
 
+    it("excludes hidden mermaid source and includes it when revealed", () => {
+        const root = element("div", "DOMD-Root");
+        const pre = child(root, "pre", "DOMD-Pre mdx-mermaid-source-hidden");
+        pre.hidden = true;
+        pre.setAttribute("aria-hidden", "true");
+        child(pre, "code", "DOMD-PreCode", "graph TD\n  HiddenRaw --> B");
+
+        expect(buildVisibleTextIndex(root).text).toBe("");
+
+        pre.hidden = false;
+        pre.removeAttribute("aria-hidden");
+        pre.className = "DOMD-Pre";
+
+        expect(buildVisibleTextIndex(root).text).toContain("HiddenRaw");
+    });
+
     it("excludes hidden markdown syntax marker elements", () => {
         const root = element("div", "DOMD-Root");
         const paragraph = child(root, "p", "DOMD-P");
@@ -367,6 +383,10 @@ class TestElement extends TestNode {
 
     setAttribute(name: string, value: string): void {
         this.attributes.set(name, value);
+    }
+
+    removeAttribute(name: string): void {
+        this.attributes.delete(name);
     }
 }
 
