@@ -46,6 +46,7 @@ pub fn write_digest_page(
 ) -> Result<String, WorkspaceError> {
     let root = root.as_ref();
     let safe_title = safe_digest_title(title)?;
+    let display_title = title.trim();
     let digest_path = format!("wiki/syntheses/{safe_title}.md");
 
     ensure_managed_file_target(root, &digest_path)?;
@@ -53,12 +54,15 @@ pub fn write_digest_page(
     ensure_managed_file_target(root, "log.md")?;
 
     let index = read_required_managed_text(root, "index.md")?;
-    let index = ensure_line(index, &format!("- [[syntheses/{safe_title}|{safe_title}]]"));
+    let index = ensure_line(
+        index,
+        &format!("- [[syntheses/{safe_title}|{display_title}]]"),
+    );
 
     let log = read_required_managed_text(root, "log.md")?;
     let log = ensure_line(
         log,
-        &format!("- digest [[syntheses/{safe_title}|{safe_title}]]"),
+        &format!("- digest [[syntheses/{safe_title}|{display_title}]]"),
     );
 
     write_managed_file(root, &digest_path, content.as_bytes())?;
@@ -493,7 +497,7 @@ fn safe_digest_title(title: &str) -> Result<String, WorkspaceError> {
             "综述文件名不能为空，只能包含英文字母、数字、连字符或下划线",
         ));
     }
-    Ok(title.to_string())
+    Ok(title.to_ascii_lowercase())
 }
 
 pub(crate) fn read_required_managed_text(

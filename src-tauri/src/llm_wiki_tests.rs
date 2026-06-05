@@ -473,6 +473,7 @@ fn stable_wikilink_contract_rejects_unqualified_name_links() {
     assert!(is_stable_wiki_link_target("concepts/llm-wiki"));
     assert!(is_stable_wiki_link_target("sources/raw-note"));
     assert!(is_stable_wiki_link_target("syntheses/karpathy-llm-wiki"));
+    assert!(is_stable_wiki_link_target("syntheses/rust"));
 
     assert!(!is_stable_wiki_link_target("Karpathy"));
     assert!(!is_stable_wiki_link_target("../entities/karpathy"));
@@ -1111,12 +1112,12 @@ fn write_digest_page_saves_under_syntheses_and_updates_index_and_log() {
 
     let path = write_digest_page(root.path(), "Rust", "# Rust\n").unwrap();
 
-    assert_eq!(path, "wiki/syntheses/Rust.md");
-    assert!(root.path().join("wiki/syntheses/Rust.md").is_file());
+    assert_eq!(path, "wiki/syntheses/rust.md");
+    assert!(root.path().join("wiki/syntheses/rust.md").is_file());
     let index = std::fs::read_to_string(root.path().join("index.md")).unwrap();
     let log = std::fs::read_to_string(root.path().join("log.md")).unwrap();
-    assert!(index.contains("[[syntheses/Rust|Rust]]"));
-    assert!(log.contains("- digest [[syntheses/Rust|Rust]]"));
+    assert!(index.contains("[[syntheses/rust|Rust]]"));
+    assert!(log.contains("- digest [[syntheses/rust|Rust]]"));
 }
 
 #[test]
