@@ -43,31 +43,61 @@ const INITIAL_DIRS: &[&str] = &[
 const LEGACY_AGENTS_PLACEHOLDER: &str = "# LLM Wiki Rules\n";
 pub(crate) const DEFAULT_AGENTS_MARKDOWN: &str = r#"# LLM Wiki Rules
 
-## Scope
+## Layers
 
-- Build a local Markdown knowledge base from raw notes under `raw/`.
-- Use only the raw source and existing wiki context. Do not invent facts.
-- Write concise Chinese by default unless the source clearly requires another language.
+- raw/ is the immutable source layer. Read raw sources during ingest only.
+- wiki/ is the maintained knowledge layer. The LLM may create and update wiki pages.
+- AGENTS.md is the schema layer. Follow these rules before writing or answering.
+- index.md is the navigation entry point for humans and LLMs.
+- log.md is the audit timeline for ingest, query, digest, lint, and graph operations.
 
-## Files
+## Query Boundary
+
+- Do not use raw documents during query.
+- Answer questions from `index.md` and selected wiki pages only.
+- If the wiki context is insufficient, say so instead of inventing facts.
+- Query should append `log.md` but must not automatically write new wiki pages.
+
+## Ingest Workflow
+
+- Read one raw source, `purpose.md`, `AGENTS.md`, `index.md`, and relevant existing wiki pages.
+- Produce one source summary under `wiki/sources/`.
+- Update related pages under `wiki/entities/`, `wiki/concepts/`, and `wiki/syntheses/` when useful.
+- Update `index.md` so it remains the navigation entry point.
+- Append `log.md`.
+- Preserve uncertainty, disagreements, and provenance.
+
+## Digest Workflow
+
+- Use digest only when the user explicitly wants to persist a synthesis.
+- Write cross-source synthesis pages under `wiki/syntheses/`.
+- Update `index.md` and append `log.md`.
+
+## Page Types
 
 - Put source summaries under `wiki/sources/`.
 - Put named people, projects, products, systems, and organizations under `wiki/entities/`.
-- Put reusable ideas, methods, terms, and decisions under `wiki/concepts/`.
-- Put cross-source summaries under `wiki/syntheses/`.
-- Keep output paths ASCII, lowercase, descriptive, and stable.
+- Put reusable ideas, methods, terms, workflows, constraints, and decisions under `wiki/concepts/`.
+- Put cross-source summaries and comparisons under `wiki/syntheses/`.
 
-## Links
+## Paths And Links
 
-- Use `[[wikilinks]]` for important entities and concepts.
-- Prefer links to existing page titles when possible.
-- Use aliases such as `[[Target|Label]]` only when the label improves reading.
+- File paths must be ASCII lowercase slugs using letters, digits, hyphens, underscores, and `/`.
+- Use `[[wikilinks]]` only as stable path links with aliases.
+- Link to wiki pages with stable path links and aliases:
+  - `[[sources/example-source|Readable Label]]`
+  - `[[entities/example|Readable Label]]`
+  - `[[concepts/example-concept|Readable Label]]`
+  - `[[syntheses/example-synthesis|Readable Label]]`
+- Avoid unqualified links such as `[[Karpathy]]` in new generated pages.
 
-## Quality
+## Page Quality
 
+- Write concise Chinese by default unless the source clearly requires another language.
+- Keep pages scan-friendly with clear headings and short sections.
+- Include source provenance in generated source pages and factual claims.
 - Preserve source nuance and uncertainty.
-- Keep each generated page scan-friendly with clear headings and short sections.
-- Include source provenance in generated source pages.
+- Do not invent facts.
 "#;
 
 const RAW_INGEST_PDF_EXTENSIONS: &[&str] = &["pdf"];

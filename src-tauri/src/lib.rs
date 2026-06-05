@@ -18,6 +18,7 @@ mod document;
 mod llm_wiki;
 mod llm_wiki_fs;
 mod llm_wiki_ingest;
+mod llm_wiki_links;
 mod llm_wiki_llm;
 mod llm_wiki_models;
 mod llm_wiki_query;

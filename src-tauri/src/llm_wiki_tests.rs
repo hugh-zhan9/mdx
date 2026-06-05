@@ -15,6 +15,9 @@ use crate::llm_wiki_ingest::{
     build_ingest_analysis_prompt, build_ingest_generation_prompt, is_safe_llm_wiki_output_path,
     parse_file_blocks, write_ingest_outputs, LlmWikiFileBlock,
 };
+use crate::llm_wiki_links::{
+    extract_stable_wikilinks, is_stable_wiki_link_target, resolve_wiki_link_target,
+};
 use crate::llm_wiki_llm::{
     build_openai_chat_request, build_openai_chat_stream_request, build_openai_responses_request,
     extract_chat_completion_content, extract_chat_completion_stream_content,
@@ -432,6 +435,58 @@ fn initialize_creates_llm_wiki_structure_without_migrating_markdown() {
     )
     .unwrap();
     assert_eq!(cache_json["version"], 1);
+}
+
+#[test]
+fn default_agents_rules_describe_karpathy_style_schema() {
+    let root = tempdir().unwrap();
+
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+
+    let agents = std::fs::read_to_string(root.path().join("AGENTS.md")).unwrap();
+    assert!(agents.contains("raw/ is the immutable source layer"));
+    assert!(agents.contains("wiki/ is the maintained knowledge layer"));
+    assert!(agents.contains("index.md is the navigation entry point"));
+    assert!(agents.contains("[[entities/example|Readable Label]]"));
+    assert!(agents.contains("Do not use raw documents during query"));
+}
+
+#[test]
+fn stable_wikilink_parser_accepts_path_alias_links() {
+    let links = extract_stable_wikilinks(
+        "[[entities/karpathy|Karpathy]] and [[concepts/llm-wiki|LLM Wiki]]",
+    );
+
+    assert_eq!(links.len(), 2);
+    assert_eq!(links[0].target, "entities/karpathy");
+    assert_eq!(links[0].label.as_deref(), Some("Karpathy"));
+    assert_eq!(links[1].target, "concepts/llm-wiki");
+}
+
+#[test]
+fn stable_wikilink_contract_rejects_unqualified_name_links() {
+    assert!(is_stable_wiki_link_target("entities/karpathy"));
+    assert!(is_stable_wiki_link_target("concepts/llm-wiki"));
+    assert!(is_stable_wiki_link_target("sources/raw-note"));
+    assert!(is_stable_wiki_link_target("syntheses/karpathy-llm-wiki"));
+
+    assert!(!is_stable_wiki_link_target("Karpathy"));
+    assert!(!is_stable_wiki_link_target("../entities/karpathy"));
+    assert!(!is_stable_wiki_link_target("wiki/entities/karpathy"));
+    assert!(!is_stable_wiki_link_target("entities/karpathy.md"));
+}
+
+#[test]
+fn stable_wikilink_resolution_maps_targets_to_wiki_markdown_paths() {
+    assert_eq!(
+        resolve_wiki_link_target("entities/karpathy").unwrap(),
+        "wiki/entities/karpathy.md"
+    );
+    assert_eq!(
+        resolve_wiki_link_target("concepts/llm-wiki#Query").unwrap(),
+        "wiki/concepts/llm-wiki.md"
+    );
+    assert!(resolve_wiki_link_target("Karpathy").is_none());
 }
 
 #[test]
