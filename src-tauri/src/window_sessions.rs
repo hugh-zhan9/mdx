@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use tauri::Url;
 
@@ -169,6 +170,16 @@ impl WindowSessionRegistry {
     pub fn has_document_windows(&self) -> bool {
         !self.document_windows.is_empty() || !self.document_error_windows.is_empty()
     }
+}
+
+pub(crate) fn remove_destroyed_window_session(
+    registry: &Mutex<WindowSessionRegistry>,
+    label: &str,
+) -> Option<WindowRole> {
+    let mut registry = registry.lock().unwrap();
+    let role = registry.role_for_label(label);
+    registry.remove_label(label);
+    role
 }
 
 fn path_to_string(path: &Path) -> String {

@@ -7,8 +7,8 @@ use tauri::{
     AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent, Wry,
 };
 use window_sessions::{
-    is_supported_document_path, normalize_opened_url_path, DirtyWorkspacePaths,
-    StartupOpenRoutingState, WindowRole, WindowSession, WindowSessionRegistry,
+    is_supported_document_path, normalize_opened_url_path, remove_destroyed_window_session,
+    DirtyWorkspacePaths, StartupOpenRoutingState, WindowRole, WindowSession, WindowSessionRegistry,
 };
 
 mod assets;
@@ -600,10 +600,8 @@ pub fn run() {
                 ..
             } => {
                 let state = app.state::<Mutex<WindowSessionRegistry>>();
-                let mut registry = state.lock().unwrap();
-                let was_workspace = registry.role_for_label(&label) == Some(WindowRole::Workspace);
-                registry.remove_label(&label);
-                if was_workspace {
+                let removed_role = remove_destroyed_window_session(state.inner(), &label);
+                if removed_role == Some(WindowRole::Workspace) {
                     let dirty_paths = app.state::<Mutex<DirtyWorkspacePaths>>();
                     let mut dirty_paths = dirty_paths.lock().unwrap();
                     dirty_paths.clear();
