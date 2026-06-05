@@ -1,5 +1,6 @@
 use sha2::{Digest, Sha256};
-use std::sync::{Mutex, OnceLock};
+use std::ffi::OsString;
+use std::sync::{Mutex, MutexGuard, OnceLock};
 use tempfile::tempdir;
 
 use crate::llm_wiki::{
@@ -49,6 +50,42 @@ fn report_section<'a>(report: &'a str, heading: &str) -> &'a str {
 fn llm_config_env_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
+}
+
+struct LlmConfigEnvGuard {
+    _lock: MutexGuard<'static, ()>,
+    home: Option<OsString>,
+    userprofile: Option<OsString>,
+}
+
+impl LlmConfigEnvGuard {
+    fn use_home(path: impl AsRef<std::path::Path>) -> Self {
+        let lock = llm_config_env_lock().lock().unwrap();
+        let home = std::env::var_os("HOME");
+        let userprofile = std::env::var_os("USERPROFILE");
+        std::env::set_var("HOME", path.as_ref());
+        std::env::remove_var("USERPROFILE");
+        Self {
+            _lock: lock,
+            home,
+            userprofile,
+        }
+    }
+}
+
+impl Drop for LlmConfigEnvGuard {
+    fn drop(&mut self) {
+        if let Some(value) = self.home.as_ref() {
+            std::env::set_var("HOME", value);
+        } else {
+            std::env::remove_var("HOME");
+        }
+        if let Some(value) = self.userprofile.as_ref() {
+            std::env::set_var("USERPROFILE", value);
+        } else {
+            std::env::remove_var("USERPROFILE");
+        }
+    }
 }
 
 #[test]
@@ -1149,24 +1186,10 @@ fn llm_wiki_lint_records_log_entry() {
     let home = tempdir().unwrap();
     initialize_llm_wiki_workspace(root.path()).unwrap();
     std::fs::create_dir(home.path().join(".mdx")).unwrap();
-    let _env_guard = llm_config_env_lock().lock().unwrap();
-    let original_home = std::env::var_os("HOME");
-    let original_userprofile = std::env::var_os("USERPROFILE");
-    std::env::set_var("HOME", home.path().canonicalize().unwrap());
-    std::env::remove_var("USERPROFILE");
+    let _env_guard = LlmConfigEnvGuard::use_home(home.path().canonicalize().unwrap());
 
     let report = llm_wiki_lint(root.path().to_string_lossy().into_owned()).unwrap();
 
-    if let Some(value) = original_home {
-        std::env::set_var("HOME", value);
-    } else {
-        std::env::remove_var("HOME");
-    }
-    if let Some(value) = original_userprofile {
-        std::env::set_var("USERPROFILE", value);
-    } else {
-        std::env::remove_var("USERPROFILE");
-    }
     assert!(report.contains("无"));
     assert!(report.contains("未配置 LLM，已跳过。"));
     let log = std::fs::read_to_string(root.path().join("log.md")).unwrap();
@@ -1190,24 +1213,10 @@ fn llm_wiki_lint_does_not_record_log_entry_when_semantic_lint_fails() {
         },
     )
     .unwrap();
-    let _env_guard = llm_config_env_lock().lock().unwrap();
-    let original_home = std::env::var_os("HOME");
-    let original_userprofile = std::env::var_os("USERPROFILE");
-    std::env::set_var("HOME", home_path);
-    std::env::remove_var("USERPROFILE");
+    let _env_guard = LlmConfigEnvGuard::use_home(home_path);
 
     let report = llm_wiki_lint(root.path().to_string_lossy().into_owned()).unwrap();
 
-    if let Some(value) = original_home {
-        std::env::set_var("HOME", value);
-    } else {
-        std::env::remove_var("HOME");
-    }
-    if let Some(value) = original_userprofile {
-        std::env::set_var("USERPROFILE", value);
-    } else {
-        std::env::remove_var("USERPROFILE");
-    }
     assert!(report.contains("## LLM 语义检查"));
     assert!(report.contains("LLM 语义检查失败："));
     let log = std::fs::read_to_string(root.path().join("log.md")).unwrap();
