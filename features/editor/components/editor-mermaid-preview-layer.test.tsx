@@ -20,6 +20,7 @@ describe("EditorMermaidPreviewLayer", () => {
     let host: HTMLDivElement;
     let root: ReturnType<typeof createRoot>;
     let editorRoot: HTMLDivElement;
+    let onVisibilityChange: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
         vi.useFakeTimers();
@@ -30,6 +31,7 @@ describe("EditorMermaidPreviewLayer", () => {
         host = document.createElement("div");
         document.body.append(host);
         root = createRoot(host);
+        onVisibilityChange = vi.fn();
         editorRoot = document.createElement("div");
         editorRoot.className = "DOMD-Root";
         editorRoot.append(pre("graph TD\n  A --> B"));
@@ -38,6 +40,7 @@ describe("EditorMermaidPreviewLayer", () => {
 
     afterEach(() => {
         act(() => root.unmount());
+        delete document.documentElement.dataset.theme;
         editorRoot.remove();
         host.remove();
         vi.useRealTimers();
@@ -68,6 +71,75 @@ describe("EditorMermaidPreviewLayer", () => {
         act(() => preview?.click());
 
         expect(editorRoot.querySelector("pre")?.hidden).toBe(false);
+    });
+
+    it("notifies when mermaid source visibility changes", async () => {
+        await renderLayer("```mermaid\ngraph TD\n  A --> B\n```");
+        const callsAfterPreview = onVisibilityChange.mock.calls.length;
+
+        expect(callsAfterPreview).toBeGreaterThan(0);
+
+        const preview = editorRoot.querySelector<HTMLElement>(
+            "[data-mdx-mermaid-preview]",
+        );
+        act(() => preview?.click());
+
+        expect(onVisibilityChange.mock.calls.length).toBeGreaterThan(
+            callsAfterPreview,
+        );
+    });
+
+    it("exits editing when focus moves from source to another editor node", async () => {
+        const paragraph = document.createElement("p");
+        paragraph.textContent = "Next paragraph";
+        paragraph.tabIndex = -1;
+        editorRoot.append(paragraph);
+        await renderLayer("```mermaid\ngraph TD\n  A --> B\n```");
+
+        const source = editorRoot.querySelector("pre");
+        const preview = editorRoot.querySelector<HTMLElement>(
+            "[data-mdx-mermaid-preview]",
+        );
+        act(() => preview?.click());
+        expect(source?.hidden).toBe(false);
+
+        await act(async () => {
+            source?.dispatchEvent(
+                new FocusEvent("focusout", {
+                    bubbles: true,
+                    relatedTarget: paragraph,
+                }),
+            );
+        });
+
+        expect(source?.hidden).toBe(true);
+    });
+
+    it("focuses source in edit mode and exits editing when focus leaves it", async () => {
+        const paragraph = document.createElement("p");
+        paragraph.textContent = "Next paragraph";
+        paragraph.tabIndex = -1;
+        editorRoot.append(paragraph);
+        await renderLayer("```mermaid\ngraph TD\n  A --> B\n```");
+
+        const source = editorRoot.querySelector("pre");
+        const preview = editorRoot.querySelector<HTMLElement>(
+            "[data-mdx-mermaid-preview]",
+        );
+        act(() => preview?.click());
+        expect(source?.hidden).toBe(false);
+        expect(document.activeElement).toBe(source);
+
+        await act(async () => {
+            source?.dispatchEvent(
+                new FocusEvent("focusout", {
+                    bubbles: true,
+                    relatedTarget: paragraph,
+                }),
+            );
+        });
+
+        expect(source?.hidden).toBe(true);
     });
 
     it("keeps invalid source visible and shows an error", async () => {
@@ -158,6 +230,21 @@ describe("EditorMermaidPreviewLayer", () => {
         );
     });
 
+    it("removes managed source focus state when the mermaid mapping disappears", async () => {
+        await renderLayer("```mermaid\ngraph TD\n  A --> B\n```");
+
+        const source = editorRoot.querySelector("pre");
+        const preview = editorRoot.querySelector<HTMLElement>(
+            "[data-mdx-mermaid-preview]",
+        );
+        act(() => preview?.click());
+        expect(source?.getAttribute("tabindex")).toBe("-1");
+
+        await renderLayer("```text\ngraph TD\n  A --> B\n```");
+
+        expect(source?.getAttribute("tabindex")).toBeNull();
+    });
+
     it("does not restore visibility on unrelated hidden code blocks", async () => {
         const unrelated = pre("plain text");
         unrelated.hidden = true;
@@ -197,6 +284,87 @@ describe("EditorMermaidPreviewLayer", () => {
         expect(preview?.innerHTML).toContain("B");
     });
 
+    it("remaps previews when the same editor root mutates internally", async () => {
+        await renderLayer("```mermaid\ngraph TD\n  A --> B\n```");
+        const previousPreview = editorRoot.querySelector<HTMLElement>(
+            "[data-mdx-mermaid-preview]",
+        );
+        expect(previousPreview).not.toBeNull();
+
+        const nextSource = pre("graph TD\n  A --> B");
+        act(() => {
+            editorRoot.replaceChildren(nextSource);
+        });
+        await flushMutationObserver();
+        await flushDebounceTimer();
+
+        const nextPreview = editorRoot.querySelector<HTMLElement>(
+            "[data-mdx-mermaid-preview]",
+        );
+        expect(nextSource.hidden).toBe(true);
+        expect(nextPreview).not.toBeNull();
+        expect(nextSource.nextElementSibling).toBe(nextPreview);
+        expect(nextPreview).not.toBe(previousPreview);
+    });
+
+    it("uses different render IDs for equivalent mermaid blocks in separate layer instances", async () => {
+        const secondHost = document.createElement("div");
+        const secondEditorRoot = document.createElement("div");
+        const secondRoot = createRoot(secondHost);
+        document.body.append(secondHost, secondEditorRoot);
+        secondEditorRoot.className = "DOMD-Root";
+        secondEditorRoot.append(pre("graph TD\n  A --> B"));
+
+        await act(async () => {
+            root.render(
+                <EditorMermaidPreviewLayer
+                    editorRoot={editorRoot}
+                    markdown={"```mermaid\ngraph TD\n  A --> B\n```"}
+                    onVisibilityChange={onVisibilityChange}
+                />,
+            );
+            secondRoot.render(
+                <EditorMermaidPreviewLayer
+                    editorRoot={secondEditorRoot}
+                    markdown={"```mermaid\ngraph TD\n  A --> B\n```"}
+                />,
+            );
+        });
+        await act(async () => {
+            await vi.runAllTimersAsync();
+        });
+
+        const renderIds = renderMermaidDiagram.mock.calls.map(
+            ([request]) => request.id,
+        );
+        expect(renderIds).toHaveLength(2);
+        expect(renderIds[0]).not.toBe(renderIds[1]);
+        expect(renderIds[0]).toMatch(/^mdx-[A-Za-z0-9_-]+-mermaid-0$/);
+        expect(renderIds[1]).toMatch(/^mdx-[A-Za-z0-9_-]+-mermaid-0$/);
+
+        act(() => secondRoot.unmount());
+        secondEditorRoot.remove();
+        secondHost.remove();
+    });
+
+    it("rerenders diagrams when the app theme changes", async () => {
+        document.documentElement.dataset.theme = "light";
+        await renderLayer("```mermaid\ngraph TD\n  A --> B\n```");
+        expect(renderMermaidDiagram).toHaveBeenLastCalledWith(
+            expect.objectContaining({ theme: "light" }),
+        );
+
+        act(() => {
+            document.documentElement.dataset.theme = "dark";
+        });
+        await flushMutationObserver();
+        await flushDebounceTimer();
+
+        expect(renderMermaidDiagram).toHaveBeenLastCalledWith(
+            expect.objectContaining({ theme: "dark" }),
+        );
+    });
+
     async function renderLayer(markdown: string) {
         await renderLayerWithoutTimers(markdown);
         await act(async () => {
@@ -210,6 +378,7 @@ describe("EditorMermaidPreviewLayer", () => {
                 <EditorMermaidPreviewLayer
                     editorRoot={editorRoot}
                     markdown={markdown}
+                    onVisibilityChange={onVisibilityChange}
                 />,
             );
         });
@@ -218,6 +387,12 @@ describe("EditorMermaidPreviewLayer", () => {
     async function flushDebounceTimer() {
         await act(async () => {
             await vi.advanceTimersByTimeAsync(300);
+        });
+    }
+
+    async function flushMutationObserver() {
+        await act(async () => {
+            await Promise.resolve();
         });
     }
 });

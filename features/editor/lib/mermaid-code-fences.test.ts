@@ -14,7 +14,7 @@ describe("mermaid code fences", () => {
         expect(isMermaidFenceLanguage("")).toBe(false);
     });
 
-    it("returns mermaid fences with fenced-code order", () => {
+    it("returns backtick mermaid fences with fenced-code order", () => {
         const markdown = [
             "```ts",
             "const a = 1;",
@@ -29,6 +29,11 @@ describe("mermaid code fences", () => {
             "sequenceDiagram",
             "  A->>B: hi",
             "~~~",
+            "",
+            "```MERMAID",
+            "graph LR",
+            "  C --> D",
+            "```",
         ].join("\n");
 
         expect(findMermaidCodeFences(markdown)).toEqual([
@@ -41,11 +46,61 @@ describe("mermaid code fences", () => {
                 language: "mermaid",
             },
             {
-                code: "sequenceDiagram\n  A->>B: hi",
+                code: "graph LR\n  C --> D",
                 codeBlockIndex: 2,
-                fenceChar: "~",
+                fenceChar: "`",
                 fenceLength: 3,
                 info: "MERMAID",
+                language: "mermaid",
+            },
+        ]);
+    });
+
+    it("counts backtick fences indented up to three spaces", () => {
+        const markdown = [
+            "   ```ts",
+            "const a = 1;",
+            "   ```",
+            "",
+            "  ```mermaid",
+            "graph TD",
+            "  A --> B",
+            "  ```",
+        ].join("\n");
+
+        expect(findMermaidCodeFences(markdown)).toEqual([
+            {
+                code: "graph TD\n  A --> B",
+                codeBlockIndex: 1,
+                fenceChar: "`",
+                fenceLength: 3,
+                info: "mermaid",
+                language: "mermaid",
+            },
+        ]);
+    });
+
+    it("does not close fences on backticks indented by four spaces", () => {
+        const markdown = [
+            "```ts",
+            "const a = 1;",
+            "    ```",
+            "still code",
+            "```",
+            "",
+            "```mermaid",
+            "graph TD",
+            "  A --> B",
+            "```",
+        ].join("\n");
+
+        expect(findMermaidCodeFences(markdown)).toEqual([
+            {
+                code: "graph TD\n  A --> B",
+                codeBlockIndex: 1,
+                fenceChar: "`",
+                fenceLength: 3,
+                info: "mermaid",
                 language: "mermaid",
             },
         ]);
@@ -61,5 +116,30 @@ describe("mermaid code fences", () => {
     it("ignores mixed fence markers", () => {
         expect(findMermaidCodeFences("``~mermaid\ngraph TD\n```")).toEqual([]);
         expect(findMermaidCodeFences("~~`mermaid\ngraph TD\n~~~")).toEqual([]);
+    });
+
+    it("ignores tilde fences because the editor kernel only renders backtick code blocks", () => {
+        const markdown = [
+            "~~~mermaid",
+            "graph TD",
+            "  A --> B",
+            "~~~",
+            "",
+            "```mermaid",
+            "graph TD",
+            "  B --> C",
+            "```",
+        ].join("\n");
+
+        expect(findMermaidCodeFences(markdown)).toEqual([
+            {
+                code: "graph TD\n  B --> C",
+                codeBlockIndex: 0,
+                fenceChar: "`",
+                fenceLength: 3,
+                info: "mermaid",
+                language: "mermaid",
+            },
+        ]);
     });
 });

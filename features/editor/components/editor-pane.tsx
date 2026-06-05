@@ -153,11 +153,17 @@ function EditorPaneInner({
     const [contentRootNode, setContentRootNode] =
         useState<HTMLDivElement | null>(null);
     const [editorRoot, setEditorRoot] = useState<HTMLElement | null>(null);
+    const [mermaidVisibilityRevision, setMermaidVisibilityRevision] =
+        useState(0);
+    const handleMermaidVisibilityChange = useCallback(() => {
+        setMermaidVisibilityRevision((revision) => revision + 1);
+    }, []);
     const findReplace = useEditorFindReplace({
         editorRoot,
         focusEditor: focus,
         markdown: bridge.currentMarkdown,
         replaceSelectedText: insertText,
+        visibilityRevision: mermaidVisibilityRevision,
     });
     const {
         close,
@@ -418,6 +424,7 @@ function EditorPaneInner({
                     <EditorMermaidPreviewLayer
                         editorRoot={editorRoot}
                         markdown={bridge.currentMarkdown}
+                        onVisibilityChange={handleMermaidVisibilityChange}
                     />
                 </div>
             </div>

@@ -1,13 +1,13 @@
 export interface MermaidCodeFence {
     code: string;
     codeBlockIndex: number;
-    fenceChar: "`" | "~";
+    fenceChar: "`";
     fenceLength: number;
     info: string;
     language: "mermaid";
 }
 
-const OPENING_FENCE = /^(`{3,}|~{3,})([^\n`]*)$/;
+const OPENING_FENCE = /^( {0,3})(`{3,})([^\n`]*)$/;
 
 export function isMermaidFenceLanguage(info: string): boolean {
     const firstToken = info.trim().split(/\s+/, 1)[0] ?? "";
@@ -22,7 +22,7 @@ export function findMermaidCodeFences(markdown: string): MermaidCodeFence[] {
         | {
               code: string[];
               codeBlockIndex: number;
-              fenceChar: "`" | "~";
+              fenceChar: "`";
               fenceLength: number;
               info: string;
               isMermaid: boolean;
@@ -36,15 +36,14 @@ export function findMermaidCodeFences(markdown: string): MermaidCodeFence[] {
                 continue;
             }
 
-            const marker = match[1];
-            const fenceChar = marker[0] as "`" | "~";
+            const marker = match[2];
             open = {
                 code: [],
                 codeBlockIndex,
-                fenceChar,
+                fenceChar: "`",
                 fenceLength: marker.length,
-                info: match[2].trim(),
-                isMermaid: isMermaidFenceLanguage(match[2]),
+                info: match[3].trim(),
+                isMermaid: isMermaidFenceLanguage(match[3]),
             };
             continue;
         }
@@ -73,19 +72,14 @@ export function findMermaidCodeFences(markdown: string): MermaidCodeFence[] {
 
 function isClosingFence(
     line: string,
-    fenceChar: "`" | "~",
+    fenceChar: "`",
     fenceLength: number,
 ): boolean {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed[0] !== fenceChar) {
+    const match = line.match(/^( {0,3})(`+)[ \t]*$/);
+    if (!match) {
         return false;
     }
 
-    for (const char of trimmed) {
-        if (char !== fenceChar) {
-            return false;
-        }
-    }
-
-    return trimmed.length >= fenceLength;
+    const marker = match[2];
+    return marker[0] === fenceChar && marker.length >= fenceLength;
 }

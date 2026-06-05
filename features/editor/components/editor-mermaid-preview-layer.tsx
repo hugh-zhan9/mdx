@@ -15,6 +15,7 @@ import {
 interface EditorMermaidPreviewLayerProps {
     editorRoot: HTMLElement | null;
     markdown: string;
+    onVisibilityChange?: () => void;
 }
 
 interface RenderState {
@@ -24,14 +25,57 @@ interface RenderState {
 }
 
 const RENDER_DEBOUNCE_MS = 300;
+let nextLayerId = 0;
 
 export function EditorMermaidPreviewLayer({
     editorRoot,
     markdown,
+    onVisibilityChange,
 }: EditorMermaidPreviewLayerProps) {
+    const layerId = useSanitizedLayerId();
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [editorDomRevision, setEditorDomRevision] = useState(0);
+    const [themeRevision, setThemeRevision] = useState(0);
     const generationRef = useRef(0);
     const renderStatesRef = useRef(new Map<string, RenderState>());
+
+    useEffect(() => {
+        if (!editorRoot) {
+            return;
+        }
+
+        const observer = new MutationObserver((mutations) => {
+            if (mutations.some(isEditorContentMutation)) {
+                setEditorDomRevision((revision) => revision + 1);
+            }
+        });
+        observer.observe(editorRoot, {
+            childList: true,
+            subtree: true,
+        });
+
+        return () => observer.disconnect();
+    }, [editorRoot]);
+
+    useEffect(() => {
+        const observer = new MutationObserver((mutations) => {
+            if (
+                mutations.some(
+                    (mutation) =>
+                        mutation.type === "attributes" &&
+                        mutation.attributeName === "data-theme",
+                )
+            ) {
+                setThemeRevision((revision) => revision + 1);
+            }
+        });
+        observer.observe(document.documentElement, {
+            attributeFilter: ["data-theme"],
+            attributes: true,
+        });
+
+        return () => observer.disconnect();
+    }, []);
 
     useEffect(() => {
         if (!editorRoot) {
@@ -44,7 +88,9 @@ export function EditorMermaidPreviewLayer({
         const fences = findMermaidCodeFences(markdown);
         const mappings = mapMermaidFencesToPreElements(editorRoot, fences);
         cleanupStalePreviewNodes(editorRoot, mappings);
-        restoreUnmappedSourceVisibility(editorRoot, mappings);
+        if (restoreUnmappedSourceVisibility(editorRoot, mappings)) {
+            onVisibilityChange?.();
+        }
 
         const timers = mappings.map((mapping) => {
             const preview = ensurePreviewNode(mapping.pre, mapping.stableId);
@@ -60,10 +106,16 @@ export function EditorMermaidPreviewLayer({
             const isEditing = editingId === mapping.stableId;
             const hasError = Boolean(state.error);
 
-            applyManagedMermaidSourceVisibility(
+            const changed = applyManagedMermaidSourceVisibility(
                 mapping.pre,
                 hasError ? "error" : isEditing ? "editing" : "preview",
             );
+            if (changed) {
+                onVisibilityChange?.();
+            }
+            if (isEditing && !hasError) {
+                focusMermaidSource(mapping.pre);
+            }
             renderPreviewNode(preview, state, hasError, () =>
                 setEditingId(mapping.stableId),
             );
@@ -72,7 +124,7 @@ export function EditorMermaidPreviewLayer({
                 const theme = currentMermaidTheme();
                 void renderMermaidDiagram({
                     code: mapping.fence.code,
-                    id: `mdx-${mapping.stableId}`,
+                    id: `mdx-${layerId}-${mapping.stableId}`,
                     theme,
                 }).then((result) => {
                     if (
@@ -104,7 +156,7 @@ export function EditorMermaidPreviewLayer({
                     if (!nextState) {
                         return;
                     }
-                    applyManagedMermaidSourceVisibility(
+                    const changed = applyManagedMermaidSourceVisibility(
                         mapping.pre,
                         nextState.error
                             ? "error"
@@ -112,6 +164,12 @@ export function EditorMermaidPreviewLayer({
                               ? "editing"
                               : "preview",
                     );
+                    if (changed) {
+                        onVisibilityChange?.();
+                    }
+                    if (editingId === mapping.stableId && !nextState.error) {
+                        focusMermaidSource(mapping.pre);
+                    }
                     renderPreviewNode(
                         preview,
                         nextState,
@@ -131,13 +189,21 @@ export function EditorMermaidPreviewLayer({
         };
         const handleFocusOut = (event: FocusEvent) => {
             const relatedTarget = event.relatedTarget;
+            const editingMapping = mappings.find(
+                (mapping) => mapping.stableId === editingId,
+            );
 
             if (
                 editingId &&
                 event.target instanceof Node &&
+                editingMapping &&
+                isInsideMermaidEditingBlock(editingMapping, event.target) &&
                 (!relatedTarget ||
                     (relatedTarget instanceof Node &&
-                        !editorRoot.contains(relatedTarget)))
+                        !isInsideMermaidEditingBlock(
+                            editingMapping,
+                            relatedTarget,
+                        )))
             ) {
                 setEditingId(null);
             }
@@ -154,9 +220,52 @@ export function EditorMermaidPreviewLayer({
             editorRoot.removeEventListener("keydown", handleKeyDown, true);
             editorRoot.removeEventListener("focusout", handleFocusOut, true);
         };
-    }, [editingId, editorRoot, markdown]);
+    }, [
+        editingId,
+        editorDomRevision,
+        editorRoot,
+        layerId,
+        markdown,
+        onVisibilityChange,
+        themeRevision,
+    ]);
 
     return null;
+}
+
+function useSanitizedLayerId(): string {
+    const layerIdRef = useRef<string | null>(null);
+
+    if (layerIdRef.current === null) {
+        nextLayerId += 1;
+        layerIdRef.current = `layer-${nextLayerId}`;
+    }
+
+    return layerIdRef.current;
+}
+
+function isEditorContentMutation(mutation: MutationRecord): boolean {
+    const changedNodes = [
+        ...Array.from(mutation.addedNodes),
+        ...Array.from(mutation.removedNodes),
+    ];
+
+    if (
+        changedNodes.length > 0 &&
+        changedNodes.every(isMermaidPreviewNode)
+    ) {
+        return false;
+    }
+
+    return !isMermaidPreviewNode(mutation.target);
+}
+
+function isMermaidPreviewNode(node: Node): boolean {
+    return (
+        node instanceof HTMLElement &&
+        (node.dataset.mdxMermaidPreview !== undefined ||
+            Boolean(node.closest("[data-mdx-mermaid-preview]")))
+    );
 }
 
 function currentMermaidTheme(): MermaidEditorTheme {
@@ -166,9 +275,11 @@ function currentMermaidTheme(): MermaidEditorTheme {
 function applyManagedMermaidSourceVisibility(
     pre: HTMLPreElement,
     mode: Parameters<typeof applyMermaidSourceVisibility>[1],
-): void {
+): boolean {
+    const before = sourceVisibilitySnapshot(pre);
     pre.dataset.mdxMermaidSource = "true";
     applyMermaidSourceVisibility(pre, mode);
+    return before !== sourceVisibilitySnapshot(pre);
 }
 
 function ensurePreviewNode(pre: HTMLPreElement, stableId: string): HTMLElement {
@@ -186,6 +297,33 @@ function ensurePreviewNode(pre: HTMLPreElement, stableId: string): HTMLElement {
     node.contentEditable = "false";
     pre.after(node);
     return node;
+}
+
+function isInsideMermaidEditingBlock(
+    mapping: MermaidPreMapping,
+    target: Node,
+): boolean {
+    const preview = mapping.pre.nextElementSibling;
+    return (
+        mapping.pre.contains(target) ||
+        Boolean(
+            preview instanceof HTMLElement &&
+                preview.dataset.mdxMermaidPreview === mapping.stableId &&
+                preview.contains(target),
+        )
+    );
+}
+
+function focusMermaidSource(pre: HTMLPreElement): void {
+    if (pre.contains(document.activeElement)) {
+        return;
+    }
+
+    if (!pre.hasAttribute("tabindex")) {
+        pre.tabIndex = -1;
+        pre.dataset.mdxMermaidManagedTabIndex = "true";
+    }
+    pre.focus({ preventScroll: true });
 }
 
 function renderPreviewNode(
@@ -247,8 +385,9 @@ function cleanupStalePreviewNodes(
 function restoreUnmappedSourceVisibility(
     editorRoot: HTMLElement,
     mappings: MermaidPreMapping[],
-): void {
+): boolean {
     const mappedSources = new Set(mappings.map((mapping) => mapping.pre));
+    let changed = false;
 
     for (const pre of Array.from(
         editorRoot.querySelectorAll<HTMLPreElement>("pre.DOMD-Pre"),
@@ -259,13 +398,23 @@ function restoreUnmappedSourceVisibility(
 
         pre.hidden = false;
         pre.removeAttribute("aria-hidden");
+        if (
+            pre.dataset.mdxMermaidManagedTabIndex === "true" &&
+            pre.getAttribute("tabindex") === "-1"
+        ) {
+            pre.removeAttribute("tabindex");
+        }
         delete pre.dataset.mdxMermaidSource;
+        delete pre.dataset.mdxMermaidManagedTabIndex;
         pre.classList.remove(
             "mdx-mermaid-source-hidden",
             "mdx-mermaid-source-editing",
             "mdx-mermaid-source-error",
         );
+        changed = true;
     }
+
+    return changed;
 }
 
 function isManagedMermaidSource(pre: HTMLPreElement): boolean {
@@ -275,4 +424,15 @@ function isManagedMermaidSource(pre: HTMLPreElement): boolean {
         pre.classList.contains("mdx-mermaid-source-editing") ||
         pre.classList.contains("mdx-mermaid-source-error")
     );
+}
+
+function sourceVisibilitySnapshot(pre: HTMLPreElement): string {
+    return JSON.stringify({
+        ariaHidden: pre.getAttribute("aria-hidden"),
+        editing: pre.classList.contains("mdx-mermaid-source-editing"),
+        error: pre.classList.contains("mdx-mermaid-source-error"),
+        hidden: pre.hidden,
+        hiddenClass: pre.classList.contains("mdx-mermaid-source-hidden"),
+        owned: pre.dataset.mdxMermaidSource,
+    });
 }

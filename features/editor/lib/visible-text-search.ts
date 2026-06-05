@@ -204,6 +204,10 @@ function shouldSkipElement(element: Element): boolean {
         return true;
     }
 
+    if (element.getAttribute("data-mdx-mermaid-preview") !== null) {
+        return true;
+    }
+
     for (const className of HIDDEN_TEXT_CLASSES) {
         if (element.classList.contains(className)) {
             return true;

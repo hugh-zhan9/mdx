@@ -1,13 +1,19 @@
+// @vitest-environment jsdom
+
+import { act, createElement, useEffect } from "react";
+import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vitest";
 import type { VisibleTextMatch } from "../lib/visible-text-search";
 import {
     applyFindBarShortcut,
+    buildVisibleTextIndexForMarkdown,
     createInitialFindReplaceState,
     findBarCountLabel,
     matchIndexAfterCurrentReplacement,
     nextMatchIndex,
     previousMatchIndex,
     replaceAllMatchesFromEnd,
+    useEditorFindReplace,
 } from "./use-editor-find-replace";
 
 describe("editor find replace state", () => {
@@ -100,5 +106,87 @@ describe("editor find replace state", () => {
             { start: 8, end: 11 },
             { start: 0, end: 3 },
         ]);
+    });
+});
+
+describe("editor find replace visible text index", () => {
+    it("rebuilds from the live DOM when mermaid visibility changes", () => {
+        const root = document.createElement("div");
+        document.body.append(root);
+        const pre = document.createElement("pre");
+        pre.className = "DOMD-Pre";
+        pre.hidden = true;
+        pre.setAttribute("aria-hidden", "true");
+        const code = document.createElement("code");
+        code.className = "DOMD-PreCode";
+        code.textContent = "graph TD\n  HiddenRaw --> B";
+        pre.append(code);
+        root.append(pre);
+
+        expect(buildVisibleTextIndexForMarkdown(root, "").text).toBe("");
+
+        pre.hidden = false;
+        pre.removeAttribute("hidden");
+        pre.removeAttribute("aria-hidden");
+
+        expect(buildVisibleTextIndexForMarkdown(root, "").text).toContain(
+            "HiddenRaw",
+        );
+
+        root.remove();
+    });
+
+    it("invalidates hook matches when visibility revision changes", async () => {
+        const host = document.createElement("div");
+        const editorRoot = document.createElement("div");
+        document.body.append(host, editorRoot);
+        const reactRoot = createRoot(host);
+        const pre = document.createElement("pre");
+        pre.className = "DOMD-Pre";
+        pre.hidden = true;
+        pre.setAttribute("aria-hidden", "true");
+        const code = document.createElement("code");
+        code.className = "DOMD-PreCode";
+        code.textContent = "graph TD\n  HiddenRaw --> B";
+        pre.append(code);
+        editorRoot.append(pre);
+        let latestMatchCount = -1;
+
+        function Harness({ visibilityRevision }: { visibilityRevision: number }) {
+            const findReplace = useEditorFindReplace({
+                editorRoot,
+                focusEditor: () => {},
+                markdown: "```mermaid\ngraph TD\n  HiddenRaw --> B\n```",
+                replaceSelectedText: () => {},
+                visibilityRevision,
+            });
+            useEffect(() => {
+                findReplace.actions.setQuery("HiddenRaw");
+            }, []);
+            latestMatchCount = findReplace.matchCount;
+            return null;
+        }
+
+        await act(async () => {
+            reactRoot.render(createElement(Harness, { visibilityRevision: 0 }));
+        });
+        await act(async () => {});
+
+        expect(latestMatchCount).toBe(0);
+
+        pre.hidden = false;
+        pre.removeAttribute("hidden");
+        pre.removeAttribute("aria-hidden");
+
+        await act(async () => {
+            reactRoot.render(createElement(Harness, { visibilityRevision: 1 }));
+        });
+        await act(async () => {});
+
+        expect(latestMatchCount).toBe(1);
+
+        act(() => reactRoot.unmount());
+        editorRoot.remove();
+        host.remove();
     });
 });

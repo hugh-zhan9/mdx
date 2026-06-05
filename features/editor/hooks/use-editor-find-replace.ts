@@ -22,6 +22,7 @@ export interface UseEditorFindReplaceOptions {
     focusEditor: () => void;
     markdown: string;
     replaceSelectedText: (replacement: string) => void;
+    visibilityRevision?: number;
 }
 
 type FindBarShortcut = "find" | "replace";
@@ -111,6 +112,7 @@ export function useEditorFindReplace({
     focusEditor,
     markdown,
     replaceSelectedText,
+    visibilityRevision = 0,
 }: UseEditorFindReplaceOptions) {
     const [state, setState] = useState<FindReplaceState>(
         createInitialFindReplaceState,
@@ -121,7 +123,7 @@ export function useEditorFindReplace({
         }
 
         return buildVisibleTextIndexForMarkdown(editorRoot, markdown);
-    }, [editorRoot, markdown]);
+    }, [editorRoot, markdown, visibilityRevision]);
     const matches = useMemo(
         () =>
             findVisibleTextMatches(visibleTextIndex, state.query, {
@@ -318,7 +320,7 @@ export function useEditorFindReplace({
     };
 }
 
-function buildVisibleTextIndexForMarkdown(
+export function buildVisibleTextIndexForMarkdown(
     editorRoot: HTMLElement,
     markdown: string,
 ) {

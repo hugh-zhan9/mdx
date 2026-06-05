@@ -85,6 +85,23 @@ describe("visible text search", () => {
         expect(buildVisibleTextIndex(root).text).toContain("HiddenRaw");
     });
 
+    it("excludes generated mermaid preview UI", () => {
+        const root = element("div", "DOMD-Root");
+        const pre = child(root, "pre", "DOMD-Pre");
+        child(pre, "code", "DOMD-PreCode", "graph TD\n  SourceRaw --> B");
+        const preview = child(root, "div", "mdx-mermaid-preview");
+        preview.setAttribute("data-mdx-mermaid-preview", "mermaid-0");
+        child(preview, "button", "mdx-mermaid-edit-button", "编辑");
+        const svg = child(preview, "svg");
+        child(svg, "text", "", "GeneratedLabel");
+
+        const index = buildVisibleTextIndex(root);
+
+        expect(index.text).toContain("SourceRaw");
+        expect(index.text).not.toContain("编辑");
+        expect(index.text).not.toContain("GeneratedLabel");
+    });
+
     it("excludes hidden markdown syntax marker elements", () => {
         const root = element("div", "DOMD-Root");
         const paragraph = child(root, "p", "DOMD-P");
