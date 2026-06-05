@@ -32,8 +32,8 @@ use crate::llm_wiki_llm::{
 use crate::llm_wiki_models::LlmProviderConfig;
 use crate::llm_wiki_models::LlmWikiCache;
 use crate::llm_wiki_models::WikiContextBundle;
-use crate::models::WorkspaceError;
 use crate::llm_wiki_query::{mechanical_lint_report, search_wiki_pages, write_digest_page};
+use crate::models::WorkspaceError;
 
 #[test]
 fn llm_config_round_trips_outside_workspace_files() {
