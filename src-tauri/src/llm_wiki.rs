@@ -1,6 +1,9 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
+use crate::llm_wiki_context::{
+    build_page_selection_prompt, build_wiki_context_with_selector_output, WikiContextRequest,
+};
 use crate::llm_wiki_fs::{
     append_log_entry, build_knowledge_graph_markdown, detect_llm_wiki_workspace,
     ensure_default_agents_rules, initialize_llm_wiki_workspace, raw_file_metadata,
@@ -20,17 +23,19 @@ use crate::llm_wiki_llm::{
 use crate::llm_wiki_models::{
     InitializeLlmWikiResult, LlmProviderConfig, LlmProviderConfigUpdate, LlmWikiKnowledgeConfig,
     LlmWikiQueryResponse, LlmWikiWorkspaceStatus, PublicLlmProviderConfig, RawScanResult,
-    WikiSearchResult,
+    WikiContextBundle, WikiSearchResult,
 };
 use crate::llm_wiki_query::{
-    mechanical_lint_report, read_required_managed_text, safe_read_regular_text, search_wiki_pages,
-    write_digest_page,
+    mechanical_lint_report, read_required_managed_text, search_wiki_pages, write_digest_page,
 };
 use crate::llm_wiki_raw::prepare_raw_source;
 use crate::models::WorkspaceError;
 use crate::path_guard::canonicalize_workspace_root;
 
 const RAW_RESCAN_PENDING_BATCH_SIZE: usize = 5;
+const DEFAULT_SELECTED_PAGE_LIMIT: usize = 8;
+const DEFAULT_EXPANDED_PAGE_LIMIT: usize = 8;
+const DEFAULT_CONTEXT_LIMIT_BYTES: usize = 64 * 1024;
 
 async fn run_blocking<T>(
     task: impl FnOnce() -> Result<T, WorkspaceError> + Send + 'static,
@@ -353,9 +358,19 @@ pub fn llm_wiki_query_sync(
     question: String,
 ) -> Result<LlmWikiQueryResponse, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
-    let references = search_wiki_pages(&root, &question)?;
-    append_log_entry(&root, &format!("query {}", question.trim()))?;
-    if references.is_empty() {
+    let question = question.trim().to_string();
+    if question.is_empty() {
+        return Err(WorkspaceError::new(
+            "invalid_question",
+            "llm wiki query question cannot be empty",
+        ));
+    }
+
+    append_log_entry(&root, &format!("query {question}"))?;
+    let config = load_llm_config_from_path(default_llm_config_path()?)?;
+    let context = select_wiki_context(&root, &config, "query", &question)?;
+    let references = wiki_context_references_to_search_results(context.references);
+    if context.markdown.trim().is_empty() || references.is_empty() {
         return Ok(LlmWikiQueryResponse {
             answer: "当前知识库中没有足够上下文回答这个问题。".to_string(),
             references,
@@ -363,16 +378,15 @@ pub fn llm_wiki_query_sync(
         });
     }
 
-    let config = load_llm_config_from_path(default_llm_config_path()?)?;
-    let context = build_query_context(&root, &references)?;
     let answer = call_chat_completion(
         &config,
         vec![
             system_message(
-                "You answer using only the supplied LLM Wiki context. If the context is insufficient, say so in Chinese.",
+                "You answer using only the supplied LLM Wiki context. Do not use raw documents. If the context is insufficient, say so in Chinese.",
             ),
             user_message(format!(
-                "Question:\n{question}\n\nWiki context:\n{context}\n\nAnswer in Chinese. Do not use information outside the wiki context."
+                "Question:\n{question}\n\nWiki context:\n{}\n\nAnswer in Chinese. Do not use information outside the wiki context or any raw documents.",
+                context.markdown
             )),
         ],
     )?;
@@ -400,15 +414,14 @@ pub fn llm_wiki_digest_sync(
 ) -> Result<String, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
     let config = load_llm_config_from_path(default_llm_config_path()?)?;
-    let references = search_wiki_pages(&root, &format!("{title}\n{prompt}"))?;
-    if references.is_empty() {
+    let context = select_wiki_context(&root, &config, "digest", &format!("{title}\n{prompt}"))?;
+    if context.markdown.trim().is_empty() || context.references.is_empty() {
         return Err(WorkspaceError::new(
             "insufficient_context",
             "当前知识库中没有足够上下文生成综述。",
         ));
     }
 
-    let context = build_query_context(&root, &references)?;
     let content = call_chat_completion(
         &config,
         vec![
@@ -416,7 +429,8 @@ pub fn llm_wiki_digest_sync(
                 "You write concise LLM Wiki synthesis pages using only the supplied wiki context. Use Markdown and wikilinks where useful.",
             ),
             user_message(format!(
-                "Digest title:\n{title}\n\nDigest request:\n{prompt}\n\nWiki context:\n{context}\n\nWrite the complete markdown page in Chinese. Do not use information outside the wiki context."
+                "Digest title:\n{title}\n\nDigest request:\n{prompt}\n\nWiki context:\n{}\n\nWrite the complete markdown page in Chinese. Do not use information outside the wiki context or any raw documents.",
+                context.markdown
             )),
         ],
     )?;
@@ -546,22 +560,68 @@ fn read_optional_managed_text(
     }
 }
 
-fn build_query_context(
-    root: &std::path::Path,
-    references: &[WikiSearchResult],
-) -> Result<String, WorkspaceError> {
-    let mut context = String::new();
-    for reference in references.iter().take(8) {
-        let contents = safe_read_regular_text(root, &root.join(&reference.path), "wiki page")?;
-        context.push_str("---PAGE: ");
-        context.push_str(&reference.path);
-        context.push_str("---\n");
-        context.push_str(&contents);
-        if !contents.ends_with('\n') {
-            context.push('\n');
-        }
+fn wiki_context_references_to_search_results(
+    references: Vec<crate::llm_wiki_models::WikiContextReference>,
+) -> Vec<WikiSearchResult> {
+    references
+        .into_iter()
+        .map(|reference| WikiSearchResult {
+            path: reference.path,
+            title: reference.title,
+            snippet: reference.snippet,
+        })
+        .collect()
+}
+
+fn default_context_request(purpose: &str, prompt: &str) -> WikiContextRequest {
+    WikiContextRequest {
+        purpose: purpose.to_string(),
+        prompt: prompt.to_string(),
+        max_selected_pages: DEFAULT_SELECTED_PAGE_LIMIT,
+        max_expanded_pages: DEFAULT_EXPANDED_PAGE_LIMIT,
+        max_context_bytes: DEFAULT_CONTEXT_LIMIT_BYTES,
     }
-    Ok(context)
+}
+
+fn select_wiki_context(
+    root: &Path,
+    config: &LlmProviderConfig,
+    purpose: &str,
+    prompt: &str,
+) -> Result<WikiContextBundle, WorkspaceError> {
+    let index = read_optional_managed_text(root, "index.md")?;
+    if index.trim().is_empty() {
+        return Ok(WikiContextBundle {
+            references: Vec::new(),
+            markdown: String::new(),
+            selection_reason: Some("index is empty".to_string()),
+        });
+    }
+
+    let request = default_context_request(purpose, prompt);
+    let selection_prompt = build_page_selection_prompt(&index, &request);
+    let selection_output = call_chat_completion(
+        config,
+        vec![
+            system_message("You select LLM Wiki pages. Return strict JSON only."),
+            user_message(selection_prompt),
+        ],
+    )?;
+
+    build_wiki_context_with_selector_output(root, request, &selection_output)
+}
+
+#[cfg(test)]
+pub(crate) fn build_query_context_from_selection_for_test(
+    root: &Path,
+    question: String,
+    selector_output: &str,
+) -> Result<WikiContextBundle, WorkspaceError> {
+    build_wiki_context_with_selector_output(
+        root,
+        default_context_request("query", &question),
+        selector_output,
+    )
 }
 
 fn system_message(content: &str) -> LlmChatMessage {

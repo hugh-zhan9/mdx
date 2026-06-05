@@ -53,10 +53,13 @@ pub fn write_digest_page(
     ensure_managed_file_target(root, "log.md")?;
 
     let index = read_required_managed_text(root, "index.md")?;
-    let index = ensure_line(index, &format!("- [[{safe_title}]]"));
+    let index = ensure_line(index, &format!("- [[syntheses/{safe_title}|{safe_title}]]"));
 
     let log = read_required_managed_text(root, "log.md")?;
-    let log = ensure_line(log, &format!("- digest [[{safe_title}]]"));
+    let log = ensure_line(
+        log,
+        &format!("- digest [[syntheses/{safe_title}|{safe_title}]]"),
+    );
 
     write_managed_file(root, &digest_path, content.as_bytes())?;
     write_managed_file(root, "index.md", index.as_bytes())?;

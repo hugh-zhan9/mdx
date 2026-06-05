@@ -3,7 +3,7 @@ use tempfile::tempdir;
 
 use crate::llm_wiki::{
     llm_config_to_public, llm_wiki_get_config, llm_wiki_get_log, llm_wiki_ingest_mock_output,
-    llm_wiki_lint, llm_wiki_query_sync, llm_wiki_refresh_graph_sync, llm_wiki_rescan_raw_sync,
+    llm_wiki_lint, llm_wiki_refresh_graph_sync, llm_wiki_rescan_raw_sync,
     llm_wiki_rescan_raw_sync_with_exclusions, llm_wiki_update_config,
 };
 use crate::llm_wiki_context::{
@@ -867,6 +867,33 @@ fn context_selector_dedupes_selected_and_expanded_pages_and_honors_expansion_lim
 }
 
 #[test]
+fn query_context_can_be_built_from_index_selection_without_matching_question_line() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::write(
+        root.path().join("index.md"),
+        "# Index\n\n- [[concepts/llm-wiki|LLM Wiki]]\n",
+    )
+    .unwrap();
+    write_managed_file(
+        root.path(),
+        "wiki/concepts/llm-wiki.md",
+        "# LLM Wiki\n\nA maintained wiki knowledge layer.\n".as_bytes(),
+    )
+    .unwrap();
+
+    let context = crate::llm_wiki::build_query_context_from_selection_for_test(
+        root.path(),
+        "Explain Karpathy design".to_string(),
+        r#"{"paths":["wiki/concepts/llm-wiki.md"],"reason":"index"}"#,
+    )
+    .unwrap();
+
+    assert!(context.markdown.contains("maintained wiki knowledge layer"));
+    assert_eq!(context.references[0].path, "wiki/concepts/llm-wiki.md");
+}
+
+#[test]
 fn initialize_is_idempotent_and_preserves_existing_agents_file() {
     let root = tempdir().unwrap();
     std::fs::create_dir_all(root.path()).unwrap();
@@ -948,17 +975,16 @@ fn llm_wiki_query_returns_insufficient_context_without_llm_call_when_search_is_e
     let root = tempdir().unwrap();
     initialize_llm_wiki_workspace(root.path()).unwrap();
 
-    let response = llm_wiki_query_sync(
-        root.path().to_string_lossy().into_owned(),
+    let context = crate::llm_wiki::build_query_context_from_selection_for_test(
+        root.path(),
         "missing-topic".to_string(),
+        r#"{"paths":[],"reason":"none"}"#,
     )
     .unwrap();
 
-    assert!(response.insufficient_context);
-    assert!(response.references.is_empty());
-    assert!(response.answer.contains("没有足够上下文"));
-    let log = std::fs::read_to_string(root.path().join("log.md")).unwrap();
-    assert!(log.contains("- query missing-topic"));
+    assert!(context.markdown.is_empty());
+    assert!(context.references.is_empty());
+    assert_eq!(context.selection_reason.as_deref(), Some("none"));
 }
 
 #[test]
@@ -1016,8 +1042,21 @@ fn write_digest_page_saves_under_syntheses_and_updates_index_and_log() {
     assert!(root.path().join("wiki/syntheses/Rust.md").is_file());
     let index = std::fs::read_to_string(root.path().join("index.md")).unwrap();
     let log = std::fs::read_to_string(root.path().join("log.md")).unwrap();
-    assert!(index.contains("[[Rust]]"));
-    assert!(log.contains("digest"));
+    assert!(index.contains("[[syntheses/Rust|Rust]]"));
+    assert!(log.contains("- digest [[syntheses/Rust|Rust]]"));
+}
+
+#[test]
+fn digest_page_index_entry_uses_stable_synthesis_link() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+
+    let path =
+        write_digest_page(root.path(), "karpathy-llm-wiki", "# Karpathy LLM Wiki\n").unwrap();
+
+    assert_eq!(path, "wiki/syntheses/karpathy-llm-wiki.md");
+    let index = std::fs::read_to_string(root.path().join("index.md")).unwrap();
+    assert!(index.contains("[[syntheses/karpathy-llm-wiki|karpathy-llm-wiki]]"));
 }
 
 #[cfg(unix)]
