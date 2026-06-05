@@ -3,7 +3,7 @@ use tempfile::tempdir;
 
 use crate::llm_wiki::{
     llm_config_to_public, llm_wiki_get_config, llm_wiki_get_log, llm_wiki_ingest_mock_output,
-    llm_wiki_lint, llm_wiki_refresh_graph_sync, llm_wiki_rescan_raw_sync,
+    llm_wiki_lint, llm_wiki_query_sync, llm_wiki_refresh_graph_sync, llm_wiki_rescan_raw_sync,
     llm_wiki_rescan_raw_sync_with_exclusions, llm_wiki_update_config,
 };
 use crate::llm_wiki_context::{
@@ -817,14 +817,22 @@ fn context_selector_validate_wiki_page_path_rejects_invalid_edges() {
         "wiki/entities//a.md",
         "raw/notes/a.md",
         "wiki/entities/a.txt",
+    ] {
+        let error = validate_wiki_page_path(path).unwrap_err();
+
+        assert_eq!(error.error_code(), "invalid_llm_wiki_page");
+    }
+}
+
+#[test]
+fn context_selector_accepts_safe_legacy_wiki_page_paths() {
+    for path in [
         "wiki/entities/Uppercase.md",
         "wiki/entities/has space.md",
         "wiki/entities/中文.md",
         "wiki/entities/foo.bar.md",
     ] {
-        let error = validate_wiki_page_path(path).unwrap_err();
-
-        assert_eq!(error.error_code(), "invalid_llm_wiki_page");
+        assert_eq!(validate_wiki_page_path(path).unwrap(), path);
     }
 }
 
@@ -891,6 +899,28 @@ fn query_context_can_be_built_from_index_selection_without_matching_question_lin
 
     assert!(context.markdown.contains("maintained wiki knowledge layer"));
     assert_eq!(context.references[0].path, "wiki/concepts/llm-wiki.md");
+}
+
+#[test]
+fn query_context_can_read_existing_uppercase_wiki_page_from_selection() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    write_managed_file(
+        root.path(),
+        "wiki/entities/Rust.md",
+        "# Rust\n\nExisting generated wiki page.\n".as_bytes(),
+    )
+    .unwrap();
+
+    let context = crate::llm_wiki::build_query_context_from_selection_for_test(
+        root.path(),
+        "Explain Rust".to_string(),
+        r#"{"paths":["wiki/entities/Rust.md"],"reason":"legacy"}"#,
+    )
+    .unwrap();
+
+    assert!(context.markdown.contains("Existing generated wiki page"));
+    assert_eq!(context.references[0].path, "wiki/entities/Rust.md");
 }
 
 #[test]
@@ -985,6 +1015,24 @@ fn llm_wiki_query_returns_insufficient_context_without_llm_call_when_search_is_e
     assert!(context.markdown.is_empty());
     assert!(context.references.is_empty());
     assert_eq!(context.selection_reason.as_deref(), Some("none"));
+}
+
+#[test]
+fn llm_wiki_query_returns_insufficient_context_without_llm_call_when_index_has_no_pages() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+
+    let response = llm_wiki_query_sync(
+        root.path().to_string_lossy().into_owned(),
+        "missing-topic".to_string(),
+    )
+    .unwrap();
+
+    assert!(response.insufficient_context);
+    assert!(response.references.is_empty());
+    assert!(response.answer.contains("没有足够上下文"));
+    let log = std::fs::read_to_string(root.path().join("log.md")).unwrap();
+    assert!(log.contains("- query missing-topic"));
 }
 
 #[test]

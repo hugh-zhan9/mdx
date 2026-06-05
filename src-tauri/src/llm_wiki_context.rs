@@ -157,20 +157,6 @@ pub fn validate_wiki_page_path(path: &str) -> Result<String, WorkspaceError> {
             return Err(invalid_wiki_page_path(path));
         }
     }
-    let Some(file_name) = segments.last() else {
-        return Err(invalid_wiki_page_path(path));
-    };
-    let Some(file_stem) = file_name.strip_suffix(".md") else {
-        return Err(invalid_wiki_page_path(path));
-    };
-    if !segments[2..segments.len() - 1]
-        .iter()
-        .chain(std::iter::once(&file_stem))
-        .all(|segment| is_ascii_slug_segment(segment))
-    {
-        return Err(invalid_wiki_page_path(path));
-    }
-
     Ok(path.to_string())
 }
 
@@ -198,13 +184,6 @@ fn invalid_wiki_page_path(path: &str) -> WorkspaceError {
 
 fn is_skippable_expanded_page_error(error: &WorkspaceError) -> bool {
     matches!(error.error_code(), "not_found" | "path_type_conflict")
-}
-
-fn is_ascii_slug_segment(value: &str) -> bool {
-    !value.is_empty()
-        && value.bytes().all(|byte| {
-            byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-' || byte == b'_'
-        })
 }
 
 #[derive(Clone)]

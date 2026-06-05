@@ -2,7 +2,8 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 use crate::llm_wiki_context::{
-    build_page_selection_prompt, build_wiki_context_with_selector_output, WikiContextRequest,
+    build_page_selection_prompt, build_wiki_context_with_selector_output, validate_wiki_page_path,
+    WikiContextRequest,
 };
 use crate::llm_wiki_fs::{
     append_log_entry, build_knowledge_graph_markdown, detect_llm_wiki_workspace,
@@ -367,15 +368,16 @@ pub fn llm_wiki_query_sync(
     }
 
     append_log_entry(&root, &format!("query {question}"))?;
+    let index = read_optional_managed_text(&root, "index.md")?;
+    if !index_has_wiki_page_candidates(&index) {
+        return Ok(insufficient_query_context(Vec::new()));
+    }
+
     let config = load_llm_config_from_path(default_llm_config_path()?)?;
-    let context = select_wiki_context(&root, &config, "query", &question)?;
+    let context = select_wiki_context_with_index(&root, &config, "query", &question, index)?;
     let references = wiki_context_references_to_search_results(context.references);
     if context.markdown.trim().is_empty() || references.is_empty() {
-        return Ok(LlmWikiQueryResponse {
-            answer: "当前知识库中没有足够上下文回答这个问题。".to_string(),
-            references,
-            insufficient_context: true,
-        });
+        return Ok(insufficient_query_context(references));
     }
 
     let answer = call_chat_completion(
@@ -573,6 +575,14 @@ fn wiki_context_references_to_search_results(
         .collect()
 }
 
+fn insufficient_query_context(references: Vec<WikiSearchResult>) -> LlmWikiQueryResponse {
+    LlmWikiQueryResponse {
+        answer: "当前知识库中没有足够上下文回答这个问题。".to_string(),
+        references,
+        insufficient_context: true,
+    }
+}
+
 fn default_context_request(purpose: &str, prompt: &str) -> WikiContextRequest {
     WikiContextRequest {
         purpose: purpose.to_string(),
@@ -590,11 +600,21 @@ fn select_wiki_context(
     prompt: &str,
 ) -> Result<WikiContextBundle, WorkspaceError> {
     let index = read_optional_managed_text(root, "index.md")?;
-    if index.trim().is_empty() {
+    select_wiki_context_with_index(root, config, purpose, prompt, index)
+}
+
+fn select_wiki_context_with_index(
+    root: &Path,
+    config: &LlmProviderConfig,
+    purpose: &str,
+    prompt: &str,
+    index: String,
+) -> Result<WikiContextBundle, WorkspaceError> {
+    if !index_has_wiki_page_candidates(&index) {
         return Ok(WikiContextBundle {
             references: Vec::new(),
             markdown: String::new(),
-            selection_reason: Some("index is empty".to_string()),
+            selection_reason: Some("index has no wiki page candidates".to_string()),
         });
     }
 
@@ -609,6 +629,37 @@ fn select_wiki_context(
     )?;
 
     build_wiki_context_with_selector_output(root, request, &selection_output)
+}
+
+fn index_has_wiki_page_candidates(index: &str) -> bool {
+    index
+        .split(|character: char| {
+            character.is_whitespace()
+                || matches!(
+                    character,
+                    '[' | ']' | '(' | ')' | '|' | ',' | ';' | ':' | '"' | '\''
+                )
+        })
+        .any(|token| {
+            let candidate = token
+                .trim_matches(|character: char| {
+                    matches!(character, '-' | '*' | '`' | '<' | '>' | '.' | '!' | '?')
+                })
+                .trim_end_matches('#');
+            let path = if candidate.starts_with("wiki/") {
+                candidate.to_string()
+            } else if candidate.starts_with("sources/")
+                || candidate.starts_with("entities/")
+                || candidate.starts_with("concepts/")
+                || candidate.starts_with("syntheses/")
+            {
+                format!("wiki/{candidate}")
+            } else {
+                return false;
+            };
+
+            validate_wiki_page_path(&path).is_ok()
+        })
 }
 
 #[cfg(test)]
