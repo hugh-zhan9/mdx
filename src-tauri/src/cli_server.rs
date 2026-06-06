@@ -732,11 +732,11 @@ fn handle_llm_wiki_lint(app: &AppHandle) -> CliResponse {
         Ok(root_path) => root_path,
         Err(response) => return response,
     };
-    let response = llm_wiki_lint_response_for_root(root_path.clone());
-    if lint_response_updated_log(&response) {
+    let result = llm_wiki_lint_response_for_root_with_log_status(root_path.clone());
+    if result.log_updated {
         emit_log_file_updated(app, &label, &root_path);
     }
-    response
+    result.response
 }
 
 fn llm_wiki_active_root(snapshot: &WindowSnapshot) -> Result<String, CliResponse> {
@@ -801,28 +801,49 @@ fn llm_wiki_digest_response_for_root(
     }
 }
 
+#[cfg(test)]
 fn llm_wiki_lint_response_for_root(root_path: String) -> CliResponse {
+    llm_wiki_lint_response_for_root_with_log_status(root_path).response
+}
+
+struct LlmWikiLintCliResult {
+    response: CliResponse,
+    log_updated: bool,
+}
+
+fn llm_wiki_lint_response_for_root_with_log_status(root_path: String) -> LlmWikiLintCliResult {
     if let Err(response) = ensure_llm_wiki_ready(&root_path) {
-        return response;
+        return LlmWikiLintCliResult {
+            response,
+            log_updated: false,
+        };
     }
 
-    match llm_wiki::llm_wiki_lint(root_path, None) {
-        Ok(lint_report) => CliResponse {
-            ok: true,
-            lint_report: Some(lint_report),
-            ..CliResponse::default()
+    let before = log_file_fingerprint(&root_path);
+    match llm_wiki::llm_wiki_lint(root_path.clone(), None) {
+        Ok(lint_report) => LlmWikiLintCliResult {
+            response: CliResponse {
+                ok: true,
+                lint_report: Some(lint_report),
+                ..CliResponse::default()
+            },
+            log_updated: before != log_file_fingerprint(&root_path),
         },
-        Err(error) => workspace_error(error),
+        Err(error) => LlmWikiLintCliResult {
+            response: workspace_error(error),
+            log_updated: false,
+        },
     }
 }
 
-fn lint_response_updated_log(response: &CliResponse) -> bool {
-    response.ok
-        && !response
-            .lint_report
-            .as_deref()
-            .unwrap_or_default()
-            .contains("LLM 语义检查失败：")
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LogFileFingerprint {
+    bytes: Vec<u8>,
+}
+
+fn log_file_fingerprint(root_path: &str) -> Option<LogFileFingerprint> {
+    let bytes = fs::read(PathBuf::from(root_path).join("log.md")).ok()?;
+    Some(LogFileFingerprint { bytes })
 }
 
 fn llm_wiki_search_response_for_root(root_path: String, query: String) -> CliResponse {
@@ -998,7 +1019,50 @@ mod tests {
     use super::*;
     use crate::cli_protocol::WorkspaceSnapshot;
     use crate::llm_wiki_fs::initialize_llm_wiki_workspace;
+    use std::ffi::OsString;
+    use std::sync::{MutexGuard, OnceLock};
     use tempfile::TempDir;
+
+    fn llm_config_env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    struct LlmConfigEnvGuard {
+        _lock: MutexGuard<'static, ()>,
+        home: Option<OsString>,
+        userprofile: Option<OsString>,
+    }
+
+    impl LlmConfigEnvGuard {
+        fn use_home(path: impl AsRef<std::path::Path>) -> Self {
+            let lock = llm_config_env_lock().lock().unwrap();
+            let home = std::env::var_os("HOME");
+            let userprofile = std::env::var_os("USERPROFILE");
+            std::env::set_var("HOME", path.as_ref());
+            std::env::remove_var("USERPROFILE");
+            Self {
+                _lock: lock,
+                home,
+                userprofile,
+            }
+        }
+    }
+
+    impl Drop for LlmConfigEnvGuard {
+        fn drop(&mut self) {
+            if let Some(value) = self.home.as_ref() {
+                std::env::set_var("HOME", value);
+            } else {
+                std::env::remove_var("HOME");
+            }
+            if let Some(value) = self.userprofile.as_ref() {
+                std::env::set_var("USERPROFILE", value);
+            } else {
+                std::env::remove_var("USERPROFILE");
+            }
+        }
+    }
 
     #[test]
     fn llm_wiki_search_response_rejects_ordinary_workspace() {
@@ -1107,25 +1171,18 @@ mod tests {
     }
 
     #[test]
-    fn lint_semantic_failure_response_does_not_report_log_update() {
-        let response = CliResponse {
-            ok: true,
-            lint_report: Some("## LLM 语义检查\nLLM 语义检查失败：timeout\n".to_string()),
-            ..CliResponse::default()
-        };
+    fn lint_no_config_response_reports_log_update_from_file_state() {
+        let root = TempDir::new().unwrap();
+        let home = TempDir::new().unwrap();
+        let _env_guard = LlmConfigEnvGuard::use_home(home.path().canonicalize().unwrap());
+        initialize_llm_wiki_workspace(root.path()).unwrap();
 
-        assert!(!lint_response_updated_log(&response));
-    }
+        let result = llm_wiki_lint_response_for_root_with_log_status(
+            root.path().to_string_lossy().into_owned(),
+        );
 
-    #[test]
-    fn lint_success_response_reports_log_update() {
-        let response = CliResponse {
-            ok: true,
-            lint_report: Some("## LLM 语义检查\n未配置 LLM，已跳过。\n".to_string()),
-            ..CliResponse::default()
-        };
-
-        assert!(lint_response_updated_log(&response));
+        assert!(result.response.ok);
+        assert!(result.log_updated);
     }
 
     #[test]
