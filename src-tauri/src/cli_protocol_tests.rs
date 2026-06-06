@@ -53,6 +53,45 @@ fn parses_llm_wiki_query_and_search_commands() {
 }
 
 #[test]
+fn parses_llm_wiki_status_request() {
+    let request: CliRequest = serde_json::from_str(r#"{"cmd":"llm-wiki-status"}"#).unwrap();
+    assert_eq!(request, CliRequest::LlmWikiStatus);
+}
+
+#[test]
+fn parses_llm_wiki_ingest_request() {
+    let request: CliRequest =
+        serde_json::from_str(r#"{"cmd":"llm-wiki-ingest","rawPath":"raw/notes/a.md"}"#).unwrap();
+    assert_eq!(
+        request,
+        CliRequest::LlmWikiIngest {
+            raw_path: "raw/notes/a.md".to_string()
+        }
+    );
+}
+
+#[test]
+fn parses_llm_wiki_digest_request() {
+    let request: CliRequest = serde_json::from_str(
+        r#"{"cmd":"llm-wiki-digest","title":"karpathy-llm-wiki","prompt":"Summarize"}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        request,
+        CliRequest::LlmWikiDigest {
+            title: "karpathy-llm-wiki".to_string(),
+            prompt: "Summarize".to_string()
+        }
+    );
+}
+
+#[test]
+fn parses_llm_wiki_lint_request() {
+    let request: CliRequest = serde_json::from_str(r#"{"cmd":"llm-wiki-lint"}"#).unwrap();
+    assert_eq!(request, CliRequest::LlmWikiLint);
+}
+
+#[test]
 fn serializes_llm_wiki_query_response_as_snake_case_json() {
     let response = crate::cli_protocol::CliResponse {
         ok: true,

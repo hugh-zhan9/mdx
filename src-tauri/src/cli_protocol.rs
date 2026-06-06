@@ -60,6 +60,16 @@ pub enum CliRequest {
     LlmWikiSearch {
         query: String,
     },
+    LlmWikiStatus,
+    LlmWikiIngest {
+        #[serde(alias = "rawPath")]
+        raw_path: String,
+    },
+    LlmWikiDigest {
+        title: String,
+        prompt: String,
+    },
+    LlmWikiLint,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -142,6 +152,14 @@ pub struct CliResponse {
     pub insufficient_context: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub results: Option<Vec<CliWikiSearchResult>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_wiki_mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub has_llm_wiki: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub digest_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lint_report: Option<String>,
 }
 
 impl CliResponse {

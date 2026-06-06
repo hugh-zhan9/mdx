@@ -257,6 +257,10 @@ fn dispatch(app: &AppHandle, request: CliRequest) -> CliResponse {
         CliRequest::Rename { path, new_name } => handle_rename(app, path, new_name),
         CliRequest::LlmWikiQuery { question } => handle_llm_wiki_query(app, question),
         CliRequest::LlmWikiSearch { query } => handle_llm_wiki_search(app, query),
+        CliRequest::LlmWikiStatus => handle_llm_wiki_status(app),
+        CliRequest::LlmWikiIngest { raw_path } => handle_llm_wiki_ingest(app, raw_path),
+        CliRequest::LlmWikiDigest { title, prompt } => handle_llm_wiki_digest(app, title, prompt),
+        CliRequest::LlmWikiLint => handle_llm_wiki_lint(app),
     }
 }
 
@@ -649,17 +653,36 @@ fn handle_rename(app: &AppHandle, path: Option<String>, new_name: String) -> Cli
 }
 
 fn handle_llm_wiki_query(app: &AppHandle, question: String) -> CliResponse {
-    let Some((_, snapshot)) = current_snapshot(app) else {
+    let Some((label, snapshot)) = current_snapshot(app) else {
         return CliResponse::error("no_workspace", "no workspace snapshot is available");
     };
     let root_path = match llm_wiki_active_root(&snapshot) {
         Ok(root_path) => root_path,
         Err(response) => return response,
     };
-    llm_wiki_query_response_for_root(root_path, question)
+    let response = llm_wiki_query_response_for_root(root_path.clone(), question);
+    if response.ok {
+        emit_log_file_updated(app, &label, &root_path);
+    }
+    response
 }
 
 fn handle_llm_wiki_search(app: &AppHandle, query: String) -> CliResponse {
+    let Some((label, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match llm_wiki_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+    let response = llm_wiki_search_response_for_root(root_path.clone(), query);
+    if response.ok {
+        emit_log_file_updated(app, &label, &root_path);
+    }
+    response
+}
+
+fn handle_llm_wiki_status(app: &AppHandle) -> CliResponse {
     let Some((_, snapshot)) = current_snapshot(app) else {
         return CliResponse::error("no_workspace", "no workspace snapshot is available");
     };
@@ -667,7 +690,53 @@ fn handle_llm_wiki_search(app: &AppHandle, query: String) -> CliResponse {
         Ok(root_path) => root_path,
         Err(response) => return response,
     };
-    llm_wiki_search_response_for_root(root_path, query)
+
+    llm_wiki_status_response_for_root(root_path)
+}
+
+fn handle_llm_wiki_ingest(app: &AppHandle, raw_path: String) -> CliResponse {
+    let Some((label, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match llm_wiki_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+    let response = llm_wiki_ingest_response_for_root(root_path.clone(), raw_path);
+    if response.ok {
+        emit_log_file_updated(app, &label, &root_path);
+    }
+    response
+}
+
+fn handle_llm_wiki_digest(app: &AppHandle, title: String, prompt: String) -> CliResponse {
+    let Some((label, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match llm_wiki_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+    let response = llm_wiki_digest_response_for_root(root_path.clone(), title, prompt);
+    if response.ok {
+        emit_log_file_updated(app, &label, &root_path);
+    }
+    response
+}
+
+fn handle_llm_wiki_lint(app: &AppHandle) -> CliResponse {
+    let Some((label, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match llm_wiki_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+    let response = llm_wiki_lint_response_for_root(root_path.clone());
+    if response.ok {
+        emit_log_file_updated(app, &label, &root_path);
+    }
+    response
 }
 
 fn llm_wiki_active_root(snapshot: &WindowSnapshot) -> Result<String, CliResponse> {
@@ -686,6 +755,64 @@ fn ensure_llm_wiki_ready(root_path: &str) -> Result<(), CliResponse> {
             "current workspace is not an LLM Wiki workspace",
         )),
         Err(error) => Err(workspace_error(error)),
+    }
+}
+
+fn llm_wiki_status_response_for_root(root_path: String) -> CliResponse {
+    match detect_llm_wiki_workspace(&root_path) {
+        Ok(status) => CliResponse {
+            ok: true,
+            root_path: Some(root_path),
+            llm_wiki_mode: Some(status.mode),
+            has_llm_wiki: Some(status.has_llm_wiki),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn llm_wiki_ingest_response_for_root(root_path: String, raw_path: String) -> CliResponse {
+    if let Err(response) = ensure_llm_wiki_ready(&root_path) {
+        return response;
+    }
+
+    match llm_wiki::llm_wiki_ingest_raw_file_sync(root_path, raw_path) {
+        Ok(()) => CliResponse::ok(),
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn llm_wiki_digest_response_for_root(
+    root_path: String,
+    title: String,
+    prompt: String,
+) -> CliResponse {
+    if let Err(response) = ensure_llm_wiki_ready(&root_path) {
+        return response;
+    }
+
+    match llm_wiki::llm_wiki_digest_sync(root_path, title, prompt) {
+        Ok(digest_path) => CliResponse {
+            ok: true,
+            digest_path: Some(digest_path),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn llm_wiki_lint_response_for_root(root_path: String) -> CliResponse {
+    if let Err(response) = ensure_llm_wiki_ready(&root_path) {
+        return response;
+    }
+
+    match llm_wiki::llm_wiki_lint(root_path, None) {
+        Ok(lint_report) => CliResponse {
+            ok: true,
+            lint_report: Some(lint_report),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
     }
 }
 
@@ -780,6 +907,16 @@ fn emit_to_window<T: Serialize>(
         .map_err(|error| error.to_string())
 }
 
+fn emit_log_file_updated(app: &AppHandle, label: &str, root_path: &str) {
+    let payload = CliFileUpdatedPayload {
+        path: PathBuf::from(root_path)
+            .join("log.md")
+            .to_string_lossy()
+            .into_owned(),
+    };
+    let _ = emit_to_window(app, label, "cli-file-updated", &payload);
+}
+
 fn error_response(error: CliProtocolError) -> CliResponse {
     CliResponse::error(error.error_code(), error.to_string())
 }
@@ -841,6 +978,12 @@ struct CliOpenPayload {
     path: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CliFileUpdatedPayload {
+    path: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -888,6 +1031,70 @@ mod tests {
 
         assert!(response.ok);
         assert_eq!(response.results, Some(Vec::new()));
+    }
+
+    #[test]
+    fn llm_wiki_status_response_reports_workspace_mode() {
+        let root = TempDir::new().unwrap();
+        initialize_llm_wiki_workspace(root.path()).unwrap();
+        let root_path = root.path().to_string_lossy().into_owned();
+
+        let response = llm_wiki_status_response_for_root(root_path.clone());
+
+        assert!(response.ok);
+        assert_eq!(response.root_path.as_deref(), Some(root_path.as_str()));
+        assert_eq!(response.llm_wiki_mode.as_deref(), Some("llmWiki"));
+        assert_eq!(response.has_llm_wiki, Some(true));
+    }
+
+    #[test]
+    fn llm_wiki_status_response_reports_ordinary_workspace() {
+        let root = TempDir::new().unwrap();
+        let root_path = root.path().to_string_lossy().into_owned();
+
+        let response = llm_wiki_status_response_for_root(root_path.clone());
+
+        assert!(response.ok);
+        assert_eq!(response.root_path.as_deref(), Some(root_path.as_str()));
+        assert_eq!(response.llm_wiki_mode.as_deref(), Some("ordinary"));
+        assert_eq!(response.has_llm_wiki, Some(false));
+    }
+
+    #[test]
+    fn llm_wiki_ingest_response_rejects_ordinary_workspace() {
+        let root = TempDir::new().unwrap();
+
+        let response = llm_wiki_ingest_response_for_root(
+            root.path().to_string_lossy().into_owned(),
+            "raw/notes/a.md".to_string(),
+        );
+
+        assert!(!response.ok);
+        assert_eq!(response.error_code.as_deref(), Some("llm_wiki_not_ready"));
+    }
+
+    #[test]
+    fn llm_wiki_digest_response_rejects_ordinary_workspace() {
+        let root = TempDir::new().unwrap();
+
+        let response = llm_wiki_digest_response_for_root(
+            root.path().to_string_lossy().into_owned(),
+            "karpathy-llm-wiki".to_string(),
+            "Summarize".to_string(),
+        );
+
+        assert!(!response.ok);
+        assert_eq!(response.error_code.as_deref(), Some("llm_wiki_not_ready"));
+    }
+
+    #[test]
+    fn llm_wiki_lint_response_rejects_ordinary_workspace() {
+        let root = TempDir::new().unwrap();
+
+        let response = llm_wiki_lint_response_for_root(root.path().to_string_lossy().into_owned());
+
+        assert!(!response.ok);
+        assert_eq!(response.error_code.as_deref(), Some("llm_wiki_not_ready"));
     }
 
     #[test]

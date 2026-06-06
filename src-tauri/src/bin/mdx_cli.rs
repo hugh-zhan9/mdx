@@ -73,6 +73,20 @@ enum CommandLine {
 
 #[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
 enum LlmWikiCommand {
+    Status,
+    Ingest {
+        raw_path: String,
+    },
+    Digest {
+        #[arg(long)]
+        title: String,
+        #[arg(required = true, num_args = 1..)]
+        prompt: Vec<String>,
+    },
+    Lint {
+        #[arg(long)]
+        json: bool,
+    },
     Query {
         #[arg(long)]
         json: bool,
@@ -149,6 +163,15 @@ fn request_from_command(command: &CommandLine) -> io::Result<CliRequest> {
             new_name: new_name.clone(),
         },
         CommandLine::LlmWiki { command } => match command {
+            LlmWikiCommand::Status => CliRequest::LlmWikiStatus,
+            LlmWikiCommand::Ingest { raw_path } => CliRequest::LlmWikiIngest {
+                raw_path: raw_path.clone(),
+            },
+            LlmWikiCommand::Digest { title, prompt } => CliRequest::LlmWikiDigest {
+                title: title.trim().to_string(),
+                prompt: join_required_words(prompt, "prompt")?,
+            },
+            LlmWikiCommand::Lint { .. } => CliRequest::LlmWikiLint,
             LlmWikiCommand::Query { question, .. } => CliRequest::LlmWikiQuery {
                 question: join_required_words(question, "question")?,
             },
@@ -216,6 +239,12 @@ fn success_output(command: &CommandLine, response: &CliResponse) -> String {
         CommandLine::LlmWiki {
             command: LlmWikiCommand::Query { json: false, .. },
         } => response.answer.clone().unwrap_or_default(),
+        CommandLine::LlmWiki {
+            command: LlmWikiCommand::Digest { .. },
+        } => response.digest_path.clone().unwrap_or_default(),
+        CommandLine::LlmWiki {
+            command: LlmWikiCommand::Lint { json: false },
+        } => response.lint_report.clone().unwrap_or_default(),
         _ => serde_json::to_string(response).unwrap_or_else(|_| "{\"ok\":true}".into()),
     }
 }
@@ -377,6 +406,34 @@ mod tests {
     }
 
     #[test]
+    fn llm_wiki_digest_request_trims_title_and_joins_multiword_prompt() {
+        let command = CommandLine::LlmWiki {
+            command: LlmWikiCommand::Digest {
+                title: " karpathy-llm-wiki ".to_string(),
+                prompt: vec!["Summarize".to_string(), "notes".to_string()],
+            },
+        };
+
+        assert!(matches!(
+            request_from_command(&command).unwrap(),
+            CliRequest::LlmWikiDigest { title, prompt }
+                if title == "karpathy-llm-wiki" && prompt == "Summarize notes"
+        ));
+    }
+
+    #[test]
+    fn llm_wiki_lint_request_maps_to_lint_protocol_request() {
+        let command = CommandLine::LlmWiki {
+            command: LlmWikiCommand::Lint { json: false },
+        };
+
+        assert_eq!(
+            request_from_command(&command).unwrap(),
+            CliRequest::LlmWikiLint
+        );
+    }
+
+    #[test]
     fn llm_wiki_query_rejects_blank_question() {
         let command = CommandLine::LlmWiki {
             command: LlmWikiCommand::Query {
@@ -475,5 +532,39 @@ mod tests {
             success_output(&command, &response),
             r#"{"ok":true,"results":[]}"#
         );
+    }
+
+    #[test]
+    fn llm_wiki_digest_output_is_digest_path() {
+        let command = CommandLine::LlmWiki {
+            command: LlmWikiCommand::Digest {
+                title: "karpathy-llm-wiki".to_string(),
+                prompt: vec!["Summarize".to_string()],
+            },
+        };
+        let response = CliResponse {
+            ok: true,
+            digest_path: Some("wiki/syntheses/karpathy-llm-wiki.md".to_string()),
+            ..CliResponse::default()
+        };
+
+        assert_eq!(
+            success_output(&command, &response),
+            "wiki/syntheses/karpathy-llm-wiki.md"
+        );
+    }
+
+    #[test]
+    fn llm_wiki_lint_default_output_is_report_text_only() {
+        let command = CommandLine::LlmWiki {
+            command: LlmWikiCommand::Lint { json: false },
+        };
+        let response = CliResponse {
+            ok: true,
+            lint_report: Some("OK".to_string()),
+            ..CliResponse::default()
+        };
+
+        assert_eq!(success_output(&command, &response), "OK");
     }
 }
