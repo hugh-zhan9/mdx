@@ -3,6 +3,7 @@ import {
     createExclusiveOperationRunner,
     getLlmWikiOperationLabel,
     getLlmWikiStageLabel,
+    isLlmWikiActiveOperationOwner,
 } from "./operation-state";
 
 describe("getLlmWikiOperationLabel", () => {
@@ -67,5 +68,33 @@ describe("createExclusiveOperationRunner", () => {
             status: "completed",
             value: "next",
         });
+    });
+});
+
+describe("isLlmWikiActiveOperationOwner", () => {
+    it("does not let a parent operation clear a newer background operation", () => {
+        expect(
+            isLlmWikiActiveOperationOwner(
+                {
+                    activeOperation: "ingest",
+                    activeOperationId: "ingest-1",
+                },
+                "rescan",
+                null,
+            ),
+        ).toBe(false);
+    });
+
+    it("allows the operation that owns the active state to clear it", () => {
+        expect(
+            isLlmWikiActiveOperationOwner(
+                {
+                    activeOperation: "query",
+                    activeOperationId: "query-1",
+                },
+                "query",
+                "query-1",
+            ),
+        ).toBe(true);
     });
 });

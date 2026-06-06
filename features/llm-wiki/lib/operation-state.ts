@@ -71,6 +71,23 @@ export function getLlmWikiStageLabel(stage: string | null) {
     }
 }
 
+export interface LlmWikiActiveOperationSnapshot {
+    activeOperation: LlmWikiOperation | null;
+    activeOperationId: string | null;
+}
+
+export function isLlmWikiActiveOperationOwner(
+    snapshot: LlmWikiActiveOperationSnapshot,
+    operation: LlmWikiOperation,
+    operationId: string | null,
+) {
+    if (snapshot.activeOperation !== operation) {
+        return false;
+    }
+
+    return snapshot.activeOperationId === operationId;
+}
+
 export function createExclusiveOperationRunner() {
     let activeOperation: LlmWikiOperation | null = null;
 

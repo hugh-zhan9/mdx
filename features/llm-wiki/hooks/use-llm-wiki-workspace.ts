@@ -30,6 +30,7 @@ import {
   createExclusiveOperationRunner,
   getLlmWikiOperationLabel,
   getLlmWikiStageLabel,
+  isLlmWikiActiveOperationOwner,
   type LlmWikiOperation,
 } from "../lib/operation-state";
 import {
@@ -166,7 +167,8 @@ export function useLlmWikiWorkspace(
           await task({ operationId });
         } finally {
           setSnapshot((current) =>
-            current.rootPath === rootPath
+            current.rootPath === rootPath &&
+            isLlmWikiActiveOperationOwner(current, operation, operationId)
               ? {
                   ...current,
                   activeOperation: null,
@@ -766,9 +768,9 @@ export function useLlmWikiWorkspace(
         return;
       }
 
-      const queryGeneration = ++queryGenerationRef.current;
-
       await runExclusiveOperation("query", async ({ operationId }) => {
+        const queryGeneration = ++queryGenerationRef.current;
+
         setSnapshot((current) =>
           current.rootPath === queryRootPath
             ? {
