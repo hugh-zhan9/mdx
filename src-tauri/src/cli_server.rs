@@ -790,6 +790,14 @@ fn llm_wiki_digest_response_for_root(
     if let Err(response) = ensure_llm_wiki_ready(&root_path) {
         return response;
     }
+    let title = match required_cli_text(title, "title", "invalid_title") {
+        Ok(title) => title,
+        Err(response) => return response,
+    };
+    let prompt = match required_cli_text(prompt, "prompt", "invalid_prompt") {
+        Ok(prompt) => prompt,
+        Err(response) => return response,
+    };
 
     match llm_wiki::llm_wiki_digest_sync(root_path, title, prompt) {
         Ok(digest_path) => CliResponse {
@@ -799,6 +807,21 @@ fn llm_wiki_digest_response_for_root(
         },
         Err(error) => workspace_error(error),
     }
+}
+
+fn required_cli_text(
+    value: String,
+    noun: &str,
+    error_code: &'static str,
+) -> Result<String, CliResponse> {
+    let value = value.trim().to_string();
+    if value.is_empty() {
+        return Err(CliResponse::error(
+            error_code,
+            format!("{noun} must not be empty"),
+        ));
+    }
+    Ok(value)
 }
 
 #[cfg(test)]
@@ -1158,6 +1181,38 @@ mod tests {
 
         assert!(!response.ok);
         assert_eq!(response.error_code.as_deref(), Some("llm_wiki_not_ready"));
+    }
+
+    #[test]
+    fn llm_wiki_digest_response_rejects_blank_title() {
+        let root = TempDir::new().unwrap();
+        initialize_llm_wiki_workspace(root.path()).unwrap();
+
+        let response = llm_wiki_digest_response_for_root(
+            root.path().to_string_lossy().into_owned(),
+            "   ".to_string(),
+            "Summarize".to_string(),
+        );
+
+        assert!(!response.ok);
+        assert_eq!(response.error_code.as_deref(), Some("invalid_title"));
+        assert_eq!(response.error.as_deref(), Some("title must not be empty"));
+    }
+
+    #[test]
+    fn llm_wiki_digest_response_rejects_blank_prompt() {
+        let root = TempDir::new().unwrap();
+        initialize_llm_wiki_workspace(root.path()).unwrap();
+
+        let response = llm_wiki_digest_response_for_root(
+            root.path().to_string_lossy().into_owned(),
+            "karpathy-llm-wiki".to_string(),
+            "   ".to_string(),
+        );
+
+        assert!(!response.ok);
+        assert_eq!(response.error_code.as_deref(), Some("invalid_prompt"));
+        assert_eq!(response.error.as_deref(), Some("prompt must not be empty"));
     }
 
     #[test]
