@@ -46,11 +46,30 @@ fn operation_registry() -> &'static LlmWikiOperationRegistry {
     REGISTRY.get_or_init(LlmWikiOperationRegistry::new)
 }
 
-fn register_operation(operation_id: Option<&str>, operation: &str) -> Result<(), WorkspaceError> {
-    if let Some(operation_id) = operation_id {
+struct OperationGuard {
+    operation_id: Option<String>,
+}
+
+impl OperationGuard {
+    fn operation_id(&self) -> Option<String> {
+        self.operation_id.clone()
+    }
+}
+
+impl Drop for OperationGuard {
+    fn drop(&mut self) {
+        finish_operation(self.operation_id.as_deref());
+    }
+}
+
+fn begin_operation(
+    operation_id: Option<String>,
+    operation: &str,
+) -> Result<OperationGuard, WorkspaceError> {
+    if let Some(operation_id) = operation_id.as_deref() {
         operation_registry().start_with_id(operation_id, operation)?;
     }
-    Ok(())
+    Ok(OperationGuard { operation_id })
 }
 
 fn set_operation_stage(operation_id: Option<&str>, stage: &str) -> Result<(), WorkspaceError> {
@@ -83,7 +102,10 @@ pub(crate) fn register_llm_wiki_operation_for_test(
     operation_id: Option<String>,
     operation: &str,
 ) -> Result<(), WorkspaceError> {
-    register_operation(operation_id.as_deref(), operation)
+    if let Some(operation_id) = operation_id.as_deref() {
+        operation_registry().start_with_id(operation_id, operation)?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -234,8 +256,10 @@ pub async fn llm_wiki_ingest_raw_file(
     raw_relative_path: String,
     operation_id: Option<String>,
 ) -> Result<(), WorkspaceError> {
-    register_operation(operation_id.as_deref(), "ingest")?;
+    let operation = begin_operation(operation_id, "ingest")?;
+    let operation_id = operation.operation_id();
     run_blocking(move || {
+        let _operation = operation;
         llm_wiki_ingest_raw_file_sync_with_operation(root_path, raw_relative_path, operation_id)
     })
     .await
@@ -347,6 +371,7 @@ pub(crate) fn llm_wiki_ingest_raw_file_sync_with_operation(
             return Err(error);
         }
     };
+    set_operation_stage(operation_id.as_deref(), "writing_pages")?;
     write_ingest_outputs(
         &root,
         &raw_relative_path,
@@ -457,9 +482,13 @@ pub async fn llm_wiki_query(
     question: String,
     operation_id: Option<String>,
 ) -> Result<LlmWikiQueryResponse, WorkspaceError> {
-    register_operation(operation_id.as_deref(), "query")?;
-    run_blocking(move || llm_wiki_query_sync_with_operation(root_path, question, operation_id))
-        .await
+    let operation = begin_operation(operation_id, "query")?;
+    let operation_id = operation.operation_id();
+    run_blocking(move || {
+        let _operation = operation;
+        llm_wiki_query_sync_with_operation(root_path, question, operation_id)
+    })
+    .await
 }
 
 pub fn llm_wiki_query_sync(
@@ -539,8 +568,10 @@ pub async fn llm_wiki_digest(
     prompt: String,
     operation_id: Option<String>,
 ) -> Result<String, WorkspaceError> {
-    register_operation(operation_id.as_deref(), "digest")?;
+    let operation = begin_operation(operation_id, "digest")?;
+    let operation_id = operation.operation_id();
     run_blocking(move || {
+        let _operation = operation;
         llm_wiki_digest_sync_with_operation(root_path, title, prompt, operation_id)
     })
     .await
@@ -615,7 +646,8 @@ pub fn llm_wiki_lint(
     root_path: String,
     operation_id: Option<String>,
 ) -> Result<String, WorkspaceError> {
-    register_operation(operation_id.as_deref(), "lint")?;
+    let operation = begin_operation(operation_id, "lint")?;
+    let operation_id = operation.operation_id();
     llm_wiki_lint_with_operation(root_path, operation_id)
 }
 

@@ -37,6 +37,13 @@ impl LlmWikiOperationRegistry {
                 "llm wiki operation id must not be empty",
             ));
         }
+        let mut states = self.lock_states()?;
+        if states.contains_key(operation_id) {
+            return Err(WorkspaceError::new(
+                "operation_already_exists",
+                "llm wiki operation already exists",
+            ));
+        }
         let state = LlmWikiOperationState {
             operation_id: operation_id.to_string(),
             operation: operation.to_string(),
@@ -44,15 +51,7 @@ impl LlmWikiOperationRegistry {
             cancelled: false,
         };
 
-        self.states
-            .lock()
-            .map_err(|_| {
-                WorkspaceError::new(
-                    "operation_registry_failed",
-                    "failed to access llm wiki operation registry",
-                )
-            })?
-            .insert(operation_id.to_string(), state);
+        states.insert(operation_id.to_string(), state);
         Ok(())
     }
 

@@ -53,6 +53,18 @@ fn llm_wiki_operation_registry_tracks_stage_and_cancel() {
 }
 
 #[test]
+fn llm_wiki_operation_registry_rejects_duplicate_active_ids() {
+    let registry = crate::llm_wiki_operation::LlmWikiOperationRegistry::new();
+    let id = registry.start("query");
+
+    let error = registry.start_with_id(&id, "digest").unwrap_err();
+
+    assert_eq!(error.error_code(), "operation_already_exists");
+    let state = registry.state(&id).unwrap();
+    assert_eq!(state.operation, "query");
+}
+
+#[test]
 fn llm_wiki_command_operation_registration_creates_addressable_state() {
     let id = unique_operation_id("query-registration");
 
@@ -86,6 +98,25 @@ fn digest_write_boundary_rechecks_cancellation_before_writing() {
         .path()
         .join("wiki/syntheses/cancelled-digest.md")
         .exists());
+}
+
+#[test]
+fn digest_operation_is_cleaned_up_on_error() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    let id = unique_operation_id("digest-cleanup");
+
+    let error = tauri::async_runtime::block_on(crate::llm_wiki::llm_wiki_digest(
+        root.path().to_string_lossy().into_owned(),
+        "Cleanup".to_string(),
+        "No context".to_string(),
+        Some(id.clone()),
+    ))
+    .unwrap_err();
+
+    assert_eq!(error.error_code(), "insufficient_context");
+    let state_error = crate::llm_wiki::llm_wiki_operation_state(id).unwrap_err();
+    assert_eq!(state_error.error_code(), "operation_not_found");
 }
 
 #[test]
