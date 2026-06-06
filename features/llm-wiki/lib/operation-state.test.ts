@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
     createExclusiveOperationRunner,
     getLlmWikiOperationLabel,
+    getLlmWikiStageLabel,
 } from "./operation-state";
 
 describe("getLlmWikiOperationLabel", () => {
@@ -12,6 +13,18 @@ describe("getLlmWikiOperationLabel", () => {
         expect(getLlmWikiOperationLabel("graph")).toBe("正在刷新图谱");
         expect(getLlmWikiOperationLabel("digest")).toBe("正在生成");
         expect(getLlmWikiOperationLabel(null)).toBeNull();
+    });
+});
+
+describe("llm wiki operation labels", () => {
+    it("labels query and backend stages", () => {
+        expect(getLlmWikiOperationLabel("query")).toBe("正在查询");
+        expect(getLlmWikiStageLabel("selecting_pages")).toBe("选择相关页面");
+        expect(getLlmWikiStageLabel("answering")).toBe("生成回答");
+    });
+
+    it("falls back to raw stage ids for unknown stages", () => {
+        expect(getLlmWikiStageLabel("custom_stage")).toBe("custom_stage");
     });
 });
 

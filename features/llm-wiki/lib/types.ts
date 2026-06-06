@@ -13,6 +13,22 @@ export interface InitializeLlmWikiResult {
     status: LlmWikiWorkspaceStatus;
 }
 
+export type LlmWikiOperationId =
+    | "initialize"
+    | "rescan"
+    | "ingest"
+    | "query"
+    | "lint"
+    | "graph"
+    | "digest";
+
+export interface LlmWikiOperationState {
+    operationId: string;
+    operation: string;
+    stage: string;
+    cancelled: boolean;
+}
+
 export interface PublicLlmProviderConfig {
     baseUrl: string;
     model: string;

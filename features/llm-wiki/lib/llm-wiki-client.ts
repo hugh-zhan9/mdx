@@ -3,6 +3,7 @@ import type {
   InitializeLlmWikiResult,
   LlmWikiKnowledgeConfig,
   LlmWikiLintResult,
+  LlmWikiOperationState,
   LlmWikiQueryResponse,
   LlmWikiWorkspaceStatus,
   LlmProviderConfigForm,
@@ -62,10 +63,12 @@ export function rescanRaw(
 export function ingestRawFile(
   rootPath: string,
   rawRelativePath: string,
+  operationId?: string,
 ): Promise<void> {
   return invokeCommand("llm_wiki_ingest_raw_file", {
     rootPath,
     rawRelativePath,
+    operationId,
   });
 }
 
@@ -73,8 +76,14 @@ export function refreshKnowledgeGraph(rootPath: string): Promise<string> {
   return invokeCommand("llm_wiki_refresh_graph", { rootPath });
 }
 
-export async function runLint(rootPath: string): Promise<LlmWikiLintResult> {
-  const report = await invokeCommand<string>("llm_wiki_lint", { rootPath });
+export async function runLint(
+  rootPath: string,
+  operationId?: string,
+): Promise<LlmWikiLintResult> {
+  const report = await invokeCommand<string>("llm_wiki_lint", {
+    rootPath,
+    operationId,
+  });
   return { report };
 }
 
@@ -109,18 +118,31 @@ export function searchWiki(
 export function queryWiki(
   rootPath: string,
   question: string,
+  operationId?: string,
 ): Promise<LlmWikiQueryResponse> {
-  return invokeCommand("llm_wiki_query", { rootPath, question });
+  return invokeCommand("llm_wiki_query", { rootPath, question, operationId });
 }
 
 export async function createDigest(
   rootPath: string,
   title: string,
   prompt: string,
+  operationId?: string,
 ): Promise<string> {
   return invokeCommand("llm_wiki_digest", {
     rootPath,
     title,
     prompt,
+    operationId,
   });
+}
+
+export function getLlmWikiOperationState(
+  operationId: string,
+): Promise<LlmWikiOperationState> {
+  return invokeCommand("llm_wiki_operation_state", { operationId });
+}
+
+export function cancelLlmWikiOperation(operationId: string): Promise<void> {
+  return invokeCommand("llm_wiki_operation_cancel", { operationId });
 }

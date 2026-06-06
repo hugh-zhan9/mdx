@@ -10,9 +10,11 @@ import {
 } from "react";
 import { normalizeWorkspacePath } from "@/features/workspace/lib/path";
 import {
+  cancelLlmWikiOperation,
   createDigest,
   detectLlmWikiWorkspace,
   getLlmConfig,
+  getLlmWikiOperationState,
   ingestRawFile,
   initializeLlmWikiWorkspace,
   queryWiki,
@@ -27,6 +29,7 @@ import {
 import {
   createExclusiveOperationRunner,
   getLlmWikiOperationLabel,
+  getLlmWikiStageLabel,
   type LlmWikiOperation,
 } from "../lib/operation-state";
 import {
@@ -53,7 +56,10 @@ export interface LlmWikiWorkspaceHook {
   isQuerying: boolean;
   isProcessing: boolean;
   activeOperation: LlmWikiOperation | null;
+  activeOperationId: string | null;
   activeOperationLabel: string | null;
+  activeStageLabel: string | null;
+  cancelActiveOperation: () => Promise<void>;
   initialize: () => Promise<void>;
   rescan: () => Promise<void>;
   lint: () => Promise<void>;
@@ -85,6 +91,8 @@ interface RootSnapshot {
   isLoading: boolean;
   isQuerying: boolean;
   activeOperation: LlmWikiOperation | null;
+  activeOperationId: string | null;
+  activeStage: string | null;
 }
 
 export function useLlmWikiWorkspace(
@@ -110,6 +118,8 @@ export function useLlmWikiWorkspace(
   const { status, config, scan, message, queryAnswer, isQuerying } =
     currentSnapshot;
   const activeOperation = currentSnapshot.activeOperation;
+  const activeOperationId = currentSnapshot.activeOperationId;
+  const activeStage = currentSnapshot.activeStage;
   const isLoading = currentSnapshot.isLoading || snapshot.rootPath !== rootPath;
   const isProcessing = activeOperation !== null;
   const isReady =
@@ -134,14 +144,17 @@ export function useLlmWikiWorkspace(
   const runExclusiveOperation = useCallback(
     async (
       operation: LlmWikiOperation,
-      task: () => Promise<void>,
+      task: (context: { operationId: string | null }) => Promise<void>,
     ) => {
+      const operationId = createLlmWikiOperationId(operation);
       const result = await operationRunnerRef.current.run(operation, async () => {
         setSnapshot((current) =>
           current.rootPath === rootPath
             ? {
                 ...current,
                 activeOperation: operation,
+                activeOperationId: operationId,
+                activeStage: null,
                 message:
                   current.message ??
                   getLlmWikiOperationLabel(operation),
@@ -150,13 +163,15 @@ export function useLlmWikiWorkspace(
         );
 
         try {
-          await task();
+          await task({ operationId });
         } finally {
           setSnapshot((current) =>
             current.rootPath === rootPath
               ? {
                   ...current,
                   activeOperation: null,
+                  activeOperationId: null,
+                  activeStage: null,
                 }
               : current,
           );
@@ -231,11 +246,26 @@ export function useLlmWikiWorkspace(
             );
           };
           let heartbeat: ReturnType<typeof setInterval> | null = null;
+          const operationId = createLlmWikiOperationId("ingest");
 
           try {
+            setSnapshot((current) =>
+              current.rootPath === ingestRootPath
+                ? {
+                    ...current,
+                    activeOperation: "ingest",
+                    activeOperationId: operationId,
+                    activeStage: null,
+                  }
+                : current,
+            );
             updateProcessingMessage();
             heartbeat = setInterval(updateProcessingMessage, 1000);
-            await ingestRawFile(ingestRootPath, rawRelativePath);
+            await ingestRawFile(
+              ingestRootPath,
+              rawRelativePath,
+              operationId ?? undefined,
+            );
             processedCount += 1;
             setSnapshot((current) =>
               current.rootPath === ingestRootPath
@@ -267,6 +297,17 @@ export function useLlmWikiWorkspace(
             if (heartbeat) {
               clearInterval(heartbeat);
             }
+            setSnapshot((current) =>
+              current.rootPath === ingestRootPath &&
+              current.activeOperationId === operationId
+                ? {
+                    ...current,
+                    activeOperation: null,
+                    activeOperationId: null,
+                    activeStage: null,
+                  }
+                : current,
+            );
           }
         }
 
@@ -361,6 +402,8 @@ export function useLlmWikiWorkspace(
           isLoading: false,
           isQuerying: false,
           activeOperation: operationRunnerRef.current.getActiveOperation(),
+          activeOperationId: null,
+          activeStage: null,
         });
       }
     } catch (error) {
@@ -409,6 +452,8 @@ export function useLlmWikiWorkspace(
           isLoading: false,
           isQuerying: false,
           activeOperation: null,
+          activeOperationId: null,
+          activeStage: null,
         });
       } catch (error) {
         if (
@@ -609,9 +654,9 @@ export function useLlmWikiWorkspace(
       return;
     }
 
-    await runExclusiveOperation("lint", async () => {
+    await runExclusiveOperation("lint", async ({ operationId }) => {
       try {
-        const result = await runLint(rootPath);
+        const result = await runLint(rootPath, operationId ?? undefined);
 
         if (activeRootPathRef.current === rootPath) {
           setSnapshot((current) =>
@@ -671,9 +716,14 @@ export function useLlmWikiWorkspace(
         return;
       }
 
-      await runExclusiveOperation("digest", async () => {
+      await runExclusiveOperation("digest", async ({ operationId }) => {
         try {
-          const path = await createDigest(rootPath, trimmedTitle, trimmedPrompt);
+          const path = await createDigest(
+            rootPath,
+            trimmedTitle,
+            trimmedPrompt,
+            operationId ?? undefined,
+          );
 
           if (activeRootPathRef.current === rootPath) {
             setSnapshot((current) =>
@@ -718,34 +768,26 @@ export function useLlmWikiWorkspace(
 
       const queryGeneration = ++queryGenerationRef.current;
 
-      setSnapshot((current) =>
-        current.rootPath === queryRootPath
-          ? {
-              ...current,
-              message: null,
-              queryAnswer: null,
-              isQuerying: true,
-            }
-          : current,
-      );
+      await runExclusiveOperation("query", async ({ operationId }) => {
+        setSnapshot((current) =>
+          current.rootPath === queryRootPath
+            ? {
+                ...current,
+                message: null,
+                queryAnswer: null,
+                isQuerying: true,
+              }
+            : current,
+        );
 
-      try {
-        const result = await queryWiki(queryRootPath, trimmedQuestion);
+        try {
+          const result = await queryWiki(
+            queryRootPath,
+            trimmedQuestion,
+            operationId ?? undefined,
+          );
 
-        if (
-          !isCurrentLlmWikiQueryRequest({
-            activeRootPath: activeRootPathRef.current,
-            requestRootPath: queryRootPath,
-            activeGeneration: queryGenerationRef.current,
-            requestGeneration: queryGeneration,
-          })
-        ) {
-          return;
-        }
-
-        setSnapshot((current) => {
           if (
-            current.rootPath !== queryRootPath ||
             !isCurrentLlmWikiQueryRequest({
               activeRootPath: activeRootPathRef.current,
               requestRootPath: queryRootPath,
@@ -753,35 +795,108 @@ export function useLlmWikiWorkspace(
               requestGeneration: queryGeneration,
             })
           ) {
-            return current;
+            return;
           }
 
-          return {
-            ...current,
-            queryAnswer: result,
-            isQuerying: false,
-          };
-        });
-      } catch (error) {
-        setSnapshot((current) => {
-          return current.rootPath === queryRootPath &&
-            isCurrentLlmWikiQueryRequest({
-              activeRootPath: activeRootPathRef.current,
-              requestRootPath: queryRootPath,
-              activeGeneration: queryGenerationRef.current,
-              requestGeneration: queryGeneration,
-            })
+          setSnapshot((current) => {
+            if (
+              current.rootPath !== queryRootPath ||
+              !isCurrentLlmWikiQueryRequest({
+                activeRootPath: activeRootPathRef.current,
+                requestRootPath: queryRootPath,
+                activeGeneration: queryGenerationRef.current,
+                requestGeneration: queryGeneration,
+              })
+            ) {
+              return current;
+            }
+
+            return {
+              ...current,
+              queryAnswer: result,
+              isQuerying: false,
+            };
+          });
+        } catch (error) {
+          setSnapshot((current) => {
+            return current.rootPath === queryRootPath &&
+              isCurrentLlmWikiQueryRequest({
+                activeRootPath: activeRootPathRef.current,
+                requestRootPath: queryRootPath,
+                activeGeneration: queryGenerationRef.current,
+                requestGeneration: queryGeneration,
+              })
+              ? {
+                  ...current,
+                  message: `查询 LLM Wiki 失败：${formatError(error)}`,
+                  isQuerying: false,
+                }
+              : current;
+          });
+        }
+      });
+    },
+    [isReady, rootPath, runExclusiveOperation, status?.mode],
+  );
+
+  useEffect(() => {
+    if (!activeOperationId) {
+      return;
+    }
+
+    let disposed = false;
+
+    const updateOperationState = async () => {
+      try {
+        const operationState =
+          await getLlmWikiOperationState(activeOperationId);
+
+        if (disposed) {
+          return;
+        }
+
+        setSnapshot((current) =>
+          current.rootPath === rootPath &&
+          current.activeOperationId === activeOperationId
             ? {
                 ...current,
-                message: `查询 LLM Wiki 失败：${formatError(error)}`,
-                isQuerying: false,
+                activeStage: operationState.stage,
               }
-            : current;
-        });
+            : current,
+        );
+      } catch {
+        if (disposed) {
+          return;
+        }
+
+        setSnapshot((current) =>
+          current.rootPath === rootPath &&
+          current.activeOperationId === activeOperationId
+            ? {
+                ...current,
+                activeStage: null,
+              }
+            : current,
+        );
       }
-    },
-    [isReady, rootPath, status?.mode],
-  );
+    };
+
+    void updateOperationState();
+    const interval = setInterval(updateOperationState, 1000);
+
+    return () => {
+      disposed = true;
+      clearInterval(interval);
+    };
+  }, [activeOperationId, rootPath]);
+
+  const cancelActiveOperation = useCallback(async () => {
+    if (!activeOperationId) {
+      return;
+    }
+
+    await cancelLlmWikiOperation(activeOperationId);
+  }, [activeOperationId]);
 
   const panelState = useMemo<LlmWikiPanelState>(
     () => ({
@@ -813,7 +928,10 @@ export function useLlmWikiWorkspace(
     isQuerying,
     isProcessing,
     activeOperation,
+    activeOperationId,
     activeOperationLabel: getLlmWikiOperationLabel(activeOperation),
+    activeStageLabel: getLlmWikiStageLabel(activeStage),
+    cancelActiveOperation,
     initialize,
     rescan,
     lint,
@@ -911,6 +1029,8 @@ function createLoadingSnapshot(
     isLoading: Boolean(rootPath),
     isQuerying: false,
     activeOperation,
+    activeOperationId: null,
+    activeStage: null,
   };
 }
 
@@ -925,7 +1045,28 @@ function createMissingRootSnapshot(rootPath: string): RootSnapshot {
     isLoading: false,
     isQuerying: false,
     activeOperation: null,
+    activeOperationId: null,
+    activeStage: null,
   };
+}
+
+function createLlmWikiOperationId(operation: LlmWikiOperation) {
+  if (
+    operation !== "ingest" &&
+    operation !== "query" &&
+    operation !== "lint" &&
+    operation !== "digest"
+  ) {
+    return null;
+  }
+
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `llm-wiki-${operation}-${crypto.randomUUID()}`;
+  }
+
+  return `llm-wiki-${operation}-${Date.now()}-${Math.random()
+    .toString(16)
+    .slice(2)}`;
 }
 
 function formatInitializeMessage(createdCount: number) {

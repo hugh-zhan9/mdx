@@ -1,6 +1,8 @@
 export type LlmWikiOperation =
     | "initialize"
     | "rescan"
+    | "ingest"
+    | "query"
     | "lint"
     | "graph"
     | "digest";
@@ -23,6 +25,10 @@ export function getLlmWikiOperationLabel(
             return "正在初始化";
         case "rescan":
             return "正在扫描";
+        case "ingest":
+            return "正在处理 raw";
+        case "query":
+            return "正在查询";
         case "lint":
             return "正在检查";
         case "graph":
@@ -31,6 +37,37 @@ export function getLlmWikiOperationLabel(
             return "正在生成";
         case null:
             return null;
+    }
+}
+
+export function getLlmWikiStageLabel(stage: string | null) {
+    switch (stage) {
+        case "reading_index":
+            return "读取 index";
+        case "selecting_pages":
+            return "选择相关页面";
+        case "reading_pages":
+            return "读取 Wiki 页面";
+        case "answering":
+            return "生成回答";
+        case "writing_synthesis":
+            return "写入综述";
+        case "analyzing_raw":
+            return "分析 raw";
+        case "generating_updates":
+            return "生成 Wiki 更新";
+        case "writing_pages":
+            return "写入 Wiki 页面";
+        case "mechanical_linting":
+            return "机械检查";
+        case "semantic_linting":
+            return "语义检查";
+        case "completed":
+            return "完成";
+        case null:
+            return null;
+        default:
+            return stage;
     }
 }
 

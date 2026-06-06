@@ -26,7 +26,10 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
     isQuerying,
     isProcessing,
     activeOperation,
+    activeOperationId,
     activeOperationLabel,
+    activeStageLabel,
+    cancelActiveOperation,
     initialize,
     rescan,
     lint,
@@ -143,6 +146,22 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
             </button>
           ))}
         </div>
+
+        {activeOperation ? (
+          <div className="flex min-w-0 items-center gap-2 border border-base-300 bg-base-200/60 p-2">
+            <div className="min-w-0 flex-1 truncate text-base-content/75">
+              {activeStageLabel ?? activeOperationLabel ?? "处理中"}
+            </div>
+            <button
+              type="button"
+              className="h-7 shrink-0 border border-base-content/40 px-2 text-xs text-base-content outline-none transition-colors hover:border-base-content hover:bg-base-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:border-base-content/20 disabled:text-base-content/35"
+              disabled={!activeOperationId}
+              onClick={() => void cancelActiveOperation()}
+            >
+              取消
+            </button>
+          </div>
+        ) : null}
 
         {effectiveMode === "status" ? (
           <div className="space-y-3">
