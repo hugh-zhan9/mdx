@@ -12,6 +12,10 @@ import {
     useRenderData,
 } from "../components/editor-kernel-adapter";
 import type { EditorBridgeState } from "../lib/editor-types";
+import {
+    renderWikilinksForEditor,
+    restoreWikilinksFromEditor,
+} from "../lib/wikilink-markdown";
 
 export interface UseEditorBridgeOptions {
     tabId: string;
@@ -56,7 +60,7 @@ export function useEditorBridge({
             return;
         }
 
-        resetMD(editorStore, markdown);
+        resetMD(editorStore, renderWikilinksForEditor(markdown));
         loadedMarkdownRef.current = markdown;
         emittedMarkdownRef.current = markdown;
         skipNextMarkdownEmissionRef.current = true;
@@ -84,7 +88,7 @@ export function useEditorBridge({
     }, [editorStore]);
 
     const currentMarkdown = useMemo(
-        () => toMarkdown(renderData) ?? "",
+        () => restoreWikilinksFromEditor(toMarkdown(renderData) ?? ""),
         [renderData],
     );
 

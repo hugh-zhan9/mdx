@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { findMermaidCodeFences } from "../lib/mermaid-code-fences";
 import {
     applyMermaidSourceVisibility,
@@ -25,7 +25,6 @@ interface RenderState {
 }
 
 const RENDER_DEBOUNCE_MS = 300;
-let nextLayerId = 0;
 
 export function EditorMermaidPreviewLayer({
     editorRoot,
@@ -234,14 +233,7 @@ export function EditorMermaidPreviewLayer({
 }
 
 function useSanitizedLayerId(): string {
-    const layerIdRef = useRef<string | null>(null);
-
-    if (layerIdRef.current === null) {
-        nextLayerId += 1;
-        layerIdRef.current = `layer-${nextLayerId}`;
-    }
-
-    return layerIdRef.current;
+    return `layer-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
 }
 
 function isEditorContentMutation(mutation: MutationRecord): boolean {

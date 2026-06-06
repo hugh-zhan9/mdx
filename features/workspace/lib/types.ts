@@ -113,6 +113,10 @@ export interface CliFolderCreatedEvent {
     name: string;
 }
 
+export interface CliFileUpdatedEvent {
+    path: string;
+}
+
 export interface CliPathRenamedEvent {
     oldPath: string;
     newPath: string;

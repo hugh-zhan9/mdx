@@ -20,8 +20,8 @@ use crate::llm_wiki_ingest::{
 use crate::llm_wiki_ingest::{parse_file_blocks, write_ingest_outputs};
 use crate::llm_wiki_links::{extract_stable_wikilinks, resolve_wiki_link_target};
 use crate::llm_wiki_llm::{
-    call_chat_completion, default_llm_config_path, load_llm_config_from_path,
-    load_optional_llm_config_from_path, save_llm_config_to_path, LlmChatMessage,
+    call_chat_completion_with_control, default_llm_config_path, load_llm_config_from_path,
+    load_optional_llm_config_from_path, save_llm_config_to_path, LlmCallControl, LlmChatMessage,
 };
 use crate::llm_wiki_models::{
     InitializeLlmWikiResult, LlmProviderConfig, LlmProviderConfigUpdate, LlmWikiKnowledgeConfig,
@@ -79,6 +79,22 @@ fn set_operation_stage(operation_id: Option<&str>, stage: &str) -> Result<(), Wo
         ensure_not_cancelled(registry, operation_id)?;
     }
     Ok(())
+}
+
+fn llm_call_control(operation_id: Option<&str>) -> LlmCallControl {
+    let Some(operation_id) = operation_id else {
+        return LlmCallControl::default();
+    };
+    let operation_id = operation_id.to_string();
+    LlmCallControl::new_cancel_checker(move || operation_registry().is_cancelled(&operation_id))
+}
+
+fn call_chat_completion_for_operation(
+    config: &LlmProviderConfig,
+    messages: Vec<LlmChatMessage>,
+    operation_id: Option<&str>,
+) -> Result<String, WorkspaceError> {
+    call_chat_completion_with_control(config, messages, llm_call_control(operation_id))
 }
 
 fn finish_operation(operation_id: Option<&str>) {
@@ -307,12 +323,13 @@ pub(crate) fn llm_wiki_ingest_raw_file_sync_with_operation(
 
     set_operation_stage(operation_id.as_deref(), "analyzing_raw")?;
     let analysis_prompt = build_ingest_analysis_prompt(&raw_source.text, &purpose, &agents, &index);
-    let analysis_json = match call_chat_completion(
+    let analysis_json = match call_chat_completion_for_operation(
         &config,
         vec![
             system_message("You analyze raw notes for a local markdown knowledge base."),
             user_message(analysis_prompt),
         ],
+        operation_id.as_deref(),
     ) {
         Ok(output) => output,
         Err(error) => {
@@ -341,12 +358,13 @@ pub(crate) fn llm_wiki_ingest_raw_file_sync_with_operation(
     );
     set_operation_stage(operation_id.as_deref(), "generating_updates")?;
     let generation_prompt = build_ingest_generation_prompt(&analysis_json, &existing_context);
-    let llm_output = match call_chat_completion(
+    let llm_output = match call_chat_completion_for_operation(
         &config,
         vec![
             system_message("You generate strict markdown file blocks for an LLM Wiki parser."),
             user_message(generation_prompt),
         ],
+        operation_id.as_deref(),
     ) {
         Ok(output) => output,
         Err(error) => {
@@ -473,7 +491,11 @@ pub fn llm_wiki_search(
     query: String,
 ) -> Result<Vec<WikiSearchResult>, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
-    search_wiki_pages(root, &query)
+    let results = search_wiki_pages(&root, &query)?;
+    if !query.trim().is_empty() {
+        append_log_entry(&root, &format!("search {}", query.trim()))?;
+    }
+    Ok(results)
 }
 
 #[tauri::command]
@@ -538,7 +560,7 @@ pub(crate) fn llm_wiki_query_sync_with_operation(
     }
 
     set_operation_stage(operation_id.as_deref(), "answering")?;
-    let answer = call_chat_completion(
+    let answer = call_chat_completion_for_operation(
         &config,
         vec![
             system_message(
@@ -549,6 +571,7 @@ pub(crate) fn llm_wiki_query_sync_with_operation(
                 context.markdown
             )),
         ],
+        operation_id.as_deref(),
     )?;
 
     let response = LlmWikiQueryResponse {
@@ -613,7 +636,7 @@ pub(crate) fn llm_wiki_digest_sync_with_operation(
     }
 
     set_operation_stage(operation_id.as_deref(), "writing_synthesis")?;
-    let content = call_chat_completion(
+    let content = call_chat_completion_for_operation(
         &config,
         vec![
             system_message(
@@ -624,6 +647,7 @@ pub(crate) fn llm_wiki_digest_sync_with_operation(
                 context.markdown
             )),
         ],
+        operation_id.as_deref(),
     )?;
     let path = write_digest_page_after_synthesis(&root, &title, &content, operation_id.as_deref())?;
     set_operation_stage(operation_id.as_deref(), "completed")?;
@@ -663,12 +687,13 @@ pub(crate) fn llm_wiki_lint_with_operation(
         set_operation_stage(operation_id.as_deref(), "semantic_linting")?;
         let index = read_optional_managed_text(&root, "index.md")?;
         let prompt = build_semantic_lint_prompt(&index, &report);
-        match call_chat_completion(
+        match call_chat_completion_for_operation(
             &config,
             vec![
                 system_message("You review local markdown knowledge base health."),
                 user_message(prompt),
             ],
+            operation_id.as_deref(),
         ) {
             Ok(semantic_report) => {
                 report.push_str("## LLM 语义检查\n");
@@ -861,12 +886,13 @@ fn select_wiki_context_with_index(
     let request = default_context_request(purpose, prompt);
     let selection_prompt = build_page_selection_prompt(&index, &request);
     set_operation_stage(operation_id, "selecting_pages")?;
-    let selection_output = call_chat_completion(
+    let selection_output = call_chat_completion_for_operation(
         config,
         vec![
             system_message("You select LLM Wiki pages. Return strict JSON only."),
             user_message(selection_prompt),
         ],
+        operation_id,
     )?;
 
     set_operation_stage(operation_id, "reading_pages")?;

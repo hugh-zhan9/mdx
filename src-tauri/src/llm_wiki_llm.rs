@@ -6,6 +6,9 @@ use std::io::BufReader;
 use std::io::Read;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
+use std::sync::Arc;
+use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[cfg(unix)]
@@ -20,6 +23,7 @@ use crate::models::WorkspaceError;
 const LLM_RESPONSE_BODY_LIMIT_BYTES: usize = 2 * 1024 * 1024;
 const LLM_ERROR_BODY_PREVIEW_LIMIT_BYTES: usize = 16 * 1024;
 const LLM_REQUEST_TIMEOUT_SECS: u64 = 90;
+const LLM_CONTROL_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 #[cfg(test)]
 pub(crate) fn llm_request_timeout_secs_for_test() -> u64 {
@@ -32,6 +36,30 @@ pub(crate) fn llm_request_timeout_secs_for_test() -> u64 {
 pub struct LlmChatMessage {
     pub role: String,
     pub content: String,
+}
+
+#[derive(Clone, Default)]
+pub struct LlmCallControl {
+    cancel_checker: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+}
+
+impl LlmCallControl {
+    pub fn new_cancel_checker(checker: impl Fn() -> bool + Send + Sync + 'static) -> Self {
+        Self {
+            cancel_checker: Some(Arc::new(checker)),
+        }
+    }
+
+    fn is_cancelled(&self) -> bool {
+        self.cancel_checker
+            .as_ref()
+            .map(|checker| checker())
+            .unwrap_or(false)
+    }
+
+    fn is_enabled(&self) -> bool {
+        self.cancel_checker.is_some()
+    }
 }
 
 #[allow(dead_code)]
@@ -158,7 +186,30 @@ pub fn build_openai_responses_request(
     })
 }
 
+#[allow(dead_code)]
 pub fn call_chat_completion(
+    config: &LlmProviderConfig,
+    messages: Vec<LlmChatMessage>,
+) -> Result<String, WorkspaceError> {
+    call_chat_completion_core(config, messages)
+}
+
+pub fn call_chat_completion_with_control(
+    config: &LlmProviderConfig,
+    messages: Vec<LlmChatMessage>,
+    control: LlmCallControl,
+) -> Result<String, WorkspaceError> {
+    if !control.is_enabled() {
+        return call_chat_completion_core(config, messages);
+    }
+
+    let config = config.clone();
+    run_llm_job_with_control(control, move || {
+        call_chat_completion_core(&config, messages)
+    })
+}
+
+fn call_chat_completion_core(
     config: &LlmProviderConfig,
     messages: Vec<LlmChatMessage>,
 ) -> Result<String, WorkspaceError> {
@@ -169,6 +220,44 @@ pub fn call_chat_completion(
         LlmApiMode::Chat => call_chat_completion_streaming_with_fallback(&client, config, messages),
         LlmApiMode::Responses => call_non_streaming_completion(&client, config, api_mode, messages),
     }
+}
+
+fn run_llm_job_with_control<T>(
+    control: LlmCallControl,
+    job: impl FnOnce() -> Result<T, WorkspaceError> + Send + 'static,
+) -> Result<T, WorkspaceError>
+where
+    T: Send + 'static,
+{
+    if control.is_cancelled() {
+        return Err(llm_cancelled_error());
+    }
+
+    let (sender, receiver) = mpsc::sync_channel(1);
+    thread::spawn(move || {
+        let _ = sender.send(job());
+    });
+
+    loop {
+        if control.is_cancelled() {
+            return Err(llm_cancelled_error());
+        }
+
+        match receiver.recv_timeout(LLM_CONTROL_POLL_INTERVAL) {
+            Ok(result) => return result,
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                return Err(WorkspaceError::new(
+                    "llm_failed",
+                    "llm request worker exited before returning a result",
+                ));
+            }
+        }
+    }
+}
+
+fn llm_cancelled_error() -> WorkspaceError {
+    WorkspaceError::new("cancelled", "llm wiki operation was cancelled")
 }
 
 fn call_non_streaming_completion(
@@ -199,13 +288,25 @@ fn call_chat_completion_streaming_with_fallback(
     match stream_result {
         Ok(response) => match read_chat_completion_stream(response) {
             Ok(content) => Ok(content),
-            Err(error) if !error.received_content => {
+            Err(error)
+                if !error.received_content
+                    && should_retry_chat_non_stream_fallback(&error.error) =>
+            {
                 call_non_streaming_after_stream_failure(client, config, messages, error.error)
             }
             Err(error) => Err(error.error),
         },
-        Err(error) => call_non_streaming_after_stream_failure(client, config, messages, error),
+        Err(error) if should_retry_chat_non_stream_fallback(&error) => {
+            call_non_streaming_after_stream_failure(client, config, messages, error)
+        }
+        Err(error) => Err(error),
     }
+}
+
+fn should_retry_chat_non_stream_fallback(error: &WorkspaceError) -> bool {
+    !matches!(error.error_code(), "cancelled" | "llm_timeout")
+        && !error.to_string().contains("timed out")
+        && !error.to_string().contains("operation timed out")
 }
 
 fn call_non_streaming_after_stream_failure(
@@ -256,8 +357,13 @@ fn send_llm_request(
     }
 
     request.send().map_err(|error| {
+        let error_code = if error.is_timeout() {
+            "llm_timeout"
+        } else {
+            "llm_failed"
+        };
         WorkspaceError::new(
-            "llm_failed",
+            error_code,
             format!(
                 "llm {label} request failed after up to {}s: {}",
                 LLM_REQUEST_TIMEOUT_SECS,
@@ -974,6 +1080,10 @@ fn path_type_conflict(expected: &str, actual: &str) -> WorkspaceError {
 mod tests {
     use super::*;
     use std::io::Cursor;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use std::thread;
+    use std::time::{Duration, Instant};
 
     #[test]
     fn llm_response_reader_accepts_body_at_limit() {
@@ -992,5 +1102,42 @@ mod tests {
 
         assert_eq!(error.error_code(), "llm_failed");
         assert!(error.to_string().contains("exceeded"));
+    }
+
+    #[test]
+    fn controlled_llm_job_returns_cancelled_without_waiting_for_worker() {
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let cancel_flag = cancelled.clone();
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(25));
+            cancel_flag.store(true, Ordering::SeqCst);
+        });
+
+        let started = Instant::now();
+        let error = run_llm_job_with_control(
+            LlmCallControl::new_cancel_checker({
+                let cancelled = cancelled.clone();
+                move || cancelled.load(Ordering::SeqCst)
+            }),
+            || {
+                thread::sleep(Duration::from_secs(2));
+                Ok("late response".to_string())
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(error.error_code(), "cancelled");
+        assert!(started.elapsed() < Duration::from_millis(500));
+    }
+
+    #[test]
+    fn chat_stream_timeout_does_not_retry_non_stream_fallback() {
+        assert!(!should_retry_chat_non_stream_fallback(
+            &WorkspaceError::new("llm_timeout", "stream timed out")
+        ));
+        assert!(should_retry_chat_non_stream_fallback(&WorkspaceError::new(
+            "llm_failed",
+            "stream not supported"
+        )));
     }
 }

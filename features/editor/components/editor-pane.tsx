@@ -23,6 +23,7 @@ import {
     resolveScopedSelectAllTarget,
     selectElementContents,
 } from "../lib/keyboard-selection-scope";
+import { wikilinkTargetFromEditorHref } from "../lib/wikilink-markdown";
 
 interface EditorPaneProps {
     rootPath: string | null;
@@ -257,11 +258,19 @@ function EditorPaneInner({
 
             const target = event.target instanceof Element ? event.target : null;
 
-            if (
-                target?.closest(
-                    "a, button, input, textarea, select, pre, code",
-                )
-            ) {
+            const anchor = target?.closest<HTMLAnchorElement>("a[href]");
+            const editorWikilink = anchor
+                ? wikilinkTargetFromEditorHref(anchor.getAttribute("href") ?? "")
+                : null;
+
+            if (editorWikilink) {
+                event.preventDefault();
+                event.stopPropagation();
+                onOpenWikilink(editorWikilink, tab.path);
+                return;
+            }
+
+            if (target?.closest("a, button, input, textarea, select, pre, code")) {
                 return;
             }
 

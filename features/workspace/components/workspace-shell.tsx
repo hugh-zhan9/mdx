@@ -14,6 +14,7 @@ import { LlmWikiPanel, useLlmWikiWorkspace } from "@/features/llm-wiki";
 import { IconButton, TextControlButton } from "../../../common/components/ui-controls";
 import { usePanelResize } from "../hooks/use-panel-resize";
 import { syncCliWorkspaceSnapshot } from "../lib/cli-sync";
+import { refreshCleanOpenTabFromDisk } from "../lib/cli-file-updated";
 import { parseMarkdownOutline } from "../lib/outline";
 import { calculateWorkspacePanelLayout } from "../lib/panel-layout";
 import { isMarkdownFilePath } from "../lib/path";
@@ -25,6 +26,7 @@ import { resolveWikilinkFile } from "../lib/wikilink";
 import type {
   CliCloseEvent,
   CliFileCreatedEvent,
+  CliFileUpdatedEvent,
   CliFolderCreatedEvent,
   CliInsertEvent,
   CliOpenFileEvent,
@@ -484,6 +486,13 @@ export function WorkspaceShell({
             preferences,
           );
         }),
+        listen<CliFileUpdatedEvent>("cli-file-updated", (event) => {
+          void handleCliFileUpdated(
+            event.payload,
+            workspaceRef.current,
+            dispatchAndMirror,
+          );
+        }),
         listen<CliFolderCreatedEvent>("cli-folder-created", (event) => {
           void handleCliFolderCreated(
             event.payload,
@@ -861,6 +870,22 @@ async function handleCliFileCreated(
   });
 
   await refreshTree(workspace.rootPath, () => workspace.rootPath, dispatch, preferences);
+}
+
+async function handleCliFileUpdated(
+  payload: CliFileUpdatedEvent,
+  workspace: WorkspaceState,
+  dispatch: (action: WorkspaceAction) => void,
+) {
+  await refreshCleanOpenTabFromDisk({
+    payload,
+    workspace,
+    dispatch,
+    invoke: async (command, args) => {
+      const { invoke } = await tauriCore();
+      return invoke(command, args);
+    },
+  });
 }
 
 async function handleCliFolderCreated(

@@ -6,8 +6,8 @@ use tempfile::tempdir;
 use crate::llm_wiki::{
     llm_config_to_public, llm_wiki_digest_sync, llm_wiki_get_config, llm_wiki_get_log,
     llm_wiki_ingest_mock_output, llm_wiki_lint, llm_wiki_query_sync, llm_wiki_refresh_graph_sync,
-    llm_wiki_rescan_raw_sync, llm_wiki_rescan_raw_sync_with_exclusions, llm_wiki_update_config,
-    related_context_or_log_failure,
+    llm_wiki_rescan_raw_sync, llm_wiki_rescan_raw_sync_with_exclusions, llm_wiki_search,
+    llm_wiki_update_config, related_context_or_log_failure,
 };
 use crate::llm_wiki_context::{
     build_wiki_context_with_selector_output, parse_page_selection, validate_wiki_page_path,
@@ -31,9 +31,8 @@ use crate::llm_wiki_llm::{
     extract_responses_content, llm_response_parse_error, load_llm_config_from_path,
     load_optional_llm_config_from_path, save_llm_config_to_path, LlmChatMessage,
 };
-use crate::llm_wiki_models::LlmProviderConfig;
 use crate::llm_wiki_models::LlmWikiCache;
-use crate::llm_wiki_models::WikiContextBundle;
+use crate::llm_wiki_models::{LlmProviderConfig, WikiContextBundle};
 use crate::llm_wiki_query::{mechanical_lint_report, search_wiki_pages, write_digest_page};
 use crate::models::WorkspaceError;
 
@@ -1315,6 +1314,28 @@ fn llm_wiki_lint_does_not_record_log_entry_when_semantic_lint_fails() {
     assert!(report.contains("LLM 语义检查失败："));
     let log = std::fs::read_to_string(root.path().join("log.md")).unwrap();
     assert!(!log.contains("- lint"));
+}
+
+#[test]
+fn llm_wiki_search_records_log_entry() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    write_managed_file(
+        root.path(),
+        "wiki/concepts/Rust.md",
+        "# Rust\n\n系统编程\n".as_bytes(),
+    )
+    .unwrap();
+
+    let results = llm_wiki_search(
+        root.path().to_string_lossy().into_owned(),
+        "系统编程".to_string(),
+    )
+    .unwrap();
+
+    assert_eq!(results.len(), 1);
+    let log = std::fs::read_to_string(root.path().join("log.md")).unwrap();
+    assert!(log.contains("- search 系统编程"));
 }
 
 #[test]

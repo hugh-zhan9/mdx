@@ -1,9 +1,8 @@
-# LLM Wiki CLI Query/Search Constraint
+# LLM Wiki CLI Workspace Constraint
 
-`mdx-cli llm-wiki` is intentionally narrow and Workspace Mode only.
+`mdx-cli llm-wiki` is Workspace Mode only and uses the active running app workspace root.
 
-- It exposes `query [--json] <question...>` and `search <query...>` for the active running app workspace root.
-- It must not add headless `--root` support or operation commands such as init, scan, ingest, lint, graph, or digest.
-- Blank question/query input must be rejected at both the binary argument-validation boundary and the socket-server protocol boundary.
-- Query/search server handlers should not emit UI events or mutate UI state; they call the existing LLM Wiki services and return CLI protocol responses.
-
+- It exposes `status`, `ingest <raw-path>`, `query [--json] <question...>`, `digest --title <slug> <prompt...>`, `lint [--json]`, and `search <query...>`.
+- It must not add headless `--root` support unless the product explicitly changes the CLI model.
+- Blank question, query, title, and prompt input must be rejected at both the binary argument-validation boundary and the socket-server protocol boundary.
+- Server handlers call the existing LLM Wiki services and return CLI protocol responses. When a successful operation updates `log.md`, the app should emit a file-updated event so clean open log tabs can refresh.

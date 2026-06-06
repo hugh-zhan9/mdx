@@ -160,10 +160,13 @@ describe("editor find replace visible text index", () => {
                 replaceSelectedText: () => {},
                 visibilityRevision,
             });
+            const { setQuery } = findReplace.actions;
             useEffect(() => {
-                findReplace.actions.setQuery("HiddenRaw");
-            }, []);
-            latestMatchCount = findReplace.matchCount;
+                setQuery("HiddenRaw");
+            }, [setQuery]);
+            useEffect(() => {
+                latestMatchCount = findReplace.matchCount;
+            }, [findReplace.matchCount]);
             return null;
         }
 

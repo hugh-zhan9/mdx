@@ -118,6 +118,7 @@ export function useEditorFindReplace({
         createInitialFindReplaceState,
     );
     const visibleTextIndex = useMemo(() => {
+        void visibilityRevision;
         if (!editorRoot) {
             return { segments: [], text: "" };
         }

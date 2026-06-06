@@ -55,7 +55,10 @@ fn saves_workspace_asset_when_stale_predictable_temp_file_exists() {
     .unwrap();
 
     assert_eq!(result.markdown_path, format!(".assets/{filename}"));
-    assert_eq!(std::fs::read(root.path().join(&result.markdown_path)).unwrap(), bytes);
+    assert_eq!(
+        std::fs::read(root.path().join(&result.markdown_path)).unwrap(),
+        bytes
+    );
 }
 
 #[test]
