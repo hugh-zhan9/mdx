@@ -53,9 +53,51 @@ fn llm_wiki_operation_registry_tracks_stage_and_cancel() {
 }
 
 #[test]
+fn llm_wiki_command_operation_registration_creates_addressable_state() {
+    let id = unique_operation_id("query-registration");
+
+    crate::llm_wiki::register_llm_wiki_operation_for_test(Some(id.clone()), "query").unwrap();
+
+    let state = crate::llm_wiki::llm_wiki_operation_state(id.clone()).unwrap();
+    assert_eq!(state.operation_id, id);
+    assert_eq!(state.operation, "query");
+    assert_eq!(state.stage, "starting");
+    assert!(!state.cancelled);
+}
+
+#[test]
+fn digest_write_boundary_rechecks_cancellation_before_writing() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    let id = unique_operation_id("digest-cancelled-before-write");
+    crate::llm_wiki::register_llm_wiki_operation_for_test(Some(id.clone()), "digest").unwrap();
+    crate::llm_wiki::llm_wiki_operation_cancel(id.clone()).unwrap();
+
+    let error = crate::llm_wiki::write_digest_page_after_synthesis_for_test(
+        root.path(),
+        "Cancelled Digest",
+        "# Cancelled Digest\n",
+        &id,
+    )
+    .unwrap_err();
+
+    assert_eq!(error.error_code(), "cancelled");
+    assert!(!root
+        .path()
+        .join("wiki/syntheses/cancelled-digest.md")
+        .exists());
+}
+
+#[test]
 fn llm_timeout_is_not_six_hundred_seconds() {
     assert!(crate::llm_wiki_llm::llm_request_timeout_secs_for_test() <= 120);
     assert!(crate::llm_wiki_llm::llm_request_timeout_secs_for_test() >= 60);
+}
+
+fn unique_operation_id(prefix: &str) -> String {
+    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let sequence = COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    format!("{prefix}-{sequence}")
 }
 
 fn report_section<'a>(report: &'a str, heading: &str) -> &'a str {
@@ -1209,7 +1251,7 @@ fn llm_wiki_lint_records_log_entry() {
     std::fs::create_dir(home.path().join(".mdx")).unwrap();
     let _env_guard = LlmConfigEnvGuard::use_home(home.path().canonicalize().unwrap());
 
-    let report = llm_wiki_lint(root.path().to_string_lossy().into_owned()).unwrap();
+    let report = llm_wiki_lint(root.path().to_string_lossy().into_owned(), None).unwrap();
 
     assert!(report.contains("无"));
     assert!(report.contains("未配置 LLM，已跳过。"));
@@ -1236,7 +1278,7 @@ fn llm_wiki_lint_does_not_record_log_entry_when_semantic_lint_fails() {
     .unwrap();
     let _env_guard = LlmConfigEnvGuard::use_home(home_path);
 
-    let report = llm_wiki_lint(root.path().to_string_lossy().into_owned()).unwrap();
+    let report = llm_wiki_lint(root.path().to_string_lossy().into_owned(), None).unwrap();
 
     assert!(report.contains("## LLM 语义检查"));
     assert!(report.contains("LLM 语义检查失败："));

@@ -46,6 +46,13 @@ fn operation_registry() -> &'static LlmWikiOperationRegistry {
     REGISTRY.get_or_init(LlmWikiOperationRegistry::new)
 }
 
+fn register_operation(operation_id: Option<&str>, operation: &str) -> Result<(), WorkspaceError> {
+    if let Some(operation_id) = operation_id {
+        operation_registry().start_with_id(operation_id, operation)?;
+    }
+    Ok(())
+}
+
 fn set_operation_stage(operation_id: Option<&str>, stage: &str) -> Result<(), WorkspaceError> {
     if let Some(operation_id) = operation_id {
         let registry = operation_registry();
@@ -59,6 +66,34 @@ fn finish_operation(operation_id: Option<&str>) {
     if let Some(operation_id) = operation_id {
         operation_registry().finish(operation_id);
     }
+}
+
+fn write_digest_page_after_synthesis(
+    root: &Path,
+    title: &str,
+    content: &str,
+    operation_id: Option<&str>,
+) -> Result<String, WorkspaceError> {
+    set_operation_stage(operation_id, "writing_synthesis")?;
+    write_digest_page(root, title, content)
+}
+
+#[cfg(test)]
+pub(crate) fn register_llm_wiki_operation_for_test(
+    operation_id: Option<String>,
+    operation: &str,
+) -> Result<(), WorkspaceError> {
+    register_operation(operation_id.as_deref(), operation)
+}
+
+#[cfg(test)]
+pub(crate) fn write_digest_page_after_synthesis_for_test(
+    root: &Path,
+    title: &str,
+    content: &str,
+    operation_id: &str,
+) -> Result<String, WorkspaceError> {
+    write_digest_page_after_synthesis(root, title, content, Some(operation_id))
 }
 
 async fn run_blocking<T>(
@@ -197,10 +232,16 @@ pub fn llm_wiki_ingest_mock_output(
 pub async fn llm_wiki_ingest_raw_file(
     root_path: String,
     raw_relative_path: String,
+    operation_id: Option<String>,
 ) -> Result<(), WorkspaceError> {
-    run_blocking(move || llm_wiki_ingest_raw_file_sync(root_path, raw_relative_path)).await
+    register_operation(operation_id.as_deref(), "ingest")?;
+    run_blocking(move || {
+        llm_wiki_ingest_raw_file_sync_with_operation(root_path, raw_relative_path, operation_id)
+    })
+    .await
 }
 
+#[allow(dead_code)]
 pub fn llm_wiki_ingest_raw_file_sync(
     root_path: String,
     raw_relative_path: String,
@@ -414,8 +455,11 @@ pub fn llm_wiki_search(
 pub async fn llm_wiki_query(
     root_path: String,
     question: String,
+    operation_id: Option<String>,
 ) -> Result<LlmWikiQueryResponse, WorkspaceError> {
-    run_blocking(move || llm_wiki_query_sync(root_path, question)).await
+    register_operation(operation_id.as_deref(), "query")?;
+    run_blocking(move || llm_wiki_query_sync_with_operation(root_path, question, operation_id))
+        .await
 }
 
 pub fn llm_wiki_query_sync(
@@ -493,10 +537,16 @@ pub async fn llm_wiki_digest(
     root_path: String,
     title: String,
     prompt: String,
+    operation_id: Option<String>,
 ) -> Result<String, WorkspaceError> {
-    run_blocking(move || llm_wiki_digest_sync(root_path, title, prompt)).await
+    register_operation(operation_id.as_deref(), "digest")?;
+    run_blocking(move || {
+        llm_wiki_digest_sync_with_operation(root_path, title, prompt, operation_id)
+    })
+    .await
 }
 
+#[allow(dead_code)]
 pub fn llm_wiki_digest_sync(
     root_path: String,
     title: String,
@@ -544,7 +594,7 @@ pub(crate) fn llm_wiki_digest_sync_with_operation(
             )),
         ],
     )?;
-    let path = write_digest_page(root, &title, &content)?;
+    let path = write_digest_page_after_synthesis(&root, &title, &content, operation_id.as_deref())?;
     set_operation_stage(operation_id.as_deref(), "completed")?;
     finish_operation(operation_id.as_deref());
     Ok(path)
@@ -561,8 +611,12 @@ pub fn llm_wiki_digest_mock(
 }
 
 #[tauri::command]
-pub fn llm_wiki_lint(root_path: String) -> Result<String, WorkspaceError> {
-    llm_wiki_lint_with_operation(root_path, None)
+pub fn llm_wiki_lint(
+    root_path: String,
+    operation_id: Option<String>,
+) -> Result<String, WorkspaceError> {
+    register_operation(operation_id.as_deref(), "lint")?;
+    llm_wiki_lint_with_operation(root_path, operation_id)
 }
 
 pub(crate) fn llm_wiki_lint_with_operation(

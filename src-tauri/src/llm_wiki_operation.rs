@@ -24,8 +24,21 @@ impl LlmWikiOperationRegistry {
     pub fn start(&self, operation: &str) -> String {
         let sequence = self.next_id.fetch_add(1, Ordering::SeqCst);
         let operation_id = format!("llm-wiki-operation-{sequence}");
+        self.start_with_id(&operation_id, operation)
+            .expect("llm wiki generated operation id is valid");
+        operation_id
+    }
+
+    pub fn start_with_id(&self, operation_id: &str, operation: &str) -> Result<(), WorkspaceError> {
+        let operation_id = operation_id.trim();
+        if operation_id.is_empty() {
+            return Err(WorkspaceError::new(
+                "invalid_operation_id",
+                "llm wiki operation id must not be empty",
+            ));
+        }
         let state = LlmWikiOperationState {
-            operation_id: operation_id.clone(),
+            operation_id: operation_id.to_string(),
             operation: operation.to_string(),
             stage: "starting".to_string(),
             cancelled: false,
@@ -33,9 +46,14 @@ impl LlmWikiOperationRegistry {
 
         self.states
             .lock()
-            .expect("llm wiki operation registry mutex poisoned")
-            .insert(operation_id.clone(), state);
-        operation_id
+            .map_err(|_| {
+                WorkspaceError::new(
+                    "operation_registry_failed",
+                    "failed to access llm wiki operation registry",
+                )
+            })?
+            .insert(operation_id.to_string(), state);
+        Ok(())
     }
 
     pub fn set_stage(&self, id: &str, stage: &str) -> Result<(), WorkspaceError> {
@@ -66,9 +84,7 @@ impl LlmWikiOperationRegistry {
 
     pub fn finish(&self, id: &str) {
         if let Ok(mut states) = self.states.lock() {
-            if let Some(state) = states.get_mut(id) {
-                state.stage = "completed".to_string();
-            }
+            states.remove(id);
         }
     }
 
