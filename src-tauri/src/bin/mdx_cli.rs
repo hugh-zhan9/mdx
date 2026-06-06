@@ -168,7 +168,7 @@ fn request_from_command(command: &CommandLine) -> io::Result<CliRequest> {
                 raw_path: raw_path.clone(),
             },
             LlmWikiCommand::Digest { title, prompt } => CliRequest::LlmWikiDigest {
-                title: title.trim().to_string(),
+                title: trim_required_value(title, "title")?,
                 prompt: join_required_words(prompt, "prompt")?,
             },
             LlmWikiCommand::Lint { .. } => CliRequest::LlmWikiLint,
@@ -184,6 +184,10 @@ fn request_from_command(command: &CommandLine) -> io::Result<CliRequest> {
 
 fn join_required_words(words: &[String], noun: &str) -> io::Result<String> {
     let value = words.join(" ");
+    trim_required_value(&value, noun)
+}
+
+fn trim_required_value(value: &str, noun: &str) -> io::Result<String> {
     let value = value.trim();
     if value.is_empty() {
         return Err(io::Error::new(
@@ -201,6 +205,8 @@ fn response_from_io_error(error: &io::Error) -> CliResponse {
         match message.as_str() {
             "question must not be empty" => "invalid_question",
             "query must not be empty" => "invalid_query",
+            "prompt must not be empty" => "invalid_prompt",
+            "title must not be empty" => "invalid_title",
             _ => "io_error",
         }
     } else {
@@ -430,6 +436,42 @@ mod tests {
         assert_eq!(
             request_from_command(&command).unwrap(),
             CliRequest::LlmWikiLint
+        );
+    }
+
+    #[test]
+    fn llm_wiki_digest_rejects_blank_title() {
+        let command = CommandLine::LlmWiki {
+            command: LlmWikiCommand::Digest {
+                title: "   ".to_string(),
+                prompt: vec!["Summarize".to_string()],
+            },
+        };
+
+        let error = request_from_command(&command).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(error.to_string(), "title must not be empty");
+        assert_eq!(
+            response_from_io_error(&error).error_code.as_deref(),
+            Some("invalid_title")
+        );
+    }
+
+    #[test]
+    fn llm_wiki_digest_rejects_blank_prompt() {
+        let command = CommandLine::LlmWiki {
+            command: LlmWikiCommand::Digest {
+                title: "karpathy-llm-wiki".to_string(),
+                prompt: vec!["   ".to_string()],
+            },
+        };
+
+        let error = request_from_command(&command).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(error.to_string(), "prompt must not be empty");
+        assert_eq!(
+            response_from_io_error(&error).error_code.as_deref(),
+            Some("invalid_prompt")
         );
     }
 

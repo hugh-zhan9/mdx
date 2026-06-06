@@ -733,7 +733,7 @@ fn handle_llm_wiki_lint(app: &AppHandle) -> CliResponse {
         Err(response) => return response,
     };
     let response = llm_wiki_lint_response_for_root(root_path.clone());
-    if response.ok {
+    if lint_response_updated_log(&response) {
         emit_log_file_updated(app, &label, &root_path);
     }
     response
@@ -814,6 +814,15 @@ fn llm_wiki_lint_response_for_root(root_path: String) -> CliResponse {
         },
         Err(error) => workspace_error(error),
     }
+}
+
+fn lint_response_updated_log(response: &CliResponse) -> bool {
+    response.ok
+        && !response
+            .lint_report
+            .as_deref()
+            .unwrap_or_default()
+            .contains("LLM 语义检查失败：")
 }
 
 fn llm_wiki_search_response_for_root(root_path: String, query: String) -> CliResponse {
@@ -1095,6 +1104,28 @@ mod tests {
 
         assert!(!response.ok);
         assert_eq!(response.error_code.as_deref(), Some("llm_wiki_not_ready"));
+    }
+
+    #[test]
+    fn lint_semantic_failure_response_does_not_report_log_update() {
+        let response = CliResponse {
+            ok: true,
+            lint_report: Some("## LLM 语义检查\nLLM 语义检查失败：timeout\n".to_string()),
+            ..CliResponse::default()
+        };
+
+        assert!(!lint_response_updated_log(&response));
+    }
+
+    #[test]
+    fn lint_success_response_reports_log_update() {
+        let response = CliResponse {
+            ok: true,
+            lint_report: Some("## LLM 语义检查\n未配置 LLM，已跳过。\n".to_string()),
+            ..CliResponse::default()
+        };
+
+        assert!(lint_response_updated_log(&response));
     }
 
     #[test]
