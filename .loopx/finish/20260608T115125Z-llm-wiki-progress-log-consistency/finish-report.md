@@ -4,8 +4,8 @@
 
 - audit_id: 20260608T115125Z-llm-wiki-progress-log-consistency
 - slug: llm-wiki-progress-log-consistency
-- status: audited
-- updated_at: 2026-06-08T11:52:43.675Z
+- status: completed
+- updated_at: 2026-06-08T11:59:18.907Z
 - branch: main
 - base branch: main
 - worktree: /Users/zhangyukun/project/mdx
@@ -65,31 +65,31 @@
 
 ### Source Artifacts
 
-- docs/loopx/plans/2026-06-08-llm-wiki-progress-log-consistency.md
-- docs/loopx/specs/llm-wiki.md
-- .loopx/memory/entries/2026-06-08-llm-wiki-current-progress-contract.md
+- none
 
 ### Diff Stat
 
 - ...2026-06-08-llm-wiki-progress-log-consistency.md | 1192 ++++++++++++++++++++
--  .../llm-wiki/components/llm-wiki-panel.test.tsx    |   99 ++
--  features/llm-wiki/components/llm-wiki-panel.tsx    |   24 +
--  .../llm-wiki/hooks/use-llm-wiki-workspace.test.tsx |   99 ++
--  features/llm-wiki/hooks/use-llm-wiki-workspace.ts  |   13 +-
--  features/llm-wiki/lib/llm-wiki-client.test.ts      |   20 +-
--  features/llm-wiki/lib/llm-wiki-client.ts           |   19 +-
--  features/llm-wiki/lib/status-view-model.test.ts    |   33 +
--  features/llm-wiki/lib/status-view-model.ts         |    2 +
--  features/llm-wiki/lib/types.ts                     |    4 +
--  src-tauri/src/llm_wiki.rs                          |  116 +-
--  src-tauri/src/llm_wiki_models.rs                   |    2 +
--  src-tauri/src/llm_wiki_tests.rs                    |   93 ++
--  13 files changed, 1691 insertions(+), 25 deletions(-)
+- .../llm-wiki/components/llm-wiki-panel.test.tsx    |   99 ++
+- features/llm-wiki/components/llm-wiki-panel.tsx    |   24 +
+- .../llm-wiki/hooks/use-llm-wiki-workspace.test.tsx |   99 ++
+- features/llm-wiki/hooks/use-llm-wiki-workspace.ts  |   13 +-
+- features/llm-wiki/lib/llm-wiki-client.test.ts      |   20 +-
+- features/llm-wiki/lib/llm-wiki-client.ts           |   19 +-
+- features/llm-wiki/lib/status-view-model.test.ts    |   33 +
+- features/llm-wiki/lib/status-view-model.ts         |    2 +
+- features/llm-wiki/lib/types.ts                     |    4 +
+- src-tauri/src/llm_wiki.rs                          |  116 +-
+- src-tauri/src/llm_wiki_models.rs                   |    2 +
+- src-tauri/src/llm_wiki_tests.rs                    |   93 ++
+- 13 files changed, 1691 insertions(+), 25 deletions(-)
 
 ## Accepted Candidates
 
 - memory-llm-wiki-current-progress-contract: Recorded the LLM Wiki current raw progress contract: pendingTotal excludes failed files, pending is the bounded batch, and failed details remain visible until raw succeeds.
+  - evidence: aa0b97e; 1b9961d; 2aa9c05; 55f3317; 17474da
 - spec-llm-wiki-progress-contract: Promoted backend raw progress semantics, transient excludedPendingPaths behavior, failed detail visibility, and background task failure logging to the LLM Wiki spec.
+  - evidence: docs/loopx/plans/2026-06-08-llm-wiki-progress-log-consistency.md; src-tauri/src/llm_wiki_tests.rs; features/llm-wiki/hooks/use-llm-wiki-workspace.test.tsx
 
 ## Rejected Candidates
 
@@ -101,9 +101,9 @@
 
 ## Choice
 
-- action: null
-- status: null
-- summary: null
+- action: keep
+- status: done
+- summary: Committed and pushed current main branch to origin/main.
 - url: null
 
 ## Choice History
@@ -112,4 +112,5 @@
 
 ## Next Steps
 
-- Present finish options and record the user's completion choice with finish-record.
+- Agent review the audit evidence and decide whether the finish state can advance.
+- Record the final audit decision once the audit is complete.
