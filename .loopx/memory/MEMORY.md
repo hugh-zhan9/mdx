@@ -4,6 +4,7 @@
 
 - LLM Wiki workspaces are independent from the repo-level `AGENT.md`; knowledge-base instructions live in workspace `AGENTS.md`.
 - LLM Wiki ingest is raw-first: user-authored knowledge belongs under `raw/`; scans compare raw file hashes against `.llm-wiki/cache.json` and only pending or changed raw files are sent to LLM ingest.
+- LLM Wiki processing updates preserve existing failed rows in `llm-wiki-progress.md` while refreshing the current processing state.
 - LLM provider credentials are app configuration, not knowledge-base files.
 - `mdx-cli llm-wiki` is a Workspace Mode surface for the active app workspace root. It covers `status`, `ingest`, `query`, `digest`, `lint`, and `search`; blank user input is rejected at binary and socket-server boundaries.
 - Long LLM Wiki operations with an operation id must route LLM calls through cancellable control. Cancellation returns `cancelled` before later write stages, and streaming timeout must not trigger a second non-stream fallback timeout.

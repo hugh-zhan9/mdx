@@ -1923,6 +1923,49 @@ fn ingest_logs_raw_source_failure_before_llm_stage() {
 }
 
 #[test]
+fn ingest_preserves_existing_failed_progress_when_processing_updates() {
+    let root = tempdir().unwrap();
+    let home = tempdir().unwrap();
+    let home_path = home.path().canonicalize().unwrap();
+    std::fs::create_dir(home_path.join(".mdx")).unwrap();
+    save_llm_config_to_path(
+        home_path.join(".mdx/llm-config.json"),
+        &LlmProviderConfig {
+            base_url: String::new(),
+            model: "test-model".to_string(),
+            api_key: Some("secret-key".to_string()),
+            api_mode: "chat".to_string(),
+        },
+    )
+    .unwrap();
+    let _env = LlmConfigEnvGuard::use_home(home_path);
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::write(root.path().join("raw/notes/a.md"), "# Note a\n").unwrap();
+    update_progress_markdown(
+        root.path(),
+        "scanning",
+        &[],
+        &[],
+        &[(
+            "raw/notes/failed.md".to_string(),
+            "llm_failed: previous failure".to_string(),
+        )],
+        &[],
+    )
+    .unwrap();
+
+    let error = llm_wiki_ingest_raw_file_sync(
+        root.path().to_string_lossy().into_owned(),
+        "raw/notes/a.md".to_string(),
+    )
+    .unwrap_err();
+
+    assert_eq!(error.error_code(), "llm_failed");
+    let progress = std::fs::read_to_string(root.path().join("llm-wiki-progress.md")).unwrap();
+    assert!(progress.contains("raw/notes/failed.md: llm_failed: previous failure"));
+}
+
+#[test]
 fn rescan_raw_excludes_failed_pending_paths_for_current_run() {
     let root = tempdir().unwrap();
     initialize_llm_wiki_workspace(root.path()).unwrap();

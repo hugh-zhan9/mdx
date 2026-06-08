@@ -534,13 +534,17 @@ fn update_ingest_processing_progress(
 ) -> Result<(), WorkspaceError> {
     let excluded = BTreeSet::from([raw_relative_path.to_string()]);
     let progress = scan_raw_progress(root, config, &excluded)?;
+    let failed = read_progress_failed_entries(root)
+        .unwrap_or_default()
+        .into_iter()
+        .collect::<Vec<_>>();
     update_progress_markdown_with_processing(
         root,
         "processing",
         &progress.pending,
         &[raw_relative_path.to_string()],
         &progress.completed,
-        &[],
+        &failed,
         &config.skip_paths,
     )
 }

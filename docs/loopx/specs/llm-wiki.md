@@ -16,6 +16,7 @@
 ## Operations
 
 - Ingest may read one raw source plus purpose, agents, index, and related wiki context, then update multiple managed wiki pages.
+- Ingest processing progress updates must preserve previously recorded failed rows in `llm-wiki-progress.md` while refreshing the current Processing section.
 - Query writes `log.md` but must not automatically create new wiki pages.
 - Digest explicitly persists a synthesis under `wiki/syntheses/*.md` and updates `index.md` and `log.md`.
 - Mechanical lint must run without LLM config; semantic lint is optional when LLM config exists.
