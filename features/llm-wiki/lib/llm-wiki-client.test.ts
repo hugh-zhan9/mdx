@@ -55,7 +55,7 @@ describe("ingestRawFile", () => {
 });
 
 describe("rescanRaw", () => {
-  it("omits failed files when doing an ordinary rescan", async () => {
+  it("normalizes legacy raw scan responses from older backends", async () => {
     const invoke = vi.fn(async () => ({
       total: 1,
       pending: [],
@@ -68,8 +68,10 @@ describe("rescanRaw", () => {
 
     await expect(rescanRaw("/tmp/wiki")).resolves.toEqual({
       total: 1,
+      pendingTotal: 0,
       pending: [],
       completed: ["raw/notes/a.md"],
+      failed: [],
       skipped: [],
     });
 

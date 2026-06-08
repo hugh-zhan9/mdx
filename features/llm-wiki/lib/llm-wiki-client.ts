@@ -13,6 +13,12 @@ import type {
   WikiSearchResult,
 } from "./types";
 
+type RawScanResultPayload = Omit<
+  RawScanResult,
+  "pendingTotal" | "failed"
+> &
+  Partial<Pick<RawScanResult, "pendingTotal" | "failed">>;
+
 async function invokeCommand<T>(
   command: string,
   args?: Record<string, unknown>,
@@ -67,7 +73,18 @@ export function rescanRaw(
   if (failed) {
     args.failed = failed;
   }
-  return invokeCommand("llm_wiki_rescan_raw", args);
+  return invokeCommand<RawScanResultPayload>(
+    "llm_wiki_rescan_raw",
+    args,
+  ).then(normalizeRawScanResult);
+}
+
+function normalizeRawScanResult(result: RawScanResultPayload): RawScanResult {
+  return {
+    ...result,
+    pendingTotal: result.pendingTotal ?? result.pending.length,
+    failed: result.failed ?? [],
+  };
 }
 
 export function ingestRawFile(

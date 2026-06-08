@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { normalizeWorkspacePath } from "@/features/workspace/lib/path";
+import { normalizeWorkspacePath } from "../../workspace/lib/path";
 import {
   cancelLlmWikiOperation,
   createDigest,
@@ -565,7 +565,7 @@ export function useLlmWikiWorkspace(
             ? {
                 ...current,
                 scan: result,
-                message: `raw 扫描完成：${result.total} 个文件，${result.pending.length} 个待处理。`,
+                message: `raw 扫描完成：${result.total} 个文件，${result.pendingTotal} 个待处理。`,
               }
             : current,
         );
@@ -644,7 +644,7 @@ export function useLlmWikiWorkspace(
             ? {
                 ...current,
                 scan: result,
-                message: `raw 扫描完成：${result.total} 个文件，${result.pending.length} 个待处理。`,
+                message: `raw 扫描完成：${result.total} 个文件，${result.pendingTotal} 个待处理。`,
               }
             : current,
         );
