@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::OnceLock;
 
@@ -24,9 +24,10 @@ use crate::llm_wiki_llm::{
     load_optional_llm_config_from_path, save_llm_config_to_path, LlmCallControl, LlmChatMessage,
 };
 use crate::llm_wiki_models::{
-    InitializeLlmWikiResult, LlmProviderConfig, LlmProviderConfigUpdate, LlmWikiFailedFile,
-    LlmWikiKnowledgeConfig, LlmWikiOperationState, LlmWikiQueryResponse, LlmWikiWorkspaceStatus,
-    PublicLlmProviderConfig, RawScanResult, WikiContextBundle, WikiSearchResult,
+    InitializeLlmWikiResult, LlmProviderConfig, LlmProviderConfigUpdate, LlmWikiCacheEntry,
+    LlmWikiFailedFile, LlmWikiKnowledgeConfig, LlmWikiOperationState, LlmWikiQueryResponse,
+    LlmWikiWorkspaceStatus, PublicLlmProviderConfig, RawScanResult, WikiContextBundle,
+    WikiSearchResult,
 };
 use crate::llm_wiki_operation::{ensure_not_cancelled, LlmWikiOperationRegistry};
 use crate::llm_wiki_query::{
@@ -188,32 +189,33 @@ pub async fn llm_wiki_rescan_raw(
         llm_wiki_rescan_raw_sync_with_failures(
             root_path,
             excluded_pending_paths.unwrap_or_default(),
-            failed.unwrap_or_default(),
+            failed,
         )
     })
     .await
 }
 
 pub fn llm_wiki_rescan_raw_sync(root_path: String) -> Result<RawScanResult, WorkspaceError> {
-    llm_wiki_rescan_raw_sync_with_failures(root_path, Vec::new(), Vec::new())
+    llm_wiki_rescan_raw_sync_with_failures(root_path, Vec::new(), None)
 }
 
 pub fn llm_wiki_rescan_raw_sync_with_exclusions(
     root_path: String,
     excluded_pending_paths: Vec<String>,
 ) -> Result<RawScanResult, WorkspaceError> {
-    llm_wiki_rescan_raw_sync_with_failures(root_path, excluded_pending_paths, Vec::new())
+    llm_wiki_rescan_raw_sync_with_failures(root_path, excluded_pending_paths, None)
 }
 
 pub fn llm_wiki_rescan_raw_sync_with_failures(
     root_path: String,
     excluded_pending_paths: Vec<String>,
-    failed: Vec<LlmWikiFailedFile>,
+    failed: Option<Vec<LlmWikiFailedFile>>,
 ) -> Result<RawScanResult, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
     ensure_default_agents_rules(&root)?;
     let config = read_knowledge_config(&root)?;
-    let failed = normalize_failed_files(failed);
+    let cache = read_cache(&root)?;
+    let failed = merged_progress_failures(&root, failed, &cache.entries)?;
     if config.paused {
         update_progress_markdown(&root, "paused", &[], &[], &failed, &config.skip_paths)?;
         return Ok(RawScanResult {
@@ -248,6 +250,68 @@ pub fn llm_wiki_rescan_raw_sync_with_failures(
         completed: progress.completed,
         skipped: config.skip_paths,
     })
+}
+
+fn merged_progress_failures(
+    root: &Path,
+    failed: Option<Vec<LlmWikiFailedFile>>,
+    completed_paths: &BTreeMap<String, LlmWikiCacheEntry>,
+) -> Result<Vec<(String, String)>, WorkspaceError> {
+    let mut merged = read_progress_failed_entries(root)?;
+    if let Some(failed) = failed {
+        for (path, reason) in normalize_failed_files(failed) {
+            merged.insert(path, reason);
+        }
+    }
+    merged.retain(|path, _| !completed_paths.contains_key(path));
+
+    Ok(merged.into_iter().collect())
+}
+
+fn read_progress_failed_entries(root: &Path) -> Result<BTreeMap<String, String>, WorkspaceError> {
+    let contents = match read_required_managed_text(root, "llm-wiki-progress.md") {
+        Ok(contents) => contents,
+        Err(error) if error.error_code() == "not_found" => return Ok(BTreeMap::new()),
+        Err(error) => return Err(error),
+    };
+
+    let mut failed = BTreeMap::new();
+    let Some(section) = progress_section(&contents, "Failed") else {
+        return Ok(failed);
+    };
+    for line in section.lines().map(str::trim) {
+        let Some(item) = line.strip_prefix("- ") else {
+            continue;
+        };
+        if item == "None" {
+            continue;
+        }
+        let Some((path, reason)) = item.split_once(": ") else {
+            continue;
+        };
+        let path = path.trim().trim_matches('/').replace('\\', "/");
+        if !path.starts_with("raw/") {
+            continue;
+        }
+        let reason = reason.trim();
+        if reason.is_empty() {
+            continue;
+        }
+        failed.insert(path, reason.to_string());
+    }
+
+    Ok(failed)
+}
+
+fn progress_section<'a>(contents: &'a str, title: &str) -> Option<&'a str> {
+    let heading = format!("## {title}");
+    let (_, after_heading) = contents.split_once(&heading)?;
+    Some(
+        after_heading
+            .split_once("\n## ")
+            .map(|(section, _)| section)
+            .unwrap_or(after_heading),
+    )
 }
 
 #[tauri::command]

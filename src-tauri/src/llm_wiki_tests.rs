@@ -1972,11 +1972,11 @@ fn rescan_raw_persists_current_run_failures_to_progress() {
     let result = llm_wiki_rescan_raw_sync_with_failures(
         root.path().to_string_lossy().into_owned(),
         vec!["raw/notes/a.md".to_string()],
-        vec![LlmWikiFailedFile {
+        Some(vec![LlmWikiFailedFile {
             path: "raw/notes/a.md".to_string(),
             reason: "pdf_extract_empty: raw PDF source does not contain extractable text"
                 .to_string(),
-        }],
+        }]),
     )
     .unwrap();
 
@@ -1990,6 +1990,38 @@ fn rescan_raw_persists_current_run_failures_to_progress() {
     assert!(progress.contains(
         "- raw/notes/a.md: pdf_extract_empty: raw PDF source does not contain extractable text"
     ));
+}
+
+#[test]
+fn rescan_raw_preserves_failed_progress_entries_until_raw_succeeds() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    let raw_path = root.path().join("raw/notes/a.md");
+    std::fs::write(&raw_path, "# Note a\n").unwrap();
+    std::fs::write(root.path().join("raw/notes/b.md"), "# Note b\n").unwrap();
+
+    llm_wiki_rescan_raw_sync_with_failures(
+        root.path().to_string_lossy().into_owned(),
+        vec!["raw/notes/a.md".to_string()],
+        Some(vec![LlmWikiFailedFile {
+            path: "raw/notes/a.md".to_string(),
+            reason: "llm_failed: first failure".to_string(),
+        }]),
+    )
+    .unwrap();
+
+    llm_wiki_rescan_raw_sync(root.path().to_string_lossy().into_owned()).unwrap();
+    let progress = std::fs::read_to_string(root.path().join("llm-wiki-progress.md")).unwrap();
+    assert!(progress.contains("- raw/notes/a.md: llm_failed: first failure"));
+
+    let hash = raw_scan_hash("raw/notes/a.md", &raw_path);
+    let blocks = parse_file_blocks("---FILE: wiki/sources/a.md---\n# A\n---END FILE---").unwrap();
+    write_ingest_outputs(root.path(), "raw/notes/a.md", &hash, "test-model", &blocks).unwrap();
+
+    llm_wiki_rescan_raw_sync(root.path().to_string_lossy().into_owned()).unwrap();
+    let progress = std::fs::read_to_string(root.path().join("llm-wiki-progress.md")).unwrap();
+    assert!(!progress.contains("raw/notes/a.md: llm_failed: first failure"));
+    assert!(progress.contains("## Failed\n\n- None"));
 }
 
 #[cfg(unix)]

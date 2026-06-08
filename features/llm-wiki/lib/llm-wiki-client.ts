@@ -54,13 +54,20 @@ export function saveLlmConfig(
 export function rescanRaw(
   rootPath: string,
   excludedPendingPaths: string[] = [],
-  failed: LlmWikiFailedFile[] = [],
+  failed?: LlmWikiFailedFile[],
 ): Promise<RawScanResult> {
-  return invokeCommand("llm_wiki_rescan_raw", {
+  const args: {
+    rootPath: string;
+    excludedPendingPaths: string[];
+    failed?: LlmWikiFailedFile[];
+  } = {
     rootPath,
     excludedPendingPaths,
-    failed,
-  });
+  };
+  if (failed) {
+    args.failed = failed;
+  }
+  return invokeCommand("llm_wiki_rescan_raw", args);
 }
 
 export function ingestRawFile(

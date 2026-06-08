@@ -304,6 +304,18 @@ export function useLlmWikiWorkspace(
                   }
                 : current,
             );
+            try {
+              await rescanRaw(
+                ingestRootPath,
+                Array.from(failedPaths),
+                toProgressFailures(failed),
+              );
+            } catch (progressError) {
+              console.warn(
+                "Failed to persist LLM Wiki ingest failure progress.",
+                progressError,
+              );
+            }
           } finally {
             if (heartbeat) {
               clearInterval(heartbeat);

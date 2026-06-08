@@ -55,6 +55,30 @@ describe("ingestRawFile", () => {
 });
 
 describe("rescanRaw", () => {
+  it("omits failed files when doing an ordinary rescan", async () => {
+    const invoke = vi.fn(async () => ({
+      total: 1,
+      pending: [],
+      completed: ["raw/notes/a.md"],
+      skipped: [],
+    }));
+    vi.mocked(tauriCore).mockResolvedValue({
+      invoke,
+    } as unknown as Awaited<ReturnType<typeof tauriCore>>);
+
+    await expect(rescanRaw("/tmp/wiki")).resolves.toEqual({
+      total: 1,
+      pending: [],
+      completed: ["raw/notes/a.md"],
+      skipped: [],
+    });
+
+    expect(invoke).toHaveBeenCalledWith("llm_wiki_rescan_raw", {
+      rootPath: "/tmp/wiki",
+      excludedPendingPaths: [],
+    });
+  });
+
   it("passes excluded pending paths and failed files when continuing after failures", async () => {
     const invoke = vi.fn(async () => ({
       total: 2,
