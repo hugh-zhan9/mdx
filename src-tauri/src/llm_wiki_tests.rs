@@ -5,10 +5,10 @@ use tempfile::tempdir;
 
 use crate::llm_wiki::{
     llm_config_to_public, llm_wiki_digest_sync, llm_wiki_get_config, llm_wiki_get_log,
-    llm_wiki_ingest_mock_output, llm_wiki_ingest_raw_file_sync, llm_wiki_lint,
-    llm_wiki_query_sync, llm_wiki_refresh_graph_sync, llm_wiki_rescan_raw_sync,
-    llm_wiki_rescan_raw_sync_with_exclusions, llm_wiki_search, llm_wiki_update_config,
-    related_context_or_log_failure,
+    llm_wiki_ingest_mock_output, llm_wiki_ingest_raw_file_sync, llm_wiki_lint, llm_wiki_query_sync,
+    llm_wiki_refresh_graph_sync, llm_wiki_rescan_raw_sync,
+    llm_wiki_rescan_raw_sync_with_exclusions, llm_wiki_rescan_raw_sync_with_failures,
+    llm_wiki_search, llm_wiki_update_config, related_context_or_log_failure,
 };
 use crate::llm_wiki_context::{
     build_wiki_context_with_selector_output, parse_page_selection, validate_wiki_page_path,
@@ -32,8 +32,8 @@ use crate::llm_wiki_llm::{
     extract_responses_content, llm_response_parse_error, load_llm_config_from_path,
     load_optional_llm_config_from_path, save_llm_config_to_path, LlmChatMessage,
 };
-use crate::llm_wiki_models::LlmWikiCache;
-use crate::llm_wiki_models::{LlmProviderConfig, WikiContextBundle};
+use crate::llm_wiki_models::WikiContextBundle;
+use crate::llm_wiki_models::{LlmProviderConfig, LlmWikiCache, LlmWikiFailedFile};
 use crate::llm_wiki_query::{mechanical_lint_report, search_wiki_pages, write_digest_page};
 use crate::models::WorkspaceError;
 
@@ -1955,6 +1955,41 @@ fn rescan_raw_excludes_failed_pending_paths_for_current_run() {
             "raw/notes/note-7.md".to_string(),
         ]
     );
+}
+
+#[test]
+fn rescan_raw_persists_current_run_failures_to_progress() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    for name in ["a", "b", "c"] {
+        std::fs::write(
+            root.path().join(format!("raw/notes/{name}.md")),
+            format!("# Note {name}\n"),
+        )
+        .unwrap();
+    }
+
+    let result = llm_wiki_rescan_raw_sync_with_failures(
+        root.path().to_string_lossy().into_owned(),
+        vec!["raw/notes/a.md".to_string()],
+        vec![LlmWikiFailedFile {
+            path: "raw/notes/a.md".to_string(),
+            reason: "pdf_extract_empty: raw PDF source does not contain extractable text"
+                .to_string(),
+        }],
+    )
+    .unwrap();
+
+    assert_eq!(result.total, 3);
+    assert_eq!(
+        result.pending,
+        vec!["raw/notes/b.md".to_string(), "raw/notes/c.md".to_string()]
+    );
+    let progress = std::fs::read_to_string(root.path().join("llm-wiki-progress.md")).unwrap();
+    assert!(progress.contains("## Failed"));
+    assert!(progress.contains(
+        "- raw/notes/a.md: pdf_extract_empty: raw PDF source does not contain extractable text"
+    ));
 }
 
 #[cfg(unix)]

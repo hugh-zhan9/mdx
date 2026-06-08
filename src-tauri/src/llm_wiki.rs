@@ -24,9 +24,9 @@ use crate::llm_wiki_llm::{
     load_optional_llm_config_from_path, save_llm_config_to_path, LlmCallControl, LlmChatMessage,
 };
 use crate::llm_wiki_models::{
-    InitializeLlmWikiResult, LlmProviderConfig, LlmProviderConfigUpdate, LlmWikiKnowledgeConfig,
-    LlmWikiOperationState, LlmWikiQueryResponse, LlmWikiWorkspaceStatus, PublicLlmProviderConfig,
-    RawScanResult, WikiContextBundle, WikiSearchResult,
+    InitializeLlmWikiResult, LlmProviderConfig, LlmProviderConfigUpdate, LlmWikiFailedFile,
+    LlmWikiKnowledgeConfig, LlmWikiOperationState, LlmWikiQueryResponse, LlmWikiWorkspaceStatus,
+    PublicLlmProviderConfig, RawScanResult, WikiContextBundle, WikiSearchResult,
 };
 use crate::llm_wiki_operation::{ensure_not_cancelled, LlmWikiOperationRegistry};
 use crate::llm_wiki_query::{
@@ -182,31 +182,40 @@ pub fn llm_wiki_initialize_workspace(
 pub async fn llm_wiki_rescan_raw(
     root_path: String,
     excluded_pending_paths: Option<Vec<String>>,
+    failed: Option<Vec<LlmWikiFailedFile>>,
 ) -> Result<RawScanResult, WorkspaceError> {
     run_blocking(move || {
-        let excluded_pending_paths = excluded_pending_paths.unwrap_or_default();
-        if excluded_pending_paths.is_empty() {
-            llm_wiki_rescan_raw_sync(root_path)
-        } else {
-            llm_wiki_rescan_raw_sync_with_exclusions(root_path, excluded_pending_paths)
-        }
+        llm_wiki_rescan_raw_sync_with_failures(
+            root_path,
+            excluded_pending_paths.unwrap_or_default(),
+            failed.unwrap_or_default(),
+        )
     })
     .await
 }
 
 pub fn llm_wiki_rescan_raw_sync(root_path: String) -> Result<RawScanResult, WorkspaceError> {
-    llm_wiki_rescan_raw_sync_with_exclusions(root_path, Vec::new())
+    llm_wiki_rescan_raw_sync_with_failures(root_path, Vec::new(), Vec::new())
 }
 
 pub fn llm_wiki_rescan_raw_sync_with_exclusions(
     root_path: String,
     excluded_pending_paths: Vec<String>,
 ) -> Result<RawScanResult, WorkspaceError> {
+    llm_wiki_rescan_raw_sync_with_failures(root_path, excluded_pending_paths, Vec::new())
+}
+
+pub fn llm_wiki_rescan_raw_sync_with_failures(
+    root_path: String,
+    excluded_pending_paths: Vec<String>,
+    failed: Vec<LlmWikiFailedFile>,
+) -> Result<RawScanResult, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
     ensure_default_agents_rules(&root)?;
     let config = read_knowledge_config(&root)?;
+    let failed = normalize_failed_files(failed);
     if config.paused {
-        update_progress_markdown(&root, "paused", &[], &[], &[], &config.skip_paths)?;
+        update_progress_markdown(&root, "paused", &[], &[], &failed, &config.skip_paths)?;
         return Ok(RawScanResult {
             total: 0,
             pending: Vec::new(),
@@ -229,7 +238,7 @@ pub fn llm_wiki_rescan_raw_sync_with_exclusions(
         progress_status,
         &progress.pending,
         &progress.completed,
-        &[],
+        &failed,
         &config.skip_paths,
     )?;
 
@@ -475,6 +484,31 @@ fn normalize_excluded_pending_paths(paths: Vec<String>) -> BTreeSet<String> {
         .into_iter()
         .map(|path| path.trim().trim_matches('/').replace('\\', "/"))
         .filter(|path| path.starts_with("raw/"))
+        .collect()
+}
+
+fn normalize_failed_files(files: Vec<LlmWikiFailedFile>) -> Vec<(String, String)> {
+    files
+        .into_iter()
+        .filter_map(|file| {
+            let path = file.path.trim().trim_matches('/').replace('\\', "/");
+            if !path.starts_with("raw/") {
+                return None;
+            }
+            let reason = file
+                .reason
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .collect::<Vec<_>>()
+                .join(" ");
+            let reason = if reason.is_empty() {
+                "unknown".to_string()
+            } else {
+                reason
+            };
+            Some((path, reason))
+        })
         .collect()
 }
 
