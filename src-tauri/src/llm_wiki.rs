@@ -213,23 +213,37 @@ pub fn llm_wiki_rescan_raw_sync_with_failures(
     let root = canonicalize_workspace_root(root_path)?;
     ensure_default_agents_rules(&root)?;
     let config = read_knowledge_config(&root)?;
+    let mut failed = merged_progress_failure_map(&root, failed)?;
     if config.paused {
-        let failed = merged_progress_failures(&root, failed, &BTreeSet::new())?;
-        update_progress_markdown(&root, "paused", &[], &[], &failed, &config.skip_paths)?;
+        let progress_failed = failed_map_to_progress_entries(&failed);
+        let model_failed = failed_map_to_model_entries(&failed);
+        update_progress_markdown(
+            &root,
+            "paused",
+            &[],
+            &[],
+            &progress_failed,
+            &config.skip_paths,
+        )?;
         return Ok(RawScanResult {
             total: 0,
+            pending_total: 0,
             pending: Vec::new(),
             completed: Vec::new(),
+            failed: model_failed,
             skipped: config.skip_paths,
         });
     }
 
     let excluded_pending_paths = normalize_excluded_pending_paths(excluded_pending_paths);
-    let progress = scan_raw_progress(&root, &config, &excluded_pending_paths)?;
+    let failed_paths = failed.keys().cloned().collect::<BTreeSet<_>>();
+    let progress = scan_raw_progress(&root, &config, &excluded_pending_paths, &failed_paths)?;
     let completed_paths = progress.completed.iter().collect::<BTreeSet<_>>();
-    let failed = merged_progress_failures(&root, failed, &completed_paths)?;
+    remove_completed_failures(&mut failed, &completed_paths);
+    let progress_failed = failed_map_to_progress_entries(&failed);
+    let model_failed = failed_map_to_model_entries(&failed);
 
-    let progress_status = if progress.pending.is_empty() {
+    let progress_status = if progress.pending_total == 0 {
         "completed"
     } else {
         "scanning"
@@ -240,34 +254,58 @@ pub fn llm_wiki_rescan_raw_sync_with_failures(
         progress_status,
         &progress.pending,
         &progress.completed,
-        &failed,
+        &progress_failed,
         &config.skip_paths,
     )?;
 
     Ok(RawScanResult {
         total: progress.total,
+        pending_total: progress.pending_total,
         pending: progress.pending,
         completed: progress.completed,
+        failed: model_failed,
         skipped: config.skip_paths,
     })
 }
 
-fn merged_progress_failures(
+fn merged_progress_failure_map(
     root: &Path,
     failed: Option<Vec<LlmWikiFailedFile>>,
-    completed_paths: &BTreeSet<&String>,
-) -> Result<Vec<(String, String)>, WorkspaceError> {
+) -> Result<BTreeMap<String, String>, WorkspaceError> {
     let mut merged = read_progress_failed_entries(root)?;
     if let Some(failed) = failed {
         for (path, reason) in normalize_failed_files(failed) {
             merged.insert(path, reason);
         }
     }
-    for path in completed_paths {
-        merged.remove(*path);
-    }
 
-    Ok(merged.into_iter().collect())
+    Ok(merged)
+}
+
+fn remove_completed_failures(
+    failed: &mut BTreeMap<String, String>,
+    completed_paths: &BTreeSet<&String>,
+) {
+    for path in completed_paths {
+        failed.remove(*path);
+    }
+}
+
+fn failed_map_to_progress_entries(failed: &BTreeMap<String, String>) -> Vec<(String, String)> {
+    failed
+        .iter()
+        .map(|(path, reason)| (path.clone(), reason.clone()))
+        .collect()
+}
+
+fn failed_map_to_model_entries(failed: &BTreeMap<String, String>) -> Vec<LlmWikiFailedFile> {
+    failed
+        .iter()
+        .map(|(path, reason)| LlmWikiFailedFile {
+            path: path.clone(),
+            reason: reason.clone(),
+        })
+        .collect()
 }
 
 fn read_progress_failed_entries(root: &Path) -> Result<BTreeMap<String, String>, WorkspaceError> {
@@ -488,6 +526,7 @@ pub(crate) fn llm_wiki_ingest_raw_file_sync_with_operation(
 
 struct RawProgressSnapshot {
     total: usize,
+    pending_total: usize,
     pending: Vec<String>,
     completed: Vec<String>,
 }
@@ -496,9 +535,11 @@ fn scan_raw_progress(
     root: &Path,
     config: &LlmWikiKnowledgeConfig,
     excluded_pending_paths: &BTreeSet<String>,
+    failed_paths: &BTreeSet<String>,
 ) -> Result<RawProgressSnapshot, WorkspaceError> {
     let files = scan_raw_file_metadata(root, config)?;
     let cache = read_cache(root)?;
+    let mut pending_total = 0;
     let mut pending = Vec::new();
     let mut completed = Vec::new();
 
@@ -511,6 +552,10 @@ fn scan_raw_progress(
                 completed.push(file.relative_path.clone());
             }
             _ => {
+                if failed_paths.contains(&file.relative_path) {
+                    continue;
+                }
+                pending_total += 1;
                 if pending.len() < RAW_RESCAN_PENDING_BATCH_SIZE
                     && !excluded_pending_paths.contains(&file.relative_path)
                 {
@@ -522,6 +567,7 @@ fn scan_raw_progress(
 
     Ok(RawProgressSnapshot {
         total: files.len(),
+        pending_total,
         pending,
         completed,
     })
@@ -533,11 +579,10 @@ fn update_ingest_processing_progress(
     raw_relative_path: &str,
 ) -> Result<(), WorkspaceError> {
     let excluded = BTreeSet::from([raw_relative_path.to_string()]);
-    let progress = scan_raw_progress(root, config, &excluded)?;
-    let failed = read_progress_failed_entries(root)
-        .unwrap_or_default()
-        .into_iter()
-        .collect::<Vec<_>>();
+    let failed = read_progress_failed_entries(root).unwrap_or_default();
+    let failed_paths = failed.keys().cloned().collect::<BTreeSet<_>>();
+    let progress = scan_raw_progress(root, config, &excluded, &failed_paths)?;
+    let failed = failed_map_to_progress_entries(&failed);
     update_progress_markdown_with_processing(
         root,
         "processing",

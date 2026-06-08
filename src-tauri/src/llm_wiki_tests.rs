@@ -2036,6 +2036,62 @@ fn rescan_raw_persists_current_run_failures_to_progress() {
 }
 
 #[test]
+fn rescan_raw_excludes_persisted_failures_from_pending_and_returns_failed_entries() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    for name in ["a", "b", "c"] {
+        std::fs::write(
+            root.path().join(format!("raw/notes/{name}.md")),
+            format!("# Note {name}\n"),
+        )
+        .unwrap();
+    }
+
+    llm_wiki_rescan_raw_sync_with_failures(
+        root.path().to_string_lossy().into_owned(),
+        vec!["raw/notes/a.md".to_string()],
+        Some(vec![LlmWikiFailedFile {
+            path: "raw/notes/a.md".to_string(),
+            reason: "llm_failed: first failure".to_string(),
+        }]),
+    )
+    .unwrap();
+
+    let result = llm_wiki_rescan_raw_sync(root.path().to_string_lossy().into_owned()).unwrap();
+
+    assert_eq!(result.total, 3);
+    assert_eq!(result.pending_total, 2);
+    assert_eq!(
+        result.pending,
+        vec!["raw/notes/b.md".to_string(), "raw/notes/c.md".to_string()]
+    );
+    assert_eq!(
+        result.failed,
+        vec![LlmWikiFailedFile {
+            path: "raw/notes/a.md".to_string(),
+            reason: "llm_failed: first failure".to_string(),
+        }]
+    );
+    let progress = std::fs::read_to_string(root.path().join("llm-wiki-progress.md")).unwrap();
+    let pending_section = progress
+        .split_once("## Pending")
+        .unwrap()
+        .1
+        .split_once("\n## ")
+        .unwrap()
+        .0;
+    let failed_section = progress
+        .split_once("## Failed")
+        .unwrap()
+        .1
+        .split_once("\n## ")
+        .unwrap()
+        .0;
+    assert!(!pending_section.contains("raw/notes/a.md"));
+    assert!(failed_section.contains("- raw/notes/a.md: llm_failed: first failure"));
+}
+
+#[test]
 fn rescan_raw_preserves_failed_progress_entries_until_raw_succeeds() {
     let root = tempdir().unwrap();
     initialize_llm_wiki_workspace(root.path()).unwrap();

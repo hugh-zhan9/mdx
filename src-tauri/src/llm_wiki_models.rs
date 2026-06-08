@@ -146,8 +146,10 @@ pub struct RawScanFileMetadata {
 #[serde(rename_all = "camelCase")]
 pub struct RawScanResult {
     pub total: usize,
+    pub pending_total: usize,
     pub pending: Vec<String>,
     pub completed: Vec<String>,
+    pub failed: Vec<LlmWikiFailedFile>,
     pub skipped: Vec<String>,
 }
 
