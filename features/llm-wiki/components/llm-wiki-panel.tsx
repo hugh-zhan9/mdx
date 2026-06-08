@@ -218,6 +218,30 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
                 </TextControlButton>
               ))}
             </div>
+
+            {viewModel.failed.length > 0 ? (
+              <div className="space-y-2 border border-base-300 bg-base-200/60 p-2">
+                <div className="text-xs font-semibold text-base-content/75">
+                  失败明细
+                </div>
+                <div className="space-y-2">
+                  {viewModel.failed.map((failure) => (
+                    <div
+                      key={failure.path}
+                      className="min-w-0 border-t border-base-300 pt-2 first:border-t-0 first:pt-0"
+                      title={`${failure.path}\n${failure.reason}`}
+                    >
+                      <div className="break-words text-xs font-medium text-base-content/80">
+                        {failure.path}
+                      </div>
+                      <div className="mt-1 break-words text-xs leading-relaxed text-base-content/65">
+                        {failure.reason}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
