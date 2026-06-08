@@ -314,7 +314,16 @@ pub(crate) fn llm_wiki_ingest_raw_file_sync_with_operation(
     }
     raw_file_metadata(&root, &raw_relative_path)?;
     ensure_default_agents_rules(&root)?;
-    let raw_source = prepare_raw_source(&root, &raw_relative_path)?;
+    let raw_source = match prepare_raw_source(&root, &raw_relative_path) {
+        Ok(raw_source) => raw_source,
+        Err(error) => {
+            let _ = append_log_entry(
+                &root,
+                &format!("ingest failed {raw_relative_path} raw source: {error}"),
+            );
+            return Err(error);
+        }
+    };
     set_operation_stage(operation_id.as_deref(), "reading_index")?;
     let purpose = read_optional_managed_text(&root, "purpose.md")?;
     let agents = read_optional_managed_text(&root, "AGENTS.md")?;

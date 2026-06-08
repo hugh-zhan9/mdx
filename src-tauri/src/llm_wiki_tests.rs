@@ -5,9 +5,10 @@ use tempfile::tempdir;
 
 use crate::llm_wiki::{
     llm_config_to_public, llm_wiki_digest_sync, llm_wiki_get_config, llm_wiki_get_log,
-    llm_wiki_ingest_mock_output, llm_wiki_lint, llm_wiki_query_sync, llm_wiki_refresh_graph_sync,
-    llm_wiki_rescan_raw_sync, llm_wiki_rescan_raw_sync_with_exclusions, llm_wiki_search,
-    llm_wiki_update_config, related_context_or_log_failure,
+    llm_wiki_ingest_mock_output, llm_wiki_ingest_raw_file_sync, llm_wiki_lint,
+    llm_wiki_query_sync, llm_wiki_refresh_graph_sync, llm_wiki_rescan_raw_sync,
+    llm_wiki_rescan_raw_sync_with_exclusions, llm_wiki_search, llm_wiki_update_config,
+    related_context_or_log_failure,
 };
 use crate::llm_wiki_context::{
     build_wiki_context_with_selector_output, parse_page_selection, validate_wiki_page_path,
@@ -1886,6 +1887,39 @@ fn rescan_raw_returns_bounded_pending_batch_for_large_raw_trees() {
     assert_eq!(result.total, 8);
     assert_eq!(result.pending.len(), 5);
     assert!(result.completed.is_empty());
+}
+
+#[test]
+fn ingest_logs_raw_source_failure_before_llm_stage() {
+    let root = tempdir().unwrap();
+    let home = tempdir().unwrap();
+    let home_path = home.path().canonicalize().unwrap();
+    std::fs::create_dir(home_path.join(".mdx")).unwrap();
+    save_llm_config_to_path(
+        home_path.join(".mdx/llm-config.json"),
+        &LlmProviderConfig {
+            base_url: "https://api.example.com/v1".to_string(),
+            model: "test-model".to_string(),
+            api_key: Some("secret-key".to_string()),
+            api_mode: "chat".to_string(),
+        },
+    )
+    .unwrap();
+    let _env = LlmConfigEnvGuard::use_home(home_path);
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::write(root.path().join("raw/articles/broken.pdf"), b"%PDF-1.7\n").unwrap();
+
+    let error = llm_wiki_ingest_raw_file_sync(
+        root.path().to_string_lossy().into_owned(),
+        "raw/articles/broken.pdf".to_string(),
+    )
+    .unwrap_err();
+
+    assert_eq!(error.error_code(), "pdf_extract_failed");
+    let log = std::fs::read_to_string(root.path().join("log.md")).unwrap();
+    assert!(log.contains(
+        "ingest failed raw/articles/broken.pdf raw source: pdf_extract_failed: failed to extract text from raw PDF source"
+    ));
 }
 
 #[test]
