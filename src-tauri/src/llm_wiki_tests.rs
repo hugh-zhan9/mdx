@@ -148,22 +148,37 @@ fn llm_config_env_lock() -> &'static Mutex<()> {
 
 struct LlmConfigEnvGuard {
     _lock: MutexGuard<'static, ()>,
+    _pdf_lock: MutexGuard<'static, ()>,
     home: Option<OsString>,
     userprofile: Option<OsString>,
+    disable_pdftotext: Option<OsString>,
 }
 
 impl LlmConfigEnvGuard {
     fn use_home(path: impl AsRef<std::path::Path>) -> Self {
-        let lock = llm_config_env_lock().lock().unwrap();
+        let lock = llm_config_env_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let pdf_lock = crate::llm_wiki_raw::test_pdf_env_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let home = std::env::var_os("HOME");
         let userprofile = std::env::var_os("USERPROFILE");
+        let disable_pdftotext = std::env::var_os("MDX_DISABLE_PDFTOTEXT");
         std::env::set_var("HOME", path.as_ref());
         std::env::remove_var("USERPROFILE");
         Self {
             _lock: lock,
+            _pdf_lock: pdf_lock,
             home,
             userprofile,
+            disable_pdftotext,
         }
+    }
+
+    fn disable_pdftotext(self) -> Self {
+        std::env::set_var("MDX_DISABLE_PDFTOTEXT", "1");
+        self
     }
 }
 
@@ -178,6 +193,11 @@ impl Drop for LlmConfigEnvGuard {
             std::env::set_var("USERPROFILE", value);
         } else {
             std::env::remove_var("USERPROFILE");
+        }
+        if let Some(value) = self.disable_pdftotext.as_ref() {
+            std::env::set_var("MDX_DISABLE_PDFTOTEXT", value);
+        } else {
+            std::env::remove_var("MDX_DISABLE_PDFTOTEXT");
         }
     }
 }
@@ -1051,6 +1071,48 @@ fn context_selector_accepts_safe_legacy_wiki_page_paths() {
 }
 
 #[test]
+fn context_selector_normalizes_section_relative_wiki_page_paths() {
+    assert_eq!(
+        validate_wiki_page_path("entities/cheng-xu-yuan-carl.md").unwrap(),
+        "wiki/entities/cheng-xu-yuan-carl.md"
+    );
+}
+
+#[test]
+fn context_selector_reads_section_relative_selected_pages() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    write_managed_file(
+        root.path(),
+        "wiki/entities/cheng-xu-yuan-carl.md",
+        "# 程序员Carl\n\n算法内容作者。\n".as_bytes(),
+    )
+    .unwrap();
+
+    let context = build_wiki_context_with_selector_output(
+        root.path(),
+        WikiContextRequest {
+            purpose: "query".to_string(),
+            prompt: "程序员Carl".to_string(),
+            max_selected_pages: 8,
+            max_expanded_pages: 8,
+            max_context_bytes: 64 * 1024,
+        },
+        r#"{"paths":["entities/cheng-xu-yuan-carl.md"],"reason":"index match"}"#,
+    )
+    .unwrap();
+
+    assert_eq!(context.references.len(), 1);
+    assert_eq!(
+        context.references[0].path,
+        "wiki/entities/cheng-xu-yuan-carl.md"
+    );
+    assert!(context
+        .markdown
+        .contains("---PAGE: wiki/entities/cheng-xu-yuan-carl.md---"));
+}
+
+#[test]
 fn context_selector_dedupes_selected_and_expanded_pages_and_honors_expansion_limit() {
     let root = tempdir().unwrap();
     initialize_llm_wiki_workspace(root.path()).unwrap();
@@ -1910,7 +1972,7 @@ fn ingest_logs_raw_source_failure_before_llm_stage() {
         },
     )
     .unwrap();
-    let _env = LlmConfigEnvGuard::use_home(home_path);
+    let _env = LlmConfigEnvGuard::use_home(home_path).disable_pdftotext();
     initialize_llm_wiki_workspace(root.path()).unwrap();
     std::fs::write(root.path().join("raw/articles/broken.pdf"), b"%PDF-1.7\n").unwrap();
 
@@ -1922,16 +1984,19 @@ fn ingest_logs_raw_source_failure_before_llm_stage() {
 
     assert_eq!(error.error_code(), "pdf_extract_failed");
     let log = std::fs::read_to_string(root.path().join("log.md")).unwrap();
-    assert!(log.contains(
-        "ingest failed raw/articles/broken.pdf raw source: pdf_extract_failed: failed to extract text from raw PDF source"
-    ));
+    assert!(log.contains("ingest failed raw/articles/broken.pdf raw source: pdf_extract_failed"));
+    assert!(log.contains("pdftotext fallback failed"));
 }
 
 #[test]
 fn ingest_background_task_failure_is_written_to_log() {
     let root = tempdir().unwrap();
     initialize_llm_wiki_workspace(root.path()).unwrap();
-    std::fs::write(root.path().join("raw/articles/Maven实战.pdf"), b"%PDF-1.7\n").unwrap();
+    std::fs::write(
+        root.path().join("raw/articles/Maven实战.pdf"),
+        b"%PDF-1.7\n",
+    )
+    .unwrap();
     let error = WorkspaceError::new(
         "background_task_failed",
         "failed to join llm wiki background task: task 76 panicked with message \"unsupported encoding GBK-EUC-H\"",
@@ -2062,7 +2127,8 @@ fn rescan_raw_persists_current_run_failures_to_progress() {
         result.failed,
         vec![LlmWikiFailedFile {
             path: "raw/notes/a.md".to_string(),
-            reason: "pdf_extract_empty: raw PDF source does not contain extractable text".to_string(),
+            reason: "pdf_extract_empty: raw PDF source does not contain extractable text"
+                .to_string(),
         }]
     );
     let progress = std::fs::read_to_string(root.path().join("llm-wiki-progress.md")).unwrap();

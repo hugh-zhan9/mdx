@@ -223,10 +223,12 @@ pub async fn llm_wiki_rescan_raw(
     .await
 }
 
+#[cfg(test)]
 pub fn llm_wiki_rescan_raw_sync(root_path: String) -> Result<RawScanResult, WorkspaceError> {
     llm_wiki_rescan_raw_sync_with_failures(root_path, Vec::new(), None)
 }
 
+#[cfg(test)]
 pub fn llm_wiki_rescan_raw_sync_with_exclusions(
     root_path: String,
     excluded_pending_paths: Vec<String>,

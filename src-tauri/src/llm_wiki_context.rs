@@ -132,16 +132,26 @@ pub fn build_wiki_context_with_selector_output(
 
 #[allow(dead_code)]
 pub fn validate_wiki_page_path(path: &str) -> Result<String, WorkspaceError> {
-    if path.is_empty()
-        || path.contains('\\')
-        || path.contains('\0')
-        || !path.ends_with(".md")
-        || Path::new(path).is_absolute()
+    let normalized_path = if path.starts_with("sources/")
+        || path.starts_with("entities/")
+        || path.starts_with("concepts/")
+        || path.starts_with("syntheses/")
+    {
+        format!("wiki/{path}")
+    } else {
+        path.to_string()
+    };
+
+    if normalized_path.is_empty()
+        || normalized_path.contains('\\')
+        || normalized_path.contains('\0')
+        || !normalized_path.ends_with(".md")
+        || Path::new(&normalized_path).is_absolute()
     {
         return Err(invalid_wiki_page_path(path));
     }
 
-    let segments = path.split('/').collect::<Vec<_>>();
+    let segments = normalized_path.split('/').collect::<Vec<_>>();
     if segments.len() < 3
         || segments[0] != "wiki"
         || !matches!(
@@ -157,7 +167,7 @@ pub fn validate_wiki_page_path(path: &str) -> Result<String, WorkspaceError> {
             return Err(invalid_wiki_page_path(path));
         }
     }
-    Ok(path.to_string())
+    Ok(normalized_path)
 }
 
 fn selected_page_paths(

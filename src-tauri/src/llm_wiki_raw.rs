@@ -1,9 +1,17 @@
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
+use std::process::Command;
 
 use crate::llm_wiki_fs::{is_raw_pdf_file, raw_file_hash};
 use crate::llm_wiki_query::safe_read_regular_text;
 use crate::models::WorkspaceError;
 use crate::path_guard::is_allowed_markdown_file;
+
+#[cfg(test)]
+pub(crate) fn test_pdf_env_lock() -> &'static std::sync::Mutex<()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+}
 
 #[derive(Debug)]
 pub struct PreparedRawSource {
@@ -49,12 +57,18 @@ fn read_regular_raw_bytes(path: &Path) -> Result<Vec<u8>, WorkspaceError> {
 }
 
 fn extract_pdf_source_text(relative_path: &str, bytes: &[u8]) -> Result<String, WorkspaceError> {
-    let extracted = pdf_extract::extract_text_from_mem(bytes).map_err(|error| {
-        WorkspaceError::new(
-            "pdf_extract_failed",
-            format!("failed to extract text from raw PDF source: {error}"),
-        )
-    })?;
+    let extracted = match extract_pdf_with_builtin(bytes) {
+        Ok(text) => text,
+        Err(primary_error) => match extract_pdf_with_pdftotext(bytes) {
+            Ok(text) => text,
+            Err(fallback_error) => {
+                return Err(WorkspaceError::new(
+                    "pdf_extract_failed",
+                    format!("{primary_error}; pdftotext fallback failed: {fallback_error}",),
+                ));
+            }
+        },
+    };
     let trimmed = extracted.trim();
     if trimmed.is_empty() {
         return Err(WorkspaceError::new(
@@ -68,8 +82,131 @@ fn extract_pdf_source_text(relative_path: &str, bytes: &[u8]) -> Result<String, 
     ))
 }
 
+fn extract_pdf_with_builtin(bytes: &[u8]) -> Result<String, WorkspaceError> {
+    match catch_unwind(AssertUnwindSafe(|| {
+        pdf_extract::extract_text_from_mem(bytes)
+    })) {
+        Ok(Ok(text)) => Ok(text),
+        Ok(Err(error)) => Err(WorkspaceError::new(
+            "pdf_extract_failed",
+            format!("failed to extract text from raw PDF source: {error}"),
+        )),
+        Err(panic) => Err(WorkspaceError::new(
+            "pdf_extract_failed",
+            format!(
+                "failed to extract text from raw PDF source: extractor panicked: {}",
+                panic_message(panic)
+            ),
+        )),
+    }
+}
+
+fn extract_pdf_with_pdftotext(bytes: &[u8]) -> Result<String, WorkspaceError> {
+    if std::env::var_os("MDX_DISABLE_PDFTOTEXT").is_some() {
+        return Err(WorkspaceError::new(
+            "pdf_extract_failed",
+            "pdftotext fallback is disabled",
+        ));
+    }
+
+    let temp = tempfile::tempdir().map_err(|error| {
+        WorkspaceError::from_io(
+            "pdf_extract_failed",
+            "failed to create temporary directory for pdftotext",
+            &error,
+        )
+    })?;
+    let input_path = temp.path().join("source.pdf");
+    let output_path = temp.path().join("source.txt");
+    std::fs::write(&input_path, bytes).map_err(|error| {
+        WorkspaceError::from_io(
+            "pdf_extract_failed",
+            "failed to write temporary PDF for pdftotext",
+            &error,
+        )
+    })?;
+
+    let output = run_pdftotext(&input_path, &output_path)?;
+
+    if !output.status.success() {
+        return Err(WorkspaceError::new(
+            "pdf_extract_failed",
+            format!(
+                "pdftotext exited with status {}: {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr).trim()
+            ),
+        ));
+    }
+
+    std::fs::read_to_string(&output_path).map_err(|error| {
+        WorkspaceError::from_io(
+            "pdf_extract_failed",
+            "failed to read pdftotext output",
+            &error,
+        )
+    })
+}
+
+fn run_pdftotext(
+    input_path: &Path,
+    output_path: &Path,
+) -> Result<std::process::Output, WorkspaceError> {
+    let candidates = [
+        "pdftotext",
+        "/opt/homebrew/bin/pdftotext",
+        "/usr/local/bin/pdftotext",
+    ];
+    let mut last_error = None;
+
+    for command in candidates {
+        match Command::new(command)
+            .arg("-enc")
+            .arg("UTF-8")
+            .arg("-layout")
+            .arg(input_path)
+            .arg(output_path)
+            .output()
+        {
+            Ok(output) => return Ok(output),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                last_error = Some(error);
+            }
+            Err(error) => {
+                return Err(WorkspaceError::from_io(
+                    "pdf_extract_failed",
+                    format!("failed to run {command} for raw PDF source"),
+                    &error,
+                ));
+            }
+        }
+    }
+
+    let fallback_error = last_error.unwrap_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::NotFound, "pdftotext not found")
+    });
+    Err(WorkspaceError::from_io(
+        "pdf_extract_failed",
+        "failed to run pdftotext for raw PDF source",
+        &fallback_error,
+    ))
+}
+
+fn panic_message(panic: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(message) = panic.downcast_ref::<&str>() {
+        return (*message).to_string();
+    }
+    if let Some(message) = panic.downcast_ref::<String>() {
+        return message.clone();
+    }
+
+    "unknown panic".to_string()
+}
+
 #[cfg(test)]
 mod tests {
+    use std::sync::MutexGuard;
+
     use tempfile::tempdir;
 
     use super::prepare_raw_source;
@@ -107,6 +244,7 @@ mod tests {
 
     #[test]
     fn prepare_raw_source_rejects_invalid_pdf() {
+        let _path = PathEnvGuard::replace_with_original();
         let root = tempdir().unwrap();
         initialize_llm_wiki_workspace(root.path()).unwrap();
         std::fs::write(root.path().join("raw/articles/broken.pdf"), b"%PDF-1.7\n").unwrap();
@@ -114,6 +252,122 @@ mod tests {
         let error = prepare_raw_source(root.path(), "raw/articles/broken.pdf").unwrap_err();
 
         assert_eq!(error.error_code(), "pdf_extract_failed");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn prepare_raw_source_falls_back_to_pdftotext_when_builtin_pdf_extract_fails() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempdir().unwrap();
+        initialize_llm_wiki_workspace(root.path()).unwrap();
+        std::fs::write(root.path().join("raw/articles/broken.pdf"), b"%PDF-1.7\n").unwrap();
+        let bin = root.path().join("bin");
+        std::fs::create_dir(&bin).unwrap();
+        let pdftotext = bin.join("pdftotext");
+        std::fs::write(
+            &pdftotext,
+            "#!/bin/sh\nprintf 'Fallback PDF text from pdftotext\\n' > \"$5\"\n",
+        )
+        .unwrap();
+        let mut permissions = std::fs::metadata(&pdftotext).unwrap().permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&pdftotext, permissions).unwrap();
+        let _path = PathEnvGuard::prepend(&bin);
+
+        let source = prepare_raw_source(root.path(), "raw/articles/broken.pdf").unwrap();
+
+        assert!(source.text.contains("Fallback PDF text from pdftotext"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn prepare_raw_source_reports_pdf_extract_failure_when_pdftotext_is_unavailable() {
+        let root = tempdir().unwrap();
+        initialize_llm_wiki_workspace(root.path()).unwrap();
+        std::fs::write(root.path().join("raw/articles/broken.pdf"), b"%PDF-1.7\n").unwrap();
+        let empty_path = root.path().join("empty-bin");
+        std::fs::create_dir(&empty_path).unwrap();
+        let _path = PathEnvGuard::replace(&empty_path);
+
+        let error = prepare_raw_source(root.path(), "raw/articles/broken.pdf").unwrap_err();
+
+        assert_eq!(error.error_code(), "pdf_extract_failed");
+        assert!(error.to_string().contains("pdftotext fallback failed"));
+        assert!(error.to_string().contains("failed to run pdftotext"));
+    }
+
+    #[cfg(unix)]
+    struct PathEnvGuard {
+        _lock: MutexGuard<'static, ()>,
+        old_path: Option<std::ffi::OsString>,
+        restore_path: bool,
+    }
+
+    #[cfg(unix)]
+    impl PathEnvGuard {
+        fn replace_with_original() -> Self {
+            Self {
+                _lock: path_env_lock()
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner()),
+                old_path: None,
+                restore_path: false,
+            }
+        }
+
+        fn prepend(path: &std::path::Path) -> Self {
+            let lock = path_env_lock()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let old_path = std::env::var_os("PATH");
+            let mut paths = vec![path.to_path_buf()];
+            if let Some(old_path) = &old_path {
+                paths.extend(std::env::split_paths(old_path));
+            }
+            let next_path = std::env::join_paths(paths).unwrap();
+            std::env::set_var("PATH", next_path);
+
+            Self {
+                _lock: lock,
+                old_path,
+                restore_path: true,
+            }
+        }
+
+        fn replace(path: &std::path::Path) -> Self {
+            let lock = path_env_lock()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let old_path = std::env::var_os("PATH");
+            std::env::set_var("PATH", path);
+
+            Self {
+                _lock: lock,
+                old_path,
+                restore_path: true,
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for PathEnvGuard {
+        fn drop(&mut self) {
+            if !self.restore_path {
+                return;
+            }
+
+            if let Some(old_path) = &self.old_path {
+                std::env::set_var("PATH", old_path);
+            } else {
+                std::env::remove_var("PATH");
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    fn path_env_lock() -> &'static std::sync::Mutex<()> {
+        super::test_pdf_env_lock()
     }
 
     fn minimal_text_pdf(text: &str) -> Vec<u8> {
