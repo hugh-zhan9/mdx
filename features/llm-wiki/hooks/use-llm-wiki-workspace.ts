@@ -77,8 +77,10 @@ interface UseLlmWikiWorkspaceOptions {
 
 const EMPTY_SCAN: RawScanResult = {
   total: 0,
+  pendingTotal: 0,
   pending: [],
   completed: [],
+  failed: [],
   skipped: [],
 };
 
@@ -931,9 +933,9 @@ export function useLlmWikiWorkspace(
       ),
       paused: false,
       totalRawFiles: scan.total,
-      pendingCount: scan.pending.length,
+      pendingCount: scan.pendingTotal,
       completedCount: scan.completed.length,
-      failedCount: 0,
+      failedCount: scan.failed.length,
       skippedCount: scan.skipped.length,
     }),
     [config, scan, status],

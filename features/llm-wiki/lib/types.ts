@@ -48,8 +48,10 @@ export interface LlmProviderConfigForm {
 
 export interface RawScanResult {
     total: number;
+    pendingTotal: number;
     pending: string[];
     completed: string[];
+    failed: LlmWikiFailedFile[];
     skipped: string[];
 }
 

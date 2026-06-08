@@ -82,8 +82,16 @@ describe("rescanRaw", () => {
   it("passes excluded pending paths and failed files when continuing after failures", async () => {
     const invoke = vi.fn(async () => ({
       total: 2,
+      pendingTotal: 1,
       pending: ["raw/notes/b.md"],
       completed: [],
+      failed: [
+        {
+          path: "raw/notes/a.md",
+          reason:
+            "pdf_extract_empty: raw PDF source does not contain extractable text",
+        },
+      ],
       skipped: [],
     }));
     vi.mocked(tauriCore).mockResolvedValue({
@@ -100,8 +108,16 @@ describe("rescanRaw", () => {
       ]),
     ).resolves.toEqual({
       total: 2,
+      pendingTotal: 1,
       pending: ["raw/notes/b.md"],
       completed: [],
+      failed: [
+        {
+          path: "raw/notes/a.md",
+          reason:
+            "pdf_extract_empty: raw PDF source does not contain extractable text",
+        },
+      ],
       skipped: [],
     });
 
