@@ -1843,7 +1843,9 @@ fn rescan_raw_returns_no_pending_files_when_config_is_paused() {
     let result = llm_wiki_rescan_raw_sync(root.path().to_string_lossy().into_owned()).unwrap();
 
     assert_eq!(result.total, 0);
+    assert_eq!(result.pending_total, 0);
     assert!(result.pending.is_empty());
+    assert!(result.failed.is_empty());
     let progress = std::fs::read_to_string(root.path().join("llm-wiki-progress.md")).unwrap();
     assert!(progress.contains("paused"));
     assert!(!progress.contains("raw/notes/a.md"));
@@ -1862,7 +1864,9 @@ fn rescan_raw_marks_cached_files_completed_instead_of_pending() {
     let result = llm_wiki_rescan_raw_sync(root.path().to_string_lossy().into_owned()).unwrap();
 
     assert_eq!(result.total, 1);
+    assert_eq!(result.pending_total, 0);
     assert!(result.pending.is_empty());
+    assert!(result.failed.is_empty());
     let progress = std::fs::read_to_string(root.path().join("llm-wiki-progress.md")).unwrap();
     assert!(progress.contains("completed"));
     assert!(!progress.contains("scanning"));
@@ -1885,6 +1889,7 @@ fn rescan_raw_returns_bounded_pending_batch_for_large_raw_trees() {
     let result = llm_wiki_rescan_raw_sync(root.path().to_string_lossy().into_owned()).unwrap();
 
     assert_eq!(result.total, 8);
+    assert_eq!(result.pending_total, 8);
     assert_eq!(result.pending.len(), 5);
     assert!(result.completed.is_empty());
 }
@@ -2012,6 +2017,7 @@ fn rescan_raw_excludes_failed_pending_paths_for_current_run() {
     .unwrap();
 
     assert_eq!(result.total, 8);
+    assert_eq!(result.pending_total, 8);
     assert_eq!(
         result.pending,
         vec![
@@ -2020,6 +2026,7 @@ fn rescan_raw_excludes_failed_pending_paths_for_current_run() {
             "raw/notes/note-7.md".to_string(),
         ]
     );
+    assert!(result.failed.is_empty());
 }
 
 #[test]
@@ -2046,9 +2053,17 @@ fn rescan_raw_persists_current_run_failures_to_progress() {
     .unwrap();
 
     assert_eq!(result.total, 3);
+    assert_eq!(result.pending_total, 2);
     assert_eq!(
         result.pending,
         vec!["raw/notes/b.md".to_string(), "raw/notes/c.md".to_string()]
+    );
+    assert_eq!(
+        result.failed,
+        vec![LlmWikiFailedFile {
+            path: "raw/notes/a.md".to_string(),
+            reason: "pdf_extract_empty: raw PDF source does not contain extractable text".to_string(),
+        }]
     );
     let progress = std::fs::read_to_string(root.path().join("llm-wiki-progress.md")).unwrap();
     assert!(progress.contains("## Failed"));
