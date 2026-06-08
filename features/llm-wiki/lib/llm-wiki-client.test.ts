@@ -55,7 +55,7 @@ describe("ingestRawFile", () => {
 });
 
 describe("rescanRaw", () => {
-  it("passes excluded pending paths when continuing after failures", async () => {
+  it("passes excluded pending paths and failed files when continuing after failures", async () => {
     const invoke = vi.fn(async () => ({
       total: 2,
       pending: ["raw/notes/b.md"],
@@ -67,7 +67,13 @@ describe("rescanRaw", () => {
     } as unknown as Awaited<ReturnType<typeof tauriCore>>);
 
     await expect(
-      rescanRaw("/tmp/wiki", ["raw/notes/a.md"]),
+      rescanRaw("/tmp/wiki", ["raw/notes/a.md"], [
+        {
+          path: "raw/notes/a.md",
+          reason:
+            "pdf_extract_empty: raw PDF source does not contain extractable text",
+        },
+      ]),
     ).resolves.toEqual({
       total: 2,
       pending: ["raw/notes/b.md"],
@@ -78,6 +84,13 @@ describe("rescanRaw", () => {
     expect(invoke).toHaveBeenCalledWith("llm_wiki_rescan_raw", {
       rootPath: "/tmp/wiki",
       excludedPendingPaths: ["raw/notes/a.md"],
+      failed: [
+        {
+          path: "raw/notes/a.md",
+          reason:
+            "pdf_extract_empty: raw PDF source does not contain extractable text",
+        },
+      ],
     });
   });
 });

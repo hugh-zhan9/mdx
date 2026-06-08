@@ -204,6 +204,15 @@ export function useLlmWikiWorkspace(
         return;
       }
 
+      function toProgressFailures(
+        failed: Array<{ path: string; error: string }>,
+      ) {
+        return failed.map((item) => ({
+          path: item.path,
+          reason: item.error,
+        }));
+      }
+
       const failed: Array<{ path: string; error: string }> = [];
       const failedPaths = new Set<string>();
       let batch = pending;
@@ -320,6 +329,7 @@ export function useLlmWikiWorkspace(
         const next = await rescanRaw(
           ingestRootPath,
           Array.from(failedPaths),
+          toProgressFailures(failed),
         );
 
         if (activeRootPathRef.current !== ingestRootPath) {
@@ -340,6 +350,7 @@ export function useLlmWikiWorkspace(
       const latest = await rescanRaw(
         ingestRootPath,
         Array.from(failedPaths),
+        toProgressFailures(failed),
       );
 
       if (activeRootPathRef.current !== ingestRootPath) {

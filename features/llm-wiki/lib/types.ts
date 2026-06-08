@@ -53,6 +53,11 @@ export interface RawScanResult {
     skipped: string[];
 }
 
+export interface LlmWikiFailedFile {
+    path: string;
+    reason: string;
+}
+
 export interface LlmWikiKnowledgeConfig {
     paused: boolean;
     skipPaths: string[];

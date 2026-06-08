@@ -1,6 +1,7 @@
 import { tauriCore } from "@/common/lib/tauri";
 import type {
   InitializeLlmWikiResult,
+  LlmWikiFailedFile,
   LlmWikiKnowledgeConfig,
   LlmWikiLintResult,
   LlmWikiOperationState,
@@ -53,10 +54,12 @@ export function saveLlmConfig(
 export function rescanRaw(
   rootPath: string,
   excludedPendingPaths: string[] = [],
+  failed: LlmWikiFailedFile[] = [],
 ): Promise<RawScanResult> {
   return invokeCommand("llm_wiki_rescan_raw", {
     rootPath,
     excludedPendingPaths,
+    failed,
   });
 }
 
