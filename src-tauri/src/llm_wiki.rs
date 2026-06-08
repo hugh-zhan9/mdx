@@ -150,6 +150,35 @@ where
         })?
 }
 
+fn append_background_ingest_failure_log(
+    root_path: &str,
+    raw_relative_path: &str,
+    error: &WorkspaceError,
+) {
+    if error.error_code() != "background_task_failed" {
+        return;
+    }
+    let Ok(root) = canonicalize_workspace_root(root_path.to_string()) else {
+        return;
+    };
+    let Ok(raw_relative_path) = validate_raw_relative_path(&root, raw_relative_path) else {
+        return;
+    };
+    let _ = append_log_entry(
+        &root,
+        &format!("ingest failed {raw_relative_path} background task: {error}"),
+    );
+}
+
+#[cfg(test)]
+pub(crate) fn append_background_ingest_failure_log_for_test(
+    root_path: &str,
+    raw_relative_path: &str,
+    error: &WorkspaceError,
+) {
+    append_background_ingest_failure_log(root_path, raw_relative_path, error);
+}
+
 #[tauri::command]
 pub fn llm_wiki_operation_cancel(operation_id: String) -> Result<(), WorkspaceError> {
     operation_registry().cancel(&operation_id)
@@ -387,11 +416,17 @@ pub async fn llm_wiki_ingest_raw_file(
 ) -> Result<(), WorkspaceError> {
     let operation = begin_operation(operation_id, "ingest")?;
     let operation_id = operation.operation_id();
-    run_blocking(move || {
+    let log_root_path = root_path.clone();
+    let log_raw_relative_path = raw_relative_path.clone();
+    let result = run_blocking(move || {
         let _operation = operation;
         llm_wiki_ingest_raw_file_sync_with_operation(root_path, raw_relative_path, operation_id)
     })
-    .await
+    .await;
+    if let Err(error) = &result {
+        append_background_ingest_failure_log(&log_root_path, &log_raw_relative_path, error);
+    }
+    result
 }
 
 #[allow(dead_code)]

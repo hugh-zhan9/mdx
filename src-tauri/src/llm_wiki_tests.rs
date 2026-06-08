@@ -1923,6 +1923,28 @@ fn ingest_logs_raw_source_failure_before_llm_stage() {
 }
 
 #[test]
+fn ingest_background_task_failure_is_written_to_log() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    std::fs::write(root.path().join("raw/articles/Maven实战.pdf"), b"%PDF-1.7\n").unwrap();
+    let error = WorkspaceError::new(
+        "background_task_failed",
+        "failed to join llm wiki background task: task 76 panicked with message \"unsupported encoding GBK-EUC-H\"",
+    );
+
+    crate::llm_wiki::append_background_ingest_failure_log_for_test(
+        root.path().to_string_lossy().as_ref(),
+        "raw/articles/Maven实战.pdf",
+        &error,
+    );
+
+    let log = std::fs::read_to_string(root.path().join("log.md")).unwrap();
+    assert!(log.contains(
+        "ingest failed raw/articles/Maven实战.pdf background task: background_task_failed: failed to join llm wiki background task: task 76 panicked with message \"unsupported encoding GBK-EUC-H\""
+    ));
+}
+
+#[test]
 fn ingest_preserves_existing_failed_progress_when_processing_updates() {
     let root = tempdir().unwrap();
     let home = tempdir().unwrap();
