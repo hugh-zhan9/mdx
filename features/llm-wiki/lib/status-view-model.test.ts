@@ -12,6 +12,7 @@ describe("createLlmWikiStatusViewModel", () => {
             pendingCount: 0,
             completedCount: 0,
             failedCount: 0,
+            failed: [],
             skippedCount: 0,
         });
 
@@ -29,6 +30,7 @@ describe("createLlmWikiStatusViewModel", () => {
             pendingCount: 3,
             completedCount: 2,
             failedCount: 0,
+            failed: [],
             skippedCount: 1,
         };
 
@@ -48,11 +50,40 @@ describe("createLlmWikiStatusViewModel", () => {
             pendingCount: 1,
             completedCount: 2,
             failedCount: 1,
+            failed: [],
             skippedCount: 0,
         });
 
         expect(viewModel.primaryAction).toBe("恢复后台处理");
         expect(viewModel.statusLines).toContain("状态：已暂停");
+    });
+
+    it("exposes failed raw files with reasons", () => {
+        const viewModel = createLlmWikiStatusViewModel({
+            mode: "llmWiki",
+            llmConfigured: true,
+            paused: false,
+            totalRawFiles: 3,
+            pendingCount: 1,
+            completedCount: 1,
+            failedCount: 1,
+            failed: [
+                {
+                    path: "raw/notes/a.md",
+                    reason: "llm_failed: first failure",
+                },
+            ],
+            skippedCount: 0,
+        });
+
+        expect(viewModel.statusLines).toContain("待处理：1");
+        expect(viewModel.statusLines).toContain("失败：1");
+        expect(viewModel.failed).toEqual([
+            {
+                path: "raw/notes/a.md",
+                reason: "llm_failed: first failure",
+            },
+        ]);
     });
 
     it("groups panel modes by task priority", () => {
@@ -64,6 +95,7 @@ describe("createLlmWikiStatusViewModel", () => {
             pendingCount: 1,
             completedCount: 6,
             failedCount: 1,
+            failed: [],
             skippedCount: 0,
         });
 
@@ -99,6 +131,7 @@ describe("createLlmWikiStatusViewModel", () => {
             pendingCount: 3,
             completedCount: 0,
             failedCount: 0,
+            failed: [],
             skippedCount: 0,
         });
 

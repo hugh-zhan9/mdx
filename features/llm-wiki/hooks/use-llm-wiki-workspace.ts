@@ -936,6 +936,7 @@ export function useLlmWikiWorkspace(
       pendingCount: scan.pendingTotal,
       completedCount: scan.completed.length,
       failedCount: scan.failed.length,
+      failed: scan.failed,
       skippedCount: scan.skipped.length,
     }),
     [config, scan, status],

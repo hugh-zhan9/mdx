@@ -73,6 +73,7 @@ export interface LlmWikiPanelState {
     pendingCount: number;
     completedCount: number;
     failedCount: number;
+    failed: LlmWikiFailedFile[];
     skippedCount: number;
 }
 
@@ -102,6 +103,7 @@ export interface LlmWikiStatusViewModel {
     title: string;
     primaryAction: string;
     statusLines: string[];
+    failed: LlmWikiFailedFile[];
     modes: LlmWikiPanelModeViewModel[];
     secondaryActions: LlmWikiSecondaryActionViewModel[];
     emptyState: LlmWikiEmptyStateViewModel | null;

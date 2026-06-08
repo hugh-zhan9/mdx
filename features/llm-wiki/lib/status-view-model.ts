@@ -8,6 +8,7 @@ export function createLlmWikiStatusViewModel(
             title: "普通 Markdown 工作区",
             primaryAction: "初始化 LLM Wiki",
             statusLines: ["后台 LLM 未启用"],
+            failed: [],
             modes: createModes(false),
             secondaryActions: createSecondaryActions(true),
             emptyState: {
@@ -35,6 +36,7 @@ export function createLlmWikiStatusViewModel(
               ? "重新扫描 raw"
               : "配置 LLM",
         statusLines,
+        failed: state.failed,
         modes: createModes(state.llmConfigured),
         secondaryActions: createSecondaryActions(!state.llmConfigured),
         emptyState: state.llmConfigured
