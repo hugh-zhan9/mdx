@@ -17,6 +17,10 @@
 
 - Ingest may read one raw source plus purpose, agents, index, and related wiki context, then update multiple managed wiki pages.
 - Ingest processing progress updates must preserve previously recorded failed rows in `llm-wiki-progress.md` while refreshing the current Processing section.
+- Backend raw rescan owns current progress classification. `RawScanResult.pendingTotal` means all not-completed, not-failed raw files; `RawScanResult.pending` is only the bounded next batch.
+- Persisted or current failed raw files must be excluded from pending candidates and from `pendingTotal`, returned with `{ path, reason }`, and shown in the panel until that raw file later succeeds with a valid completed cache entry.
+- `excludedPendingPaths` is a transient batch-selection exclusion and must not be treated as failed state or subtracted from `pendingTotal`.
+- Background ingest task join/panic failures must be logged at the async command boundary because the blocking task may not reach normal ingest-stage logging.
 - Query writes `log.md` but must not automatically create new wiki pages.
 - Digest explicitly persists a synthesis under `wiki/syntheses/*.md` and updates `index.md` and `log.md`.
 - Mechanical lint must run without LLM config; semantic lint is optional when LLM config exists.
