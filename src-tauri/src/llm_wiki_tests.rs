@@ -2024,6 +2024,31 @@ fn rescan_raw_preserves_failed_progress_entries_until_raw_succeeds() {
     assert!(progress.contains("## Failed\n\n- None"));
 }
 
+#[test]
+fn rescan_raw_keeps_failed_progress_when_cache_entry_is_stale() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    let raw_path = root.path().join("raw/notes/a.md");
+    std::fs::write(&raw_path, "# Note a\n").unwrap();
+    let hash = raw_scan_hash("raw/notes/a.md", &raw_path);
+    let blocks = parse_file_blocks("---FILE: wiki/sources/a.md---\n# A\n---END FILE---").unwrap();
+    write_ingest_outputs(root.path(), "raw/notes/a.md", &hash, "test-model", &blocks).unwrap();
+    std::fs::write(&raw_path, "# Note a\n\nChanged after ingest.\n").unwrap();
+
+    llm_wiki_rescan_raw_sync_with_failures(
+        root.path().to_string_lossy().into_owned(),
+        vec!["raw/notes/a.md".to_string()],
+        Some(vec![LlmWikiFailedFile {
+            path: "raw/notes/a.md".to_string(),
+            reason: "llm_failed: changed raw failed".to_string(),
+        }]),
+    )
+    .unwrap();
+
+    let progress = std::fs::read_to_string(root.path().join("llm-wiki-progress.md")).unwrap();
+    assert!(progress.contains("- raw/notes/a.md: llm_failed: changed raw failed"));
+}
+
 #[cfg(unix)]
 #[test]
 fn rescan_raw_does_not_scan_invalid_raw_when_config_is_paused() {

@@ -24,10 +24,9 @@ use crate::llm_wiki_llm::{
     load_optional_llm_config_from_path, save_llm_config_to_path, LlmCallControl, LlmChatMessage,
 };
 use crate::llm_wiki_models::{
-    InitializeLlmWikiResult, LlmProviderConfig, LlmProviderConfigUpdate, LlmWikiCacheEntry,
-    LlmWikiFailedFile, LlmWikiKnowledgeConfig, LlmWikiOperationState, LlmWikiQueryResponse,
-    LlmWikiWorkspaceStatus, PublicLlmProviderConfig, RawScanResult, WikiContextBundle,
-    WikiSearchResult,
+    InitializeLlmWikiResult, LlmProviderConfig, LlmProviderConfigUpdate, LlmWikiFailedFile,
+    LlmWikiKnowledgeConfig, LlmWikiOperationState, LlmWikiQueryResponse, LlmWikiWorkspaceStatus,
+    PublicLlmProviderConfig, RawScanResult, WikiContextBundle, WikiSearchResult,
 };
 use crate::llm_wiki_operation::{ensure_not_cancelled, LlmWikiOperationRegistry};
 use crate::llm_wiki_query::{
@@ -214,9 +213,8 @@ pub fn llm_wiki_rescan_raw_sync_with_failures(
     let root = canonicalize_workspace_root(root_path)?;
     ensure_default_agents_rules(&root)?;
     let config = read_knowledge_config(&root)?;
-    let cache = read_cache(&root)?;
-    let failed = merged_progress_failures(&root, failed, &cache.entries)?;
     if config.paused {
+        let failed = merged_progress_failures(&root, failed, &BTreeSet::new())?;
         update_progress_markdown(&root, "paused", &[], &[], &failed, &config.skip_paths)?;
         return Ok(RawScanResult {
             total: 0,
@@ -228,6 +226,8 @@ pub fn llm_wiki_rescan_raw_sync_with_failures(
 
     let excluded_pending_paths = normalize_excluded_pending_paths(excluded_pending_paths);
     let progress = scan_raw_progress(&root, &config, &excluded_pending_paths)?;
+    let completed_paths = progress.completed.iter().collect::<BTreeSet<_>>();
+    let failed = merged_progress_failures(&root, failed, &completed_paths)?;
 
     let progress_status = if progress.pending.is_empty() {
         "completed"
@@ -255,7 +255,7 @@ pub fn llm_wiki_rescan_raw_sync_with_failures(
 fn merged_progress_failures(
     root: &Path,
     failed: Option<Vec<LlmWikiFailedFile>>,
-    completed_paths: &BTreeMap<String, LlmWikiCacheEntry>,
+    completed_paths: &BTreeSet<&String>,
 ) -> Result<Vec<(String, String)>, WorkspaceError> {
     let mut merged = read_progress_failed_entries(root)?;
     if let Some(failed) = failed {
@@ -263,7 +263,9 @@ fn merged_progress_failures(
             merged.insert(path, reason);
         }
     }
-    merged.retain(|path, _| !completed_paths.contains_key(path));
+    for path in completed_paths {
+        merged.remove(*path);
+    }
 
     Ok(merged.into_iter().collect())
 }
