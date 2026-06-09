@@ -17,6 +17,7 @@ export type MaybePromise<T> = T | Promise<T>;
 export interface SaveCompletedEvent {
     rootPath: string;
     path: string;
+    previousPath?: string;
 }
 
 export interface SaveTabEnvironment {
@@ -180,10 +181,21 @@ export async function performSaveTab(
                 markdown,
             });
             try {
-                await environment.afterSave?.({
+                const previousPath =
+                    normalizeWorkspacePath(writePlan.path) ===
+                    normalizeWorkspacePath(originalSnapshot.path)
+                        ? undefined
+                        : originalSnapshot.path;
+                const completedEvent: SaveCompletedEvent = {
                     rootPath: writePlan.rootPath,
                     path: writePlan.path,
-                });
+                };
+
+                if (previousPath) {
+                    completedEvent.previousPath = previousPath;
+                }
+
+                await environment.afterSave?.(completedEvent);
             } catch (afterSaveError) {
                 environment.warn(
                     "文件已保存，但保存后处理失败。",

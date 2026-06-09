@@ -162,6 +162,56 @@ describe("workspace save coordination", () => {
         });
     });
 
+    it("reports the previous path after a first-save rename", async () => {
+        let workspace = withTab(
+            createWorkspaceState("/tmp/ws"),
+            createTab({
+                path: "/tmp/ws/Untitled.md",
+                title: "Untitled.md",
+                markdown: "body",
+                needsRenameOnFirstSave: true,
+            }),
+        );
+        const afterSave = vi.fn();
+        const invoke = createInvoke((command, args) => {
+            if (command === "rename_path") {
+                expect(args).toEqual({
+                    rootPath: "/tmp/ws",
+                    fromPath: "/tmp/ws/Untitled.md",
+                    newName: "Notes.md",
+                });
+
+                return {
+                    oldPath: "/tmp/ws/Untitled.md",
+                    newPath: "/tmp/ws/Notes.md",
+                };
+            }
+
+            return undefined;
+        });
+
+        const saved = await performSaveTab("tab-1", {
+            getWorkspace: () => workspace,
+            dispatch: (action) => {
+                workspace = workspaceReducer(workspace, action);
+            },
+            invoke,
+            promptName: () => "Notes.md",
+            alert: vi.fn(),
+            warn: vi.fn(),
+            refreshTree: vi.fn(),
+            afterSave,
+        });
+
+        expect(saved).toBe(true);
+        expect(afterSave).toHaveBeenCalledOnce();
+        expect(afterSave).toHaveBeenCalledWith({
+            rootPath: "/tmp/ws",
+            path: "/tmp/ws/Notes.md",
+            previousPath: "/tmp/ws/Untitled.md",
+        });
+    });
+
     it("refreshes the original root after a first-save rename", async () => {
         let workspace = withTab(
             createWorkspaceState("/tmp/ws"),

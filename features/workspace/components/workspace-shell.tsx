@@ -663,6 +663,13 @@ export function WorkspaceShell({
 
           try {
             await draftDelete({ realPath: event.path });
+            if (
+              event.previousPath &&
+              normalizeWorkspacePath(event.previousPath) !==
+                normalizeWorkspacePath(event.path)
+            ) {
+              await draftDelete({ realPath: event.previousPath });
+            }
             if (saveAsDraft) {
               await draftDelete({ draftId: saveAsDraft.draftId });
               removeOrphanDraft(saveAsDraft.draftId);
