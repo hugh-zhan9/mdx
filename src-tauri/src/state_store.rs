@@ -36,11 +36,31 @@ impl Default for AppState {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct AppPreferences {
     #[serde(default)]
     pub file_tree_exclude_dirs: Vec<String>,
+    #[serde(default = "default_file_watch_enabled")]
+    pub file_watch_enabled: bool,
+    #[serde(default = "default_search_max_file_bytes")]
+    pub search_max_file_bytes: u64,
+    #[serde(default = "default_search_max_results")]
+    pub search_max_results: usize,
+    #[serde(default = "default_search_max_matches_per_file")]
+    pub search_max_matches_per_file: usize,
+}
+
+impl Default for AppPreferences {
+    fn default() -> Self {
+        Self {
+            file_tree_exclude_dirs: Vec::new(),
+            file_watch_enabled: default_file_watch_enabled(),
+            search_max_file_bytes: default_search_max_file_bytes(),
+            search_max_results: default_search_max_results(),
+            search_max_matches_per_file: default_search_max_matches_per_file(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -247,4 +267,20 @@ fn timestamp_nanos() -> u128 {
 
 fn default_state_version() -> u32 {
     STATE_VERSION
+}
+
+fn default_file_watch_enabled() -> bool {
+    true
+}
+
+fn default_search_max_file_bytes() -> u64 {
+    2_097_152
+}
+
+fn default_search_max_results() -> usize {
+    200
+}
+
+fn default_search_max_matches_per_file() -> usize {
+    20
 }

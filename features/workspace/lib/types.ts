@@ -180,6 +180,10 @@ export interface PersistedAppState {
 
 export interface AppPreferences {
     fileTreeExcludeDirs: string[];
+    fileWatchEnabled: boolean;
+    searchMaxFileBytes: number;
+    searchMaxResults: number;
+    searchMaxMatchesPerFile: number;
 }
 
 export interface PersistedWorkspaceState {

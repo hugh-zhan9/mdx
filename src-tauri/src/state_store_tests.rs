@@ -38,6 +38,43 @@ fn backs_up_corrupt_state_file_before_resetting() {
 }
 
 #[test]
+fn app_preferences_include_file_watch_and_search_defaults() {
+    let preferences = AppPreferences::default();
+
+    assert!(preferences.file_watch_enabled);
+    assert_eq!(preferences.search_max_file_bytes, 2_097_152);
+    assert_eq!(preferences.search_max_results, 200);
+    assert_eq!(preferences.search_max_matches_per_file, 20);
+}
+
+#[test]
+fn old_state_without_new_preferences_uses_defaults() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("state.json");
+    std::fs::write(
+        &path,
+        r#"{
+          "stateVersion": 1,
+          "recentWorkspaceRoot": "/tmp/ws",
+          "preferences": {
+            "fileTreeExcludeDirs": ["vendor"]
+          },
+          "workspaces": [],
+          "windowSize": { "width": 1280, "height": 820 }
+        }"#,
+    )
+    .unwrap();
+
+    let state = load_state_from_path(&path).unwrap();
+
+    assert_eq!(state.preferences.file_tree_exclude_dirs, vec!["vendor"]);
+    assert!(state.preferences.file_watch_enabled);
+    assert_eq!(state.preferences.search_max_file_bytes, 2_097_152);
+    assert_eq!(state.preferences.search_max_results, 200);
+    assert_eq!(state.preferences.search_max_matches_per_file, 20);
+}
+
+#[test]
 fn saves_and_reloads_workspace_state() {
     let dir = tempdir().unwrap();
     let path = dir.path().join("state.json");
@@ -46,6 +83,10 @@ fn saves_and_reloads_workspace_state() {
         recent_workspace_root: Some("/tmp/ws".to_string()),
         preferences: AppPreferences {
             file_tree_exclude_dirs: vec!["vendor".to_string(), "docs/archive".to_string()],
+            file_watch_enabled: false,
+            search_max_file_bytes: 1_048_576,
+            search_max_results: 100,
+            search_max_matches_per_file: 10,
         },
         workspaces: vec![PersistedWorkspaceState {
             root_path: "/tmp/ws".to_string(),
@@ -86,6 +127,13 @@ fn saves_and_reloads_workspace_state() {
     assert_eq!(raw_json["stateVersion"], 1);
     assert_eq!(raw_json["recentWorkspaceRoot"], "/tmp/ws");
     assert_eq!(raw_json["preferences"]["fileTreeExcludeDirs"][0], "vendor");
+    assert_eq!(raw_json["preferences"]["fileWatchEnabled"], false);
+    assert_eq!(raw_json["preferences"]["searchMaxFileBytes"], 1_048_576);
+    assert_eq!(raw_json["preferences"]["searchMaxResults"], 100);
+    assert_eq!(
+        raw_json["preferences"]["searchMaxMatchesPerFile"],
+        10
+    );
     assert_eq!(raw_json["workspaces"][0]["activeTabId"], "tab-2");
     assert_eq!(raw_json["workspaces"][0]["panels"]["leftCollapsed"], true);
     assert_eq!(raw_json["windowSize"]["width"], 1440.0);
@@ -96,6 +144,10 @@ fn saves_and_reloads_workspace_state() {
         reloaded.preferences.file_tree_exclude_dirs,
         vec!["vendor".to_string(), "docs/archive".to_string()]
     );
+    assert!(!reloaded.preferences.file_watch_enabled);
+    assert_eq!(reloaded.preferences.search_max_file_bytes, 1_048_576);
+    assert_eq!(reloaded.preferences.search_max_results, 100);
+    assert_eq!(reloaded.preferences.search_max_matches_per_file, 10);
     assert_eq!(reloaded.workspaces.len(), 1);
 
     let workspace = &reloaded.workspaces[0];

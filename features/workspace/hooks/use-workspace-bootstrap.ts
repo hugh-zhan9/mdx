@@ -25,6 +25,11 @@ import {
     normalizePersistedWindowSize,
 } from "../lib/window-size";
 import { findPersistedWorkspaceForRoot } from "../lib/persisted-workspace";
+import {
+    appPreferencesEqual,
+    createDefaultAppPreferences,
+    normalizeAppPreferences,
+} from "../lib/preferences";
 
 type BootstrapStatus = "loading" | "ready" | "empty" | "error";
 
@@ -692,62 +697,10 @@ function createDefaultAppState(): PersistedAppState {
     return {
         stateVersion: STATE_VERSION,
         recentWorkspaceRoot: null,
-        preferences: {
-            fileTreeExcludeDirs: [],
-        },
+        preferences: createDefaultAppPreferences(),
         workspaces: [],
         windowSize: DEFAULT_WINDOW_SIZE,
     };
-}
-
-function normalizeAppPreferences(
-    preferences: AppPreferences | undefined,
-): AppPreferences {
-    return {
-        fileTreeExcludeDirs: normalizeExcludeDirs(
-            preferences?.fileTreeExcludeDirs,
-        ),
-    };
-}
-
-function appPreferencesEqual(
-    left: AppPreferences,
-    right: AppPreferences,
-) {
-    return stringListsEqual(
-        left.fileTreeExcludeDirs,
-        right.fileTreeExcludeDirs,
-    );
-}
-
-function stringListsEqual(left: string[], right: string[]) {
-    if (left.length !== right.length) {
-        return false;
-    }
-
-    return left.every((item, index) => item === right[index]);
-}
-
-function normalizeExcludeDirs(value: unknown): string[] {
-    if (!Array.isArray(value)) {
-        return [];
-    }
-
-    return Array.from(
-        new Set(
-            value
-                .filter((item): item is string => typeof item === "string")
-                .map((item) => item.replaceAll("\\", "/").trim())
-                .map((item) => item.replace(/^\/+|\/+$/g, ""))
-                .filter((item) => item.length > 0)
-                .filter(
-                    (item) =>
-                        !item
-                            .split("/")
-                            .some((part) => part === "." || part === ".."),
-                ),
-        ),
-    );
 }
 
 function normalizePanelState(

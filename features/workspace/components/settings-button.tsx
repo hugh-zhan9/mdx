@@ -17,6 +17,10 @@ import {
   useThemePreference,
   type ThemePreference,
 } from "../lib/theme-preference";
+import {
+  appPreferencesEqual,
+  createDefaultAppPreferences,
+} from "../lib/preferences";
 
 interface SettingsButtonProps {
   open?: boolean;
@@ -48,7 +52,7 @@ export function SettingsButton({
         <SettingsDialog
           onClose={() => setOpen(false)}
           workspaceRoot={workspaceRoot ?? null}
-          preferences={preferences ?? DEFAULT_APP_PREFERENCES}
+          preferences={preferences ?? createDefaultAppPreferences()}
           onPreferencesChange={onPreferencesChange}
           onLlmConfigSaved={onLlmConfigSaved}
         />
@@ -191,11 +195,13 @@ function SettingsDialog({
 
     try {
       const nextExcludeDirs = parseExcludeDirs(excludeDirsText);
+      const nextPreferences = {
+        ...preferences,
+        fileTreeExcludeDirs: nextExcludeDirs,
+      };
 
-      if (!stringListsEqual(nextExcludeDirs, preferences.fileTreeExcludeDirs)) {
-        await onPreferencesChange?.({
-          fileTreeExcludeDirs: nextExcludeDirs,
-        });
+      if (!appPreferencesEqual(nextPreferences, preferences)) {
+        await onPreferencesChange?.(nextPreferences);
       }
 
       const saved = await saveLlmConfig({
@@ -494,10 +500,6 @@ const LLM_API_MODE_OPTIONS: Array<{
   { value: "responses", label: "Responses" },
 ];
 
-const DEFAULT_APP_PREFERENCES: AppPreferences = {
-  fileTreeExcludeDirs: [],
-};
-
 type SettingsSection = "general" | "llm";
 
 const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string }> = [
@@ -521,14 +523,6 @@ function parseExcludeDirs(text: string) {
         ),
     ),
   );
-}
-
-function stringListsEqual(left: string[], right: string[]) {
-  if (left.length !== right.length) {
-    return false;
-  }
-
-  return left.every((item, index) => item === right[index]);
 }
 
 function formatError(error: unknown, fallback: string) {
