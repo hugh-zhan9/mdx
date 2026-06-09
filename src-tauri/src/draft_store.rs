@@ -191,6 +191,13 @@ pub fn cleanup_expired_drafts_in_dir(
     retention_days: u64,
     now: SystemTime,
 ) -> Result<DraftCleanupResult, WorkspaceError> {
+    if retention_days == 0 {
+        return Err(WorkspaceError::new(
+            "invalid_draft_retention",
+            "draft retention days must be positive",
+        ));
+    }
+
     let drafts_dir = drafts_dir_for_home(home_dir.as_ref());
     ensure_drafts_dir(&drafts_dir)?;
 

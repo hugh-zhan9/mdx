@@ -229,8 +229,14 @@ fn save_sets_private_unix_permissions_for_draft_storage() {
     let drafts_dir = home.path().join("drafts");
     let draft_path = drafts_dir.join(format!("{}.json", saved.draft_id));
 
-    assert_eq!(fs::metadata(&drafts_dir).unwrap().permissions().mode() & 0o777, 0o700);
-    assert_eq!(fs::metadata(&draft_path).unwrap().permissions().mode() & 0o777, 0o600);
+    assert_eq!(
+        fs::metadata(&drafts_dir).unwrap().permissions().mode() & 0o777,
+        0o700
+    );
+    assert_eq!(
+        fs::metadata(&draft_path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
 }
 
 #[test]
@@ -334,6 +340,14 @@ fn cleanup_removes_only_expired_drafts() {
             .draft
             .is_some()
     );
+}
+
+#[test]
+fn cleanup_rejects_zero_retention_days() {
+    let home = tempdir().unwrap();
+    let error = cleanup_expired_drafts_in_dir(home.path(), 0, SystemTime::now()).unwrap_err();
+
+    assert_eq!(error.error_code(), "invalid_draft_retention");
 }
 
 #[test]
