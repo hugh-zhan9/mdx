@@ -206,8 +206,8 @@ pub fn cleanup_expired_drafts_in_dir(
         };
         let updated_at = match record.updated_at.parse::<u128>() {
             Ok(value) => value,
-            Err(_) => {
-                backup_corrupt_draft_file(&path)?;
+            Err(error) => {
+                backup_corrupt_draft_file(&path, &error);
                 continue;
             }
         };
@@ -411,14 +411,14 @@ fn write_draft_record(drafts_dir: &Path, record: &StoredDraftRecord) -> Result<(
         let _ = fs::remove_file(&temp_path);
         WorkspaceError::from_io("draft_save_failed", "failed to replace draft file", &error)
     })?;
-    set_private_file_permissions(&final_path);
+    set_private_file_permissions(&final_path)?;
 
     Ok(())
 }
 
 fn create_private_file(path: &Path) -> Result<fs::File, WorkspaceError> {
     let mut options = OpenOptions::new();
-    options.write(true).create(true).truncate(true);
+    options.write(true).create_new(true);
 
     #[cfg(unix)]
     {
@@ -439,8 +439,8 @@ fn read_draft_record(path: &Path) -> Result<Option<StoredDraftRecord>, Workspace
     match fs::read(path) {
         Ok(bytes) => match serde_json::from_slice::<StoredDraftRecord>(&bytes) {
             Ok(record) => Ok(Some(record)),
-            Err(_) => {
-                backup_corrupt_draft_file(path)?;
+            Err(error) => {
+                backup_corrupt_draft_file(path, &error);
                 Ok(None)
             }
         },
@@ -473,7 +473,7 @@ fn draft_json_files(drafts_dir: &Path) -> Result<Vec<PathBuf>, WorkspaceError> {
     Ok(files)
 }
 
-fn backup_corrupt_draft_file(path: &Path) -> Result<(), WorkspaceError> {
+fn backup_corrupt_draft_file(path: &Path, parse_error: &dyn std::error::Error) {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let file_name = path
         .file_name()
@@ -481,13 +481,19 @@ fn backup_corrupt_draft_file(path: &Path) -> Result<(), WorkspaceError> {
         .unwrap_or("draft.json");
     let backup_path = parent.join(format!("{file_name}.corrupt.{}", timestamp_nanos()));
 
-    fs::rename(path, backup_path).map_err(|error| {
-        WorkspaceError::from_io(
-            "draft_read_failed",
-            "failed to back up corrupt draft file",
-            &error,
-        )
-    })
+    match fs::rename(path, &backup_path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            log::warn!(
+                "failed to quarantine corrupt draft {} to {} after parse error: {}; rename error: {}",
+                path.display(),
+                backup_path.display(),
+                parse_error,
+                error
+            );
+        }
+    }
 }
 
 fn stored_path_is_under_root(real_path: &str, root: &Path) -> bool {
@@ -534,8 +540,7 @@ fn ensure_drafts_dir(path: &Path) -> Result<(), WorkspaceError> {
             &error,
         )
     })?;
-    set_private_dir_permissions(path);
-    Ok(())
+    set_private_dir_permissions(path)
 }
 
 fn drafts_dir_for_home(home_dir: &Path) -> PathBuf {
@@ -583,21 +588,37 @@ fn timestamp_nanos() -> u128 {
 }
 
 #[cfg(unix)]
-fn set_private_dir_permissions(path: &Path) {
+fn set_private_dir_permissions(path: &Path) -> Result<(), WorkspaceError> {
     use std::os::unix::fs::PermissionsExt;
 
-    let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o700));
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700)).map_err(|error| {
+        WorkspaceError::from_io(
+            "draft_permission_failed",
+            "failed to set draft directory permissions",
+            &error,
+        )
+    })
 }
 
 #[cfg(not(unix))]
-fn set_private_dir_permissions(_path: &Path) {}
+fn set_private_dir_permissions(_path: &Path) -> Result<(), WorkspaceError> {
+    Ok(())
+}
 
 #[cfg(unix)]
-fn set_private_file_permissions(path: &Path) {
+fn set_private_file_permissions(path: &Path) -> Result<(), WorkspaceError> {
     use std::os::unix::fs::PermissionsExt;
 
-    let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
+    fs::set_permissions(path, fs::Permissions::from_mode(0o600)).map_err(|error| {
+        WorkspaceError::from_io(
+            "draft_permission_failed",
+            "failed to set draft file permissions",
+            &error,
+        )
+    })
 }
 
 #[cfg(not(unix))]
-fn set_private_file_permissions(_path: &Path) {}
+fn set_private_file_permissions(_path: &Path) -> Result<(), WorkspaceError> {
+    Ok(())
+}

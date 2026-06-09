@@ -1,3 +1,4 @@
+use std::fs;
 use std::time::{Duration, SystemTime};
 
 use tempfile::tempdir;
@@ -88,6 +89,148 @@ fn lists_workspace_orphan_drafts_when_original_file_is_missing() {
     );
     assert_eq!(list.drafts[0].display_path, Some("missing.md".to_string()));
     assert!(!list.drafts[0].file_exists);
+}
+
+#[test]
+fn list_quarantines_corrupt_draft_and_continues_scanning() {
+    let home = tempdir().unwrap();
+    let workspace = tempdir().unwrap();
+    let document_path = workspace.path().join("valid.md");
+    fs::write(&document_path, "# Valid").unwrap();
+
+    let saved = draft_save_in_dir(
+        home.path(),
+        DraftSaveRequest {
+            real_path: document_path.to_string_lossy().into_owned(),
+            display_path: Some("valid.md".to_string()),
+            markdown: "# Valid draft".to_string(),
+            base_fingerprint: None,
+            mode: "workspace".to_string(),
+        },
+    )
+    .unwrap();
+
+    let drafts_dir = home.path().join("drafts");
+    let corrupt_path = drafts_dir.join("corrupt.json");
+    fs::write(&corrupt_path, b"{ definitely not json").unwrap();
+
+    let list = draft_list_for_workspace_in_dir(
+        home.path(),
+        workspace.path().to_string_lossy().into_owned(),
+    )
+    .unwrap();
+
+    assert_eq!(list.drafts.len(), 1);
+    assert_eq!(list.drafts[0].draft_id, saved.draft_id);
+    assert!(!corrupt_path.exists());
+    assert!(fs::read_dir(&drafts_dir).unwrap().any(|entry| {
+        entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with("corrupt.json.corrupt.")
+    }));
+}
+
+#[test]
+fn list_excludes_drafts_outside_workspace_root() {
+    let home = tempdir().unwrap();
+    let root = tempdir().unwrap();
+    let sibling = tempdir().unwrap();
+    let root_path = root.path().join("root.md");
+    let sibling_path = sibling.path().join("sibling.md");
+    fs::write(&root_path, "# Root").unwrap();
+    fs::write(&sibling_path, "# Sibling").unwrap();
+
+    let root_saved = draft_save_in_dir(
+        home.path(),
+        DraftSaveRequest {
+            real_path: root_path.to_string_lossy().into_owned(),
+            display_path: Some("root.md".to_string()),
+            markdown: "# Root draft".to_string(),
+            base_fingerprint: None,
+            mode: "workspace".to_string(),
+        },
+    )
+    .unwrap();
+    draft_save_in_dir(
+        home.path(),
+        DraftSaveRequest {
+            real_path: sibling_path.to_string_lossy().into_owned(),
+            display_path: Some("sibling.md".to_string()),
+            markdown: "# Sibling draft".to_string(),
+            base_fingerprint: None,
+            mode: "workspace".to_string(),
+        },
+    )
+    .unwrap();
+
+    let list =
+        draft_list_for_workspace_in_dir(home.path(), root.path().to_string_lossy().into_owned())
+            .unwrap();
+
+    assert_eq!(list.drafts.len(), 1);
+    assert_eq!(list.drafts[0].draft_id, root_saved.draft_id);
+    assert_eq!(
+        list.drafts[0].real_path,
+        root_path.canonicalize().unwrap().to_string_lossy()
+    );
+}
+
+#[test]
+fn get_reports_missing_original_without_current_fingerprint() {
+    let home = tempdir().unwrap();
+    let workspace = tempdir().unwrap();
+    let document_path = workspace.path().join("orphan.md");
+    fs::write(&document_path, "# Original").unwrap();
+
+    let saved = draft_save_in_dir(
+        home.path(),
+        DraftSaveRequest {
+            real_path: document_path.to_string_lossy().into_owned(),
+            display_path: Some("orphan.md".to_string()),
+            markdown: "# Orphan draft".to_string(),
+            base_fingerprint: None,
+            mode: "workspace".to_string(),
+        },
+    )
+    .unwrap();
+    fs::remove_file(&document_path).unwrap();
+
+    let read = draft_get_in_dir(home.path(), document_path.to_string_lossy().into_owned()).unwrap();
+
+    assert_eq!(read.draft.unwrap().draft_id, saved.draft_id);
+    assert!(!read.file_exists);
+    assert_eq!(read.current_fingerprint, None);
+}
+
+#[cfg(unix)]
+#[test]
+fn save_sets_private_unix_permissions_for_draft_storage() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let home = tempdir().unwrap();
+    let workspace = tempdir().unwrap();
+    let document_path = workspace.path().join("private.md");
+    fs::write(&document_path, "# Private").unwrap();
+
+    let saved = draft_save_in_dir(
+        home.path(),
+        DraftSaveRequest {
+            real_path: document_path.to_string_lossy().into_owned(),
+            display_path: None,
+            markdown: "# Private draft".to_string(),
+            base_fingerprint: None,
+            mode: "workspace".to_string(),
+        },
+    )
+    .unwrap();
+
+    let drafts_dir = home.path().join("drafts");
+    let draft_path = drafts_dir.join(format!("{}.json", saved.draft_id));
+
+    assert_eq!(fs::metadata(&drafts_dir).unwrap().permissions().mode() & 0o777, 0o700);
+    assert_eq!(fs::metadata(&draft_path).unwrap().permissions().mode() & 0o777, 0o600);
 }
 
 #[test]
