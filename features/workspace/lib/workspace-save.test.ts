@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
     createTabSaveQueue,
     isCurrentTabSnapshot,
+    performSaveTab,
 } from "./workspace-save";
 import { createWorkspaceState, workspaceReducer } from "./workspace-reducer";
 import type { SaveInvoke } from "./workspace-save";
@@ -119,6 +120,45 @@ describe("workspace save coordination", () => {
         expect(afterSave).toHaveBeenCalledWith({
             rootPath: "/tmp/ws",
             path: "/tmp/ws/raw/Note.md",
+        });
+    });
+
+    it("runs afterSave after a clean successful write so callers can delete drafts", async () => {
+        const afterSave = vi.fn();
+        const workspace = createWorkspaceState("/tmp/ws");
+        const opened = workspaceReducer(workspace, {
+            type: "tab/opened",
+            tab: {
+                tabId: "tab-1",
+                path: "/tmp/ws/note.md",
+                title: "note.md",
+                dirty: true,
+                needsRenameOnFirstSave: false,
+                markdown: "# Draft\n",
+            },
+        });
+        let current = opened;
+        const invoke: SaveInvoke = vi.fn(
+            async <T = unknown>() => undefined as T,
+        );
+
+        const saved = await performSaveTab("tab-1", {
+            getWorkspace: () => current,
+            dispatch: (action) => {
+                current = workspaceReducer(current, action);
+            },
+            invoke,
+            promptName: async () => null,
+            alert: vi.fn(),
+            warn: vi.fn(),
+            refreshTree: vi.fn(),
+            afterSave,
+        });
+
+        expect(saved).toBe(true);
+        expect(afterSave).toHaveBeenCalledWith({
+            rootPath: "/tmp/ws",
+            path: "/tmp/ws/note.md",
         });
     });
 

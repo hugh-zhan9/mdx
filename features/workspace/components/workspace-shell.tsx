@@ -11,18 +11,27 @@ import {
 import { nanoid } from "nanoid";
 import { tauriCore } from "@/common/lib/tauri";
 import { LlmWikiPanel, useLlmWikiWorkspace } from "@/features/llm-wiki";
+import { RecoveryBanner } from "@/features/recovery/components/recovery-banner";
+import { useDraftAutosave } from "@/features/recovery/hooks/use-draft-autosave";
+import {
+  draftCleanupExpired,
+  draftDelete,
+  draftGet,
+  draftListForWorkspace,
+} from "@/features/recovery/lib/draft-client";
 import { IconButton, TextControlButton } from "../../../common/components/ui-controls";
 import { usePanelResize } from "../hooks/use-panel-resize";
 import { syncCliWorkspaceSnapshot } from "../lib/cli-sync";
 import { refreshCleanOpenTabFromDisk } from "../lib/cli-file-updated";
 import { parseMarkdownOutline } from "../lib/outline";
 import { calculateWorkspacePanelLayout } from "../lib/panel-layout";
-import { isMarkdownFilePath } from "../lib/path";
+import { isMarkdownFilePath, normalizeWorkspacePath } from "../lib/path";
 import { scrollRenderedHeadingIntoView } from "../lib/outline-scroll";
-import { createTabSaveQueue } from "../lib/workspace-save";
+import { createTabSaveQueue, dirname } from "../lib/workspace-save";
 import { dirtyWorkspacePaths } from "../lib/dirty-paths";
 import { workspaceReducer } from "../lib/workspace-reducer";
 import { resolveWikilinkFile } from "../lib/wikilink";
+import type { DraftRecord, DraftSummary } from "@/features/recovery/lib/types";
 import type {
   CliCloseEvent,
   CliFileCreatedEvent,
@@ -66,6 +75,19 @@ interface ScanWorkspaceResult {
   nodes: FileTreeNode[];
 }
 
+interface CreateMarkdownFileResult {
+  path: string;
+  name: string;
+  needsRenameOnFirstSave?: boolean;
+}
+
+interface ActiveDraftRecovery {
+  tabId: string;
+  path: string;
+  draft: DraftRecord;
+  fileExists: boolean;
+}
+
 export function WorkspaceShell({
   workspace,
   dispatch,
@@ -81,6 +103,8 @@ export function WorkspaceShell({
   const saveQueueRef = useRef<SaveQueue | null>(null);
   const workspaceRootRef = useRef<string | null>(null);
   const syncedCliWorkspaceRootRef = useRef<string | null>(null);
+  const autosaveFlushRef = useRef<() => Promise<void>>(async () => {});
+  const pendingSaveAsDraftByTabRef = useRef<Record<string, DraftSummary>>({});
   const editorViewportRef = useRef<HTMLDivElement | null>(null);
   const workspaceBodyRef = useRef<HTMLDivElement | null>(null);
   const selectionByTabRef = useRef<Record<string, CliSelectionSnapshot | null>>(
@@ -98,6 +122,13 @@ export function WorkspaceShell({
   );
   const [initialEditorLoadSettled, setInitialEditorLoadSettled] =
     useState(false);
+  const [draftMessage, setDraftMessage] = useState<string | null>(null);
+  const [activeDraftRecovery, setActiveDraftRecovery] =
+    useState<ActiveDraftRecovery | null>(null);
+  const [orphanDrafts, setOrphanDrafts] = useState<DraftSummary[]>([]);
+  const [postponedOrphanDraftIds, setPostponedOrphanDraftIds] = useState<
+    Set<string>
+  >(() => new Set());
   const llmWiki = useLlmWikiWorkspace(workspace.rootPath, {
     canAutoProcess: initialEditorLoadSettled,
   });
@@ -108,6 +139,9 @@ export function WorkspaceShell({
   const activeTab = workspace.activeTabId
     ? (workspace.tabs[workspace.activeTabId] ?? null)
     : null;
+  const activeTabId = activeTab?.tabId ?? null;
+  const activeTabPath = activeTab?.path ?? null;
+  const activeTabMarkdownLoaded = activeTab?.markdown !== undefined;
   const activeHeadings = useMemo(
     () =>
       activeTab?.markdown === undefined
@@ -115,9 +149,35 @@ export function WorkspaceShell({
         : parseMarkdownOutline(activeTab.markdown),
     [activeTab],
   );
+  const activeTabIsLoadedMarkdown = Boolean(
+    activeTabPath &&
+      isMarkdownFilePath(activeTabPath) &&
+      activeTabMarkdownLoaded,
+  );
+  const handleDraftAutosaveError = useCallback((error: unknown) => {
+    console.warn("Failed to autosave workspace draft.", error);
+  }, []);
+  const draftAutosave = useDraftAutosave({
+    enabled: isTauriRuntime(),
+    realPath: activeTabIsLoadedMarkdown ? activeTabPath : null,
+    displayPath: activeTabIsLoadedMarkdown ? activeTabPath : null,
+    markdown: activeTabIsLoadedMarkdown ? activeTab?.markdown ?? null : null,
+    dirty: activeTabIsLoadedMarkdown ? activeTab?.dirty ?? false : false,
+    baseFingerprint: null,
+    mode: "workspace",
+    onError: handleDraftAutosaveError,
+  });
+  const visibleOrphanDrafts = useMemo(
+    () =>
+      orphanDrafts.filter(
+        (draft) => !postponedOrphanDraftIds.has(draft.draftId),
+      ),
+    [orphanDrafts, postponedOrphanDraftIds],
+  );
 
   useEffect(() => {
     setInitialEditorLoadSettled(false);
+    setPostponedOrphanDraftIds(new Set());
   }, [workspace.rootPath]);
 
   useEffect(() => {
@@ -129,6 +189,141 @@ export function WorkspaceShell({
       setInitialEditorLoadSettled(true);
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    autosaveFlushRef.current = draftAutosave.flush;
+  }, [draftAutosave.flush]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+
+    void draftCleanupExpired(30).catch((error) => {
+      console.warn("Failed to clean expired drafts.", error);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) {
+      setDraftMessage(null);
+      setOrphanDrafts([]);
+      setPostponedOrphanDraftIds(new Set());
+      return;
+    }
+
+    let cancelled = false;
+    const rootPath = workspace.rootPath;
+
+    async function loadWorkspaceDrafts() {
+      try {
+        const result = await draftListForWorkspace(rootPath);
+
+        if (cancelled || workspaceRef.current.rootPath !== rootPath) {
+          return;
+        }
+
+        const orphanedDrafts = result.drafts.filter(
+          (draft) => !draft.fileExists,
+        );
+        setOrphanDrafts(orphanedDrafts);
+        setDraftMessage(
+          result.drafts.length > 0
+            ? `发现 ${result.drafts.length} 个未保存草稿`
+            : null,
+        );
+      } catch (error) {
+        if (!cancelled && workspaceRef.current.rootPath === rootPath) {
+          console.warn("Failed to list workspace drafts.", error);
+          setDraftMessage(null);
+          setOrphanDrafts([]);
+        }
+      }
+    }
+
+    void loadWorkspaceDrafts();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [workspace.rootPath]);
+
+  useEffect(() => {
+    if (
+      !isTauriRuntime() ||
+      !activeTabIsLoadedMarkdown ||
+      !activeTabId ||
+      !activeTabPath
+    ) {
+      setActiveDraftRecovery(null);
+      return;
+    }
+
+    let cancelled = false;
+    const tabId = activeTabId;
+    const path = activeTabPath;
+    setActiveDraftRecovery((current) =>
+      current && (current.tabId !== tabId || current.path !== path)
+        ? null
+        : current,
+    );
+
+    async function loadActiveDraft() {
+      try {
+        const result = await draftGet(path);
+
+        if (
+          cancelled ||
+          workspaceRef.current.activeTabId !== tabId ||
+          workspaceRef.current.tabs[tabId]?.path !== path
+        ) {
+          return;
+        }
+
+        setActiveDraftRecovery((current) => {
+          if (!result.draft) {
+            return current?.tabId === tabId && current.path === path
+              ? null
+              : current;
+          }
+
+          if (
+            current?.tabId === tabId &&
+            current.path === path &&
+            current.draft.draftId === result.draft.draftId
+          ) {
+            return {
+              ...current,
+              draft: result.draft,
+              fileExists: result.fileExists,
+            };
+          }
+
+          return {
+            tabId,
+            path,
+            draft: result.draft,
+            fileExists: result.fileExists,
+          };
+        });
+      } catch (error) {
+        if (!cancelled) {
+          console.warn("Failed to load active workspace draft.", error);
+        }
+      }
+    }
+
+    void loadActiveDraft();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeTabId,
+    activeTabIsLoadedMarkdown,
+    activeTabMarkdownLoaded,
+    activeTabPath,
+  ]);
 
   useLayoutEffect(() => {
     workspaceRef.current = workspace;
@@ -186,6 +381,12 @@ export function WorkspaceShell({
 
   const dispatchAndMirror = useCallback(
     (action: WorkspaceAction) => {
+      if (shouldFlushBeforeAction(workspaceRef.current, action)) {
+        void autosaveFlushRef.current().catch((error) => {
+          console.warn("Failed to flush workspace draft.", error);
+        });
+      }
+
       workspaceRef.current = workspaceReducer(workspaceRef.current, action);
       dispatch(action);
       if (isTauriRuntime()) {
@@ -210,6 +411,182 @@ export function WorkspaceShell({
     panel: workspace.panel,
     dispatch: dispatchAndMirror,
   });
+
+  const removeOrphanDraft = useCallback((draftId: string) => {
+    setOrphanDrafts((current) =>
+      current.filter((draft) => draft.draftId !== draftId),
+    );
+    setPostponedOrphanDraftIds((current) => {
+      if (!current.has(draftId)) {
+        return current;
+      }
+
+      const next = new Set(current);
+      next.delete(draftId);
+      return next;
+    });
+  }, []);
+
+  const recoverActiveDraft = useCallback(() => {
+    const recovery = activeDraftRecovery;
+
+    if (!recovery) {
+      return;
+    }
+
+    dispatchAndMirror({
+      type: "tab/contentChanged",
+      tabId: recovery.tabId,
+      markdown: recovery.draft.markdown,
+    });
+    setActiveDraftRecovery(null);
+  }, [activeDraftRecovery, dispatchAndMirror]);
+
+  const keepActiveDiskVersion = useCallback(() => {
+    const recovery = activeDraftRecovery;
+
+    if (!recovery) {
+      return;
+    }
+
+    setActiveDraftRecovery(null);
+    void draftDelete({ draftId: recovery.draft.draftId }).catch((error) => {
+      console.warn("Failed to delete workspace draft.", error);
+    });
+  }, [activeDraftRecovery]);
+
+  const postponeActiveDraftRecovery = useCallback(() => {}, []);
+
+  const saveOrphanDraftAs = useCallback(
+    async (summary: DraftSummary) => {
+      try {
+        const result = await draftGet(summary.realPath);
+        const draft = result.draft;
+
+        if (!draft) {
+          removeOrphanDraft(summary.draftId);
+          return;
+        }
+
+        const { invoke } = await tauriCore();
+        const parentDir = findExistingParentPath(
+          workspaceRef.current.rootPath,
+          summary.realPath,
+          workspaceRef.current.fileTree,
+        );
+        const created = await invoke<CreateMarkdownFileResult>(
+          "create_markdown_file",
+          {
+            rootPath: workspaceRef.current.rootPath,
+            parentDir,
+            name: null,
+            temporaryUntitled: true,
+          },
+        );
+        const tabId = nanoid(8);
+        pendingSaveAsDraftByTabRef.current = {
+          ...pendingSaveAsDraftByTabRef.current,
+          [tabId]: summary,
+        };
+        dispatchAndMirror({
+          type: "tab/opened",
+          tab: {
+            tabId,
+            path: created.path,
+            title: created.name,
+            dirty: true,
+            needsRenameOnFirstSave: created.needsRenameOnFirstSave ?? true,
+            markdown: draft.markdown,
+          },
+        });
+      } catch (error) {
+        console.warn("Failed to open orphan draft for save-as.", error);
+        void dialogs.alert({
+          title: "恢复草稿",
+          message: formatError(error, "无法另存草稿。"),
+        });
+      }
+    },
+    [dialogs, dispatchAndMirror, removeOrphanDraft],
+  );
+
+  const restoreOrphanDraftOriginalPath = useCallback(
+    async (summary: DraftSummary) => {
+      if (
+        !parentExistsInWorkspace(
+          workspaceRef.current.rootPath,
+          summary.realPath,
+          workspaceRef.current.fileTree,
+        )
+      ) {
+        return;
+      }
+
+      try {
+        const result = await draftGet(summary.realPath);
+        const draft = result.draft;
+
+        if (!draft) {
+          removeOrphanDraft(summary.draftId);
+          return;
+        }
+
+        const { invoke } = await tauriCore();
+        await invoke("write_markdown_file", {
+          rootPath: workspaceRef.current.rootPath,
+          path: summary.realPath,
+          content: draft.markdown,
+        });
+        await draftDelete({ draftId: draft.draftId });
+        removeOrphanDraft(draft.draftId);
+        dispatchAndMirror({
+          type: "tab/opened",
+          tab: {
+            tabId: nanoid(8),
+            path: summary.realPath,
+            title: pathTitle(summary.realPath),
+            dirty: false,
+            needsRenameOnFirstSave: false,
+            markdown: draft.markdown,
+          },
+        });
+        await refreshTree(
+          workspaceRef.current.rootPath,
+          () => workspaceRef.current.rootPath,
+          dispatchAndMirror,
+          preferences,
+        );
+      } catch (error) {
+        console.warn("Failed to restore orphan draft original path.", error);
+        void dialogs.alert({
+          title: "恢复草稿",
+          message: formatError(error, "无法恢复原路径。"),
+        });
+      }
+    },
+    [dialogs, dispatchAndMirror, preferences, removeOrphanDraft],
+  );
+
+  const deleteOrphanDraft = useCallback(
+    (summary: DraftSummary) => {
+      removeOrphanDraft(summary.draftId);
+      void draftDelete({ draftId: summary.draftId }).catch((error) => {
+        console.warn("Failed to delete orphan workspace draft.", error);
+      });
+    },
+    [removeOrphanDraft],
+  );
+
+  const postponeOrphanDraft = useCallback(
+    (summary: DraftSummary) => {
+      setPostponedOrphanDraftIds((current) => {
+        const next = new Set(current);
+        next.add(summary.draftId);
+        return next;
+      });
+    },
+    [],
+  );
 
   useLayoutEffect(() => {
     const element = workspaceBodyRef.current;
@@ -269,7 +646,39 @@ export function WorkspaceShell({
             dispatchAndMirror,
             preferences,
           ),
-        afterSave: (event) => {
+        afterSave: async (event) => {
+          const savedTabId = findTabIdByPath(
+            workspaceRef.current,
+            event.path,
+          );
+          const saveAsDraft = savedTabId
+            ? pendingSaveAsDraftByTabRef.current[savedTabId]
+            : undefined;
+
+          try {
+            await draftDelete({ realPath: event.path });
+            if (saveAsDraft) {
+              await draftDelete({ draftId: saveAsDraft.draftId });
+              removeOrphanDraft(saveAsDraft.draftId);
+              if (savedTabId) {
+                const nextPending = {
+                  ...pendingSaveAsDraftByTabRef.current,
+                };
+                delete nextPending[savedTabId];
+                pendingSaveAsDraftByTabRef.current = nextPending;
+              }
+            }
+            setActiveDraftRecovery((current) =>
+              current &&
+              normalizeWorkspacePath(current.path) ===
+                normalizeWorkspacePath(event.path)
+                ? null
+                : current,
+            );
+          } catch (error) {
+            console.warn("Failed to delete saved workspace draft.", error);
+          }
+
           if (event.rootPath !== workspaceRef.current.rootPath) {
             return;
           }
@@ -280,7 +689,7 @@ export function WorkspaceShell({
 
       return saveQueueRef.current.saveTab(tabId);
     },
-    [dialogs, dispatchAndMirror, preferences],
+    [dialogs, dispatchAndMirror, preferences, removeOrphanDraft],
   );
   const closeTab = useCallback(
     async (tabId: string) => {
@@ -612,6 +1021,76 @@ export function WorkspaceShell({
             dispatch={dispatchAndMirror}
             onCloseTab={closeTab}
           />
+          {draftMessage ? (
+            <div className="border-b border-base-300 bg-base-200/60 px-3 py-1.5 text-xs text-base-content/70">
+              {draftMessage}
+            </div>
+          ) : null}
+          {activeDraftRecovery ? (
+            <RecoveryBanner
+              title="发现未保存草稿"
+              message={`${displayPath(activeDraftRecovery.draft)} 有一个自动保存的草稿。`}
+              priority={activeDraftRecovery.fileExists ? "normal" : "high"}
+              actions={[
+                {
+                  label: "恢复草稿",
+                  primary: true,
+                  onClick: recoverActiveDraft,
+                },
+                {
+                  label: "保留磁盘版本",
+                  onClick: keepActiveDiskVersion,
+                },
+                {
+                  label: "稍后",
+                  onClick: postponeActiveDraftRecovery,
+                },
+              ]}
+            />
+          ) : null}
+          {visibleOrphanDrafts.map((draft) => {
+            const canRestoreOriginal = parentExistsInWorkspace(
+              workspace.rootPath,
+              draft.realPath,
+              workspace.fileTree,
+            );
+
+            return (
+              <RecoveryBanner
+                key={draft.draftId}
+                title="发现孤立草稿"
+                message={
+                  canRestoreOriginal
+                    ? `${displayPath(draft)} 的原文件不存在，可以恢复到原路径或另存为新文件。`
+                    : `${displayPath(draft)} 的原文件不存在，原路径父文件夹也不存在。`
+                }
+                priority="high"
+                actions={[
+                  {
+                    label: "另存为",
+                    primary: true,
+                    onClick: () => void saveOrphanDraftAs(draft),
+                  },
+                  {
+                    label: canRestoreOriginal
+                      ? "恢复原路径"
+                      : "恢复原路径不可用",
+                    disabled: !canRestoreOriginal,
+                    onClick: () => void restoreOrphanDraftOriginalPath(draft),
+                  },
+                  {
+                    label: "删除",
+                    destructive: true,
+                    onClick: () => deleteOrphanDraft(draft),
+                  },
+                  {
+                    label: "稍后",
+                    onClick: () => postponeOrphanDraft(draft),
+                  },
+                ]}
+              />
+            );
+          })}
           <EditorStage
             rootPath={workspace.rootPath}
             activeTab={activeTab}
@@ -715,6 +1194,155 @@ async function refreshTree(
 
 function isTauriRuntime() {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+function shouldFlushBeforeAction(
+  workspace: WorkspaceState,
+  action: WorkspaceAction,
+) {
+  if (!workspace.activeTabId) {
+    return false;
+  }
+
+  switch (action.type) {
+    case "tab/activated":
+      return action.tabId !== workspace.activeTabId;
+    case "tab/opened":
+      return action.tab.tabId !== workspace.activeTabId;
+    case "tab/closed":
+      return action.tabId === workspace.activeTabId;
+    case "tab/closedByPath": {
+      const activeTab = workspace.tabs[workspace.activeTabId];
+      return activeTab?.path === normalizeWorkspacePath(action.path);
+    }
+    case "tab/closedByPrefix": {
+      const activeTab = workspace.tabs[workspace.activeTabId];
+      return activeTab
+        ? isPathUnderPrefix(activeTab.path, action.prefix)
+        : false;
+    }
+    default:
+      return false;
+  }
+}
+
+function findTabIdByPath(workspace: WorkspaceState, path: string) {
+  const normalizedPath = normalizeWorkspacePath(path);
+
+  return workspace.tabOrder.find(
+    (tabId) =>
+      workspace.tabs[tabId] &&
+      normalizeWorkspacePath(workspace.tabs[tabId].path) === normalizedPath,
+  );
+}
+
+function displayPath(draft: Pick<DraftRecord, "displayPath" | "realPath">) {
+  return draft.displayPath?.trim() || draft.realPath;
+}
+
+function pathTitle(path: string) {
+  const normalizedPath = normalizeWorkspacePath(path);
+
+  return normalizedPath.split("/").filter(Boolean).at(-1) ?? normalizedPath;
+}
+
+function findExistingParentPath(
+  rootPath: string,
+  path: string,
+  fileTree: FileTreeNode[],
+) {
+  let candidate = dirname(path);
+  const normalizedRootPath = normalizeWorkspacePath(rootPath);
+
+  while (candidate && isPathUnderPrefix(candidate, normalizedRootPath)) {
+    if (candidate === normalizedRootPath || folderExists(fileTree, candidate)) {
+      return candidate;
+    }
+
+    const parent = dirname(candidate);
+    if (parent === candidate) {
+      break;
+    }
+    candidate = parent;
+  }
+
+  return normalizedRootPath;
+}
+
+function parentExistsInWorkspace(
+  rootPath: string,
+  path: string,
+  fileTree: FileTreeNode[],
+) {
+  const parent = dirname(path);
+  const normalizedRootPath = normalizeWorkspacePath(rootPath);
+
+  return (
+    parent === normalizedRootPath ||
+    (isPathUnderPrefix(parent, normalizedRootPath) &&
+      folderExists(fileTree, parent))
+  );
+}
+
+function folderExists(nodes: FileTreeNode[], path: string): boolean {
+  const normalizedPath = normalizeWorkspacePath(path);
+
+  for (const node of nodes) {
+    if (node.kind !== "folder") {
+      continue;
+    }
+
+    if (normalizeWorkspacePath(node.path) === normalizedPath) {
+      return true;
+    }
+
+    if (folderExists(node.children, normalizedPath)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function isPathUnderPrefix(path: string, prefix: string) {
+  const normalizedPath = normalizeWorkspacePath(path);
+  const normalizedPrefix = normalizeWorkspacePath(prefix);
+
+  if (!normalizedPath || !normalizedPrefix) {
+    return false;
+  }
+
+  if (normalizedPath === normalizedPrefix) {
+    return true;
+  }
+
+  const prefixWithSlash = normalizedPrefix.endsWith("/")
+    ? normalizedPrefix
+    : `${normalizedPrefix}/`;
+
+  return normalizedPath.startsWith(prefixWithSlash);
+}
+
+function formatError(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) {
+    return `${fallback} ${error.message}`;
+  }
+
+  if (typeof error === "string" && error.length > 0) {
+    return `${fallback} ${error}`;
+  }
+
+  if (
+    error &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof error.message === "string" &&
+    error.message.length > 0
+  ) {
+    return `${fallback} ${error.message}`;
+  }
+
+  return fallback;
 }
 
 async function handleCliOpenFile(
