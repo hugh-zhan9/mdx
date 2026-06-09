@@ -18,8 +18,12 @@ import {
   draftDelete,
   draftGet,
   draftListForWorkspace,
+  draftSave,
 } from "@/features/recovery/lib/draft-client";
-import { IconButton, TextControlButton } from "../../../common/components/ui-controls";
+import {
+  IconButton,
+  TextControlButton,
+} from "../../../common/components/ui-controls";
 import { usePanelResize } from "../hooks/use-panel-resize";
 import { syncCliWorkspaceSnapshot } from "../lib/cli-sync";
 import { refreshCleanOpenTabFromDisk } from "../lib/cli-file-updated";
@@ -115,8 +119,9 @@ export function WorkspaceShell({
   const [pendingCliCommand, setPendingCliCommand] =
     useState<PendingCliEditorCommand | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [rightPanelTab, setRightPanelTab] =
-    useState<"outline" | "llmWiki">("outline");
+  const [rightPanelTab, setRightPanelTab] = useState<"outline" | "llmWiki">(
+    "outline",
+  );
   const [workspaceBodyWidth, setWorkspaceBodyWidth] = useState(() =>
     typeof window === "undefined" ? 1280 : window.innerWidth,
   );
@@ -152,8 +157,8 @@ export function WorkspaceShell({
   );
   const activeTabIsLoadedMarkdown = Boolean(
     activeTabPath &&
-      isMarkdownFilePath(activeTabPath) &&
-      activeTabMarkdownLoaded,
+    isMarkdownFilePath(activeTabPath) &&
+    activeTabMarkdownLoaded,
   );
   const handleDraftAutosaveError = useCallback((error: unknown) => {
     console.warn("Failed to autosave workspace draft.", error);
@@ -162,8 +167,8 @@ export function WorkspaceShell({
     enabled: isTauriRuntime(),
     realPath: activeTabIsLoadedMarkdown ? activeTabPath : null,
     displayPath: activeTabIsLoadedMarkdown ? activeTabPath : null,
-    markdown: activeTabIsLoadedMarkdown ? activeTab?.markdown ?? null : null,
-    dirty: activeTabIsLoadedMarkdown ? activeTab?.dirty ?? false : false,
+    markdown: activeTabIsLoadedMarkdown ? (activeTab?.markdown ?? null) : null,
+    dirty: activeTabIsLoadedMarkdown ? (activeTab?.dirty ?? false) : false,
     baseFingerprint: null,
     mode: "workspace",
     onError: handleDraftAutosaveError,
@@ -383,12 +388,53 @@ export function WorkspaceShell({
     };
   }, []);
 
-  const dispatchAndMirror = useCallback(
-    (action: WorkspaceAction) => {
-      if (shouldFlushBeforeAction(workspaceRef.current, action)) {
-        void autosaveFlushRef.current().catch((error) => {
-          console.warn("Failed to flush workspace draft.", error);
+  const flushWorkspaceDraftForTab = useCallback(
+    async (tab: WorkspaceTab | undefined) => {
+      if (!shouldSaveWorkspaceTabDraft(tab)) {
+        return;
+      }
+
+      try {
+        if (tab.tabId === workspaceRef.current.activeTabId) {
+          await autosaveFlushRef.current();
+          return;
+        }
+
+        await draftSave({
+          realPath: tab.path,
+          displayPath: tab.path,
+          markdown: tab.markdown,
+          baseFingerprint: null,
+          mode: "workspace",
         });
+      } catch (error) {
+        console.warn("Failed to flush workspace draft.", error);
+      }
+    },
+    [],
+  );
+  const deleteWorkspaceDraftForTab = useCallback(
+    async (tab: WorkspaceTab | undefined) => {
+      if (!isTauriRuntime() || !tab || !isMarkdownFilePath(tab.path)) {
+        return;
+      }
+
+      try {
+        await draftDelete({ realPath: tab.path });
+      } catch (error) {
+        console.warn("Failed to delete discarded workspace draft.", error);
+      }
+    },
+    [],
+  );
+
+  const dispatchAndMirror = useCallback(
+    (action: WorkspaceAction, options?: { skipDraftFlush?: boolean }) => {
+      if (!options?.skipDraftFlush) {
+        const tabsToFlush = draftTabsForAction(workspaceRef.current, action);
+        for (const tab of tabsToFlush) {
+          void flushWorkspaceDraftForTab(tab);
+        }
       }
 
       workspaceRef.current = workspaceReducer(workspaceRef.current, action);
@@ -402,7 +448,7 @@ export function WorkspaceShell({
         });
       }
     },
-    [dispatch],
+    [dispatch, flushWorkspaceDraftForTab],
   );
 
   const leftPanel = usePanelResize({
@@ -583,16 +629,13 @@ export function WorkspaceShell({
     [removeOrphanDraft],
   );
 
-  const postponeOrphanDraft = useCallback(
-    (summary: DraftSummary) => {
-      setPostponedOrphanDraftIds((current) => {
-        const next = new Set(current);
-        next.add(summary.draftId);
-        return next;
-      });
-    },
-    [],
-  );
+  const postponeOrphanDraft = useCallback((summary: DraftSummary) => {
+    setPostponedOrphanDraftIds((current) => {
+      const next = new Set(current);
+      next.add(summary.draftId);
+      return next;
+    });
+  }, []);
 
   useLayoutEffect(() => {
     const element = workspaceBodyRef.current;
@@ -624,7 +667,9 @@ export function WorkspaceShell({
   }, []);
 
   const saveTab = useCallback(
-    (tabId: string) => {
+    async (tabId: string) => {
+      await flushWorkspaceDraftForTab(workspaceRef.current.tabs[tabId]);
+
       saveQueueRef.current ??= createTabSaveQueue({
         getWorkspace: () => workspaceRef.current,
         dispatch: dispatchAndMirror,
@@ -653,10 +698,7 @@ export function WorkspaceShell({
             preferences,
           ),
         afterSave: async (event) => {
-          const savedTabId = findTabIdByPath(
-            workspaceRef.current,
-            event.path,
-          );
+          const savedTabId = findTabIdByPath(workspaceRef.current, event.path);
           const saveAsDraft = savedTabId
             ? pendingSaveAsDraftByTabRef.current[savedTabId]
             : undefined;
@@ -702,7 +744,13 @@ export function WorkspaceShell({
 
       return saveQueueRef.current.saveTab(tabId);
     },
-    [dialogs, dispatchAndMirror, preferences, removeOrphanDraft],
+    [
+      dialogs,
+      dispatchAndMirror,
+      flushWorkspaceDraftForTab,
+      preferences,
+      removeOrphanDraft,
+    ],
   );
   const closeTab = useCallback(
     async (tabId: string) => {
@@ -720,6 +768,8 @@ export function WorkspaceShell({
         return;
       }
 
+      await flushWorkspaceDraftForTab(tab);
+
       const choice = await dialogs.choice({
         title: "未保存更改",
         message: `“${tab.title}” 有未保存更改。请选择保存、丢弃或取消。`,
@@ -731,10 +781,14 @@ export function WorkspaceShell({
       });
 
       if (choice === "discard") {
-        dispatchAndMirror({
-          type: "tab/closed",
-          tabId,
-        });
+        await deleteWorkspaceDraftForTab(tab);
+        dispatchAndMirror(
+          {
+            type: "tab/closed",
+            tabId,
+          },
+          { skipDraftFlush: true },
+        );
         return;
       }
 
@@ -745,13 +799,22 @@ export function WorkspaceShell({
       const saved = await saveTab(tabId);
 
       if (saved) {
-        dispatchAndMirror({
-          type: "tab/closed",
-          tabId,
-        });
+        dispatchAndMirror(
+          {
+            type: "tab/closed",
+            tabId,
+          },
+          { skipDraftFlush: true },
+        );
       }
     },
-    [dialogs, dispatchAndMirror, saveTab],
+    [
+      deleteWorkspaceDraftForTab,
+      dialogs,
+      dispatchAndMirror,
+      flushWorkspaceDraftForTab,
+      saveTab,
+    ],
   );
   const saveActiveTab = useCallback(async () => {
     const tabId = workspaceRef.current.activeTabId;
@@ -1159,12 +1222,12 @@ export function WorkspaceShell({
                 </div>
                 <div className="min-h-0 flex-1 overflow-hidden [&>aside]:h-full [&>aside]:border-l-0 [&>aside]:border-t-0 [&>aside>div:last-child]:hidden">
                   {rightPanelTab === "outline" ? (
-                  <OutlinePanel
-                    headings={activeHeadings}
-                    collapsed={false}
-                    onHeadingClick={scrollToHeading}
-                    resizeHandleProps={{}}
-                  />
+                    <OutlinePanel
+                      headings={activeHeadings}
+                      collapsed={false}
+                      onHeadingClick={scrollToHeading}
+                      resizeHandleProps={{}}
+                    />
                   ) : (
                     <LlmWikiPanel
                       llmWiki={llmWiki}
@@ -1213,34 +1276,67 @@ function isTauriRuntime() {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
-function shouldFlushBeforeAction(
+function draftTabsForAction(
   workspace: WorkspaceState,
   action: WorkspaceAction,
-) {
+): WorkspaceTab[] {
   const activeTab = workspace.activeTabId
     ? workspace.tabs[workspace.activeTabId]
     : undefined;
 
-  if (!activeTab?.dirty) {
-    return false;
-  }
-
   switch (action.type) {
     case "tab/activated":
-      return action.tabId !== workspace.activeTabId;
+      return action.tabId !== workspace.activeTabId &&
+        shouldSaveWorkspaceTabDraft(activeTab)
+        ? [activeTab]
+        : [];
     case "tab/opened":
-      return action.tab.tabId !== workspace.activeTabId;
+      return action.tab.tabId !== workspace.activeTabId &&
+        shouldSaveWorkspaceTabDraft(activeTab)
+        ? [activeTab]
+        : [];
     case "tab/closed":
-      return action.tabId === workspace.activeTabId;
+      return filterDraftTabs([workspace.tabs[action.tabId]]);
     case "tab/closedByPath": {
-      return activeTab?.path === normalizeWorkspacePath(action.path);
+      const path = normalizeWorkspacePath(action.path);
+
+      return filterDraftTabs(
+        workspace.tabOrder
+          .map((tabId) => workspace.tabs[tabId])
+          .filter(
+            (tab): tab is WorkspaceTab =>
+              Boolean(tab) && normalizeWorkspacePath(tab.path) === path,
+          ),
+      );
     }
     case "tab/closedByPrefix": {
-      return isPathUnderPrefix(activeTab.path, action.prefix);
+      return filterDraftTabs(
+        workspace.tabOrder
+          .map((tabId) => workspace.tabs[tabId])
+          .filter(
+            (tab): tab is WorkspaceTab =>
+              Boolean(tab) && isPathUnderPrefix(tab.path, action.prefix),
+          ),
+      );
     }
     default:
-      return false;
+      return [];
   }
+}
+
+function filterDraftTabs(tabs: Array<WorkspaceTab | undefined>) {
+  return tabs.filter(shouldSaveWorkspaceTabDraft);
+}
+
+function shouldSaveWorkspaceTabDraft(
+  tab: WorkspaceTab | undefined,
+): tab is WorkspaceTab & { markdown: string } {
+  return Boolean(
+    isTauriRuntime() &&
+    tab?.dirty &&
+    isMarkdownFilePath(tab.path) &&
+    tab.markdown !== undefined,
+  );
 }
 
 function findTabIdByPath(workspace: WorkspaceState, path: string) {
@@ -1514,7 +1610,12 @@ async function handleCliFileCreated(
     tabId,
   });
 
-  await refreshTree(workspace.rootPath, () => workspace.rootPath, dispatch, preferences);
+  await refreshTree(
+    workspace.rootPath,
+    () => workspace.rootPath,
+    dispatch,
+    preferences,
+  );
 }
 
 async function handleCliFileUpdated(
@@ -1539,7 +1640,12 @@ async function handleCliFolderCreated(
   dispatch: (action: WorkspaceAction) => void,
   preferences: AppPreferences,
 ) {
-  await refreshTree(workspace.rootPath, () => workspace.rootPath, dispatch, preferences);
+  await refreshTree(
+    workspace.rootPath,
+    () => workspace.rootPath,
+    dispatch,
+    preferences,
+  );
 }
 
 async function handleCliPathRenamed(
@@ -1561,5 +1667,10 @@ async function handleCliPathRenamed(
         },
   );
 
-  await refreshTree(workspace.rootPath, () => workspace.rootPath, dispatch, preferences);
+  await refreshTree(
+    workspace.rootPath,
+    () => workspace.rootPath,
+    dispatch,
+    preferences,
+  );
 }
