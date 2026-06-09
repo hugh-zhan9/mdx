@@ -125,6 +125,7 @@ export function WorkspaceShell({
   const [draftMessage, setDraftMessage] = useState<string | null>(null);
   const [activeDraftRecovery, setActiveDraftRecovery] =
     useState<ActiveDraftRecovery | null>(null);
+  const [activeDraftDetailsOpen, setActiveDraftDetailsOpen] = useState(true);
   const [orphanDrafts, setOrphanDrafts] = useState<DraftSummary[]>([]);
   const [postponedOrphanDraftIds, setPostponedOrphanDraftIds] = useState<
     Set<string>
@@ -306,6 +307,9 @@ export function WorkspaceShell({
             fileExists: result.fileExists,
           };
         });
+        if (result.draft) {
+          setActiveDraftDetailsOpen(true);
+        }
       } catch (error) {
         if (!cancelled) {
           console.warn("Failed to load active workspace draft.", error);
@@ -455,7 +459,9 @@ export function WorkspaceShell({
     });
   }, [activeDraftRecovery]);
 
-  const postponeActiveDraftRecovery = useCallback(() => {}, []);
+  const postponeActiveDraftRecovery = useCallback(() => {
+    setActiveDraftDetailsOpen(false);
+  }, []);
 
   const saveOrphanDraftAs = useCallback(
     async (summary: DraftSummary) => {
@@ -1029,7 +1035,11 @@ export function WorkspaceShell({
           {activeDraftRecovery ? (
             <RecoveryBanner
               title="发现未保存草稿"
-              message={`${displayPath(activeDraftRecovery.draft)} 有一个自动保存的草稿。`}
+              message={
+                activeDraftDetailsOpen
+                  ? `${displayPath(activeDraftRecovery.draft)} 有一个自动保存的草稿。`
+                  : "自动保存的草稿仍可恢复。"
+              }
               priority={activeDraftRecovery.fileExists ? "normal" : "high"}
               actions={[
                 {
@@ -1200,7 +1210,11 @@ function shouldFlushBeforeAction(
   workspace: WorkspaceState,
   action: WorkspaceAction,
 ) {
-  if (!workspace.activeTabId) {
+  const activeTab = workspace.activeTabId
+    ? workspace.tabs[workspace.activeTabId]
+    : undefined;
+
+  if (!activeTab?.dirty) {
     return false;
   }
 
@@ -1212,14 +1226,10 @@ function shouldFlushBeforeAction(
     case "tab/closed":
       return action.tabId === workspace.activeTabId;
     case "tab/closedByPath": {
-      const activeTab = workspace.tabs[workspace.activeTabId];
       return activeTab?.path === normalizeWorkspacePath(action.path);
     }
     case "tab/closedByPrefix": {
-      const activeTab = workspace.tabs[workspace.activeTabId];
-      return activeTab
-        ? isPathUnderPrefix(activeTab.path, action.prefix)
-        : false;
+      return isPathUnderPrefix(activeTab.path, action.prefix);
     }
     default:
       return false;
