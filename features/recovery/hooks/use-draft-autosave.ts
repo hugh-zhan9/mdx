@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { useLatest } from "@/common/lib/use-latest";
+import { useLatest } from "../../../common/lib/use-latest";
 import { draftSave } from "../lib/draft-client";
 
 interface DraftAutosaveInput {

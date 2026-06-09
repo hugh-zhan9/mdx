@@ -31,10 +31,13 @@ export function DiffViewer({
     secondaryActions,
     onClose,
 }: DiffViewerProps) {
-    const diffLines = useMemo(
-        () => buildLineDiff(leftText, rightText),
-        [leftText, rightText],
-    );
+    const diffLines = useMemo(() => {
+        if (!open) {
+            return [];
+        }
+
+        return buildLineDiff(leftText, rightText);
+    }, [leftText, open, rightText]);
 
     if (!open) {
         return null;

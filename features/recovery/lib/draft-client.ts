@@ -27,6 +27,10 @@ interface DraftCleanupResult {
     kept: number;
 }
 
+type DraftDeleteInput =
+    | { draftId: string; realPath?: string }
+    | { draftId?: string; realPath: string };
+
 async function invokeDraftCommand<T>(
     command: string,
     args?: Record<string, unknown>,
@@ -49,10 +53,7 @@ export function draftListForWorkspace(
     return invokeDraftCommand("draft_list_for_workspace", { rootPath });
 }
 
-export function draftDelete(input: {
-    draftId?: string | null;
-    realPath?: string | null;
-}): Promise<DraftDeleteResult> {
+export function draftDelete(input: DraftDeleteInput): Promise<DraftDeleteResult> {
     return invokeDraftCommand("draft_delete", {
         draftId: input.draftId ?? null,
         realPath: input.realPath ?? null,

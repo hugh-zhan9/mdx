@@ -1,26 +1,81 @@
 import type { DiffLine } from "./types";
 
 const MAX_LCS_CELLS = 1_000_000;
+const FALLBACK_SYNC_WINDOW = 32;
 
 export function buildLineDiff(leftText: string, rightText: string): DiffLine[] {
     const leftLines = splitLines(leftText);
     const rightLines = splitLines(rightText);
+    const commonPrefixLength = countCommonPrefix(leftLines, rightLines);
+    const commonSuffix = findCommonSuffix(
+        leftLines,
+        rightLines,
+        commonPrefixLength,
+    );
+    const diffLines: DiffLine[] = [];
 
-    if ((leftLines.length + 1) * (rightLines.length + 1) > MAX_LCS_CELLS) {
-        return buildFallbackLineDiff(leftLines, rightLines);
-    }
+    appendEqualLines(
+        diffLines,
+        leftLines,
+        commonPrefixLength,
+        0,
+        0,
+    );
 
+    const middleLeftLines = leftLines.slice(
+        commonPrefixLength,
+        commonSuffix.leftStart,
+    );
+    const middleRightLines = rightLines.slice(
+        commonPrefixLength,
+        commonSuffix.rightStart,
+    );
+    const middleDiffLines =
+        (middleLeftLines.length + 1) * (middleRightLines.length + 1) >
+        MAX_LCS_CELLS
+            ? buildFallbackLineDiff(
+                  middleLeftLines,
+                  middleRightLines,
+                  commonPrefixLength,
+                  commonPrefixLength,
+              )
+            : buildLcsLineDiff(
+                  middleLeftLines,
+                  middleRightLines,
+                  commonPrefixLength,
+                  commonPrefixLength,
+              );
+
+    diffLines.push(...middleDiffLines);
+    appendEqualLines(
+        diffLines,
+        leftLines.slice(commonSuffix.leftStart),
+        leftLines.length - commonSuffix.leftStart,
+        commonSuffix.leftStart,
+        commonSuffix.rightStart,
+    );
+
+    return diffLines;
+}
+
+function buildLcsLineDiff(
+    leftLines: string[],
+    rightLines: string[],
+    leftLineOffset: number,
+    rightLineOffset: number,
+): DiffLine[] {
     const lcs = buildLcsTable(leftLines, rightLines);
-    const lines: DiffLine[] = [];
+    const diffLines: DiffLine[] = [];
+
     let leftIndex = 0;
     let rightIndex = 0;
 
     while (leftIndex < leftLines.length && rightIndex < rightLines.length) {
         if (leftLines[leftIndex] === rightLines[rightIndex]) {
-            lines.push({
+            diffLines.push({
                 kind: "equal",
-                leftLine: leftIndex + 1,
-                rightLine: rightIndex + 1,
+                leftLine: leftLineOffset + leftIndex + 1,
+                rightLine: rightLineOffset + rightIndex + 1,
                 text: leftLines[leftIndex],
             });
             leftIndex += 1;
@@ -29,9 +84,9 @@ export function buildLineDiff(leftText: string, rightText: string): DiffLine[] {
         }
 
         if (lcs[leftIndex + 1][rightIndex] >= lcs[leftIndex][rightIndex + 1]) {
-            lines.push({
+            diffLines.push({
                 kind: "removed",
-                leftLine: leftIndex + 1,
+                leftLine: leftLineOffset + leftIndex + 1,
                 rightLine: null,
                 text: leftLines[leftIndex],
             });
@@ -39,19 +94,19 @@ export function buildLineDiff(leftText: string, rightText: string): DiffLine[] {
             continue;
         }
 
-        lines.push({
+        diffLines.push({
             kind: "added",
             leftLine: null,
-            rightLine: rightIndex + 1,
+            rightLine: rightLineOffset + rightIndex + 1,
             text: rightLines[rightIndex],
         });
         rightIndex += 1;
     }
 
     while (leftIndex < leftLines.length) {
-        lines.push({
+        diffLines.push({
             kind: "removed",
-            leftLine: leftIndex + 1,
+            leftLine: leftLineOffset + leftIndex + 1,
             rightLine: null,
             text: leftLines[leftIndex],
         });
@@ -59,16 +114,16 @@ export function buildLineDiff(leftText: string, rightText: string): DiffLine[] {
     }
 
     while (rightIndex < rightLines.length) {
-        lines.push({
+        diffLines.push({
             kind: "added",
             leftLine: null,
-            rightLine: rightIndex + 1,
+            rightLine: rightLineOffset + rightIndex + 1,
             text: rightLines[rightIndex],
         });
         rightIndex += 1;
     }
 
-    return lines;
+    return diffLines;
 }
 
 function splitLines(value: string) {
@@ -106,42 +161,180 @@ function buildLcsTable(leftLines: string[], rightLines: string[]): number[][] {
 function buildFallbackLineDiff(
     leftLines: string[],
     rightLines: string[],
+    leftLineOffset: number,
+    rightLineOffset: number,
 ): DiffLine[] {
-    const lines: DiffLine[] = [];
-    const maxLineCount = Math.max(leftLines.length, rightLines.length);
+    const diffLines: DiffLine[] = [];
+    let leftIndex = 0;
+    let rightIndex = 0;
 
-    for (let index = 0; index < maxLineCount; index += 1) {
-        const leftLine = leftLines[index];
-        const rightLine = rightLines[index];
-
-        if (leftLine !== undefined && rightLine !== undefined && leftLine === rightLine) {
-            lines.push({
+    while (leftIndex < leftLines.length && rightIndex < rightLines.length) {
+        if (leftLines[leftIndex] === rightLines[rightIndex]) {
+            diffLines.push({
                 kind: "equal",
-                leftLine: index + 1,
-                rightLine: index + 1,
-                text: leftLine,
+                leftLine: leftLineOffset + leftIndex + 1,
+                rightLine: rightLineOffset + rightIndex + 1,
+                text: leftLines[leftIndex],
             });
+            leftIndex += 1;
+            rightIndex += 1;
             continue;
         }
 
-        if (leftLine !== undefined) {
-            lines.push({
-                kind: "removed",
-                leftLine: index + 1,
-                rightLine: null,
-                text: leftLine,
-            });
+        const sync = findFallbackSync(leftLines, rightLines, leftIndex, rightIndex);
+
+        if (sync?.kind === "added") {
+            while (rightIndex < sync.rightIndex) {
+                diffLines.push({
+                    kind: "added",
+                    leftLine: null,
+                    rightLine: rightLineOffset + rightIndex + 1,
+                    text: rightLines[rightIndex],
+                });
+                rightIndex += 1;
+            }
+            continue;
         }
 
-        if (rightLine !== undefined) {
-            lines.push({
-                kind: "added",
-                leftLine: null,
-                rightLine: index + 1,
-                text: rightLine,
-            });
+        if (sync?.kind === "removed") {
+            while (leftIndex < sync.leftIndex) {
+                diffLines.push({
+                    kind: "removed",
+                    leftLine: leftLineOffset + leftIndex + 1,
+                    rightLine: null,
+                    text: leftLines[leftIndex],
+                });
+                leftIndex += 1;
+            }
+            continue;
+        }
+
+        diffLines.push({
+            kind: "removed",
+            leftLine: leftLineOffset + leftIndex + 1,
+            rightLine: null,
+            text: leftLines[leftIndex],
+        });
+        diffLines.push({
+            kind: "added",
+            leftLine: null,
+            rightLine: rightLineOffset + rightIndex + 1,
+            text: rightLines[rightIndex],
+        });
+        leftIndex += 1;
+        rightIndex += 1;
+    }
+
+    while (leftIndex < leftLines.length) {
+        diffLines.push({
+            kind: "removed",
+            leftLine: leftLineOffset + leftIndex + 1,
+            rightLine: null,
+            text: leftLines[leftIndex],
+        });
+        leftIndex += 1;
+    }
+
+    while (rightIndex < rightLines.length) {
+        diffLines.push({
+            kind: "added",
+            leftLine: null,
+            rightLine: rightLineOffset + rightIndex + 1,
+            text: rightLines[rightIndex],
+        });
+        rightIndex += 1;
+    }
+
+    return diffLines;
+}
+
+function countCommonPrefix(leftLines: string[], rightLines: string[]) {
+    const maxPrefixLength = Math.min(leftLines.length, rightLines.length);
+    let prefixLength = 0;
+
+    while (
+        prefixLength < maxPrefixLength &&
+        leftLines[prefixLength] === rightLines[prefixLength]
+    ) {
+        prefixLength += 1;
+    }
+
+    return prefixLength;
+}
+
+function findCommonSuffix(
+    leftLines: string[],
+    rightLines: string[],
+    commonPrefixLength: number,
+) {
+    let leftStart = leftLines.length;
+    let rightStart = rightLines.length;
+
+    while (
+        leftStart > commonPrefixLength &&
+        rightStart > commonPrefixLength &&
+        leftLines[leftStart - 1] === rightLines[rightStart - 1]
+    ) {
+        leftStart -= 1;
+        rightStart -= 1;
+    }
+
+    return { leftStart, rightStart };
+}
+
+function appendEqualLines(
+    diffLines: DiffLine[],
+    lines: string[],
+    lineCount: number,
+    leftLineOffset: number,
+    rightLineOffset: number,
+) {
+    for (let index = 0; index < lineCount; index += 1) {
+        diffLines.push({
+            kind: "equal",
+            leftLine: leftLineOffset + index + 1,
+            rightLine: rightLineOffset + index + 1,
+            text: lines[index],
+        });
+    }
+}
+
+function findFallbackSync(
+    leftLines: string[],
+    rightLines: string[],
+    leftIndex: number,
+    rightIndex: number,
+) {
+    const maxAddedLookahead = Math.min(
+        FALLBACK_SYNC_WINDOW,
+        rightLines.length - rightIndex - 1,
+    );
+    const maxRemovedLookahead = Math.min(
+        FALLBACK_SYNC_WINDOW,
+        leftLines.length - leftIndex - 1,
+    );
+
+    for (let offset = 1; offset <= FALLBACK_SYNC_WINDOW; offset += 1) {
+        if (
+            offset <= maxAddedLookahead &&
+            leftLines[leftIndex] === rightLines[rightIndex + offset]
+        ) {
+            return {
+                kind: "added" as const,
+                rightIndex: rightIndex + offset,
+            };
+        }
+
+        if (
+            offset <= maxRemovedLookahead &&
+            leftLines[leftIndex + offset] === rightLines[rightIndex]
+        ) {
+            return {
+                kind: "removed" as const,
+                leftIndex: leftIndex + offset,
+            };
         }
     }
 
-    return lines;
+    return null;
 }
