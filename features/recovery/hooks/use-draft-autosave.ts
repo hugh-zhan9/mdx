@@ -19,6 +19,7 @@ interface DraftAutosaveInput {
 interface DraftAutosaveHandle {
   flush: () => Promise<void>;
   cancel: () => void;
+  createFlushTask: () => () => Promise<void>;
 }
 
 const DEFAULT_DRAFT_AUTOSAVE_DELAY_MS = 1500;
@@ -89,17 +90,23 @@ export function useDraftAutosave(
     [],
   );
 
-  const flush = useCallback(async () => {
+  const createFlushTask = useCallback(() => {
     const inputToFlush = latestInputRef.current;
     cancel();
 
-    const pendingSave = inFlightSaveRef.current;
-    if (pendingSave) {
-      await pendingSave;
-    }
+    return async () => {
+      const pendingSave = inFlightSaveRef.current;
+      if (pendingSave) {
+        await pendingSave;
+      }
 
-    await saveDraftInput(inputToFlush);
+      await saveDraftInput(inputToFlush);
+    };
   }, [cancel, latestInputRef, saveDraftInput]);
+
+  const flush = useCallback(async () => {
+    await createFlushTask()();
+  }, [createFlushTask]);
 
   useEffect(() => {
     cancel();
@@ -121,8 +128,9 @@ export function useDraftAutosave(
     () => ({
       flush,
       cancel,
+      createFlushTask,
     }),
-    [cancel, flush],
+    [cancel, createFlushTask, flush],
   );
 }
 

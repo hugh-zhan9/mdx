@@ -199,6 +199,50 @@ describe("useDraftAutosave", () => {
     });
   });
 
+  it("creates delayed flush tasks with a stable input snapshot", async () => {
+    vi.useFakeTimers();
+    let latestHandle: DraftAutosaveHandle | null = null;
+
+    await renderAutosave(
+      root,
+      {
+        realPath: "/tmp/old.md",
+        displayPath: "old.md",
+        markdown: "old",
+      },
+      (handle) => {
+        latestHandle = handle;
+      },
+    );
+
+    const task = latestHandle!.createFlushTask();
+
+    await renderAutosave(
+      root,
+      {
+        realPath: "/tmp/new.md",
+        displayPath: "new.md",
+        markdown: "new",
+      },
+      (handle) => {
+        latestHandle = handle;
+      },
+    );
+
+    await act(async () => {
+      await task();
+    });
+
+    expect(draftClient.draftSave).toHaveBeenCalledTimes(1);
+    expect(draftClient.draftSave).toHaveBeenCalledWith({
+      realPath: "/tmp/old.md",
+      displayPath: "old.md",
+      markdown: "old",
+      baseFingerprint: "base-fingerprint",
+      mode: "workspace",
+    });
+  });
+
   it("cancel prevents a pending save", async () => {
     vi.useFakeTimers();
     let latestHandle: DraftAutosaveHandle | null = null;

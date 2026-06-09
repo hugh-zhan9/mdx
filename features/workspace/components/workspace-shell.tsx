@@ -107,7 +107,10 @@ export function WorkspaceShell({
   const saveQueueRef = useRef<SaveQueue | null>(null);
   const workspaceRootRef = useRef<string | null>(null);
   const syncedCliWorkspaceRootRef = useRef<string | null>(null);
-  const autosaveFlushRef = useRef<() => Promise<void>>(async () => {});
+  const autosaveCreateFlushTaskRef = useRef<() => () => Promise<void>>(
+    () => async () => {},
+  );
+  const draftMutationByPathRef = useRef<Record<string, Promise<void>>>({});
   const pendingSaveAsDraftByTabRef = useRef<Record<string, DraftSummary>>({});
   const editorViewportRef = useRef<HTMLDivElement | null>(null);
   const workspaceBodyRef = useRef<HTMLDivElement | null>(null);
@@ -197,8 +200,8 @@ export function WorkspaceShell({
   }, [activeTab]);
 
   useEffect(() => {
-    autosaveFlushRef.current = draftAutosave.flush;
-  }, [draftAutosave.flush]);
+    autosaveCreateFlushTaskRef.current = draftAutosave.createFlushTask;
+  }, [draftAutosave.createFlushTask]);
 
   useEffect(() => {
     if (!isTauriRuntime()) {
@@ -388,6 +391,44 @@ export function WorkspaceShell({
     };
   }, []);
 
+  const enqueueWorkspaceDraftMutation = useCallback(
+    (realPath: string, mutation: () => Promise<void>) => {
+      const key = normalizeWorkspacePath(realPath);
+      const previous = draftMutationByPathRef.current[key] ?? Promise.resolve();
+      const next = previous.then(mutation);
+      const stored = next.catch(() => undefined);
+
+      draftMutationByPathRef.current = {
+        ...draftMutationByPathRef.current,
+        [key]: stored,
+      };
+      stored.then(() => {
+        if (draftMutationByPathRef.current[key] !== stored) {
+          return;
+        }
+
+        const remaining = { ...draftMutationByPathRef.current };
+        delete remaining[key];
+        draftMutationByPathRef.current = remaining;
+      });
+
+      return next;
+    },
+    [],
+  );
+  const deleteWorkspaceDraftForPath = useCallback(
+    async (realPath: string, draftId?: string) => {
+      await enqueueWorkspaceDraftMutation(realPath, async () => {
+        if (draftId) {
+          await draftDelete({ draftId, realPath });
+          return;
+        }
+
+        await draftDelete({ realPath });
+      });
+    },
+    [enqueueWorkspaceDraftMutation],
+  );
   const flushWorkspaceDraftForTab = useCallback(
     async (tab: WorkspaceTab | undefined) => {
       if (!shouldSaveWorkspaceTabDraft(tab)) {
@@ -395,23 +436,25 @@ export function WorkspaceShell({
       }
 
       try {
-        if (tab.tabId === workspaceRef.current.activeTabId) {
-          await autosaveFlushRef.current();
-          return;
-        }
+        const flushTask =
+          tab.tabId === workspaceRef.current.activeTabId
+            ? autosaveCreateFlushTaskRef.current()
+            : async () => {
+                await draftSave({
+                  realPath: tab.path,
+                  displayPath: tab.path,
+                  markdown: tab.markdown,
+                  baseFingerprint: null,
+                  mode: "workspace",
+                });
+              };
 
-        await draftSave({
-          realPath: tab.path,
-          displayPath: tab.path,
-          markdown: tab.markdown,
-          baseFingerprint: null,
-          mode: "workspace",
-        });
+        await enqueueWorkspaceDraftMutation(tab.path, flushTask);
       } catch (error) {
         console.warn("Failed to flush workspace draft.", error);
       }
     },
-    [],
+    [enqueueWorkspaceDraftMutation],
   );
   const deleteWorkspaceDraftForTab = useCallback(
     async (tab: WorkspaceTab | undefined) => {
@@ -420,12 +463,12 @@ export function WorkspaceShell({
       }
 
       try {
-        await draftDelete({ realPath: tab.path });
+        await deleteWorkspaceDraftForPath(tab.path);
       } catch (error) {
         console.warn("Failed to delete discarded workspace draft.", error);
       }
     },
-    [],
+    [deleteWorkspaceDraftForPath],
   );
 
   const dispatchAndMirror = useCallback(
@@ -500,10 +543,13 @@ export function WorkspaceShell({
     }
 
     setActiveDraftRecovery(null);
-    void draftDelete({ draftId: recovery.draft.draftId }).catch((error) => {
+    void deleteWorkspaceDraftForPath(
+      recovery.draft.realPath,
+      recovery.draft.draftId,
+    ).catch((error) => {
       console.warn("Failed to delete workspace draft.", error);
     });
-  }, [activeDraftRecovery]);
+  }, [activeDraftRecovery, deleteWorkspaceDraftForPath]);
 
   const postponeActiveDraftRecovery = useCallback(() => {
     setActiveDraftDetailsOpen(false);
@@ -589,7 +635,7 @@ export function WorkspaceShell({
           path: summary.realPath,
           content: draft.markdown,
         });
-        await draftDelete({ draftId: draft.draftId });
+        await deleteWorkspaceDraftForPath(draft.realPath, draft.draftId);
         removeOrphanDraft(draft.draftId);
         dispatchAndMirror({
           type: "tab/opened",
@@ -616,17 +662,25 @@ export function WorkspaceShell({
         });
       }
     },
-    [dialogs, dispatchAndMirror, preferences, removeOrphanDraft],
+    [
+      deleteWorkspaceDraftForPath,
+      dialogs,
+      dispatchAndMirror,
+      preferences,
+      removeOrphanDraft,
+    ],
   );
 
   const deleteOrphanDraft = useCallback(
     (summary: DraftSummary) => {
       removeOrphanDraft(summary.draftId);
-      void draftDelete({ draftId: summary.draftId }).catch((error) => {
-        console.warn("Failed to delete orphan workspace draft.", error);
-      });
+      void deleteWorkspaceDraftForPath(summary.realPath, summary.draftId).catch(
+        (error) => {
+          console.warn("Failed to delete orphan workspace draft.", error);
+        },
+      );
     },
-    [removeOrphanDraft],
+    [deleteWorkspaceDraftForPath, removeOrphanDraft],
   );
 
   const postponeOrphanDraft = useCallback((summary: DraftSummary) => {
@@ -704,16 +758,19 @@ export function WorkspaceShell({
             : undefined;
 
           try {
-            await draftDelete({ realPath: event.path });
+            await deleteWorkspaceDraftForPath(event.path);
             if (
               event.previousPath &&
               normalizeWorkspacePath(event.previousPath) !==
                 normalizeWorkspacePath(event.path)
             ) {
-              await draftDelete({ realPath: event.previousPath });
+              await deleteWorkspaceDraftForPath(event.previousPath);
             }
             if (saveAsDraft) {
-              await draftDelete({ draftId: saveAsDraft.draftId });
+              await deleteWorkspaceDraftForPath(
+                saveAsDraft.realPath,
+                saveAsDraft.draftId,
+              );
               removeOrphanDraft(saveAsDraft.draftId);
               if (savedTabId) {
                 const nextPending = {
@@ -746,6 +803,7 @@ export function WorkspaceShell({
     },
     [
       dialogs,
+      deleteWorkspaceDraftForPath,
       dispatchAndMirror,
       flushWorkspaceDraftForTab,
       preferences,
