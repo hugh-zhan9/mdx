@@ -9,13 +9,13 @@ use crate::draft_store::{
 
 #[test]
 fn saves_and_reads_plaintext_markdown_draft() {
-    let store_dir = tempdir().unwrap();
+    let home = tempdir().unwrap();
     let workspace = tempdir().unwrap();
     let document_path = workspace.path().join("note.md");
     std::fs::write(&document_path, "# Original").unwrap();
 
     let result = draft_save_in_dir(
-        store_dir.path(),
+        home.path(),
         DraftSaveRequest {
             real_path: document_path.to_string_lossy().into_owned(),
             display_path: Some("note.md".to_string()),
@@ -23,15 +23,15 @@ fn saves_and_reads_plaintext_markdown_draft() {
             base_fingerprint: Some("base-fingerprint".to_string()),
             mode: "workspace".to_string(),
         },
-        SystemTime::UNIX_EPOCH + Duration::from_secs(1),
     )
     .unwrap();
+    assert!(home
+        .path()
+        .join("drafts")
+        .join(format!("{}.json", result.draft_id))
+        .is_file());
 
-    let read = draft_get_in_dir(
-        store_dir.path(),
-        document_path.to_string_lossy().into_owned(),
-    )
-    .unwrap();
+    let read = draft_get_in_dir(home.path(), document_path.to_string_lossy().into_owned()).unwrap();
     let draft = read.draft.unwrap();
 
     assert_eq!(draft.draft_id, result.draft_id);
@@ -53,12 +53,12 @@ fn saves_and_reads_plaintext_markdown_draft() {
 
 #[test]
 fn lists_workspace_orphan_drafts_when_original_file_is_missing() {
-    let store_dir = tempdir().unwrap();
+    let home = tempdir().unwrap();
     let workspace = tempdir().unwrap();
     let document_path = workspace.path().join("missing.md");
 
     let saved = draft_save_in_dir(
-        store_dir.path(),
+        home.path(),
         DraftSaveRequest {
             real_path: document_path.to_string_lossy().into_owned(),
             display_path: Some("missing.md".to_string()),
@@ -66,12 +66,11 @@ fn lists_workspace_orphan_drafts_when_original_file_is_missing() {
             base_fingerprint: None,
             mode: "workspace".to_string(),
         },
-        SystemTime::UNIX_EPOCH + Duration::from_secs(2),
     )
     .unwrap();
 
     let list = draft_list_for_workspace_in_dir(
-        store_dir.path(),
+        home.path(),
         workspace.path().to_string_lossy().into_owned(),
     )
     .unwrap();
@@ -93,13 +92,13 @@ fn lists_workspace_orphan_drafts_when_original_file_is_missing() {
 
 #[test]
 fn delete_is_idempotent_by_path() {
-    let store_dir = tempdir().unwrap();
+    let home = tempdir().unwrap();
     let workspace = tempdir().unwrap();
     let document_path = workspace.path().join("delete-me.md");
     std::fs::write(&document_path, "# Delete me").unwrap();
 
     draft_save_in_dir(
-        store_dir.path(),
+        home.path(),
         DraftSaveRequest {
             real_path: document_path.to_string_lossy().into_owned(),
             display_path: None,
@@ -107,18 +106,17 @@ fn delete_is_idempotent_by_path() {
             base_fingerprint: None,
             mode: "document".to_string(),
         },
-        SystemTime::UNIX_EPOCH + Duration::from_secs(3),
     )
     .unwrap();
 
     let first = draft_delete_in_dir(
-        store_dir.path(),
+        home.path(),
         None,
         Some(document_path.to_string_lossy().into_owned()),
     )
     .unwrap();
     let second = draft_delete_in_dir(
-        store_dir.path(),
+        home.path(),
         None,
         Some(document_path.to_string_lossy().into_owned()),
     )
@@ -126,18 +124,17 @@ fn delete_is_idempotent_by_path() {
 
     assert!(first.deleted);
     assert!(!second.deleted);
-    assert!(draft_get_in_dir(
-        store_dir.path(),
-        document_path.to_string_lossy().into_owned()
-    )
-    .unwrap()
-    .draft
-    .is_none());
+    assert!(
+        draft_get_in_dir(home.path(), document_path.to_string_lossy().into_owned())
+            .unwrap()
+            .draft
+            .is_none()
+    );
 }
 
 #[test]
 fn cleanup_removes_only_expired_drafts() {
-    let store_dir = tempdir().unwrap();
+    let home = tempdir().unwrap();
     let workspace = tempdir().unwrap();
     let old_path = workspace.path().join("old.md");
     let fresh_path = workspace.path().join("fresh.md");
@@ -145,8 +142,8 @@ fn cleanup_removes_only_expired_drafts() {
     std::fs::write(&fresh_path, "# Fresh").unwrap();
 
     let now = SystemTime::UNIX_EPOCH + Duration::from_secs(86_400 * 10);
-    draft_save_in_dir(
-        store_dir.path(),
+    let old = draft_save_in_dir(
+        home.path(),
         DraftSaveRequest {
             real_path: old_path.to_string_lossy().into_owned(),
             display_path: None,
@@ -154,11 +151,10 @@ fn cleanup_removes_only_expired_drafts() {
             base_fingerprint: None,
             mode: "workspace".to_string(),
         },
-        now - Duration::from_secs(86_400 * 8),
     )
     .unwrap();
-    draft_save_in_dir(
-        store_dir.path(),
+    let fresh = draft_save_in_dir(
+        home.path(),
         DraftSaveRequest {
             real_path: fresh_path.to_string_lossy().into_owned(),
             display_path: None,
@@ -166,22 +162,31 @@ fn cleanup_removes_only_expired_drafts() {
             base_fingerprint: None,
             mode: "workspace".to_string(),
         },
-        now - Duration::from_secs(86_400),
     )
     .unwrap();
+    set_stored_updated_at(
+        home.path(),
+        &old.draft_id,
+        now - Duration::from_secs(86_400 * 8),
+    );
+    set_stored_updated_at(
+        home.path(),
+        &fresh.draft_id,
+        now - Duration::from_secs(86_400),
+    );
 
-    let cleanup = cleanup_expired_drafts_in_dir(store_dir.path(), 7, now).unwrap();
+    let cleanup = cleanup_expired_drafts_in_dir(home.path(), 7, now).unwrap();
 
     assert_eq!(cleanup.deleted, 1);
     assert_eq!(cleanup.kept, 1);
     assert!(
-        draft_get_in_dir(store_dir.path(), old_path.to_string_lossy().into_owned())
+        draft_get_in_dir(home.path(), old_path.to_string_lossy().into_owned())
             .unwrap()
             .draft
             .is_none()
     );
     assert!(
-        draft_get_in_dir(store_dir.path(), fresh_path.to_string_lossy().into_owned())
+        draft_get_in_dir(home.path(), fresh_path.to_string_lossy().into_owned())
             .unwrap()
             .draft
             .is_some()
@@ -190,13 +195,13 @@ fn cleanup_removes_only_expired_drafts() {
 
 #[test]
 fn rejects_non_markdown_drafts() {
-    let store_dir = tempdir().unwrap();
+    let home = tempdir().unwrap();
     let workspace = tempdir().unwrap();
     let document_path = workspace.path().join("notes.txt");
     std::fs::write(&document_path, "plain text").unwrap();
 
     let error = draft_save_in_dir(
-        store_dir.path(),
+        home.path(),
         DraftSaveRequest {
             real_path: document_path.to_string_lossy().into_owned(),
             display_path: None,
@@ -204,9 +209,22 @@ fn rejects_non_markdown_drafts() {
             base_fingerprint: None,
             mode: "workspace".to_string(),
         },
-        SystemTime::UNIX_EPOCH + Duration::from_secs(4),
     )
     .unwrap_err();
 
     assert_eq!(error.error_code(), "invalid_markdown_path");
+}
+
+fn set_stored_updated_at(home_dir: &std::path::Path, draft_id: &str, updated_at: SystemTime) {
+    let path = home_dir.join("drafts").join(format!("{draft_id}.json"));
+    let mut value: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    value["updatedAt"] = serde_json::Value::String(
+        updated_at
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_millis()
+            .to_string(),
+    );
+    std::fs::write(&path, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
 }

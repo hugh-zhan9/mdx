@@ -44,17 +44,17 @@ struct DraftIdentity {
 
 #[tauri::command]
 pub fn draft_save(request: DraftSaveRequest) -> Result<DraftSaveResult, WorkspaceError> {
-    draft_save_in_dir(default_drafts_dir()?, request, SystemTime::now())
+    draft_save_in_dir(mdx_home_dir()?, request)
 }
 
 #[tauri::command]
 pub fn draft_get(real_path: String) -> Result<DraftGetResult, WorkspaceError> {
-    draft_get_in_dir(default_drafts_dir()?, real_path)
+    draft_get_in_dir(mdx_home_dir()?, real_path)
 }
 
 #[tauri::command]
 pub fn draft_list_for_workspace(root_path: String) -> Result<DraftListResult, WorkspaceError> {
-    draft_list_for_workspace_in_dir(default_drafts_dir()?, root_path)
+    draft_list_for_workspace_in_dir(mdx_home_dir()?, root_path)
 }
 
 #[tauri::command]
@@ -62,21 +62,28 @@ pub fn draft_delete(
     draft_id: Option<String>,
     real_path: Option<String>,
 ) -> Result<DraftDeleteResult, WorkspaceError> {
-    draft_delete_in_dir(default_drafts_dir()?, draft_id, real_path)
+    draft_delete_in_dir(mdx_home_dir()?, draft_id, real_path)
 }
 
 #[tauri::command]
 pub fn draft_cleanup_expired(retention_days: u64) -> Result<DraftCleanupResult, WorkspaceError> {
-    cleanup_expired_drafts_in_dir(default_drafts_dir()?, retention_days, SystemTime::now())
+    cleanup_expired_drafts_in_dir(mdx_home_dir()?, retention_days, SystemTime::now())
 }
 
 pub fn draft_save_in_dir(
-    drafts_dir: impl AsRef<Path>,
+    home_dir: impl AsRef<Path>,
+    request: DraftSaveRequest,
+) -> Result<DraftSaveResult, WorkspaceError> {
+    draft_save_in_dir_at(home_dir, request, SystemTime::now())
+}
+
+fn draft_save_in_dir_at(
+    home_dir: impl AsRef<Path>,
     request: DraftSaveRequest,
     now: SystemTime,
 ) -> Result<DraftSaveResult, WorkspaceError> {
-    let drafts_dir = drafts_dir.as_ref();
-    ensure_drafts_dir(drafts_dir)?;
+    let drafts_dir = drafts_dir_for_home(home_dir.as_ref());
+    ensure_drafts_dir(&drafts_dir)?;
 
     let identity = resolve_draft_identity(&request.real_path)?;
     let updated_at = timestamp_millis(now).to_string();
@@ -90,7 +97,7 @@ pub fn draft_save_in_dir(
         markdown: request.markdown,
     };
 
-    write_draft_record(drafts_dir, &record)?;
+    write_draft_record(&drafts_dir, &record)?;
 
     Ok(DraftSaveResult {
         draft_id: identity.draft_id,
@@ -99,14 +106,14 @@ pub fn draft_save_in_dir(
 }
 
 pub fn draft_get_in_dir(
-    drafts_dir: impl AsRef<Path>,
+    home_dir: impl AsRef<Path>,
     real_path: String,
 ) -> Result<DraftGetResult, WorkspaceError> {
-    let drafts_dir = drafts_dir.as_ref();
-    ensure_drafts_dir(drafts_dir)?;
+    let drafts_dir = drafts_dir_for_home(home_dir.as_ref());
+    ensure_drafts_dir(&drafts_dir)?;
 
     let identity = resolve_draft_identity(&real_path)?;
-    let draft_path = draft_file_path(drafts_dir, &identity.draft_id);
+    let draft_path = draft_file_path(&drafts_dir, &identity.draft_id);
     let draft = read_draft_record(&draft_path)?.map(StoredDraftRecord::into_public);
     let (file_exists, current_fingerprint) = current_file_state(&identity.real_path)?;
 
@@ -118,15 +125,15 @@ pub fn draft_get_in_dir(
 }
 
 pub fn draft_list_for_workspace_in_dir(
-    drafts_dir: impl AsRef<Path>,
+    home_dir: impl AsRef<Path>,
     root_path: String,
 ) -> Result<DraftListResult, WorkspaceError> {
-    let drafts_dir = drafts_dir.as_ref();
-    ensure_drafts_dir(drafts_dir)?;
+    let drafts_dir = drafts_dir_for_home(home_dir.as_ref());
+    ensure_drafts_dir(&drafts_dir)?;
     let root = canonicalize_workspace_root(root_path)?;
 
     let mut drafts = Vec::new();
-    for path in draft_json_files(drafts_dir)? {
+    for path in draft_json_files(&drafts_dir)? {
         let Some(record) = read_draft_record(&path)? else {
             continue;
         };
@@ -148,12 +155,12 @@ pub fn draft_list_for_workspace_in_dir(
 }
 
 pub fn draft_delete_in_dir(
-    drafts_dir: impl AsRef<Path>,
+    home_dir: impl AsRef<Path>,
     draft_id: Option<String>,
     real_path: Option<String>,
 ) -> Result<DraftDeleteResult, WorkspaceError> {
-    let drafts_dir = drafts_dir.as_ref();
-    ensure_drafts_dir(drafts_dir)?;
+    let drafts_dir = drafts_dir_for_home(home_dir.as_ref());
+    ensure_drafts_dir(&drafts_dir)?;
 
     let draft_id = match draft_id {
         Some(draft_id) => validate_draft_id(&draft_id)?,
@@ -165,7 +172,7 @@ pub fn draft_delete_in_dir(
         }
     };
 
-    let path = draft_file_path(drafts_dir, &draft_id);
+    let path = draft_file_path(&drafts_dir, &draft_id);
     match fs::remove_file(&path) {
         Ok(()) => Ok(DraftDeleteResult { deleted: true }),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -180,12 +187,12 @@ pub fn draft_delete_in_dir(
 }
 
 pub fn cleanup_expired_drafts_in_dir(
-    drafts_dir: impl AsRef<Path>,
+    home_dir: impl AsRef<Path>,
     retention_days: u64,
     now: SystemTime,
 ) -> Result<DraftCleanupResult, WorkspaceError> {
-    let drafts_dir = drafts_dir.as_ref();
-    ensure_drafts_dir(drafts_dir)?;
+    let drafts_dir = drafts_dir_for_home(home_dir.as_ref());
+    ensure_drafts_dir(&drafts_dir)?;
 
     let retention = Duration::from_secs(retention_days.saturating_mul(SECONDS_PER_DAY));
     let cutoff = now.checked_sub(retention).unwrap_or(UNIX_EPOCH);
@@ -193,7 +200,7 @@ pub fn cleanup_expired_drafts_in_dir(
     let mut deleted = 0;
     let mut kept = 0;
 
-    for path in draft_json_files(drafts_dir)? {
+    for path in draft_json_files(&drafts_dir)? {
         let Some(record) = read_draft_record(&path)? else {
             continue;
         };
@@ -531,8 +538,8 @@ fn ensure_drafts_dir(path: &Path) -> Result<(), WorkspaceError> {
     Ok(())
 }
 
-fn default_drafts_dir() -> Result<PathBuf, WorkspaceError> {
-    Ok(mdx_home_dir()?.join("drafts"))
+fn drafts_dir_for_home(home_dir: &Path) -> PathBuf {
+    home_dir.join("drafts")
 }
 
 fn mdx_home_dir() -> Result<PathBuf, WorkspaceError> {
