@@ -85,6 +85,64 @@ pub struct DocumentSaveResult {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct DraftSaveResult {
+    pub draft_id: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DraftGetResult {
+    pub draft: Option<DraftRecord>,
+    pub file_exists: bool,
+    pub current_fingerprint: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DraftListResult {
+    pub drafts: Vec<DraftSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DraftDeleteResult {
+    pub deleted: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DraftCleanupResult {
+    pub deleted: usize,
+    pub kept: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DraftRecord {
+    pub draft_id: String,
+    pub real_path: String,
+    pub display_path: Option<String>,
+    pub mode: String,
+    pub base_fingerprint: Option<String>,
+    pub updated_at: String,
+    pub markdown: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DraftSummary {
+    pub draft_id: String,
+    pub real_path: String,
+    pub display_path: Option<String>,
+    pub mode: String,
+    pub base_fingerprint: Option<String>,
+    pub updated_at: String,
+    pub file_exists: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateFolderResult {
     pub path: String,
     pub name: String,

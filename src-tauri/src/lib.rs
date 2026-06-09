@@ -15,6 +15,7 @@ mod assets;
 pub mod cli_protocol;
 mod cli_server;
 mod document;
+mod draft_store;
 mod llm_wiki;
 mod llm_wiki_context;
 mod llm_wiki_fs;
@@ -39,6 +40,8 @@ mod assets_tests;
 mod cli_protocol_tests;
 #[cfg(test)]
 mod document_tests;
+#[cfg(test)]
+mod draft_store_tests;
 #[cfg(test)]
 mod llm_wiki_tests;
 #[cfg(test)]
@@ -522,6 +525,11 @@ pub fn run() {
             document::read_document_file,
             document::save_document_file,
             document::overwrite_document_file,
+            draft_store::draft_save,
+            draft_store::draft_get,
+            draft_store::draft_list_for_workspace,
+            draft_store::draft_delete,
+            draft_store::draft_cleanup_expired,
             focus_or_create_workspace_window,
             get_window_session,
             update_workspace_dirty_paths,
