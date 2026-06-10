@@ -469,10 +469,18 @@ impl SearchAccumulator {
             }
 
             let mut matches = self.matcher.matches(line);
-            while let Some(span) = matches.next_match(&self.cancel_token)? {
+            loop {
                 if matches_in_file >= self.max_matches_per_file {
                     break 'lines;
                 }
+                if self.result.results.len() >= self.max_results {
+                    self.result.truncated = true;
+                    break 'lines;
+                }
+
+                let Some(span) = matches.next_match(&self.cancel_token)? else {
+                    break;
+                };
 
                 self.result.results.push(SearchResultItem {
                     path: path_to_string(path),
