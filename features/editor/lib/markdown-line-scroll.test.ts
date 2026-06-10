@@ -35,4 +35,28 @@ describe("markdown line scroll", () => {
             inline: "nearest",
         });
     });
+
+    it("ignores nested matching descendants when choosing a rendered block", () => {
+        const root = document.createElement("div");
+        const domd = document.createElement("div");
+        domd.className = "DOMD-Root";
+        const quote = document.createElement("blockquote");
+        const quoteParagraph = document.createElement("p");
+        const after = document.createElement("p");
+        quote.scrollIntoView = vi.fn();
+        quoteParagraph.scrollIntoView = vi.fn();
+        after.scrollIntoView = vi.fn();
+        quote.append(quoteParagraph);
+        domd.append(quote, after);
+        root.append(domd);
+
+        expect(
+            scrollMarkdownLineIntoView(root, "> quoted\n\nAfter\n", 3),
+        ).toBe(true);
+        expect(after.scrollIntoView).toHaveBeenCalledWith({
+            block: "center",
+            inline: "nearest",
+        });
+        expect(quoteParagraph.scrollIntoView).not.toHaveBeenCalled();
+    });
 });

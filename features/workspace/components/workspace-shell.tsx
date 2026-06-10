@@ -41,6 +41,7 @@ import {
   collectDirtySearchOverrides,
   ensureWorkspaceSearchState,
   normalizeSearchQuery,
+  queueWorkspaceSearchCancellation,
   shouldAcceptSearchResponse,
 } from "../lib/workspace-search";
 import { createTabSaveQueue, dirname } from "../lib/workspace-save";
@@ -182,6 +183,7 @@ export function WorkspaceShell({
   const externalDeletedPromptRef = useRef<ExternalDeletedPrompt | null>(null);
   const externalPathVersionsRef = useRef<Record<string, number>>({});
   const activeSearchRequestIdRef = useRef<string | null>(null);
+  const searchCancellationRef = useRef<Promise<void>>(Promise.resolve());
   const [orphanDrafts, setOrphanDrafts] = useState<DraftSummary[]>([]);
   const [postponedOrphanDraftIds, setPostponedOrphanDraftIds] = useState<
     Set<string>
@@ -964,9 +966,12 @@ export function WorkspaceShell({
       return;
     }
 
-    if (previousRequestId) {
-      void cancelWorkspaceSearchRequest(previousRequestId);
-    }
+    searchCancellationRef.current = queueWorkspaceSearchCancellation(
+      searchCancellationRef.current,
+      previousRequestId
+        ? () => cancelWorkspaceSearchRequest(previousRequestId)
+        : null,
+    );
 
     if (normalizedQuery.length === 0) {
       return;
@@ -981,8 +986,19 @@ export function WorkspaceShell({
       });
 
       void (async () => {
+        await searchCancellationRef.current;
+
+        if (activeSearchRequestIdRef.current !== requestId) {
+          return;
+        }
+
         try {
           const { invoke } = await tauriCore();
+
+          if (activeSearchRequestIdRef.current !== requestId) {
+            return;
+          }
+
           const response = await invoke<WorkspaceSearchResponse>(
             "workspace_search",
             {
@@ -1053,8 +1069,14 @@ export function WorkspaceShell({
 
   useEffect(() => {
     return () => {
+      const activeRequestId = activeSearchRequestIdRef.current;
       clearSelfWriteMarker();
-      void cancelWorkspaceSearchRequest(activeSearchRequestIdRef.current);
+      searchCancellationRef.current = queueWorkspaceSearchCancellation(
+        searchCancellationRef.current,
+        activeRequestId
+          ? () => cancelWorkspaceSearchRequest(activeRequestId)
+          : null,
+      );
     };
   }, [cancelWorkspaceSearchRequest, clearSelfWriteMarker]);
 

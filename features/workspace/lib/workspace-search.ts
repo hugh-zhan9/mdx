@@ -70,6 +70,19 @@ export function shouldAcceptSearchResponse(
     return currentRequestId !== null && currentRequestId === response.requestId;
 }
 
+export function queueWorkspaceSearchCancellation(
+    pendingCancellation: Promise<void>,
+    cancelSearchRequest: (() => Promise<void>) | null,
+) {
+    return pendingCancellation
+        .catch(() => undefined)
+        .then(async () => {
+            if (cancelSearchRequest) {
+                await cancelSearchRequest();
+            }
+        });
+}
+
 export function formatSearchSummary(summary: WorkspaceSearchSummary) {
     const parts = [`已搜索 ${summary.searchedFiles} 个文件`];
     const skipped: string[] = [];

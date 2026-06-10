@@ -53,9 +53,7 @@ export function scrollMarkdownLineIntoView(
 
     const root =
         viewport.querySelector<HTMLElement>(".DOMD-Root") ?? viewport;
-    const renderedBlocks = Array.from(
-        root.querySelectorAll<HTMLElement>(BLOCK_SELECTOR),
-    );
+    const renderedBlocks = collectRenderedBlocks(root);
 
     if (renderedBlocks.length === 0) {
         return false;
@@ -68,6 +66,17 @@ export function scrollMarkdownLineIntoView(
     );
     renderedBlocks[clampedIndex]?.scrollIntoView(SCROLL_OPTIONS);
     return Boolean(renderedBlocks[clampedIndex]);
+}
+
+function collectRenderedBlocks(root: HTMLElement) {
+    return Array.from(root.querySelectorAll<HTMLElement>(BLOCK_SELECTOR)).filter(
+        (node) => {
+            const closestBlockAncestor =
+                node.parentElement?.closest<HTMLElement>(BLOCK_SELECTOR) ?? null;
+
+            return !closestBlockAncestor || !root.contains(closestBlockAncestor);
+        },
+    );
 }
 
 function collectMarkdownBlocks(markdown: string): MarkdownBlock[] {

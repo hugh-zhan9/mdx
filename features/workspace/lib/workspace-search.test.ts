@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
     collectDirtySearchOverrides,
     formatSearchSummary,
+    queueWorkspaceSearchCancellation,
     shouldAcceptSearchResponse,
 } from "./workspace-search";
 import { createWorkspaceState, workspaceReducer } from "./workspace-reducer";
@@ -44,5 +45,33 @@ describe("workspace-search helpers", () => {
                 searchedFiles: 9,
             }),
         ).toBe("已搜索 9 个文件，跳过 2 个大文件、1 个无法读取文件，仅显示前若干结果。");
+    });
+
+    it("waits for prior cancellation before running the next one", async () => {
+        const steps: string[] = [];
+        let releasePrior: (() => void) | null = null;
+        const priorCancellation = new Promise<void>((resolve) => {
+            releasePrior = () => {
+                steps.push("release-prior");
+                resolve();
+            };
+        });
+        const cancelNext = vi.fn(async () => {
+            steps.push("cancel-next");
+        });
+
+        const queued = queueWorkspaceSearchCancellation(
+            priorCancellation,
+            cancelNext,
+        );
+
+        await Promise.resolve();
+        expect(steps).toEqual([]);
+
+        releasePrior?.();
+        await queued;
+
+        expect(steps).toEqual(["release-prior", "cancel-next"]);
+        expect(cancelNext).toHaveBeenCalledTimes(1);
     });
 });
