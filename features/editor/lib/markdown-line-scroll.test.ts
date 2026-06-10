@@ -17,6 +17,22 @@ describe("markdown line scroll", () => {
         expect(markdownLineToBlockIndex(markdown, 10)).toBe(3);
     });
 
+    it("keeps multi-paragraph list item lines in the same top-level block", () => {
+        const markdown = "- Item\n\n  More detail\n\nAfter\n";
+
+        expect(markdownLineToBlockIndex(markdown, 1)).toBe(0);
+        expect(markdownLineToBlockIndex(markdown, 3)).toBe(0);
+        expect(markdownLineToBlockIndex(markdown, 5)).toBe(1);
+    });
+
+    it("keeps nested fenced code inside the same top-level list block", () => {
+        const markdown = "- Item\n\n  ```js\n  code\n  ```\n\nAfter\n";
+
+        expect(markdownLineToBlockIndex(markdown, 1)).toBe(0);
+        expect(markdownLineToBlockIndex(markdown, 4)).toBe(0);
+        expect(markdownLineToBlockIndex(markdown, 7)).toBe(1);
+    });
+
     it("scrolls the matching rendered block into view", () => {
         const root = document.createElement("div");
         const domd = document.createElement("div");
@@ -58,5 +74,36 @@ describe("markdown line scroll", () => {
             inline: "nearest",
         });
         expect(quoteParagraph.scrollIntoView).not.toHaveBeenCalled();
+    });
+
+    it("scrolls nested list-item code hits to the top-level list block", () => {
+        const root = document.createElement("div");
+        const domd = document.createElement("div");
+        domd.className = "DOMD-Root";
+        const list = document.createElement("ul");
+        const item = document.createElement("li");
+        const paragraph = document.createElement("p");
+        const codeBlock = document.createElement("pre");
+        const after = document.createElement("p");
+        list.scrollIntoView = vi.fn();
+        codeBlock.scrollIntoView = vi.fn();
+        after.scrollIntoView = vi.fn();
+        item.append(paragraph, codeBlock);
+        list.append(item);
+        domd.append(list, after);
+        root.append(domd);
+
+        expect(
+            scrollMarkdownLineIntoView(
+                root,
+                "- Item\n\n  ```js\n  code\n  ```\n\nAfter\n",
+                4,
+            ),
+        ).toBe(true);
+        expect(list.scrollIntoView).toHaveBeenCalledWith({
+            block: "center",
+            inline: "nearest",
+        });
+        expect(codeBlock.scrollIntoView).not.toHaveBeenCalled();
     });
 });

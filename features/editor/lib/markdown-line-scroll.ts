@@ -95,16 +95,7 @@ function collectMarkdownBlocks(markdown: string): MarkdownBlock[] {
         const fence = readFence(currentLine);
         if (fence) {
             const startLine = lineIndex;
-            lineIndex += 1;
-
-            while (lineIndex <= lines.length) {
-                const line = lines[lineIndex - 1] ?? "";
-                if (isFenceClose(line, fence)) {
-                    lineIndex += 1;
-                    break;
-                }
-                lineIndex += 1;
-            }
+            lineIndex = consumeFencedBlock(lines, lineIndex, fence) + 1;
 
             blocks.push({
                 startLine,
@@ -124,22 +115,7 @@ function collectMarkdownBlocks(markdown: string): MarkdownBlock[] {
 
         if (isListLine(currentLine)) {
             const startLine = lineIndex;
-            lineIndex += 1;
-
-            while (lineIndex <= lines.length) {
-                const line = lines[lineIndex - 1] ?? "";
-
-                if (isBlankLine(line) || readFence(line) || isHeadingLine(line)) {
-                    break;
-                }
-
-                if (isListLine(line) || isIndentedListContinuation(line)) {
-                    lineIndex += 1;
-                    continue;
-                }
-
-                break;
-            }
+            lineIndex = consumeListBlock(lines, lineIndex) + 1;
 
             blocks.push({
                 startLine,
@@ -175,6 +151,74 @@ function collectMarkdownBlocks(markdown: string): MarkdownBlock[] {
     return blocks;
 }
 
+function consumeListBlock(lines: string[], startLine: number) {
+    const baseIndent = leadingIndentWidth(lines[startLine - 1] ?? "");
+    let lineIndex = startLine + 1;
+    let previousWasBlank = false;
+
+    while (lineIndex <= lines.length) {
+        const line = lines[lineIndex - 1] ?? "";
+
+        if (isBlankLine(line)) {
+            previousWasBlank = true;
+            lineIndex += 1;
+            continue;
+        }
+
+        const indent = leadingIndentWidth(line);
+        const fence = readFence(line);
+
+        if (fence && indent > baseIndent) {
+            lineIndex = consumeFencedBlock(lines, lineIndex, fence) + 1;
+            previousWasBlank = false;
+            continue;
+        }
+
+        if (isListLine(line)) {
+            if (indent < baseIndent) {
+                break;
+            }
+
+            previousWasBlank = false;
+            lineIndex += 1;
+            continue;
+        }
+
+        if (indent > baseIndent) {
+            previousWasBlank = false;
+            lineIndex += 1;
+            continue;
+        }
+
+        if (isHeadingLine(line)) {
+            break;
+        }
+
+        if (previousWasBlank) {
+            break;
+        }
+
+        previousWasBlank = false;
+        lineIndex += 1;
+    }
+
+    return lineIndex - 1;
+}
+
+function consumeFencedBlock(lines: string[], startLine: number, fence: string) {
+    let lineIndex = startLine + 1;
+
+    while (lineIndex <= lines.length) {
+        const line = lines[lineIndex - 1] ?? "";
+        if (isFenceClose(line, fence)) {
+            return lineIndex;
+        }
+        lineIndex += 1;
+    }
+
+    return lines.length;
+}
+
 function normalizeLineNumber(lineNumber: number) {
     if (!Number.isFinite(lineNumber)) {
         return 1;
@@ -195,10 +239,6 @@ function isListLine(line: string) {
     return /^(\s*)([-+*]|\d+[.)])\s+/.test(line);
 }
 
-function isIndentedListContinuation(line: string) {
-    return /^\s{2,}\S/.test(line);
-}
-
 function readFence(line: string) {
     const match = line.trimStart().match(/^(`{3,}|~{3,})/);
 
@@ -213,4 +253,10 @@ function isFenceClose(line: string, fence: string) {
     const trimmed = line.trimStart();
 
     return trimmed.startsWith(fence) && trimmed[0] === fence[0];
+}
+
+function leadingIndentWidth(line: string) {
+    const match = line.match(/^[\t ]*/);
+
+    return match?.[0].length ?? 0;
 }
