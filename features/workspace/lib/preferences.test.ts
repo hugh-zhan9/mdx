@@ -62,6 +62,21 @@ describe("workspace preferences", () => {
         );
     });
 
+    it("rejects mixed-format integer settings", () => {
+        expect(parsePositiveIntegerSetting("1e6", 1024, 4096, 2000)).toBe(
+            2000,
+        );
+        expect(parsePositiveIntegerSetting("1.9", 1024, 4096, 2000)).toBe(
+            2000,
+        );
+        expect(parsePositiveIntegerSetting("20px", 1024, 4096, 2000)).toBe(
+            2000,
+        );
+        expect(parsePositiveIntegerSetting("5,000", 1024, 4096, 2000)).toBe(
+            2000,
+        );
+    });
+
     it("compares every stored preference field", () => {
         const base = createDefaultAppPreferences();
         expect(appPreferencesEqual(base, { ...base })).toBe(true);

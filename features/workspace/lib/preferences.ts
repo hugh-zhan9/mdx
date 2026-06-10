@@ -72,7 +72,12 @@ export function parsePositiveIntegerSetting(
     max: number,
     fallback: number,
 ) {
-    const parsed = Number.parseInt(value.trim(), 10);
+    const trimmedValue = value.trim();
+    if (!/^\d+$/.test(trimmedValue)) {
+        return fallback;
+    }
+
+    const parsed = Number.parseInt(trimmedValue, 10);
     if (!Number.isFinite(parsed)) {
         return fallback;
     }
