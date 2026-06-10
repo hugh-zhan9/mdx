@@ -2,10 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { storeImageForDocument } from "@/common/lib/image-storage";
-import { tauriCore, tauriWindow } from "@/common/lib/tauri";
+import { tauriCore, tauriDialog, tauriWindow } from "@/common/lib/tauri";
 import { TextControlButton } from "@/common/components/ui-controls";
 import type { AppWindowSession } from "@/features/app/lib/app-session";
 import { EditorPane } from "@/features/editor/components/editor-pane";
+import { useFileWatch } from "@/features/file-watch/hooks/use-file-watch";
+import type {
+  FrontendFileWatchEvent,
+  WatchErrorPayload,
+} from "@/features/file-watch/lib/types";
 import { DiffViewer } from "@/features/recovery/components/diff-viewer";
 import { RecoveryBanner } from "@/features/recovery/components/recovery-banner";
 import { useDraftAutosave } from "@/features/recovery/hooks/use-draft-autosave";
@@ -14,6 +19,15 @@ import { useAppDialogs } from "@/features/workspace/components/app-dialogs";
 import { OutlinePanel } from "@/features/workspace/components/outline-panel";
 import { parseMarkdownOutline } from "@/features/workspace/lib/outline";
 import { scrollRenderedHeadingIntoView } from "@/features/workspace/lib/outline-scroll";
+import { normalizeWorkspacePath } from "@/features/workspace/lib/path";
+import {
+  createDefaultAppPreferences,
+  normalizeAppPreferences,
+} from "@/features/workspace/lib/preferences";
+import type {
+  AppPreferences,
+  PersistedAppState,
+} from "@/features/workspace/lib/types";
 import {
   isWorkspacePathDirty,
   overwriteDocumentFile,
@@ -21,10 +35,13 @@ import {
   saveDocumentFile,
 } from "../lib/document-client";
 import {
+  applyExternalDocumentReload,
   applyRecoveredDraft,
   canCloseDocumentWithoutPrompt,
+  createDocumentExternalConflict,
   createLoadedDocumentState,
   documentWindowTitle,
+  markDocumentDeleted,
   markDocumentSaved,
   updateDocumentMarkdown,
 } from "../lib/document-state";
@@ -37,7 +54,7 @@ interface DocumentDraftRecovery {
 }
 
 interface ExternalDocumentConflict {
-  realPath: string;
+  path: string;
   displayPath: string;
   diskMarkdown: string;
 }
@@ -62,6 +79,10 @@ export function DocumentShell({
     useState<ExternalDocumentConflict | null>(null);
   const [conflictDiffOpen, setConflictDiffOpen] = useState(false);
   const [copyMarkdownOpen, setCopyMarkdownOpen] = useState(false);
+  const [fileWatchPreferences, setFileWatchPreferences] =
+    useState<AppPreferences>(() => createDefaultAppPreferences());
+  const [fileWatchPreferencesReady, setFileWatchPreferencesReady] =
+    useState(false);
   const stateRef = useRef<LoadedDocumentState | null>(null);
   const saveRef = useRef<() => Promise<boolean>>(async () => false);
   const draftFlushRef = useRef<() => Promise<void>>(async () => {});
@@ -156,6 +177,43 @@ export function DocumentShell({
   }, [session.realPath, session.workspaceDirty]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    if (!isTauriRuntime()) {
+      setFileWatchPreferences(createDefaultAppPreferences());
+      setFileWatchPreferencesReady(true);
+      return;
+    }
+
+    setFileWatchPreferencesReady(false);
+    void loadDocumentAppPreferences()
+      .then((preferences) => {
+        if (cancelled) {
+          return;
+        }
+
+        setFileWatchPreferences(preferences);
+        setFileWatchPreferencesReady(true);
+      })
+      .catch((preferencesError) => {
+        if (cancelled) {
+          return;
+        }
+
+        console.warn(
+          "Failed to load document file watch preferences.",
+          preferencesError,
+        );
+        setFileWatchPreferences(createDefaultAppPreferences());
+        setFileWatchPreferencesReady(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!state || typeof document === "undefined") {
       return;
     }
@@ -248,10 +306,14 @@ export function DocumentShell({
 
       try {
         const diskFile = await readDocumentFile(saveSnapshot.realPath);
+        const conflict = createDocumentExternalConflict(
+          saveSnapshot,
+          diskFile,
+        );
         setExternalConflict({
-          realPath: diskFile.realPath,
+          path: conflict.path,
+          diskMarkdown: conflict.diskMarkdown,
           displayPath: diskFile.displayPath,
-          diskMarkdown: diskFile.content,
         });
         setConflictDiffOpen(true);
       } catch (readConflictError) {
@@ -319,7 +381,7 @@ export function DocumentShell({
     try {
       await draftFlushRef.current();
       const result = await overwriteDocumentFile(
-        conflict.realPath,
+        conflict.path,
         current.markdown,
       );
       const savedStillCurrent = isCurrentDocumentSnapshot(
@@ -352,8 +414,10 @@ export function DocumentShell({
     }
 
     try {
-      const file = await readDocumentFile(conflict.realPath);
-      setState(createLoadedDocumentState(file));
+      const file = await readDocumentFile(conflict.path);
+      setState((current) =>
+        current ? applyExternalDocumentReload(current, file) : current,
+      );
       setExternalConflict(null);
       setConflictDiffOpen(false);
       await deleteDocumentDraft(file.realPath);
@@ -380,6 +444,141 @@ export function DocumentShell({
       });
     }
   }, []);
+
+  const reloadCleanExternalDocument = useCallback(async () => {
+    const snapshot = stateRef.current;
+
+    if (!snapshot || snapshot.dirty) {
+      return;
+    }
+
+    try {
+      const file = await readDocumentFile(snapshot.realPath);
+      const latest = stateRef.current;
+
+      if (
+        !latest ||
+        latest.dirty ||
+        !sameDocumentPath(latest.realPath, snapshot.realPath)
+      ) {
+        return;
+      }
+
+      setState((current) => {
+        if (
+          !current ||
+          current.dirty ||
+          !sameDocumentPath(current.realPath, snapshot.realPath)
+        ) {
+          return current;
+        }
+
+        return applyExternalDocumentReload(current, file);
+      });
+      setExternalConflict(null);
+      setConflictDiffOpen(false);
+      await deleteDocumentDraft(file.realPath);
+    } catch (reloadError) {
+      console.warn("Failed to reload externally changed document.", reloadError);
+    }
+  }, []);
+
+  const showExternalDocumentConflict = useCallback(async () => {
+    const snapshot = stateRef.current;
+
+    if (!snapshot || !snapshot.dirty) {
+      return;
+    }
+
+    try {
+      const file = await readDocumentFile(snapshot.realPath);
+      const latest = stateRef.current;
+
+      if (
+        !latest ||
+        !latest.dirty ||
+        !sameDocumentPath(latest.realPath, snapshot.realPath)
+      ) {
+        return;
+      }
+
+      const conflict = createDocumentExternalConflict(latest, file);
+      setState((current) =>
+        current && sameDocumentPath(current.realPath, snapshot.realPath)
+          ? { ...current, deletedOnDisk: false }
+          : current,
+      );
+      setExternalConflict({
+        path: conflict.path,
+        diskMarkdown: conflict.diskMarkdown,
+        displayPath: file.displayPath,
+      });
+      setConflictDiffOpen(true);
+    } catch (conflictError) {
+      console.warn("Failed to load externally changed document.", conflictError);
+    }
+  }, []);
+
+  const handleDocumentFileWatchEvent = useCallback(
+    (event: FrontendFileWatchEvent) => {
+      const current = stateRef.current;
+
+      if (!current) {
+        return;
+      }
+
+      const eventPathMatchesCurrent = sameDocumentPath(
+        event.path,
+        current.realPath,
+      );
+      const newPathMatchesCurrent =
+        event.kind === "renamed" &&
+        sameDocumentPath(event.newPath, current.realPath);
+
+      if (!eventPathMatchesCurrent && !newPathMatchesCurrent) {
+        return;
+      }
+
+      if (event.kind === "deleted" || event.kind === "renamed") {
+        if (eventPathMatchesCurrent && !newPathMatchesCurrent) {
+          setState((latest) =>
+            latest && sameDocumentPath(latest.realPath, current.realPath)
+              ? markDocumentDeleted(latest)
+              : latest,
+          );
+          setExternalConflict(null);
+          setConflictDiffOpen(false);
+          return;
+        }
+      }
+
+      if (current.dirty) {
+        void showExternalDocumentConflict();
+        return;
+      }
+
+      void reloadCleanExternalDocument();
+    },
+    [reloadCleanExternalDocument, showExternalDocumentConflict],
+  );
+
+  const handleDocumentFileWatchError = useCallback(
+    (watchError: WatchErrorPayload) => {
+      console.warn("Document file watch error.", watchError);
+    },
+    [],
+  );
+
+  useFileWatch({
+    mode: "document",
+    path: state?.realPath ?? null,
+    preferences: {
+      fileWatchEnabled:
+        fileWatchPreferencesReady && fileWatchPreferences.fileWatchEnabled,
+    },
+    onEvent: handleDocumentFileWatchEvent,
+    onError: handleDocumentFileWatchError,
+  });
 
   useEffect(() => {
     if (!workspaceDirty || workspaceDirtyWarningShownRef.current) {
@@ -409,6 +608,133 @@ export function DocumentShell({
     const { getCurrentWindow } = await tauriWindow();
     await getCurrentWindow().close();
   }, []);
+
+  const closeDeletedDocument = useCallback(async () => {
+    await closeDocumentWindow();
+  }, [closeDocumentWindow]);
+
+  const closeDeletedDocumentWithoutSaving = useCallback(async () => {
+    const current = stateRef.current;
+
+    if (current) {
+      await deleteDocumentDraft(current.realPath).catch((deleteError) => {
+        console.warn(
+          "Failed to delete document draft before closing.",
+          deleteError,
+        );
+      });
+    }
+
+    await closeDocumentWindow();
+  }, [closeDocumentWindow]);
+
+  const saveDeletedDocumentAs = useCallback(async () => {
+    const current = stateRef.current;
+
+    if (!current || saving) {
+      return;
+    }
+
+    const saveSnapshot = current;
+
+    try {
+      const selectedPath = await chooseDocumentSavePath(saveSnapshot.realPath);
+
+      if (!selectedPath) {
+        return;
+      }
+
+      setSaving(true);
+      await draftFlushRef.current();
+      await writeDocumentMarkdownPath(selectedPath, saveSnapshot.markdown);
+      const file = await readDocumentFile(selectedPath);
+      const savedStillCurrent = isCurrentDocumentSnapshot(
+        stateRef.current,
+        saveSnapshot,
+      );
+
+      if (!savedStillCurrent) {
+        await draftFlushRef.current();
+        return;
+      }
+
+      setState((latest) =>
+        latest && isCurrentDocumentSnapshot(latest, saveSnapshot)
+          ? {
+              ...createLoadedDocumentState(file),
+              outlineCollapsed: latest.outlineCollapsed,
+            }
+          : latest,
+      );
+      setExternalConflict(null);
+      setConflictDiffOpen(false);
+      await deleteDocumentDraft(saveSnapshot.realPath);
+    } catch (saveAsError) {
+      void dialogs.alert({
+        title: "另存为",
+        message: formatError(saveAsError, "无法另存文档。"),
+      });
+    } finally {
+      setSaving(false);
+    }
+  }, [dialogs, saving]);
+
+  const restoreDeletedDocumentOriginalPath = useCallback(async () => {
+    const current = stateRef.current;
+
+    if (!current || saving) {
+      return;
+    }
+
+    const restoreSnapshot = current;
+
+    setSaving(true);
+    try {
+      await draftFlushRef.current();
+      await writeDocumentMarkdownPath(
+        restoreSnapshot.realPath,
+        restoreSnapshot.markdown,
+      );
+      const file = await readDocumentFile(restoreSnapshot.realPath);
+      const restoredStillCurrent = isCurrentDocumentSnapshot(
+        stateRef.current,
+        restoreSnapshot,
+      );
+
+      if (!restoredStillCurrent) {
+        setState((latest) =>
+          latest && sameDocumentPath(latest.realPath, restoreSnapshot.realPath)
+            ? markDocumentSaved(
+                latest,
+                file.fingerprint,
+                restoreSnapshot.markdown,
+              )
+            : latest,
+        );
+        await draftFlushRef.current();
+        return;
+      }
+
+      setState((latest) =>
+        latest && isCurrentDocumentSnapshot(latest, restoreSnapshot)
+          ? {
+              ...createLoadedDocumentState(file),
+              outlineCollapsed: latest.outlineCollapsed,
+            }
+          : latest,
+      );
+      setExternalConflict(null);
+      setConflictDiffOpen(false);
+      await deleteDocumentDraft(restoreSnapshot.realPath);
+    } catch (restoreError) {
+      void dialogs.alert({
+        title: "恢复原路径",
+        message: formatError(restoreError, "无法恢复原路径。"),
+      });
+    } finally {
+      setSaving(false);
+    }
+  }, [dialogs, saving]);
 
   useEffect(() => {
     if (!isTauriRuntime()) {
@@ -640,7 +966,7 @@ export function DocumentShell({
               ]}
             />
           ) : null}
-          {externalConflict ? (
+          {externalConflict && !state.deletedOnDisk ? (
             <RecoveryBanner
               title="文件已被外部修改"
               message={`${externalConflict.displayPath} 的磁盘内容已变化。`}
@@ -669,6 +995,49 @@ export function DocumentShell({
                   onClick: postponeExternalConflict,
                 },
               ]}
+            />
+          ) : null}
+          {state.deletedOnDisk ? (
+            <RecoveryBanner
+              title="文件已被外部删除"
+              message={
+                state.dirty
+                  ? `${state.displayPath} 已从磁盘删除，当前文档还有未保存编辑。`
+                  : `${state.displayPath} 已从磁盘删除。`
+              }
+              priority={state.dirty ? "high" : "normal"}
+              actions={
+                state.dirty
+                  ? [
+                      {
+                        label: "另存为",
+                        primary: true,
+                        onClick: () => void saveDeletedDocumentAs(),
+                      },
+                      {
+                        label: "恢复原路径",
+                        onClick: () =>
+                          void restoreDeletedDocumentOriginalPath(),
+                      },
+                      {
+                        label: "关闭且不保存",
+                        destructive: true,
+                        onClick: () =>
+                          void closeDeletedDocumentWithoutSaving(),
+                      },
+                    ]
+                  : [
+                      {
+                        label: "关闭",
+                        primary: true,
+                        onClick: () => void closeDeletedDocument(),
+                      },
+                      {
+                        label: "另存为",
+                        onClick: () => void saveDeletedDocumentAs(),
+                      },
+                    ]
+              }
             />
           ) : null}
         </div>
@@ -710,7 +1079,7 @@ export function DocumentShell({
           />
         </div>
       </div>
-      {externalConflict ? (
+      {externalConflict && !state.deletedOnDisk ? (
         <DiffViewer
           open={conflictDiffOpen}
           title="文件已被外部修改"
@@ -822,6 +1191,80 @@ function isCurrentDocumentSnapshot(
     current.realPath === snapshot.realPath &&
     current.markdown === snapshot.markdown
   );
+}
+
+function sameDocumentPath(left: string, right: string) {
+  return normalizeWorkspacePath(left) === normalizeWorkspacePath(right);
+}
+
+async function loadDocumentAppPreferences() {
+  const { invoke } = await tauriCore();
+  const state = await invoke<PersistedAppState>("load_app_state");
+
+  return normalizeAppPreferences(state.preferences);
+}
+
+async function chooseDocumentSavePath(defaultPath: string) {
+  if (!isTauriRuntime()) {
+    throw new Error("文件另存为仅在桌面版中可用。");
+  }
+
+  const { save } = await tauriDialog();
+  const selectedPath = await save({
+    title: "另存为",
+    defaultPath,
+    filters: [
+      {
+        name: "Markdown",
+        extensions: ["md", "markdown"],
+      },
+    ],
+  });
+
+  return typeof selectedPath === "string" ? selectedPath : null;
+}
+
+async function writeDocumentMarkdownPath(path: string, content: string) {
+  const rootPath = parentDirectoryForPath(path);
+
+  if (!rootPath) {
+    throw new Error("文档路径没有可用的父文件夹。");
+  }
+
+  const { invoke } = await tauriCore();
+  await invoke("write_markdown_file", {
+    rootPath,
+    path,
+    content,
+  });
+}
+
+function parentDirectoryForPath(path: string) {
+  const normalizedPath = normalizeWorkspacePath(path);
+
+  if (
+    normalizedPath.length === 0 ||
+    normalizedPath === "/" ||
+    /^[A-Za-z]:\/?$/.test(normalizedPath)
+  ) {
+    return null;
+  }
+
+  if (/^[A-Za-z]:\/[^/]+$/.test(normalizedPath)) {
+    return normalizedPath.slice(0, 3);
+  }
+
+  const separatorIndex = normalizedPath.lastIndexOf("/");
+
+  if (separatorIndex < 0) {
+    return null;
+  }
+
+  if (separatorIndex === 0) {
+    return "/";
+  }
+
+  return normalizedPath.slice(0, separatorIndex);
 }
 
 async function deleteDocumentDraft(realPath: string, draftId?: string) {

@@ -52,6 +52,32 @@ export function applyRecoveredDraft(
   };
 }
 
+export function applyExternalDocumentReload(
+  state: LoadedDocumentState,
+  file: { content: string; fingerprint: string },
+): LoadedDocumentState {
+  return {
+    ...state,
+    markdown: file.content,
+    savedMarkdown: file.content,
+    fingerprint: file.fingerprint,
+    dirty: false,
+    deletedOnDisk: false,
+  };
+}
+
+export function createDocumentExternalConflict(
+  state: LoadedDocumentState,
+  file: { content: string; fingerprint: string },
+) {
+  return {
+    path: state.realPath,
+    currentMarkdown: state.markdown,
+    diskMarkdown: file.content,
+    diskFingerprint: file.fingerprint,
+  };
+}
+
 export function markDocumentDeleted(
   state: LoadedDocumentState,
 ): LoadedDocumentState {

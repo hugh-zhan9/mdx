@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyExternalDocumentReload,
   applyRecoveredDraft,
   canCloseDocumentWithoutPrompt,
+  createDocumentExternalConflict,
   createLoadedDocumentState,
   documentWindowTitle,
   markDocumentDeleted,
@@ -104,5 +106,37 @@ describe("document state", () => {
     expect(deleted.markdown).toBe("# Mine\n");
     expect(deleted.deletedOnDisk).toBe(true);
     expect(deleted.dirty).toBe(true);
+  });
+
+  it("auto reloads clean document content from disk", () => {
+    const state = createLoadedDocumentState(loadedFile);
+    const reloaded = applyExternalDocumentReload(state, {
+      content: "# Disk Changed\n",
+      fingerprint: "fingerprint-b",
+    });
+
+    expect(reloaded.markdown).toBe("# Disk Changed\n");
+    expect(reloaded.savedMarkdown).toBe("# Disk Changed\n");
+    expect(reloaded.fingerprint).toBe("fingerprint-b");
+    expect(reloaded.dirty).toBe(false);
+  });
+
+  it("creates external conflict from dirty document state", () => {
+    const dirty = updateDocumentMarkdown(
+      createLoadedDocumentState(loadedFile),
+      "# Mine\n",
+    );
+
+    expect(
+      createDocumentExternalConflict(dirty, {
+        content: "# Disk\n",
+        fingerprint: "fingerprint-b",
+      }),
+    ).toEqual({
+      path: "/tmp/note.md",
+      currentMarkdown: "# Mine\n",
+      diskMarkdown: "# Disk\n",
+      diskFingerprint: "fingerprint-b",
+    });
   });
 });
