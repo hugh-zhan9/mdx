@@ -185,6 +185,28 @@ export function DocumentShell({
     draftFlushRef.current = draftAutosave.flush;
   }, [draftAutosave.flush]);
 
+  const finalizeSavedDocumentSnapshot = useCallback(
+    async (
+      snapshot: Pick<LoadedDocumentState, "realPath" | "markdown">,
+      wasCurrentAfterWrite: boolean,
+    ) => {
+      if (
+        wasCurrentAfterWrite &&
+        isCurrentDocumentSnapshot(stateRef.current, snapshot)
+      ) {
+        await deleteDocumentDraft(snapshot.realPath);
+      }
+
+      if (isCurrentDocumentSnapshot(stateRef.current, snapshot)) {
+        return true;
+      }
+
+      await draftFlushRef.current();
+      return false;
+    },
+    [],
+  );
+
   const save = useCallback(async () => {
     if (!state || saving) {
       return false;
@@ -214,12 +236,7 @@ export function DocumentShell({
           : current,
       );
       setExternalConflict(null);
-      if (savedStillCurrent) {
-        await deleteDocumentDraft(saveSnapshot.realPath);
-      } else {
-        await draftFlushRef.current();
-      }
-      return savedStillCurrent;
+      return finalizeSavedDocumentSnapshot(saveSnapshot, savedStillCurrent);
     } catch (saveError) {
       if (!isExternalModifiedError(saveError)) {
         void dialogs.alert({
@@ -251,7 +268,7 @@ export function DocumentShell({
     } finally {
       setSaving(false);
     }
-  }, [dialogs, saving, state]);
+  }, [dialogs, finalizeSavedDocumentSnapshot, saving, state]);
 
   useEffect(() => {
     saveRef.current = save;
@@ -316,11 +333,7 @@ export function DocumentShell({
       );
       setExternalConflict(null);
       setConflictDiffOpen(false);
-      if (savedStillCurrent) {
-        await deleteDocumentDraft(conflict.realPath);
-      } else {
-        await draftFlushRef.current();
-      }
+      await finalizeSavedDocumentSnapshot(current, savedStillCurrent);
     } catch (overwriteError) {
       void dialogs.alert({
         title: "保存失败",
@@ -329,7 +342,7 @@ export function DocumentShell({
     } finally {
       setSaving(false);
     }
-  }, [dialogs, externalConflict, saving]);
+  }, [dialogs, externalConflict, finalizeSavedDocumentSnapshot, saving]);
 
   const reloadDiskVersion = useCallback(async () => {
     const conflict = externalConflict;
