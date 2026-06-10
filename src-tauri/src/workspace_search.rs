@@ -14,8 +14,6 @@ use crate::path_guard::{
     canonicalize_workspace_root, is_allowed_markdown_file, is_ignored_dir, resolve_candidate_path,
 };
 
-const MIN_EFFECTIVE_MAX_FILE_BYTES: u64 = 16;
-
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSearchRequest {
@@ -310,14 +308,13 @@ fn collect_symlink_candidate(
     let Ok(path) = fs::canonicalize(path) else {
         return Ok(());
     };
-    if !path.starts_with(root) {
-        return Ok(());
-    }
-
     let metadata = match fs::metadata(&path) {
         Ok(metadata) => metadata,
         Err(_) => return Ok(()),
     };
+    if !path.starts_with(root) || path_is_in_skipped_dir(root, &path, metadata.is_file()) {
+        return Ok(());
+    }
 
     if metadata.is_dir() {
         collect_directory_candidate(root, &path, visited_dirs, candidates, cancel_token)?;
@@ -342,7 +339,10 @@ fn collect_directory_candidate(
             &error,
         )
     })?;
-    if !path.starts_with(root) || !visited_dirs.insert(path.clone()) {
+    if !path.starts_with(root) || path_is_in_skipped_dir(root, &path, false) {
+        return Ok(());
+    }
+    if !visited_dirs.insert(path.clone()) {
         return Ok(());
     }
 
@@ -351,6 +351,28 @@ fn collect_directory_candidate(
 
 fn should_skip_dir(name: &str) -> bool {
     name.starts_with('.') || is_ignored_dir(name)
+}
+
+fn path_is_in_skipped_dir(root: &Path, path: &Path, path_is_file: bool) -> bool {
+    let Ok(relative) = path.strip_prefix(root) else {
+        return true;
+    };
+    let mut components = relative.components().peekable();
+
+    while let Some(component) = components.next() {
+        if path_is_file && components.peek().is_none() {
+            break;
+        }
+
+        let std::path::Component::Normal(name) = component else {
+            continue;
+        };
+        if should_skip_dir(&name.to_string_lossy()) {
+            return true;
+        }
+    }
+
+    false
 }
 
 fn search_disk_file(
@@ -377,7 +399,7 @@ fn search_disk_file(
         return Ok(());
     }
 
-    if metadata.len() > effective_max_file_bytes(max_file_bytes) {
+    if metadata.len() > max_file_bytes {
         accumulator.result.skipped_large_files += 1;
         return Ok(());
     }
@@ -514,10 +536,6 @@ fn invalid_dirty_override_path() -> WorkspaceError {
         "invalid_markdown_path",
         "dirty search override path must be a Markdown file inside the workspace root",
     )
-}
-
-fn effective_max_file_bytes(max_file_bytes: u64) -> u64 {
-    max_file_bytes.max(MIN_EFFECTIVE_MAX_FILE_BYTES)
 }
 
 fn path_to_string(path: &Path) -> String {

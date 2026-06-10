@@ -64,7 +64,7 @@ fn applies_dirty_override_instead_of_disk_contents() {
 fn skips_large_files_and_truncates_results() {
     let root = tempdir().unwrap();
     std::fs::write(root.path().join("large.md"), "alpha alpha alpha").unwrap();
-    std::fs::write(root.path().join("small.md"), "alpha\nalpha\n").unwrap();
+    std::fs::write(root.path().join("small.md"), "alpha\n").unwrap();
 
     let result = workspace_search_sync(WorkspaceSearchRequest {
         root_path: root.path().to_string_lossy().into_owned(),
@@ -81,4 +81,59 @@ fn skips_large_files_and_truncates_results() {
     assert_eq!(result.skipped_large_files, 1);
     assert_eq!(result.results.len(), 1);
     assert!(result.truncated);
+}
+
+#[test]
+fn skips_files_larger_than_exact_max_file_bytes() {
+    let root = tempdir().unwrap();
+    std::fs::write(root.path().join("too-large.md"), "alpha\n").unwrap();
+
+    let result = workspace_search_sync(WorkspaceSearchRequest {
+        root_path: root.path().to_string_lossy().into_owned(),
+        query: "alpha".to_string(),
+        case_sensitive: false,
+        max_file_bytes: 5,
+        max_results: 20,
+        max_matches_per_file: 20,
+        dirty_overrides: vec![],
+        request_id: "req-4".to_string(),
+    })
+    .unwrap();
+
+    assert_eq!(result.skipped_large_files, 1);
+    assert_eq!(result.searched_files, 0);
+    assert!(result.results.is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn skips_symlink_directory_targets_that_are_hidden_or_ignored() {
+    use std::os::unix::fs::symlink;
+
+    let root = tempdir().unwrap();
+    std::fs::create_dir_all(root.path().join(".git")).unwrap();
+    std::fs::create_dir_all(root.path().join("node_modules")).unwrap();
+    std::fs::write(root.path().join(".git/hidden.md"), "alpha\n").unwrap();
+    std::fs::write(root.path().join("node_modules/package.md"), "alpha\n").unwrap();
+    symlink(root.path().join(".git"), root.path().join("visible-git")).unwrap();
+    symlink(
+        root.path().join("node_modules"),
+        root.path().join("visible-modules"),
+    )
+    .unwrap();
+
+    let result = workspace_search_sync(WorkspaceSearchRequest {
+        root_path: root.path().to_string_lossy().into_owned(),
+        query: "alpha".to_string(),
+        case_sensitive: false,
+        max_file_bytes: 2_097_152,
+        max_results: 20,
+        max_matches_per_file: 20,
+        dirty_overrides: vec![],
+        request_id: "req-5".to_string(),
+    })
+    .unwrap();
+
+    assert!(result.results.is_empty());
+    assert_eq!(result.searched_files, 0);
 }
