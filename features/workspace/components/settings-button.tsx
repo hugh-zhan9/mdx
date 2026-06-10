@@ -20,6 +20,7 @@ import {
 import {
   appPreferencesEqual,
   createDefaultAppPreferences,
+  parsePositiveIntegerSetting,
 } from "../lib/preferences";
 
 interface SettingsButtonProps {
@@ -79,6 +80,8 @@ function SettingsDialog({
     useState<SettingsSection>("general");
   const sectionRefs = useRef<Record<SettingsSection, HTMLElement | null>>({
     general: null,
+    search: null,
+    files: null,
     llm: null,
   });
   const [baseUrl, setBaseUrl] = useState("https://api.openai.com/v1");
@@ -89,6 +92,17 @@ function SettingsDialog({
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [fileWatchEnabled, setFileWatchEnabled] = useState(
+    preferences.fileWatchEnabled,
+  );
+  const [searchMaxFileBytesText, setSearchMaxFileBytesText] = useState(
+    String(preferences.searchMaxFileBytes),
+  );
+  const [searchMaxResultsText, setSearchMaxResultsText] = useState(
+    String(preferences.searchMaxResults),
+  );
+  const [searchMaxMatchesPerFileText, setSearchMaxMatchesPerFileText] =
+    useState(String(preferences.searchMaxMatchesPerFile));
   const [excludeDirsText, setExcludeDirsText] = useState(
     preferences.fileTreeExcludeDirs.join("\n"),
   );
@@ -136,6 +150,12 @@ function SettingsDialog({
   }, []);
 
   useEffect(() => {
+    setFileWatchEnabled(preferences.fileWatchEnabled);
+    setSearchMaxFileBytesText(String(preferences.searchMaxFileBytes));
+    setSearchMaxResultsText(String(preferences.searchMaxResults));
+    setSearchMaxMatchesPerFileText(
+      String(preferences.searchMaxMatchesPerFile),
+    );
     setExcludeDirsText(preferences.fileTreeExcludeDirs.join("\n"));
   }, [preferences]);
 
@@ -196,8 +216,26 @@ function SettingsDialog({
     try {
       const nextExcludeDirs = parseExcludeDirs(excludeDirsText);
       const nextPreferences = {
-        ...preferences,
         fileTreeExcludeDirs: nextExcludeDirs,
+        fileWatchEnabled,
+        searchMaxFileBytes: parsePositiveIntegerSetting(
+          searchMaxFileBytesText,
+          1_024,
+          50 * 1_024 * 1_024,
+          preferences.searchMaxFileBytes,
+        ),
+        searchMaxResults: parsePositiveIntegerSetting(
+          searchMaxResultsText,
+          1,
+          5_000,
+          preferences.searchMaxResults,
+        ),
+        searchMaxMatchesPerFile: parsePositiveIntegerSetting(
+          searchMaxMatchesPerFileText,
+          1,
+          500,
+          preferences.searchMaxMatchesPerFile,
+        ),
       };
 
       if (!appPreferencesEqual(nextPreferences, preferences)) {
@@ -367,18 +405,94 @@ function SettingsDialog({
               </div>
             </section>
 
-            <section className="grid grid-cols-[clamp(64px,12vw,96px)_minmax(0,1fr)] gap-x-5 gap-y-2">
+            <section
+              ref={(node) => {
+                sectionRefs.current.search = node;
+              }}
+              className="scroll-mt-5 grid grid-cols-[clamp(64px,12vw,96px)_minmax(0,1fr)] gap-x-5 gap-y-2"
+            >
               <h3 className="pt-2 text-xs font-medium text-base-content/70">
-                过滤项目
+                搜索限制
               </h3>
-              <div className="space-y-2">
-                <textarea
-                  className="min-h-24 w-full resize-y border border-base-300 bg-base-100 px-2.5 py-2 text-sm text-base-content outline-none placeholder:text-base-content/65 focus:border-primary focus:outline focus:outline-2 focus:outline-offset-1 focus:outline-primary"
-                  value={excludeDirsText}
-                  onChange={(event) => setExcludeDirsText(event.currentTarget.value)}
-                  placeholder={"每行一个目录，例如：\nnode_modules\ndist\nraw/archive"}
-                  disabled={savingSettings}
-                />
+              <div className="space-y-3">
+                <label className="block space-y-1.5 text-xs text-base-content/70">
+                  <span>单文件最大搜索大小（字节）</span>
+                  <input
+                    className="h-9 w-full border border-base-300 bg-base-100 px-2.5 text-sm text-base-content outline-none focus:border-primary focus:outline focus:outline-2 focus:outline-offset-1 focus:outline-primary"
+                    value={searchMaxFileBytesText}
+                    inputMode="numeric"
+                    onChange={(event) =>
+                      setSearchMaxFileBytesText(event.currentTarget.value)
+                    }
+                    disabled={savingSettings}
+                  />
+                </label>
+                <label className="block space-y-1.5 text-xs text-base-content/70">
+                  <span>最大结果数</span>
+                  <input
+                    className="h-9 w-full border border-base-300 bg-base-100 px-2.5 text-sm text-base-content outline-none focus:border-primary focus:outline focus:outline-2 focus:outline-offset-1 focus:outline-primary"
+                    value={searchMaxResultsText}
+                    inputMode="numeric"
+                    onChange={(event) =>
+                      setSearchMaxResultsText(event.currentTarget.value)
+                    }
+                    disabled={savingSettings}
+                  />
+                </label>
+                <label className="block space-y-1.5 text-xs text-base-content/70">
+                  <span>每个文件最大匹配数</span>
+                  <input
+                    className="h-9 w-full border border-base-300 bg-base-100 px-2.5 text-sm text-base-content outline-none focus:border-primary focus:outline focus:outline-2 focus:outline-offset-1 focus:outline-primary"
+                    value={searchMaxMatchesPerFileText}
+                    inputMode="numeric"
+                    onChange={(event) =>
+                      setSearchMaxMatchesPerFileText(event.currentTarget.value)
+                    }
+                    disabled={savingSettings}
+                  />
+                </label>
+              </div>
+            </section>
+
+            <section
+              ref={(node) => {
+                sectionRefs.current.files = node;
+              }}
+              className="scroll-mt-5 grid grid-cols-[clamp(64px,12vw,96px)_minmax(0,1fr)] gap-x-5 gap-y-2"
+            >
+              <h3 className="pt-2 text-xs font-medium text-base-content/70">
+                文件监听
+              </h3>
+              <div className="space-y-3">
+                <label className="flex items-center gap-3 text-sm text-base-content">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 border border-base-300 bg-base-100"
+                    checked={fileWatchEnabled}
+                    onChange={(event) =>
+                      setFileWatchEnabled(event.currentTarget.checked)
+                    }
+                    disabled={savingSettings}
+                  />
+                  <span>启用工作区文件监听</span>
+                </label>
+                <p className="text-xs leading-relaxed text-base-content/65">
+                  未保存正文会以明文草稿保存在 ~/.mdx/drafts/，保存或丢弃后会清理对应草稿。
+                </p>
+                <div className="border-t border-base-300 pt-3">
+                  <div className="mb-2 text-xs text-base-content/70">
+                    过滤项目
+                  </div>
+                  <textarea
+                    className="min-h-24 w-full resize-y border border-base-300 bg-base-100 px-2.5 py-2 text-sm text-base-content outline-none placeholder:text-base-content/65 focus:border-primary focus:outline focus:outline-2 focus:outline-offset-1 focus:outline-primary"
+                    value={excludeDirsText}
+                    onChange={(event) =>
+                      setExcludeDirsText(event.currentTarget.value)
+                    }
+                    placeholder={"每行一个目录，例如：\nnode_modules\ndist\nraw/archive"}
+                    disabled={savingSettings}
+                  />
+                </div>
               </div>
             </section>
 
@@ -500,10 +614,12 @@ const LLM_API_MODE_OPTIONS: Array<{
   { value: "responses", label: "Responses" },
 ];
 
-type SettingsSection = "general" | "llm";
+type SettingsSection = "general" | "search" | "files" | "llm";
 
 const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string }> = [
   { id: "general", label: "通用" },
+  { id: "search", label: "搜索" },
+  { id: "files", label: "文件" },
   { id: "llm", label: "LLM" },
 ];
 

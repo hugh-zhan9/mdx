@@ -66,6 +66,20 @@ export function appPreferencesEqual(
     );
 }
 
+export function parsePositiveIntegerSetting(
+    value: string,
+    min: number,
+    max: number,
+    fallback: number,
+) {
+    const parsed = Number.parseInt(value.trim(), 10);
+    if (!Number.isFinite(parsed)) {
+        return fallback;
+    }
+
+    return Math.min(Math.max(parsed, min), max);
+}
+
 function clampInteger(
     value: unknown,
     min: number,

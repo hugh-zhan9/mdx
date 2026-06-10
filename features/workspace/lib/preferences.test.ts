@@ -3,6 +3,7 @@ import {
     appPreferencesEqual,
     createDefaultAppPreferences,
     normalizeAppPreferences,
+    parsePositiveIntegerSetting,
 } from "./preferences";
 
 describe("workspace preferences", () => {
@@ -46,6 +47,19 @@ describe("workspace preferences", () => {
             searchMaxResults: 5_000,
             searchMaxMatchesPerFile: 1,
         });
+    });
+
+    it("parses positive integer settings with fallback and bounds", () => {
+        expect(parsePositiveIntegerSetting("2048", 1024, 4096, 2000)).toBe(
+            2048,
+        );
+        expect(parsePositiveIntegerSetting("bad", 1024, 4096, 2000)).toBe(
+            2000,
+        );
+        expect(parsePositiveIntegerSetting("1", 1024, 4096, 2000)).toBe(1024);
+        expect(parsePositiveIntegerSetting("9000", 1024, 4096, 2000)).toBe(
+            4096,
+        );
     });
 
     it("compares every stored preference field", () => {
