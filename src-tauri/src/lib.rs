@@ -16,6 +16,7 @@ pub mod cli_protocol;
 mod cli_server;
 mod document;
 mod draft_store;
+mod file_watch;
 mod llm_wiki;
 mod llm_wiki_context;
 mod llm_wiki_fs;
@@ -42,6 +43,8 @@ mod cli_protocol_tests;
 mod document_tests;
 #[cfg(test)]
 mod draft_store_tests;
+#[cfg(test)]
+mod file_watch_tests;
 #[cfg(test)]
 mod llm_wiki_tests;
 #[cfg(test)]
@@ -424,6 +427,7 @@ pub fn run() {
             }
             app.handle().plugin(tauri_plugin_dialog::init())?;
             app.manage(cli_server::CliState::default());
+            app.manage(Mutex::new(file_watch::FileWatchState::default()));
             app.manage(Mutex::new(WindowSessionRegistry::default()));
             app.manage(Mutex::new(DirtyWorkspacePaths::default()));
             let mut startup_routing = StartupOpenRoutingState::default();
@@ -530,6 +534,9 @@ pub fn run() {
             draft_store::draft_list_for_workspace,
             draft_store::draft_delete,
             draft_store::draft_cleanup_expired,
+            file_watch::watch_start_workspace,
+            file_watch::watch_start_document,
+            file_watch::watch_stop,
             focus_or_create_workspace_window,
             get_window_session,
             update_workspace_dirty_paths,
@@ -610,14 +617,23 @@ pub fn run() {
                 event: WindowEvent::Destroyed,
                 ..
             } => {
-                let state = app.state::<Mutex<WindowSessionRegistry>>();
-                let mut registry = state.lock().unwrap();
-                let was_workspace = registry.role_for_label(&label) == Some(WindowRole::Workspace);
-                registry.remove_label(&label);
+                let was_workspace = {
+                    let state = app.state::<Mutex<WindowSessionRegistry>>();
+                    let mut registry = state.lock().unwrap();
+                    let was_workspace =
+                        registry.role_for_label(&label) == Some(WindowRole::Workspace);
+                    registry.remove_label(&label);
+                    was_workspace
+                };
                 if was_workspace {
                     let dirty_paths = app.state::<Mutex<DirtyWorkspacePaths>>();
                     let mut dirty_paths = dirty_paths.lock().unwrap();
                     dirty_paths.clear();
+                }
+                {
+                    let file_watch_state = app.state::<Mutex<file_watch::FileWatchState>>();
+                    let mut file_watch_state = file_watch_state.lock().unwrap();
+                    file_watch::stop_watches_for_window_label(&mut file_watch_state, &label);
                 }
                 update_menu_state_for_focused_window(app);
             }

@@ -85,6 +85,29 @@ pub struct DocumentSaveResult {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct WatchStartResult {
+    pub watch_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WatchStopResult {
+    pub stopped: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FileWatchEventPayload {
+    pub watch_id: String,
+    pub root_path: Option<String>,
+    pub path: String,
+    pub new_path: Option<String>,
+    pub fingerprint: Option<String>,
+    pub event_time: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct DraftSaveResult {
     pub draft_id: String,
     pub updated_at: String,
