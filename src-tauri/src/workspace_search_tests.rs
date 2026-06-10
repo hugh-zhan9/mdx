@@ -214,6 +214,29 @@ fn max_matches_per_file_limits_actual_matches_not_matching_lines() {
 }
 
 #[test]
+fn max_results_stops_collecting_repeated_same_line_matches() {
+    let root = tempdir().unwrap();
+    std::fs::write(root.path().join("note.md"), "alpha alpha alpha\n").unwrap();
+
+    let result = workspace_search_sync(WorkspaceSearchRequest {
+        root_path: root.path().to_string_lossy().into_owned(),
+        query: "alpha".to_string(),
+        case_sensitive: true,
+        max_file_bytes: 2_097_152,
+        max_results: 1,
+        max_matches_per_file: 20,
+        dirty_overrides: vec![],
+        request_id: "req-9".to_string(),
+    })
+    .unwrap();
+
+    assert_eq!(result.results.len(), 1);
+    assert_eq!(result.results[0].column_start, 0);
+    assert_eq!(result.results[0].column_end, 5);
+    assert!(result.truncated);
+}
+
+#[test]
 fn skips_stale_candidate_files_that_disappear_after_scan() {
     let root = tempdir().unwrap();
     let stale = root.path().join("stale.md");
@@ -231,11 +254,48 @@ fn skips_stale_candidate_files_that_disappear_after_scan() {
             max_results: 20,
             max_matches_per_file: 20,
             dirty_overrides: vec![],
-            request_id: "req-9".to_string(),
+            request_id: "req-10".to_string(),
         },
         |candidates| {
             assert!(candidates.contains(&stale));
             std::fs::remove_file(&stale).unwrap();
+            Ok(())
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.skipped_unreadable_files, 1);
+    assert_eq!(result.results.len(), 1);
+    assert!(result.results[0].path.ends_with("kept.md"));
+}
+
+#[cfg(unix)]
+#[test]
+fn skips_candidate_files_with_other_metadata_errors() {
+    use std::os::unix::fs::symlink;
+
+    let root = tempdir().unwrap();
+    let stale = root.path().join("loop.md");
+    let kept = root.path().join("kept.md");
+    std::fs::write(&stale, "alpha stale\n").unwrap();
+    std::fs::write(&kept, "alpha kept\n").unwrap();
+    let stale = stale.canonicalize().unwrap();
+
+    let result = workspace_search_sync_after_scan(
+        WorkspaceSearchRequest {
+            root_path: root.path().to_string_lossy().into_owned(),
+            query: "alpha".to_string(),
+            case_sensitive: false,
+            max_file_bytes: 2_097_152,
+            max_results: 20,
+            max_matches_per_file: 20,
+            dirty_overrides: vec![],
+            request_id: "req-11".to_string(),
+        },
+        |candidates| {
+            assert!(candidates.contains(&stale));
+            std::fs::remove_file(&stale).unwrap();
+            symlink(&stale, &stale).unwrap();
             Ok(())
         },
     )

@@ -400,16 +400,9 @@ fn search_disk_file(
 ) -> Result<(), WorkspaceError> {
     let metadata = match fs::metadata(path) {
         Ok(metadata) => metadata,
-        Err(error) => {
-            if is_skippable_file_io_error(&error) {
-                accumulator.result.skipped_unreadable_files += 1;
-                return Ok(());
-            }
-            return Err(WorkspaceError::from_io(
-                "path_failed",
-                "failed to inspect workspace search file",
-                &error,
-            ));
+        Err(_) => {
+            accumulator.result.skipped_unreadable_files += 1;
+            return Ok(());
         }
     };
 
@@ -424,16 +417,9 @@ fn search_disk_file(
 
     let bytes = match fs::read(path) {
         Ok(bytes) => bytes,
-        Err(error) if is_skippable_file_io_error(&error) => {
+        Err(_) => {
             accumulator.result.skipped_unreadable_files += 1;
             return Ok(());
-        }
-        Err(error) => {
-            return Err(WorkspaceError::from_io(
-                "search_failed",
-                "failed to read workspace search file",
-                &error,
-            ));
         }
     };
 
@@ -446,13 +432,6 @@ fn search_disk_file(
     };
     accumulator.search_content(path, &markdown, false)?;
     Ok(())
-}
-
-fn is_skippable_file_io_error(error: &std::io::Error) -> bool {
-    matches!(
-        error.kind(),
-        std::io::ErrorKind::NotFound | std::io::ErrorKind::PermissionDenied
-    )
 }
 
 struct SearchAccumulator {
@@ -489,9 +468,8 @@ impl SearchAccumulator {
                 break;
             }
 
-            for span in self.matcher.find_matches(line) {
-                check_cancelled(&self.cancel_token)?;
-
+            let mut matches = self.matcher.matches(line);
+            while let Some(span) = matches.next_match(&self.cancel_token)? {
                 if matches_in_file >= self.max_matches_per_file {
                     break 'lines;
                 }
@@ -544,75 +522,102 @@ impl QueryMatcher {
         }
     }
 
-    fn find_matches(&self, line: &str) -> Vec<MatchSpan> {
+    fn matches<'a>(&'a self, line: &'a str) -> MatchCursor<'a> {
+        MatchCursor {
+            matcher: self,
+            line,
+            next_byte: 0,
+            next_utf16: 0,
+        }
+    }
+
+    fn match_at(
+        &self,
+        line: &str,
+        start_byte: usize,
+        start_utf16: usize,
+        cancel_token: &AtomicBool,
+    ) -> Result<Option<MatchAtResult>, WorkspaceError> {
         let needle = if self.case_sensitive {
             self.query.as_str()
         } else {
             self.query_lower.as_str()
         };
-        let chars = indexed_match_chars(line, self.case_sensitive);
-        let mut matches = Vec::new();
-        let mut start = 0;
 
-        while start < chars.len() {
-            let mut candidate = String::new();
-            let mut matched_end = None;
+        let mut candidate = String::new();
+        let mut utf16_end = start_utf16;
+        let mut byte_end = start_byte;
 
-            for (end, indexed) in chars.iter().enumerate().skip(start) {
-                candidate.push_str(&indexed.search_text);
+        for character in line[start_byte..].chars() {
+            check_cancelled(cancel_token)?;
 
-                if candidate == needle {
-                    matched_end = Some(end);
-                    break;
-                }
-
-                if !needle.starts_with(&candidate) {
-                    break;
-                }
+            byte_end += character.len_utf8();
+            utf16_end += character.len_utf16();
+            if self.case_sensitive {
+                candidate.push(character);
+            } else {
+                candidate.extend(character.to_lowercase());
             }
 
-            if let Some(end) = matched_end {
-                matches.push(MatchSpan {
-                    column_start: chars[start].utf16_start,
-                    column_end: chars[end].utf16_end,
-                });
-                start = end + 1;
-            } else {
-                start += 1;
+            if candidate == needle {
+                return Ok(Some(MatchAtResult {
+                    span: MatchSpan {
+                        column_start: start_utf16,
+                        column_end: utf16_end,
+                    },
+                    byte_end,
+                    utf16_end,
+                }));
+            }
+
+            if !needle.starts_with(&candidate) {
+                return Ok(None);
             }
         }
 
-        matches
+        Ok(None)
     }
 }
 
-struct IndexedMatchChar {
-    search_text: String,
-    utf16_start: usize,
+struct MatchAtResult {
+    span: MatchSpan,
+    byte_end: usize,
     utf16_end: usize,
 }
 
-fn indexed_match_chars(line: &str, case_sensitive: bool) -> Vec<IndexedMatchChar> {
-    let mut chars = Vec::new();
-    let mut utf16_offset = 0;
+struct MatchCursor<'a> {
+    matcher: &'a QueryMatcher,
+    line: &'a str,
+    next_byte: usize,
+    next_utf16: usize,
+}
 
-    for character in line.chars() {
-        let utf16_start = utf16_offset;
-        utf16_offset += character.len_utf16();
-        let search_text = if case_sensitive {
-            character.to_string()
-        } else {
-            character.to_lowercase().collect()
-        };
+impl MatchCursor<'_> {
+    fn next_match(
+        &mut self,
+        cancel_token: &AtomicBool,
+    ) -> Result<Option<MatchSpan>, WorkspaceError> {
+        while self.next_byte < self.line.len() {
+            check_cancelled(cancel_token)?;
 
-        chars.push(IndexedMatchChar {
-            search_text,
-            utf16_start,
-            utf16_end: utf16_offset,
-        });
+            if let Some(result) =
+                self.matcher
+                    .match_at(self.line, self.next_byte, self.next_utf16, cancel_token)?
+            {
+                self.next_byte = result.byte_end;
+                self.next_utf16 = result.utf16_end;
+                return Ok(Some(result.span));
+            }
+
+            let Some(character) = self.line[self.next_byte..].chars().next() else {
+                break;
+            };
+            self.next_byte += character.len_utf8();
+            self.next_utf16 += character.len_utf16();
+        }
+
+        Ok(None)
     }
-
-    chars
 }
 
 fn check_cancelled(cancel_token: &AtomicBool) -> Result<(), WorkspaceError> {
