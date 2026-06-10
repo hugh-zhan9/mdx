@@ -124,12 +124,29 @@ pub fn workspace_search_sync(
     request: WorkspaceSearchRequest,
 ) -> Result<WorkspaceSearchResult, WorkspaceError> {
     let cancel_token = Arc::new(AtomicBool::new(false));
-    workspace_search_with_cancel(request, cancel_token)
+    workspace_search_with_cancel_and_after_scan(request, cancel_token, |_| Ok(()))
+}
+
+#[cfg(test)]
+pub(crate) fn workspace_search_sync_after_scan(
+    request: WorkspaceSearchRequest,
+    after_scan: impl FnOnce(&BTreeSet<PathBuf>) -> Result<(), WorkspaceError>,
+) -> Result<WorkspaceSearchResult, WorkspaceError> {
+    let cancel_token = Arc::new(AtomicBool::new(false));
+    workspace_search_with_cancel_and_after_scan(request, cancel_token, after_scan)
 }
 
 fn workspace_search_with_cancel(
     request: WorkspaceSearchRequest,
     cancel_token: Arc<AtomicBool>,
+) -> Result<WorkspaceSearchResult, WorkspaceError> {
+    workspace_search_with_cancel_and_after_scan(request, cancel_token, |_| Ok(()))
+}
+
+fn workspace_search_with_cancel_and_after_scan(
+    request: WorkspaceSearchRequest,
+    cancel_token: Arc<AtomicBool>,
+    after_scan: impl FnOnce(&BTreeSet<PathBuf>) -> Result<(), WorkspaceError>,
 ) -> Result<WorkspaceSearchResult, WorkspaceError> {
     let root = canonicalize_workspace_root(&request.root_path)?;
     let query = request.query.trim().to_string();
@@ -165,6 +182,7 @@ fn workspace_search_with_cancel(
         &cancel_token,
     )?;
     candidates.extend(dirty_overrides.keys().cloned());
+    after_scan(&candidates)?;
 
     let matcher = QueryMatcher::new(query, request.case_sensitive);
     let mut accumulator = SearchAccumulator {
@@ -383,7 +401,7 @@ fn search_disk_file(
     let metadata = match fs::metadata(path) {
         Ok(metadata) => metadata,
         Err(error) => {
-            if error.kind() == std::io::ErrorKind::PermissionDenied {
+            if is_skippable_file_io_error(&error) {
                 accumulator.result.skipped_unreadable_files += 1;
                 return Ok(());
             }
@@ -406,7 +424,7 @@ fn search_disk_file(
 
     let bytes = match fs::read(path) {
         Ok(bytes) => bytes,
-        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+        Err(error) if is_skippable_file_io_error(&error) => {
             accumulator.result.skipped_unreadable_files += 1;
             return Ok(());
         }
@@ -428,6 +446,13 @@ fn search_disk_file(
     };
     accumulator.search_content(path, &markdown, false)?;
     Ok(())
+}
+
+fn is_skippable_file_io_error(error: &std::io::Error) -> bool {
+    matches!(
+        error.kind(),
+        std::io::ErrorKind::NotFound | std::io::ErrorKind::PermissionDenied
+    )
 }
 
 struct SearchAccumulator {
@@ -457,40 +482,50 @@ impl SearchAccumulator {
         let lines = content.lines().collect::<Vec<_>>();
         let mut matches_in_file = 0;
 
-        for (index, line) in lines.iter().enumerate() {
+        'lines: for (index, line) in lines.iter().enumerate() {
             check_cancelled(&self.cancel_token)?;
 
             if matches_in_file >= self.max_matches_per_file {
                 break;
             }
 
-            let Some((column_start, column_end)) = self.matcher.find(line) else {
-                continue;
-            };
+            for span in self.matcher.find_matches(line) {
+                check_cancelled(&self.cancel_token)?;
 
-            self.result.results.push(SearchResultItem {
-                path: path_to_string(path),
-                line_number: index + 1,
-                column_start,
-                column_end,
-                line: (*line).to_string(),
-                before: index
-                    .checked_sub(1)
-                    .and_then(|previous| lines.get(previous))
-                    .map(|line| (*line).to_string()),
-                after: lines.get(index + 1).map(|line| (*line).to_string()),
-                dirty,
-            });
-            matches_in_file += 1;
+                if matches_in_file >= self.max_matches_per_file {
+                    break 'lines;
+                }
 
-            if self.result.results.len() >= self.max_results {
-                self.result.truncated = true;
-                break;
+                self.result.results.push(SearchResultItem {
+                    path: path_to_string(path),
+                    line_number: index + 1,
+                    column_start: span.column_start,
+                    column_end: span.column_end,
+                    line: (*line).to_string(),
+                    before: index
+                        .checked_sub(1)
+                        .and_then(|previous| lines.get(previous))
+                        .map(|line| (*line).to_string()),
+                    after: lines.get(index + 1).map(|line| (*line).to_string()),
+                    dirty,
+                });
+                matches_in_file += 1;
+
+                if self.result.results.len() >= self.max_results {
+                    self.result.truncated = true;
+                    break 'lines;
+                }
             }
         }
 
         Ok(())
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct MatchSpan {
+    column_start: usize,
+    column_end: usize,
 }
 
 struct QueryMatcher {
@@ -509,16 +544,75 @@ impl QueryMatcher {
         }
     }
 
-    fn find(&self, line: &str) -> Option<(usize, usize)> {
-        if self.case_sensitive {
-            let start = line.find(&self.query)?;
-            return Some((start, start + self.query.len()));
+    fn find_matches(&self, line: &str) -> Vec<MatchSpan> {
+        let needle = if self.case_sensitive {
+            self.query.as_str()
+        } else {
+            self.query_lower.as_str()
+        };
+        let chars = indexed_match_chars(line, self.case_sensitive);
+        let mut matches = Vec::new();
+        let mut start = 0;
+
+        while start < chars.len() {
+            let mut candidate = String::new();
+            let mut matched_end = None;
+
+            for (end, indexed) in chars.iter().enumerate().skip(start) {
+                candidate.push_str(&indexed.search_text);
+
+                if candidate == needle {
+                    matched_end = Some(end);
+                    break;
+                }
+
+                if !needle.starts_with(&candidate) {
+                    break;
+                }
+            }
+
+            if let Some(end) = matched_end {
+                matches.push(MatchSpan {
+                    column_start: chars[start].utf16_start,
+                    column_end: chars[end].utf16_end,
+                });
+                start = end + 1;
+            } else {
+                start += 1;
+            }
         }
 
-        let line_lower = line.to_lowercase();
-        let start = line_lower.find(&self.query_lower)?;
-        Some((start, start + self.query_lower.len()))
+        matches
     }
+}
+
+struct IndexedMatchChar {
+    search_text: String,
+    utf16_start: usize,
+    utf16_end: usize,
+}
+
+fn indexed_match_chars(line: &str, case_sensitive: bool) -> Vec<IndexedMatchChar> {
+    let mut chars = Vec::new();
+    let mut utf16_offset = 0;
+
+    for character in line.chars() {
+        let utf16_start = utf16_offset;
+        utf16_offset += character.len_utf16();
+        let search_text = if case_sensitive {
+            character.to_string()
+        } else {
+            character.to_lowercase().collect()
+        };
+
+        chars.push(IndexedMatchChar {
+            search_text,
+            utf16_start,
+            utf16_end: utf16_offset,
+        });
+    }
+
+    chars
 }
 
 fn check_cancelled(cancel_token: &AtomicBool) -> Result<(), WorkspaceError> {
