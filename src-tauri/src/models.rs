@@ -97,6 +97,36 @@ pub struct WatchStopResult {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct WorkspaceSearchResult {
+    pub request_id: String,
+    pub results: Vec<SearchResultItem>,
+    pub skipped_large_files: usize,
+    pub skipped_unreadable_files: usize,
+    pub truncated: bool,
+    pub searched_files: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchResultItem {
+    pub path: String,
+    pub line_number: usize,
+    pub column_start: usize,
+    pub column_end: usize,
+    pub line: String,
+    pub before: Option<String>,
+    pub after: Option<String>,
+    pub dirty: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceSearchCancelResult {
+    pub cancelled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct FileWatchEventPayload {
     pub watch_id: String,
     pub root_path: Option<String>,

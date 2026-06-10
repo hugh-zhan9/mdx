@@ -34,6 +34,7 @@ mod path_guard;
 mod state_store;
 mod window_sessions;
 mod workspace_fs;
+mod workspace_search;
 
 #[cfg(test)]
 mod assets_tests;
@@ -53,6 +54,8 @@ mod state_store_tests;
 mod window_sessions_tests;
 #[cfg(test)]
 mod workspace_fs_tests;
+#[cfg(test)]
+mod workspace_search_tests;
 
 static WIN_ID: AtomicU32 = AtomicU32::new(0);
 
@@ -428,6 +431,7 @@ pub fn run() {
             app.handle().plugin(tauri_plugin_dialog::init())?;
             app.manage(cli_server::CliState::default());
             app.manage(Mutex::new(file_watch::FileWatchState::default()));
+            app.manage(Mutex::new(workspace_search::WorkspaceSearchState::default()));
             app.manage(Mutex::new(WindowSessionRegistry::default()));
             app.manage(Mutex::new(DirtyWorkspacePaths::default()));
             let mut startup_routing = StartupOpenRoutingState::default();
@@ -560,6 +564,8 @@ pub fn run() {
             llm_wiki::llm_config_get,
             llm_wiki::llm_config_set,
             llm_wiki::llm_config_update,
+            workspace_search::workspace_search,
+            workspace_search::workspace_search_cancel,
             workspace_fs::scan_workspace,
             workspace_fs::read_markdown_file,
             workspace_fs::read_preview_text_file,
