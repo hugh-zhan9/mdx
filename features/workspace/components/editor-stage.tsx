@@ -134,6 +134,8 @@ export function EditorStage({
   const activeLoadError =
     loadError?.tabId === activeTab.tabId ? loadError.text : null;
   const activeTabKind = getTabKind(activeTab.path);
+  const activePendingCliCommand =
+    pendingCliCommand?.tabId === activeTab.tabId ? pendingCliCommand : null;
 
   return (
     <section className="flex min-h-0 flex-1 flex-col bg-base-100">
@@ -187,7 +189,7 @@ export function EditorStage({
             tab={activeTab}
             onMarkdownChange={handleMarkdownChange}
             editorViewportRef={editorViewportRef}
-            pendingCliCommand={pendingCliCommand}
+            pendingCliCommand={activePendingCliCommand}
             onPendingCliCommandHandled={onPendingCliCommandHandled}
             onOpenWikilink={onOpenWikilink}
             onSelectionChange={onSelectionChange}

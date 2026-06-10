@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ensureWorkspaceSearchState } from "./workspace-search";
 import { createWorkspaceState, workspaceReducer } from "./workspace-reducer";
 
 describe("workspaceReducer", () => {
@@ -122,7 +123,7 @@ describe("workspaceReducer", () => {
         expect(reopened.activeTabId).toBe("tab-1");
     });
 
-    it("updates panel and search state", () => {
+    it("updates panel, tree filter, and full-text search state", () => {
         const initialState = createWorkspaceState("/tmp/ws");
         const resized = workspaceReducer(initialState, {
             type: "panel/resized",
@@ -134,13 +135,95 @@ describe("workspaceReducer", () => {
             side: "right",
             collapsed: true,
         });
-        const searched = workspaceReducer(collapsed, {
-            type: "search/queryChanged",
+        const filtered = workspaceReducer(collapsed, {
+            type: "treeFilter/queryChanged",
             query: "idea",
         });
-        expect(searched.panel.leftWidth).toBe(320);
-        expect(searched.panel.rightCollapsed).toBe(true);
-        expect(searched.search.query).toBe("idea");
+        const searched = workspaceReducer(filtered, {
+            type: "search/queryChanged",
+            query: "body",
+        });
+        const toggled = workspaceReducer(searched, {
+            type: "search/caseSensitivityToggled",
+        });
+        const completed = workspaceReducer(toggled, {
+            type: "search/requestCompleted",
+            requestId: "req-1",
+            results: [
+                {
+                    path: "/tmp/ws/Drafts/Idea.md",
+                    lineNumber: 3,
+                    columnStart: 0,
+                    columnEnd: 4,
+                    line: "body",
+                    before: null,
+                    after: null,
+                    dirty: false,
+                },
+            ],
+            summary: {
+                skippedLargeFiles: 1,
+                skippedUnreadableFiles: 0,
+                truncated: false,
+                searchedFiles: 4,
+            },
+        });
+        const completedSearch = ensureWorkspaceSearchState(completed.search);
+        expect(completed.panel.leftWidth).toBe(320);
+        expect(completed.panel.rightCollapsed).toBe(true);
+        expect(completed.treeFilterQuery).toBe("idea");
+        expect(completedSearch.query).toBe("body");
+        expect(completedSearch.caseSensitive).toBe(true);
+        expect(completedSearch.status).toBe("complete");
+        expect(completedSearch.requestId).toBe("req-1");
+        expect(completedSearch.results).toHaveLength(1);
+        expect(completedSearch.summary.searchedFiles).toBe(4);
+    });
+
+    it("resets full-text search results when the query is cleared", () => {
+        const initialState = createWorkspaceState("/tmp/ws");
+        const searched = workspaceReducer(initialState, {
+            type: "search/queryChanged",
+            query: "body",
+        });
+        const completed = workspaceReducer(
+            workspaceReducer(searched, {
+                type: "search/requestStarted",
+                requestId: "req-1",
+            }),
+            {
+                type: "search/requestCompleted",
+                requestId: "req-1",
+                results: [
+                    {
+                        path: "/tmp/ws/Drafts/Idea.md",
+                        lineNumber: 3,
+                        columnStart: 0,
+                        columnEnd: 4,
+                        line: "body",
+                        before: null,
+                        after: null,
+                        dirty: false,
+                    },
+                ],
+                summary: {
+                    skippedLargeFiles: 0,
+                    skippedUnreadableFiles: 0,
+                    truncated: false,
+                    searchedFiles: 1,
+                },
+            },
+        );
+        const cleared = workspaceReducer(completed, {
+            type: "search/queryChanged",
+            query: "   ",
+        });
+        const clearedSearch = ensureWorkspaceSearchState(cleared.search);
+
+        expect(clearedSearch.status).toBe("idle");
+        expect(clearedSearch.requestId).toBeNull();
+        expect(clearedSearch.results).toEqual([]);
+        expect(clearedSearch.summary.searchedFiles).toBe(0);
     });
 
     it("replaces a reused tab id atomically", () => {

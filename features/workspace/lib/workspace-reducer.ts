@@ -2,6 +2,12 @@ import {
     isPathInsideRoot,
     normalizeWorkspacePath,
 } from "./path";
+import {
+    createEmptySearchSummary,
+    createEmptyWorkspaceSearchState,
+    ensureWorkspaceSearchState,
+    normalizeSearchQuery,
+} from "./workspace-search";
 import type {
     AffectedPrefix,
     FileTreeNode,
@@ -31,9 +37,8 @@ export function createWorkspaceState(
         tabOrder: [],
         activeTabId: null,
         panel: { ...DEFAULT_PANEL_STATE },
-        search: {
-            query: "",
-        },
+        treeFilterQuery: "",
+        search: createEmptyWorkspaceSearchState(),
     };
 }
 
@@ -80,16 +85,73 @@ export function workspaceReducer(
             return resizePanel(state, action.side, action.width);
         case "panel/collapsedChanged":
             return collapsePanel(state, action.side, action.collapsed);
-        case "search/queryChanged":
+        case "treeFilter/queryChanged":
             return {
                 ...state,
-                search: {
-                    query: action.query,
-                },
+                treeFilterQuery: action.query,
             };
+        case "search/queryChanged":
+            return updateSearchState(state, {
+                query: action.query,
+                requestId: null,
+                error: null,
+                status:
+                    normalizeSearchQuery(action.query).length > 0
+                        ? "typing"
+                        : "idle",
+                results: [],
+                summary: createEmptySearchSummary(),
+            });
+        case "search/caseSensitivityToggled":
+            return updateSearchState(state, {
+                caseSensitive: !state.search.caseSensitive,
+                requestId: null,
+                error: null,
+                status:
+                    normalizeSearchQuery(state.search.query).length > 0
+                        ? "typing"
+                        : "idle",
+                results: [],
+                summary: createEmptySearchSummary(),
+            });
+        case "search/requestStarted":
+            return updateSearchState(state, {
+                status: "searching",
+                requestId: action.requestId,
+                error: null,
+            });
+        case "search/requestCompleted":
+            return updateSearchState(state, {
+                status: "complete",
+                requestId: action.requestId,
+                results: action.results,
+                summary: action.summary,
+                error: null,
+            });
+        case "search/requestFailed":
+            return updateSearchState(state, {
+                status: "error",
+                requestId: action.requestId,
+                results: [],
+                summary: createEmptySearchSummary(),
+                error: action.error,
+            });
         default:
             return state;
     }
+}
+
+function updateSearchState(
+    state: WorkspaceState,
+    patch: Partial<WorkspaceState["search"]>,
+): WorkspaceState {
+    return {
+        ...state,
+        search: {
+            ...ensureWorkspaceSearchState(state.search),
+            ...patch,
+        },
+    };
 }
 
 function openTab(state: WorkspaceState, tab: WorkspaceTab): WorkspaceState {

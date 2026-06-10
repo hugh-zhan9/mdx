@@ -79,9 +79,10 @@ export interface CliEditorSnapshot {
 
 export interface PendingCliEditorCommand {
     id: string;
-    kind: "focus" | "insert";
+    kind: "focus" | "insert" | "scrollToLine";
     tabId: string;
     text?: string;
+    lineNumber?: number;
 }
 
 export interface CliOpenFileEvent {
@@ -154,8 +155,62 @@ export interface WorkspaceMenuActions extends WorkspaceFileTreeActions {
     closeActiveTab: () => Promise<void>;
 }
 
+export type WorkspaceSearchStatus =
+    | "idle"
+    | "typing"
+    | "searching"
+    | "complete"
+    | "error";
+
+export interface WorkspaceSearchResultItem {
+    path: string;
+    lineNumber: number;
+    columnStart: number;
+    columnEnd: number;
+    line: string;
+    before?: string | null;
+    after?: string | null;
+    dirty: boolean;
+}
+
+export interface WorkspaceSearchSummary {
+    skippedLargeFiles: number;
+    skippedUnreadableFiles: number;
+    truncated: boolean;
+    searchedFiles: number;
+}
+
+export interface WorkspaceSearchResponse {
+    requestId: string;
+    results: WorkspaceSearchResultItem[];
+    skippedLargeFiles: number;
+    skippedUnreadableFiles: number;
+    truncated: boolean;
+    searchedFiles: number;
+}
+
+export interface DirtySearchOverride {
+    path: string;
+    markdown: string;
+}
+
 export interface WorkspaceSearchState {
     query: string;
+    caseSensitive?: boolean;
+    status?: WorkspaceSearchStatus;
+    requestId?: string | null;
+    results?: WorkspaceSearchResultItem[];
+    summary?: WorkspaceSearchSummary;
+    error?: string | null;
+}
+
+export interface WorkspaceFullTextSearchState extends WorkspaceSearchState {
+    caseSensitive: boolean;
+    status: WorkspaceSearchStatus;
+    requestId: string | null;
+    results: WorkspaceSearchResultItem[];
+    summary: WorkspaceSearchSummary;
+    error: string | null;
 }
 
 export interface WorkspaceState {
@@ -165,6 +220,7 @@ export interface WorkspaceState {
     tabOrder: string[];
     activeTabId: string | null;
     panel: WorkspacePanelState;
+    treeFilterQuery?: string;
     search: WorkspaceSearchState;
 }
 
@@ -278,6 +334,28 @@ export type WorkspaceAction =
           collapsed: boolean;
       }
     | {
+          type: "treeFilter/queryChanged";
+          query: string;
+      }
+    | {
           type: "search/queryChanged";
           query: string;
+      }
+    | {
+          type: "search/caseSensitivityToggled";
+      }
+    | {
+          type: "search/requestStarted";
+          requestId: string;
+      }
+    | {
+          type: "search/requestCompleted";
+          requestId: string;
+          results: WorkspaceSearchResultItem[];
+          summary: WorkspaceSearchSummary;
+      }
+    | {
+          type: "search/requestFailed";
+          requestId: string;
+          error: string;
       };

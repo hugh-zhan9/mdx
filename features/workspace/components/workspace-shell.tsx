@@ -37,6 +37,12 @@ import { parseMarkdownOutline } from "../lib/outline";
 import { calculateWorkspacePanelLayout } from "../lib/panel-layout";
 import { isMarkdownFilePath, normalizeWorkspacePath } from "../lib/path";
 import { scrollRenderedHeadingIntoView } from "../lib/outline-scroll";
+import {
+  collectDirtySearchOverrides,
+  ensureWorkspaceSearchState,
+  normalizeSearchQuery,
+  shouldAcceptSearchResponse,
+} from "../lib/workspace-search";
 import { createTabSaveQueue, dirname } from "../lib/workspace-save";
 import { dirtyWorkspacePaths } from "../lib/dirty-paths";
 import { workspaceReducer } from "../lib/workspace-reducer";
@@ -58,6 +64,8 @@ import type {
   WorkspaceFileTreeActions,
   WorkspaceMenuActions,
   WorkspaceAction,
+  WorkspaceSearchResponse,
+  WorkspaceSearchResultItem,
   WorkspaceState,
   WorkspaceTab,
 } from "../lib/types";
@@ -148,6 +156,9 @@ export function WorkspaceShell({
     useState<WorkspaceFileTreeActions | null>(null);
   const [pendingCliCommand, setPendingCliCommand] =
     useState<PendingCliEditorCommand | null>(null);
+  const [leftPanelMode, setLeftPanelMode] = useState<"tree" | "search">(
+    "tree",
+  );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState<"outline" | "llmWiki">(
     "outline",
@@ -170,6 +181,7 @@ export function WorkspaceShell({
   const externalConflictRef = useRef<ExternalWorkspaceConflict | null>(null);
   const externalDeletedPromptRef = useRef<ExternalDeletedPrompt | null>(null);
   const externalPathVersionsRef = useRef<Record<string, number>>({});
+  const activeSearchRequestIdRef = useRef<string | null>(null);
   const [orphanDrafts, setOrphanDrafts] = useState<DraftSummary[]>([]);
   const [postponedOrphanDraftIds, setPostponedOrphanDraftIds] = useState<
     Set<string>
@@ -178,6 +190,8 @@ export function WorkspaceShell({
     canAutoProcess: initialEditorLoadSettled,
   });
   const handleRawFileSavedRef = useRef(llmWiki.handleRawFileSaved);
+  const treeFilterQuery = workspace.treeFilterQuery ?? "";
+  const fullTextSearchState = ensureWorkspaceSearchState(workspace.search);
   const tabs = workspace.tabOrder
     .map((tabId) => workspace.tabs[tabId])
     .filter((tab): tab is WorkspaceTab => Boolean(tab));
@@ -566,6 +580,30 @@ export function WorkspaceShell({
     });
   }, []);
 
+  const cancelWorkspaceSearchRequest = useCallback(
+    async (requestId: string | null) => {
+      if (!requestId || !isTauriRuntime()) {
+        return;
+      }
+
+      try {
+        const { invoke } = await tauriCore();
+        await invoke("workspace_search_cancel", {
+          requestId,
+        });
+      } catch (error) {
+        if (!isSearchRequestNotFoundError(error)) {
+          console.warn("Failed to cancel workspace search request.", error);
+        }
+      } finally {
+        if (activeSearchRequestIdRef.current === requestId) {
+          activeSearchRequestIdRef.current = null;
+        }
+      }
+    },
+    [],
+  );
+
   const clearSelfWriteMarker = useCallback(() => {
     selfWriteMarkerRef.current = null;
 
@@ -918,10 +956,107 @@ export function WorkspaceShell({
   });
 
   useEffect(() => {
+    const normalizedQuery = normalizeSearchQuery(fullTextSearchState.query);
+    const previousRequestId = activeSearchRequestIdRef.current;
+    activeSearchRequestIdRef.current = null;
+
+    if (!isTauriRuntime()) {
+      return;
+    }
+
+    if (previousRequestId) {
+      void cancelWorkspaceSearchRequest(previousRequestId);
+    }
+
+    if (normalizedQuery.length === 0) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      const requestId = nanoid(8);
+      activeSearchRequestIdRef.current = requestId;
+      dispatchAndMirror({
+        type: "search/requestStarted",
+        requestId,
+      });
+
+      void (async () => {
+        try {
+          const { invoke } = await tauriCore();
+          const response = await invoke<WorkspaceSearchResponse>(
+            "workspace_search",
+            {
+              request: {
+                rootPath: workspace.rootPath,
+                query: normalizedQuery,
+                caseSensitive: fullTextSearchState.caseSensitive,
+                maxFileBytes: preferences.searchMaxFileBytes,
+                maxResults: preferences.searchMaxResults,
+                maxMatchesPerFile: preferences.searchMaxMatchesPerFile,
+                dirtyOverrides: collectDirtySearchOverrides(
+                  workspaceRef.current,
+                ),
+                requestId,
+              },
+            },
+          );
+
+          if (
+            !shouldAcceptSearchResponse(
+              activeSearchRequestIdRef.current,
+              response,
+            )
+          ) {
+            return;
+          }
+
+          activeSearchRequestIdRef.current = null;
+          dispatchAndMirror({
+            type: "search/requestCompleted",
+            requestId: response.requestId,
+            results: response.results,
+            summary: {
+              skippedLargeFiles: response.skippedLargeFiles,
+              skippedUnreadableFiles: response.skippedUnreadableFiles,
+              truncated: response.truncated,
+              searchedFiles: response.searchedFiles,
+            },
+          });
+        } catch (error) {
+          if (activeSearchRequestIdRef.current !== requestId) {
+            return;
+          }
+
+          activeSearchRequestIdRef.current = null;
+          dispatchAndMirror({
+            type: "search/requestFailed",
+            requestId,
+            error: formatError(error, "工作区搜索失败。"),
+          });
+        }
+      })();
+    }, 300);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    cancelWorkspaceSearchRequest,
+    dispatchAndMirror,
+    preferences.searchMaxFileBytes,
+    preferences.searchMaxMatchesPerFile,
+    preferences.searchMaxResults,
+    fullTextSearchState.caseSensitive,
+    fullTextSearchState.query,
+    workspace.rootPath,
+  ]);
+
+  useEffect(() => {
     return () => {
       clearSelfWriteMarker();
+      void cancelWorkspaceSearchRequest(activeSearchRequestIdRef.current);
     };
-  }, [clearSelfWriteMarker]);
+  }, [cancelWorkspaceSearchRequest, clearSelfWriteMarker]);
 
   const leftPanel = usePanelResize({
     side: "left",
@@ -1582,6 +1717,46 @@ export function WorkspaceShell({
     },
     [],
   );
+  const openWorkspacePathTab = useCallback(
+    (path: string) => {
+      const currentWorkspace = workspaceRef.current;
+      const existingTabId = findTabIdByPath(currentWorkspace, path);
+
+      if (existingTabId) {
+        dispatchAndMirror({
+          type: "tab/activated",
+          tabId: existingTabId,
+        });
+        return existingTabId;
+      }
+
+      const tabId = nanoid(8);
+      dispatchAndMirror({
+        type: "tab/opened",
+        tab: {
+          tabId,
+          path,
+          title: pathTitle(path),
+          dirty: false,
+          needsRenameOnFirstSave: false,
+        },
+      });
+      return tabId;
+    },
+    [dispatchAndMirror],
+  );
+  const handleWorkspaceSearchResultClick = useCallback(
+    (result: WorkspaceSearchResultItem) => {
+      const tabId = openWorkspacePathTab(result.path);
+      queuePendingCliCommand({
+        id: nanoid(8),
+        kind: "scrollToLine",
+        tabId,
+        lineNumber: result.lineNumber,
+      });
+    },
+    [openWorkspacePathTab, queuePendingCliCommand],
+  );
   const openWikilink = useCallback(
     (target: string, sourcePath: string) => {
       const currentWorkspace = workspaceRef.current;
@@ -1597,30 +1772,9 @@ export function WorkspaceShell({
         return;
       }
 
-      const existingTab = currentWorkspace.tabOrder
-        .map((tabId) => currentWorkspace.tabs[tabId])
-        .find((tab) => tab?.path === resolvedPath);
-
-      if (existingTab) {
-        dispatchAndMirror({
-          type: "tab/activated",
-          tabId: existingTab.tabId,
-        });
-        return;
-      }
-
-      dispatchAndMirror({
-        type: "tab/opened",
-        tab: {
-          tabId: nanoid(8),
-          path: resolvedPath,
-          title: resolvedPath.split("/").pop() ?? resolvedPath,
-          dirty: false,
-          needsRenameOnFirstSave: false,
-        },
-      });
+      openWorkspacePathTab(resolvedPath);
     },
-    [dispatchAndMirror],
+    [openWorkspacePathTab],
   );
 
   useEffect(() => {
@@ -1784,12 +1938,27 @@ export function WorkspaceShell({
           <FileTreePanel
             rootPath={workspace.rootPath}
             fileTree={workspace.fileTree}
-            searchQuery={workspace.search.query}
+            treeFilterQuery={treeFilterQuery}
+            mode={leftPanelMode}
+            searchState={fullTextSearchState}
             collapsed={leftPanel.isCollapsed}
             dispatch={dispatchAndMirror}
             preferences={preferences}
             activeTabPath={activeTab?.path ?? null}
             onActionsChange={setFileTreeActions}
+            onModeChange={setLeftPanelMode}
+            onSearchQueryChange={(query) =>
+              dispatchAndMirror({
+                type: "search/queryChanged",
+                query,
+              })
+            }
+            onSearchCaseSensitiveToggle={() =>
+              dispatchAndMirror({
+                type: "search/caseSensitivityToggled",
+              })
+            }
+            onSearchResultClick={handleWorkspaceSearchResultClick}
             resizeHandleProps={leftPanel.resizeHandleProps}
           />
         </div>
@@ -2277,6 +2446,28 @@ function formatError(error: unknown, fallback: string) {
   }
 
   return fallback;
+}
+
+function isSearchRequestNotFoundError(error: unknown) {
+  if (
+    error &&
+    typeof error === "object" &&
+    "errorCode" in error &&
+    error.errorCode === "search_request_not_found"
+  ) {
+    return true;
+  }
+
+  if (
+    error &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof error.message === "string"
+  ) {
+    return error.message.includes("search_request_not_found");
+  }
+
+  return false;
 }
 
 async function handleCliOpenFile(

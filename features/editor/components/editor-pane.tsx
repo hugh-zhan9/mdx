@@ -23,6 +23,7 @@ import {
     resolveScopedSelectAllTarget,
     selectElementContents,
 } from "../lib/keyboard-selection-scope";
+import { scrollMarkdownLineIntoView } from "../lib/markdown-line-scroll";
 import { wikilinkTargetFromEditorHref } from "../lib/wikilink-markdown";
 
 interface EditorPaneProps {
@@ -386,8 +387,21 @@ function EditorPaneInner({
             insertText(pendingCliCommand.text);
         }
 
+        if (
+            pendingCliCommand.kind === "scrollToLine" &&
+            pendingCliCommand.lineNumber !== undefined
+        ) {
+            scrollMarkdownLineIntoView(
+                editorViewportRef?.current ?? null,
+                bridge.currentMarkdown,
+                pendingCliCommand.lineNumber,
+            );
+        }
+
         onPendingCliCommandHandled(pendingCliCommand.id);
     }, [
+        bridge.currentMarkdown,
+        editorViewportRef,
         focus,
         insertText,
         onPendingCliCommandHandled,

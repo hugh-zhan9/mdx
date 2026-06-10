@@ -34,10 +34,13 @@ import type {
     PathChangeResult,
     WorkspaceFileTreeActions,
     WorkspaceAction,
+    WorkspaceFullTextSearchState,
+    WorkspaceSearchResultItem,
 } from "../lib/types";
 import { FileTreeContextMenu } from "./file-tree-context-menu";
 import { FileTreeNodeView } from "./file-tree-node";
 import { FileTreeToolbar } from "./file-tree-toolbar";
+import { WorkspaceSearchPanel } from "./workspace-search-panel";
 import { useAppDialogs } from "./app-dialogs";
 import { EmptyState } from "../../../common/components/ui-controls";
 import { createFileTreeEmptyState } from "../lib/empty-state-copy";
@@ -45,12 +48,18 @@ import { createFileTreeEmptyState } from "../lib/empty-state-copy";
 interface FileTreePanelProps {
     rootPath: string;
     fileTree: FileTreeNode[];
-    searchQuery: string;
+    treeFilterQuery: string;
+    mode: "tree" | "search";
+    searchState: WorkspaceFullTextSearchState;
     collapsed: boolean;
     dispatch: (action: WorkspaceAction) => void;
     preferences: AppPreferences;
     activeTabPath: string | null;
     onActionsChange: (actions: WorkspaceFileTreeActions | null) => void;
+    onModeChange: (mode: "tree" | "search") => void;
+    onSearchQueryChange: (query: string) => void;
+    onSearchCaseSensitiveToggle: () => void;
+    onSearchResultClick: (result: WorkspaceSearchResultItem) => void;
     resizeHandleProps: HTMLAttributes<HTMLDivElement>;
 }
 
@@ -80,12 +89,18 @@ interface ActionNode {
 export function FileTreePanel({
     rootPath,
     fileTree,
-    searchQuery,
+    treeFilterQuery,
+    mode,
+    searchState,
     collapsed,
     dispatch,
     preferences,
     activeTabPath,
     onActionsChange,
+    onModeChange,
+    onSearchQueryChange,
+    onSearchCaseSensitiveToggle,
+    onSearchResultClick,
     resizeHandleProps,
 }: FileTreePanelProps) {
     const dialogs = useAppDialogs();
@@ -102,10 +117,10 @@ export function FileTreePanel({
     const refreshPendingRef = useRef(false);
     const [refreshing, setRefreshing] = useState(false);
     const [, startRefreshTransition] = useTransition();
-    const searchActive = searchQuery.trim().length > 0;
+    const searchActive = treeFilterQuery.trim().length > 0;
     const visibleNodes = useMemo(() => {
-        return filterTreeByName(fileTree, searchQuery);
-    }, [fileTree, searchQuery]);
+        return filterTreeByName(fileTree, treeFilterQuery);
+    }, [fileTree, treeFilterQuery]);
     const actionTargetNode = useMemo(() => {
         if (selectedPath) {
             const selectedNode = findNodeByPath(fileTree, selectedPath);
@@ -547,86 +562,135 @@ export function FileTreePanel({
     return (
         <aside className="relative h-full min-h-0 overflow-hidden border-r border-base-300 bg-base-100">
             <div className="flex h-full min-h-0 flex-col">
-                <FileTreeToolbar
-                    query={searchQuery}
-                    canMutateSelection={Boolean(actionTargetNode)}
-                    onNewFolder={() => void createFolderAtSelection()}
-                    onNewMarkdownFile={() =>
-                        void createMarkdownFileAtSelection()
-                    }
-                    onRename={() => void renameSelection()}
-                    onDelete={() => void deleteSelection()}
-                    onRefresh={() => void refreshTree()}
-                    refreshing={refreshing}
-                    onQueryChange={(query) =>
-                        dispatch({
-                            type: "search/queryChanged",
-                            query,
-                        })
-                    }
-                />
-
-                <div className="min-h-0 flex-1 overflow-auto py-1">
-                    {message ? (
-                        <div className="border-b border-base-300 px-3 py-2 text-xs text-warning">
-                            {message}
-                        </div>
-                    ) : null}
-                    {visibleNodes.length === 0 ? (
-                        <div className="py-8">
-                            <EmptyState
-                                title={emptyState.title}
-                                description={emptyState.description}
-                                actionLabel={searchActive ? null : "新建文档"}
-                                onAction={
-                                    searchActive
-                                        ? undefined
-                                        : () =>
-                                              void createMarkdownFileAtSelection()
-                                }
-                            />
-                        </div>
-                    ) : (
-                        visibleNodes.map((node) => (
-                            <FileTreeNodeView
-                                key={node.path}
-                                node={node}
-                                depth={0}
-                                selectedPath={selectedPath}
-                                expandedPaths={expandedPaths}
-                                searchActive={searchActive}
-                                onSelect={(selected) => {
-                                    setSelectedPath(selected.path);
-
-                                    if (
-                                        selected.kind === "file" &&
-                                        isPreviewableFilePath(selected.path)
-                                    ) {
-                                        dispatch({
-                                            type: "tab/opened",
-                                            tab: {
-                                                tabId: nanoid(8),
-                                                path: selected.path,
-                                                title: selected.name,
-                                                dirty: false,
-                                                needsRenameOnFirstSave: false,
-                                            },
-                                        });
-                                    }
-                                }}
-                                onToggleFolder={toggleFolder}
-                                onContextMenu={openContextMenu}
-                                onDoubleClick={(node) =>
-                                    void openWithDefaultApplication(node)
-                                }
-                                onDragStart={handleDragStart}
-                                onDropOnFolder={(fromPath, targetDir) =>
-                                    void moveNode(fromPath, targetDir)
-                                }
-                            />
-                        ))
-                    )}
+                <div className="grid grid-cols-2 gap-1 border-b border-base-300 bg-base-200 p-1">
+                    <button
+                        type="button"
+                        className={[
+                            "h-7 text-xs outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                            mode === "tree"
+                                ? "bg-base-100 text-base-content shadow-sm"
+                                : "text-base-content/70 hover:text-base-content",
+                        ].join(" ")}
+                        onClick={() => onModeChange("tree")}
+                    >
+                        文件
+                    </button>
+                    <button
+                        type="button"
+                        className={[
+                            "h-7 text-xs outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                            mode === "search"
+                                ? "bg-base-100 text-base-content shadow-sm"
+                                : "text-base-content/70 hover:text-base-content",
+                        ].join(" ")}
+                        onClick={() => onModeChange("search")}
+                    >
+                        全文
+                    </button>
                 </div>
+
+                {mode === "tree" ? (
+                    <>
+                        <FileTreeToolbar
+                            query={treeFilterQuery}
+                            canMutateSelection={Boolean(actionTargetNode)}
+                            onNewFolder={() => void createFolderAtSelection()}
+                            onNewMarkdownFile={() =>
+                                void createMarkdownFileAtSelection()
+                            }
+                            onRename={() => void renameSelection()}
+                            onDelete={() => void deleteSelection()}
+                            onRefresh={() => void refreshTree()}
+                            refreshing={refreshing}
+                            onQueryChange={(query) =>
+                                dispatch({
+                                    type: "treeFilter/queryChanged",
+                                    query,
+                                })
+                            }
+                        />
+
+                        <div className="min-h-0 flex-1 overflow-auto py-1">
+                            {message ? (
+                                <div className="border-b border-base-300 px-3 py-2 text-xs text-warning">
+                                    {message}
+                                </div>
+                            ) : null}
+                            {visibleNodes.length === 0 ? (
+                                <div className="py-8">
+                                    <EmptyState
+                                        title={emptyState.title}
+                                        description={emptyState.description}
+                                        actionLabel={
+                                            searchActive ? null : "新建文档"
+                                        }
+                                        onAction={
+                                            searchActive
+                                                ? undefined
+                                                : () =>
+                                                      void createMarkdownFileAtSelection()
+                                        }
+                                    />
+                                </div>
+                            ) : (
+                                visibleNodes.map((node) => (
+                                    <FileTreeNodeView
+                                        key={node.path}
+                                        node={node}
+                                        depth={0}
+                                        selectedPath={selectedPath}
+                                        expandedPaths={expandedPaths}
+                                        searchActive={searchActive}
+                                        onSelect={(selected) => {
+                                            setSelectedPath(selected.path);
+
+                                            if (
+                                                selected.kind === "file" &&
+                                                isPreviewableFilePath(
+                                                    selected.path,
+                                                )
+                                            ) {
+                                                dispatch({
+                                                    type: "tab/opened",
+                                                    tab: {
+                                                        tabId: nanoid(8),
+                                                        path: selected.path,
+                                                        title: selected.name,
+                                                        dirty: false,
+                                                        needsRenameOnFirstSave:
+                                                            false,
+                                                    },
+                                                });
+                                            }
+                                        }}
+                                        onToggleFolder={toggleFolder}
+                                        onContextMenu={openContextMenu}
+                                        onDoubleClick={(node) =>
+                                            void openWithDefaultApplication(
+                                                node,
+                                            )
+                                        }
+                                        onDragStart={handleDragStart}
+                                        onDropOnFolder={(fromPath, targetDir) =>
+                                            void moveNode(fromPath, targetDir)
+                                        }
+                                    />
+                                ))
+                            )}
+                        </div>
+                    </>
+                ) : (
+                    <div className="min-h-0 flex-1">
+                        <WorkspaceSearchPanel
+                            rootPath={rootPath}
+                            state={searchState}
+                            preferences={preferences}
+                            onQueryChange={onSearchQueryChange}
+                            onCaseSensitiveToggle={onSearchCaseSensitiveToggle}
+                            onResultClick={onSearchResultClick}
+                        />
+                    </div>
+                )}
             </div>
 
             <FileTreeContextMenu
