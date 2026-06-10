@@ -10,7 +10,13 @@ import {
 } from "react";
 import { nanoid } from "nanoid";
 import { tauriCore } from "@/common/lib/tauri";
+import { useFileWatch } from "@/features/file-watch/hooks/use-file-watch";
+import {
+  decideWorkspaceExternalChange,
+  documentFingerprint,
+} from "@/features/file-watch/lib/external-change";
 import { LlmWikiPanel, useLlmWikiWorkspace } from "@/features/llm-wiki";
+import { DiffViewer } from "@/features/recovery/components/diff-viewer";
 import { RecoveryBanner } from "@/features/recovery/components/recovery-banner";
 import { useDraftAutosave } from "@/features/recovery/hooks/use-draft-autosave";
 import {
@@ -62,6 +68,11 @@ import { useAppDialogs } from "./app-dialogs";
 import { OutlinePanel } from "./outline-panel";
 import { SettingsButton } from "./settings-button";
 import { TabStrip } from "./tab-strip";
+import type {
+  FrontendFileWatchEvent,
+  SelfWriteMarker,
+  WatchErrorPayload,
+} from "@/features/file-watch/lib/types";
 
 interface WorkspaceShellProps {
   workspace: WorkspaceState;
@@ -92,6 +103,18 @@ interface ActiveDraftRecovery {
   fileExists: boolean;
 }
 
+interface ExternalWorkspaceConflict {
+  tabId: string;
+  path: string;
+  diskMarkdown: string;
+}
+
+interface ExternalDeletedPrompt {
+  tabId: string;
+  path: string;
+  dirty: boolean;
+}
+
 export function WorkspaceShell({
   workspace,
   dispatch,
@@ -117,6 +140,10 @@ export function WorkspaceShell({
   const selectionByTabRef = useRef<Record<string, CliSelectionSnapshot | null>>(
     {},
   );
+  const selfWriteMarkerRef = useRef<SelfWriteMarker | null>(null);
+  const selfWriteMarkerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const [fileTreeActions, setFileTreeActions] =
     useState<WorkspaceFileTreeActions | null>(null);
   const [pendingCliCommand, setPendingCliCommand] =
@@ -134,6 +161,15 @@ export function WorkspaceShell({
   const [activeDraftRecovery, setActiveDraftRecovery] =
     useState<ActiveDraftRecovery | null>(null);
   const [activeDraftDetailsOpen, setActiveDraftDetailsOpen] = useState(true);
+  const [externalConflict, setExternalConflict] =
+    useState<ExternalWorkspaceConflict | null>(null);
+  const [externalConflictDiffOpen, setExternalConflictDiffOpen] =
+    useState(false);
+  const [externalDeletedPrompt, setExternalDeletedPrompt] =
+    useState<ExternalDeletedPrompt | null>(null);
+  const externalConflictRef = useRef<ExternalWorkspaceConflict | null>(null);
+  const externalDeletedPromptRef = useRef<ExternalDeletedPrompt | null>(null);
+  const externalPathVersionsRef = useRef<Record<string, number>>({});
   const [orphanDrafts, setOrphanDrafts] = useState<DraftSummary[]>([]);
   const [postponedOrphanDraftIds, setPostponedOrphanDraftIds] = useState<
     Set<string>
@@ -183,10 +219,28 @@ export function WorkspaceShell({
       ),
     [orphanDrafts, postponedOrphanDraftIds],
   );
+  const activeExternalConflict =
+    externalConflict?.tabId === activeTabId ? externalConflict : null;
+  const activeExternalDeletedPrompt =
+    externalDeletedPrompt?.tabId === activeTabId
+      ? externalDeletedPrompt
+      : null;
 
   useEffect(() => {
+    externalConflictRef.current = externalConflict;
+  }, [externalConflict]);
+
+  useEffect(() => {
+    externalDeletedPromptRef.current = externalDeletedPrompt;
+  }, [externalDeletedPrompt]);
+
+  useEffect(() => {
+    externalPathVersionsRef.current = {};
     setInitialEditorLoadSettled(false);
     setPostponedOrphanDraftIds(new Set());
+    setExternalConflict(null);
+    setExternalConflictDiffOpen(false);
+    setExternalDeletedPrompt(null);
   }, [workspace.rootPath]);
 
   useEffect(() => {
@@ -494,6 +548,381 @@ export function WorkspaceShell({
     [dispatch, flushWorkspaceDraftForTab],
   );
 
+  const refreshCurrentTree = useCallback(async () => {
+    await refreshTree(
+      workspaceRef.current.rootPath,
+      () => workspaceRef.current.rootPath,
+      dispatchAndMirror,
+      preferences,
+    );
+  }, [dispatchAndMirror, preferences]);
+
+  const readWorkspaceMarkdown = useCallback(async (path: string) => {
+    const { invoke } = await tauriCore();
+
+    return invoke<string>("read_markdown_file", {
+      rootPath: workspaceRef.current.rootPath,
+      path,
+    });
+  }, []);
+
+  const clearSelfWriteMarker = useCallback(() => {
+    selfWriteMarkerRef.current = null;
+
+    if (selfWriteMarkerTimerRef.current) {
+      clearTimeout(selfWriteMarkerTimerRef.current);
+      selfWriteMarkerTimerRef.current = null;
+    }
+  }, []);
+
+  const rememberSelfWrite = useCallback(
+    (path: string, markdown: string) => {
+      clearSelfWriteMarker();
+      selfWriteMarkerRef.current = {
+        path,
+        markdown,
+        fingerprint: documentFingerprint(markdown),
+      };
+      selfWriteMarkerTimerRef.current = setTimeout(() => {
+        selfWriteMarkerRef.current = null;
+        selfWriteMarkerTimerRef.current = null;
+      }, 5_000);
+    },
+    [clearSelfWriteMarker],
+  );
+
+  const clearSavedExternalPrompts = useCallback(
+    (savedTabId: string | undefined, savedPath: string) => {
+      const normalizedSavedPath = normalizeWorkspacePath(savedPath);
+      const matchesSavedPath = (tabId: string, path: string) =>
+        (savedTabId !== undefined && tabId === savedTabId) ||
+        normalizeWorkspacePath(path) === normalizedSavedPath;
+
+      const conflict = externalConflictRef.current;
+
+      if (conflict && matchesSavedPath(conflict.tabId, conflict.path)) {
+        externalConflictRef.current = null;
+        setExternalConflict(null);
+        setExternalConflictDiffOpen(false);
+      }
+
+      const deletedPrompt = externalDeletedPromptRef.current;
+
+      if (
+        deletedPrompt &&
+        matchesSavedPath(deletedPrompt.tabId, deletedPrompt.path)
+      ) {
+        externalDeletedPromptRef.current = null;
+        setExternalDeletedPrompt(null);
+      }
+    },
+    [],
+  );
+
+  const externalPathVersion = useCallback((path: string) => {
+    return externalPathVersionsRef.current[normalizeWorkspacePath(path)] ?? 0;
+  }, []);
+
+  const bumpExternalPathVersion = useCallback((path: string) => {
+    const normalizedPath = normalizeWorkspacePath(path);
+    const nextVersion =
+      (externalPathVersionsRef.current[normalizedPath] ?? 0) + 1;
+
+    externalPathVersionsRef.current = {
+      ...externalPathVersionsRef.current,
+      [normalizedPath]: nextVersion,
+    };
+
+    return nextVersion;
+  }, []);
+
+  const isCurrentExternalPathVersion = useCallback(
+    (path: string, version: number) => {
+      return externalPathVersion(path) === version;
+    },
+    [externalPathVersion],
+  );
+
+  const bumpSavedExternalPaths = useCallback(
+    (path: string, previousPath?: string) => {
+      bumpExternalPathVersion(path);
+      if (
+        previousPath &&
+        normalizeWorkspacePath(previousPath) !== normalizeWorkspacePath(path)
+      ) {
+        bumpExternalPathVersion(previousPath);
+      }
+    },
+    [bumpExternalPathVersion],
+  );
+
+  const clearExternalDeletedPromptForTab = useCallback((tabId: string) => {
+    setExternalDeletedPrompt((prompt) =>
+      prompt?.tabId === tabId ? null : prompt,
+    );
+  }, []);
+
+  const clearExternalPromptsForPathPrefix = useCallback((path: string) => {
+    const conflict = externalConflictRef.current;
+
+    if (conflict && isPathUnderPrefix(conflict.path, path)) {
+      externalConflictRef.current = null;
+      setExternalConflict(null);
+      setExternalConflictDiffOpen(false);
+    }
+
+    const deletedPrompt = externalDeletedPromptRef.current;
+
+    if (deletedPrompt && isPathUnderPrefix(deletedPrompt.path, path)) {
+      externalDeletedPromptRef.current = null;
+      setExternalDeletedPrompt(null);
+    }
+  }, []);
+
+  const reloadCleanWorkspaceTab = useCallback(
+    async (tabId: string, path: string, pathVersion: number) => {
+      try {
+        const markdown = await readWorkspaceMarkdown(path);
+        const current = workspaceRef.current.tabs[tabId];
+
+        if (
+          isCurrentExternalPathVersion(path, pathVersion) &&
+          current &&
+          !current.dirty &&
+          normalizeWorkspacePath(current.path) === normalizeWorkspacePath(path)
+        ) {
+          dispatchAndMirror({
+            type: "tab/saved",
+            tabId,
+            markdown,
+          });
+          setExternalConflict((conflict) =>
+            conflict?.tabId === tabId ? null : conflict,
+          );
+          clearExternalDeletedPromptForTab(tabId);
+        }
+      } catch (error) {
+        console.warn("Failed to reload externally changed file.", error);
+      }
+    },
+    [
+      clearExternalDeletedPromptForTab,
+      dispatchAndMirror,
+      isCurrentExternalPathVersion,
+      readWorkspaceMarkdown,
+    ],
+  );
+
+  const showExternalConflict = useCallback(
+    async (tabId: string, path: string, pathVersion: number) => {
+      try {
+        const diskMarkdown = await readWorkspaceMarkdown(path);
+        const current = workspaceRef.current.tabs[tabId];
+
+        if (
+          isCurrentExternalPathVersion(path, pathVersion) &&
+          current &&
+          current.dirty &&
+          normalizeWorkspacePath(current.path) === normalizeWorkspacePath(path)
+        ) {
+          setExternalConflict({
+            tabId,
+            path: normalizeWorkspacePath(path),
+            diskMarkdown,
+          });
+          setExternalConflictDiffOpen(true);
+          clearExternalDeletedPromptForTab(tabId);
+        }
+      } catch (error) {
+        console.warn("Failed to load externally changed file.", error);
+      }
+    },
+    [
+      clearExternalDeletedPromptForTab,
+      isCurrentExternalPathVersion,
+      readWorkspaceMarkdown,
+    ],
+  );
+
+  const showExternalDeletedPrompt = useCallback(
+    async (
+      tabId: string,
+      path: string,
+      dirty: boolean,
+      pathVersion: number,
+    ) => {
+      let diskMarkdown: string | null = null;
+
+      try {
+        diskMarkdown = await readWorkspaceMarkdown(path);
+      } catch {
+        diskMarkdown = null;
+      }
+
+      const current = workspaceRef.current.tabs[tabId];
+
+      if (
+        !isCurrentExternalPathVersion(path, pathVersion) ||
+        !current ||
+        normalizeWorkspacePath(current.path) !== normalizeWorkspacePath(path)
+      ) {
+        return;
+      }
+
+      if (diskMarkdown !== null) {
+        if (current.dirty) {
+          setExternalConflict({
+            tabId,
+            path: normalizeWorkspacePath(path),
+            diskMarkdown,
+          });
+          setExternalConflictDiffOpen(true);
+          clearExternalDeletedPromptForTab(tabId);
+        } else {
+          dispatchAndMirror({
+            type: "tab/saved",
+            tabId,
+            markdown: diskMarkdown,
+          });
+          clearExternalDeletedPromptForTab(tabId);
+        }
+        return;
+      }
+
+      setExternalDeletedPrompt({
+        tabId,
+        path,
+        dirty,
+      });
+      setExternalConflict((conflict) =>
+        conflict?.tabId === tabId ? null : conflict,
+      );
+    },
+    [
+      clearExternalDeletedPromptForTab,
+      dispatchAndMirror,
+      isCurrentExternalPathVersion,
+      readWorkspaceMarkdown,
+    ],
+  );
+
+  const handleFileWatchEvent = useCallback(
+    (event: FrontendFileWatchEvent) => {
+      const pathVersion = bumpExternalPathVersion(event.path);
+      if (event.kind === "renamed") {
+        bumpExternalPathVersion(event.newPath);
+      }
+      const decision = decideWorkspaceExternalChange({
+        workspace: workspaceRef.current,
+        event,
+        selfWrite: selfWriteMarkerRef.current,
+      });
+
+      switch (decision.kind) {
+        case "ignore":
+          return;
+        case "refreshTree":
+          void refreshCurrentTree().catch((error) => {
+            console.warn("Failed to refresh workspace after file watch event.", error);
+          });
+          return;
+        case "remapPath":
+          clearExternalPromptsForPathPrefix(decision.fromPath);
+          clearExternalPromptsForPathPrefix(decision.toPath);
+          dispatchAndMirror({
+            type: "tab/pathRemapped",
+            fromPath: decision.fromPath,
+            toPath: decision.toPath,
+          });
+          void refreshCurrentTree().catch((error) => {
+            console.warn("Failed to refresh workspace after file rename.", error);
+          });
+          return;
+        case "remapPathAndPrefix":
+          clearExternalPromptsForPathPrefix(decision.fromPath);
+          clearExternalPromptsForPathPrefix(decision.toPath);
+          dispatchAndMirror({
+            type: "tab/pathRemapped",
+            fromPath: decision.fromPath,
+            toPath: decision.toPath,
+          });
+          dispatchAndMirror({
+            type: "tab/prefixRemapped",
+            affectedPrefix: {
+              oldPrefix: decision.oldPrefix,
+              newPrefix: decision.newPrefix,
+            },
+          });
+          void refreshCurrentTree().catch((error) => {
+            console.warn("Failed to refresh workspace after file rename.", error);
+          });
+          return;
+        case "reloadCleanTab":
+          void reloadCleanWorkspaceTab(
+            decision.tabId,
+            decision.path,
+            pathVersion,
+          );
+          if (event.kind === "created") {
+            void refreshCurrentTree().catch((error) => {
+              console.warn("Failed to refresh workspace after file creation.", error);
+            });
+          }
+          return;
+        case "showConflict":
+          void showExternalConflict(
+            decision.tabId,
+            decision.path,
+            pathVersion,
+          );
+          if (event.kind === "created") {
+            void refreshCurrentTree().catch((error) => {
+              console.warn("Failed to refresh workspace after file creation.", error);
+            });
+          }
+          return;
+        case "showDeletedPrompt":
+          void showExternalDeletedPrompt(
+            decision.tabId,
+            decision.path,
+            decision.dirty,
+            pathVersion,
+          );
+          void refreshCurrentTree().catch((error) => {
+            console.warn("Failed to refresh workspace after file deletion.", error);
+          });
+          return;
+      }
+    },
+    [
+      bumpExternalPathVersion,
+      clearExternalPromptsForPathPrefix,
+      dispatchAndMirror,
+      refreshCurrentTree,
+      reloadCleanWorkspaceTab,
+      showExternalConflict,
+      showExternalDeletedPrompt,
+    ],
+  );
+
+  const handleFileWatchError = useCallback((error: WatchErrorPayload) => {
+    console.warn("Workspace file watch error.", error);
+  }, []);
+
+  useFileWatch({
+    mode: "workspace",
+    rootPath: workspace.rootPath,
+    preferences,
+    onEvent: handleFileWatchEvent,
+    onError: handleFileWatchError,
+  });
+
+  useEffect(() => {
+    return () => {
+      clearSelfWriteMarker();
+    };
+  }, [clearSelfWriteMarker]);
+
   const leftPanel = usePanelResize({
     side: "left",
     panel: workspace.panel,
@@ -752,10 +1181,29 @@ export function WorkspaceShell({
             preferences,
           ),
         afterSave: async (event) => {
+          if (event.rootPath !== workspaceRef.current.rootPath) {
+            return;
+          }
+
           const savedTabId = findTabIdByPath(workspaceRef.current, event.path);
           const saveAsDraft = savedTabId
             ? pendingSaveAsDraftByTabRef.current[savedTabId]
             : undefined;
+          const savedTab = savedTabId
+            ? workspaceRef.current.tabs[savedTabId]
+            : undefined;
+          bumpSavedExternalPaths(event.path, event.previousPath);
+          clearSavedExternalPrompts(savedTabId, event.path);
+          if (
+            event.previousPath &&
+            normalizeWorkspacePath(event.previousPath) !==
+              normalizeWorkspacePath(event.path)
+          ) {
+            clearSavedExternalPrompts(savedTabId, event.previousPath);
+          }
+          if (savedTab?.markdown !== undefined) {
+            rememberSelfWrite(event.path, savedTab.markdown);
+          }
 
           try {
             await deleteWorkspaceDraftForPath(event.path);
@@ -791,10 +1239,6 @@ export function WorkspaceShell({
             console.warn("Failed to delete saved workspace draft.", error);
           }
 
-          if (event.rootPath !== workspaceRef.current.rootPath) {
-            return;
-          }
-
           handleRawFileSavedRef.current(event.path);
         },
       });
@@ -806,6 +1250,9 @@ export function WorkspaceShell({
       deleteWorkspaceDraftForPath,
       dispatchAndMirror,
       flushWorkspaceDraftForTab,
+      bumpSavedExternalPaths,
+      clearSavedExternalPrompts,
+      rememberSelfWrite,
       preferences,
       removeOrphanDraft,
     ],
@@ -872,6 +1319,208 @@ export function WorkspaceShell({
       dispatchAndMirror,
       flushWorkspaceDraftForTab,
       saveTab,
+    ],
+  );
+
+  const keepExternalConflictEdits = useCallback(async () => {
+    const conflict = externalConflict;
+
+    if (!conflict) {
+      return;
+    }
+
+    const saved = await saveTab(conflict.tabId);
+
+    if (saved) {
+      setExternalConflict(null);
+      setExternalConflictDiffOpen(false);
+    }
+  }, [externalConflict, saveTab]);
+
+  const reloadExternalConflictDiskVersion = useCallback(async () => {
+    const conflict = externalConflict;
+
+    if (!conflict) {
+      return;
+    }
+
+    try {
+      const markdown = await readWorkspaceMarkdown(conflict.path);
+      const current = workspaceRef.current.tabs[conflict.tabId];
+
+      if (
+        current &&
+        normalizeWorkspacePath(current.path) === normalizeWorkspacePath(conflict.path)
+      ) {
+        dispatchAndMirror(
+          {
+            type: "tab/saved",
+            tabId: conflict.tabId,
+            markdown,
+          },
+          { skipDraftFlush: true },
+        );
+        await deleteWorkspaceDraftForPath(conflict.path);
+      }
+      setExternalConflict(null);
+      setExternalConflictDiffOpen(false);
+    } catch (error) {
+      void dialogs.alert({
+        title: "重新加载失败",
+        message: formatError(error, "无法重新加载磁盘版本。"),
+      });
+    }
+  }, [deleteWorkspaceDraftForPath, dialogs, dispatchAndMirror, externalConflict, readWorkspaceMarkdown]);
+
+  const postponeExternalConflict = useCallback(() => {
+    setExternalConflictDiffOpen(false);
+  }, []);
+
+  const copyExternalConflictMarkdown = useCallback(() => {
+    const conflict = externalConflict;
+    const markdown = conflict
+      ? (workspaceRef.current.tabs[conflict.tabId]?.markdown ?? "")
+      : "";
+    setExternalConflictDiffOpen(false);
+
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      void navigator.clipboard.writeText(markdown).catch((error) => {
+        console.warn("Failed to copy current workspace markdown.", error);
+      });
+    }
+  }, [externalConflict]);
+
+  const closeDeletedWorkspaceTab = useCallback(
+    async (tabId: string, options?: { discardDirty?: boolean }) => {
+      const tab = workspaceRef.current.tabs[tabId];
+
+      if (options?.discardDirty) {
+        await deleteWorkspaceDraftForTab(tab);
+        dispatchAndMirror(
+          {
+            type: "tab/closed",
+            tabId,
+          },
+          { skipDraftFlush: true },
+        );
+        setExternalDeletedPrompt((prompt) =>
+          prompt?.tabId === tabId ? null : prompt,
+        );
+        return;
+      }
+
+      await closeTab(tabId);
+      setExternalDeletedPrompt((prompt) =>
+        prompt?.tabId === tabId && !workspaceRef.current.tabs[tabId]
+          ? null
+          : prompt,
+      );
+    },
+    [closeTab, deleteWorkspaceDraftForTab, dispatchAndMirror],
+  );
+
+  const openDeletedWorkspaceTabSaveAs = useCallback(
+    async (prompt: ExternalDeletedPrompt) => {
+      const tab = workspaceRef.current.tabs[prompt.tabId];
+
+      if (!tab) {
+        setExternalDeletedPrompt((current) =>
+          current?.tabId === prompt.tabId ? null : current,
+        );
+        return;
+      }
+
+      try {
+        const { invoke } = await tauriCore();
+        const parentDir = findExistingParentPath(
+          workspaceRef.current.rootPath,
+          prompt.path,
+          workspaceRef.current.fileTree,
+        );
+        const created = await invoke<CreateMarkdownFileResult>(
+          "create_markdown_file",
+          {
+            rootPath: workspaceRef.current.rootPath,
+            parentDir,
+            name: null,
+            temporaryUntitled: true,
+          },
+        );
+        dispatchAndMirror({
+          type: "tab/opened",
+          tab: {
+            tabId: nanoid(8),
+            path: created.path,
+            title: created.name,
+            dirty: true,
+            needsRenameOnFirstSave: created.needsRenameOnFirstSave ?? true,
+            markdown: tab.markdown ?? "",
+          },
+        });
+        await deleteWorkspaceDraftForTab(tab);
+        dispatchAndMirror(
+          {
+            type: "tab/closed",
+            tabId: prompt.tabId,
+          },
+          { skipDraftFlush: true },
+        );
+        setExternalDeletedPrompt((current) =>
+          current?.tabId === prompt.tabId ? null : current,
+        );
+        await refreshCurrentTree();
+      } catch (error) {
+        void dialogs.alert({
+          title: "另存为",
+          message: formatError(error, "无法创建另存文件。"),
+        });
+      }
+    },
+    [deleteWorkspaceDraftForTab, dialogs, dispatchAndMirror, refreshCurrentTree],
+  );
+
+  const restoreDeletedWorkspaceTabOriginalPath = useCallback(
+    async (prompt: ExternalDeletedPrompt) => {
+      const tab = workspaceRef.current.tabs[prompt.tabId];
+
+      if (!tab || tab.markdown === undefined) {
+        return;
+      }
+
+      try {
+        const { invoke } = await tauriCore();
+        await invoke("write_markdown_file", {
+          rootPath: workspaceRef.current.rootPath,
+          path: prompt.path,
+          content: tab.markdown,
+        });
+        rememberSelfWrite(prompt.path, tab.markdown);
+        dispatchAndMirror(
+          {
+            type: "tab/saved",
+            tabId: prompt.tabId,
+            markdown: tab.markdown,
+          },
+          { skipDraftFlush: true },
+        );
+        await deleteWorkspaceDraftForTab(tab);
+        setExternalDeletedPrompt((current) =>
+          current?.tabId === prompt.tabId ? null : current,
+        );
+        await refreshCurrentTree();
+      } catch (error) {
+        void dialogs.alert({
+          title: "恢复原路径",
+          message: formatError(error, "无法恢复原路径。"),
+        });
+      }
+    },
+    [
+      deleteWorkspaceDraftForTab,
+      dialogs,
+      dispatchAndMirror,
+      refreshCurrentTree,
+      rememberSelfWrite,
     ],
   );
   const saveActiveTab = useCallback(async () => {
@@ -1229,6 +1878,90 @@ export function WorkspaceShell({
               />
             );
           })}
+          {activeExternalConflict ? (
+            <RecoveryBanner
+              title="文件已被外部修改"
+              message={`${activeExternalConflict.path} 的磁盘内容已变化，请选择保留当前编辑或重新加载磁盘版本。`}
+              priority="high"
+              actions={[
+                {
+                  label: "查看差异",
+                  primary: true,
+                  onClick: () => setExternalConflictDiffOpen(true),
+                },
+                {
+                  label: "保留我的编辑",
+                  onClick: () => void keepExternalConflictEdits(),
+                },
+                {
+                  label: "重新加载磁盘",
+                  destructive: true,
+                  onClick: () => void reloadExternalConflictDiskVersion(),
+                },
+                {
+                  label: "稍后",
+                  onClick: postponeExternalConflict,
+                },
+              ]}
+            />
+          ) : null}
+          {activeExternalDeletedPrompt ? (
+            <RecoveryBanner
+              title="文件已被外部删除"
+              message={
+                activeExternalDeletedPrompt.dirty
+                  ? `${activeExternalDeletedPrompt.path} 已从磁盘删除，当前标签页还有未保存编辑。`
+                  : `${activeExternalDeletedPrompt.path} 已从磁盘删除。`
+              }
+              priority={activeExternalDeletedPrompt.dirty ? "high" : "normal"}
+              actions={
+                activeExternalDeletedPrompt.dirty
+                  ? [
+                      {
+                        label: "另存为",
+                        primary: true,
+                        onClick: () =>
+                          void openDeletedWorkspaceTabSaveAs(
+                            activeExternalDeletedPrompt,
+                          ),
+                      },
+                      {
+                        label: "恢复原路径",
+                        onClick: () =>
+                          void restoreDeletedWorkspaceTabOriginalPath(
+                            activeExternalDeletedPrompt,
+                          ),
+                      },
+                      {
+                        label: "不保存并关闭",
+                        destructive: true,
+                        onClick: () =>
+                          void closeDeletedWorkspaceTab(
+                            activeExternalDeletedPrompt.tabId,
+                            { discardDirty: true },
+                          ),
+                      },
+                    ]
+                  : [
+                      {
+                        label: "关闭",
+                        primary: true,
+                        onClick: () =>
+                          void closeDeletedWorkspaceTab(
+                            activeExternalDeletedPrompt.tabId,
+                          ),
+                      },
+                      {
+                        label: "另存为",
+                        onClick: () =>
+                          void openDeletedWorkspaceTabSaveAs(
+                            activeExternalDeletedPrompt,
+                          ),
+                      },
+                    ]
+              }
+            />
+          ) : null}
           <EditorStage
             rootPath={workspace.rootPath}
             activeTab={activeTab}
@@ -1302,6 +2035,36 @@ export function WorkspaceShell({
           )}
         </div>
       </div>
+      {externalConflictDiffOpen && activeExternalConflict ? (
+        <DiffViewer
+          open={externalConflictDiffOpen}
+          title="文件已被外部修改"
+          leftTitle="磁盘版本"
+          rightTitle="我的编辑"
+          leftText={activeExternalConflict.diskMarkdown}
+          rightText={activeTab?.markdown ?? ""}
+          primaryAction={{
+            label: "保留我的编辑",
+            onClick: () => void keepExternalConflictEdits(),
+          }}
+          secondaryActions={[
+            {
+              label: "重新加载磁盘",
+              destructive: true,
+              onClick: () => void reloadExternalConflictDiskVersion(),
+            },
+            {
+              label: "复制当前内容",
+              onClick: copyExternalConflictMarkdown,
+            },
+            {
+              label: "稍后",
+              onClick: postponeExternalConflict,
+            },
+          ]}
+          onClose={postponeExternalConflict}
+        />
+      ) : null}
     </div>
   );
 }
