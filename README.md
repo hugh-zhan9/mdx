@@ -18,13 +18,18 @@ Document Mode is not controlled by `mdx-cli`, does not restore the recent worksp
 - Workspace Mode: left file tree for folders, `.md`, and `.markdown` files
 - Workspace Mode: multi-tab editing with dirty-state tracking
 - Workspace Mode: right outline panel generated from H1-H6 headings
+- Workspace Mode: full-text search across `.md` and `.markdown`, including `raw/`
+- Workspace Mode: default search limits of 2 MB per file, 200 total results, and 20 matches per file
+- Workspace Mode and Document Mode: external file watching; clean content auto-reloads while dirty content shows a conflict prompt and read-only diff
+- Unsaved Markdown bodies are stored as plaintext drafts under `~/.mdx/drafts/`
+- Drafts are deleted after save/discard and expired drafts are cleaned after 30 days
 - Local app state saved under `~/.mdx/state.json`
 - Image assets saved into the current document or workspace `.assets/` directory, with a global fallback under `~/.mdx/assets`
 - `mdx-cli` for Workspace Mode local automation and agent-driven editing
 
 ## Scope
 
-MDX is desktop-first. The current app does not provide a web product, Quick Look extension, auto-update flow, multi-root workspaces, full-text search, or live file-system watching.
+MDX is desktop-first. The current app does not provide a web product, Quick Look extension, an auto-update flow, multi-root workspaces, PDF/image/binary full-text search, or LLM Wiki onboarding in this phase.
 
 The editor currently supports `.md` and `.markdown` files. This MVP does not treat `.mdx` as a Document Mode file and does not display `.mdx` files in the workspace file tree.
 

@@ -18,13 +18,18 @@ Document Mode 不参与 `mdx-cli` 自动化，不恢复为最近工作区，也�
 - Workspace Mode：左侧文件树，显示文件夹、`.md` 和 `.markdown` 文件
 - Workspace Mode：多标签编辑，跟踪未保存状态
 - Workspace Mode：右侧标题目录，从当前文档的 H1-H6 实时生成
+- Workspace Mode：全文搜索 `.md` 和 `.markdown`，包含 `raw/` 目录
+- Workspace Mode：默认搜索限制为单文件 2 MB、总结果 200 条、每个文件 20 条匹配
+- Workspace Mode / Document Mode：文件外部变更监听；干净内容自动重载，脏内容显示冲突提示和只读差异视图
+- 未保存 Markdown 正文会以明文草稿保存在 `~/.mdx/drafts/`
+- 草稿在保存或丢弃后会删除，过期草稿会在 30 天后清理
 - 应用状态保存到 `~/.mdx/state.json`
 - 图片优先保存到当前文档或工作区的 `.assets/`，异常时退回 `~/.mdx/assets`
 - Workspace Mode 提供 `mdx-cli`，支持本地自动化和 Agent 驱动编辑
 
 ## 范围
 
-MDX 当前优先服务桌面端。本期不提供 Web 产品形态、Quick Look 扩展、自动更新流程、多根工作区、全文搜索和实时文件系统监听。
+MDX 当前优先服务桌面端。本期不提供 Web 产品形态、Quick Look 扩展、自动更新流程、多根工作区、PDF/图片/二进制全文搜索，也不包含 LLM Wiki onboarding。
 
 当前编辑器支持 `.md` 和 `.markdown` 文件。这个 MVP 不把 `.mdx` 作为 Document Mode 文件处理，也不在工作区文件树中显示 `.mdx` 文件。
 
