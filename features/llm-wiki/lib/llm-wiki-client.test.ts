@@ -135,6 +135,35 @@ describe("rescanRaw", () => {
       ],
     });
   });
+
+  it("asks the backend to retry persisted failures when requested", async () => {
+    const invoke = vi.fn(async () => ({
+      total: 2,
+      pendingTotal: 2,
+      pending: ["raw/notes/a.md", "raw/notes/b.md"],
+      completed: [],
+      failed: [],
+      skipped: [],
+    }));
+    vi.mocked(tauriCore).mockResolvedValue({
+      invoke,
+    } as unknown as Awaited<ReturnType<typeof tauriCore>>);
+
+    await expect(rescanRaw("/tmp/wiki", [], undefined, true)).resolves.toEqual({
+      total: 2,
+      pendingTotal: 2,
+      pending: ["raw/notes/a.md", "raw/notes/b.md"],
+      completed: [],
+      failed: [],
+      skipped: [],
+    });
+
+    expect(invoke).toHaveBeenCalledWith("llm_wiki_rescan_raw", {
+      rootPath: "/tmp/wiki",
+      excludedPendingPaths: [],
+      retryFailed: true,
+    });
+  });
 });
 
 describe("createDigest", () => {

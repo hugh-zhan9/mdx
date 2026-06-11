@@ -212,12 +212,14 @@ pub async fn llm_wiki_rescan_raw(
     root_path: String,
     excluded_pending_paths: Option<Vec<String>>,
     failed: Option<Vec<LlmWikiFailedFile>>,
+    retry_failed: Option<bool>,
 ) -> Result<RawScanResult, WorkspaceError> {
     run_blocking(move || {
         llm_wiki_rescan_raw_sync_with_failures(
             root_path,
             excluded_pending_paths.unwrap_or_default(),
             failed,
+            retry_failed.unwrap_or(false),
         )
     })
     .await
@@ -225,7 +227,7 @@ pub async fn llm_wiki_rescan_raw(
 
 #[cfg(test)]
 pub fn llm_wiki_rescan_raw_sync(root_path: String) -> Result<RawScanResult, WorkspaceError> {
-    llm_wiki_rescan_raw_sync_with_failures(root_path, Vec::new(), None)
+    llm_wiki_rescan_raw_sync_with_failures(root_path, Vec::new(), None, false)
 }
 
 #[cfg(test)]
@@ -233,18 +235,30 @@ pub fn llm_wiki_rescan_raw_sync_with_exclusions(
     root_path: String,
     excluded_pending_paths: Vec<String>,
 ) -> Result<RawScanResult, WorkspaceError> {
-    llm_wiki_rescan_raw_sync_with_failures(root_path, excluded_pending_paths, None)
+    llm_wiki_rescan_raw_sync_with_failures(root_path, excluded_pending_paths, None, false)
+}
+
+#[cfg(test)]
+pub fn llm_wiki_rescan_raw_sync_with_retry(
+    root_path: String,
+) -> Result<RawScanResult, WorkspaceError> {
+    llm_wiki_rescan_raw_sync_with_failures(root_path, Vec::new(), None, true)
 }
 
 pub fn llm_wiki_rescan_raw_sync_with_failures(
     root_path: String,
     excluded_pending_paths: Vec<String>,
     failed: Option<Vec<LlmWikiFailedFile>>,
+    retry_failed: bool,
 ) -> Result<RawScanResult, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
     ensure_default_agents_rules(&root)?;
     let config = read_knowledge_config(&root)?;
-    let mut failed = merged_progress_failure_map(&root, failed)?;
+    let mut failed = if retry_failed {
+        failed_option_to_map(failed)
+    } else {
+        merged_progress_failure_map(&root, failed)?
+    };
     if config.paused {
         let progress_failed = failed_map_to_progress_entries(&failed);
         let model_failed = failed_map_to_model_entries(&failed);
@@ -304,13 +318,17 @@ fn merged_progress_failure_map(
     failed: Option<Vec<LlmWikiFailedFile>>,
 ) -> Result<BTreeMap<String, String>, WorkspaceError> {
     let mut merged = read_progress_failed_entries(root)?;
-    if let Some(failed) = failed {
-        for (path, reason) in normalize_failed_files(failed) {
-            merged.insert(path, reason);
-        }
+    for (path, reason) in normalize_failed_files(failed.unwrap_or_default()) {
+        merged.insert(path, reason);
     }
 
     Ok(merged)
+}
+
+fn failed_option_to_map(failed: Option<Vec<LlmWikiFailedFile>>) -> BTreeMap<String, String> {
+    normalize_failed_files(failed.unwrap_or_default())
+        .into_iter()
+        .collect()
 }
 
 fn remove_completed_failures(

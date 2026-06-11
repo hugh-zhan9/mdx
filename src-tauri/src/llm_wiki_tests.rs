@@ -8,7 +8,8 @@ use crate::llm_wiki::{
     llm_wiki_ingest_mock_output, llm_wiki_ingest_raw_file_sync, llm_wiki_lint, llm_wiki_query_sync,
     llm_wiki_refresh_graph_sync, llm_wiki_rescan_raw_sync,
     llm_wiki_rescan_raw_sync_with_exclusions, llm_wiki_rescan_raw_sync_with_failures,
-    llm_wiki_search, llm_wiki_update_config, related_context_or_log_failure,
+    llm_wiki_rescan_raw_sync_with_retry, llm_wiki_search, llm_wiki_update_config,
+    related_context_or_log_failure,
 };
 use crate::llm_wiki_context::{
     build_wiki_context_with_selector_output, parse_page_selection, validate_wiki_page_path,
@@ -922,6 +923,41 @@ fn context_selector_skips_missing_expanded_wikilink_targets() {
         vec!["wiki/concepts/llm-wiki.md"]
     );
     assert!(!context.markdown.contains("wiki/entities/missing.md"));
+}
+
+#[test]
+fn context_selector_skips_missing_selected_pages() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    write_managed_file(
+        root.path(),
+        "wiki/concepts/kept.md",
+        "# Kept\n\nSelected page.\n".as_bytes(),
+    )
+    .unwrap();
+
+    let context = build_wiki_context_with_selector_output(
+        root.path(),
+        WikiContextRequest {
+            purpose: "ingest related context".to_string(),
+            prompt: "stale index".to_string(),
+            max_selected_pages: 8,
+            max_expanded_pages: 8,
+            max_context_bytes: 64 * 1024,
+        },
+        r#"{"paths":["wiki/concepts/missing.md","wiki/concepts/kept.md"],"reason":"stale index"}"#,
+    )
+    .unwrap();
+
+    assert_eq!(
+        context
+            .references
+            .iter()
+            .map(|reference| reference.path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["wiki/concepts/kept.md"]
+    );
+    assert!(!context.markdown.contains("wiki/concepts/missing.md"));
 }
 
 #[test]
@@ -2114,6 +2150,7 @@ fn rescan_raw_persists_current_run_failures_to_progress() {
             reason: "pdf_extract_empty: raw PDF source does not contain extractable text"
                 .to_string(),
         }]),
+        false,
     )
     .unwrap();
 
@@ -2157,6 +2194,7 @@ fn rescan_raw_excludes_persisted_failures_from_pending_and_returns_failed_entrie
             path: "raw/notes/a.md".to_string(),
             reason: "llm_failed: first failure".to_string(),
         }]),
+        false,
     )
     .unwrap();
 
@@ -2195,6 +2233,50 @@ fn rescan_raw_excludes_persisted_failures_from_pending_and_returns_failed_entrie
 }
 
 #[test]
+fn manual_rescan_raw_retries_persisted_failures() {
+    let root = tempdir().unwrap();
+    initialize_llm_wiki_workspace(root.path()).unwrap();
+    for name in ["a", "b"] {
+        std::fs::write(
+            root.path().join(format!("raw/notes/{name}.md")),
+            format!("# Note {name}\n"),
+        )
+        .unwrap();
+    }
+
+    llm_wiki_rescan_raw_sync_with_failures(
+        root.path().to_string_lossy().into_owned(),
+        vec!["raw/notes/a.md".to_string()],
+        Some(vec![LlmWikiFailedFile {
+            path: "raw/notes/a.md".to_string(),
+            reason: "llm_failed: first failure".to_string(),
+        }]),
+        false,
+    )
+    .unwrap();
+
+    let result =
+        llm_wiki_rescan_raw_sync_with_retry(root.path().to_string_lossy().into_owned()).unwrap();
+
+    assert_eq!(result.total, 2);
+    assert_eq!(result.pending_total, 2);
+    assert_eq!(
+        result.pending,
+        vec!["raw/notes/a.md".to_string(), "raw/notes/b.md".to_string()]
+    );
+    assert!(result.failed.is_empty());
+    let progress = std::fs::read_to_string(root.path().join("llm-wiki-progress.md")).unwrap();
+    let failed_section = progress
+        .split_once("## Failed")
+        .unwrap()
+        .1
+        .split_once("\n## ")
+        .unwrap()
+        .0;
+    assert!(failed_section.contains("- None"));
+}
+
+#[test]
 fn rescan_raw_preserves_failed_progress_entries_until_raw_succeeds() {
     let root = tempdir().unwrap();
     initialize_llm_wiki_workspace(root.path()).unwrap();
@@ -2209,6 +2291,7 @@ fn rescan_raw_preserves_failed_progress_entries_until_raw_succeeds() {
             path: "raw/notes/a.md".to_string(),
             reason: "llm_failed: first failure".to_string(),
         }]),
+        false,
     )
     .unwrap();
 
@@ -2244,6 +2327,7 @@ fn rescan_raw_keeps_failed_progress_when_cache_entry_is_stale() {
             path: "raw/notes/a.md".to_string(),
             reason: "llm_failed: changed raw failed".to_string(),
         }]),
+        false,
     )
     .unwrap();
 

@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "slug": "product-maturity-phase-one",
+  "created_at": "2026-06-09T11:00:42.338Z",
+  "worktree": "/Users/zhangyukun/project/mdx",
+  "branch": "main",
+  "head": "dc7feb86551d05ff94241c6bdc80689091195956",
+  "head_short": "dc7feb8",
+  "source": "docs/loopx/plans/2026-06-09-product-maturity-phase-one.md"
+}

@@ -76,10 +76,79 @@ fn extract_pdf_source_text(relative_path: &str, bytes: &[u8]) -> Result<String, 
             "raw PDF source does not contain extractable text",
         ));
     }
+    if !is_usable_pdf_text(trimmed) {
+        return Err(WorkspaceError::new(
+            "pdf_extract_unusable",
+            "raw PDF source does not contain usable extractable text; it may be scanned, image-only, or encoded as unreadable glyphs",
+        ));
+    }
 
     Ok(format!(
         "# Raw PDF Source\n\nPath: {relative_path}\n\n{trimmed}\n"
     ))
+}
+
+fn is_usable_pdf_text(text: &str) -> bool {
+    let mut non_whitespace = 0usize;
+    let mut semantic_chars = 0usize;
+    let mut control_chars = 0usize;
+    let mut cjk_chars = 0usize;
+
+    for ch in text.chars() {
+        if ch.is_whitespace() {
+            continue;
+        }
+
+        non_whitespace += 1;
+        if ch.is_control() {
+            control_chars += 1;
+            continue;
+        }
+
+        if ch.is_alphanumeric() {
+            semantic_chars += 1;
+        }
+        if is_cjk_char(ch) {
+            cjk_chars += 1;
+        }
+    }
+
+    if non_whitespace < 10 {
+        return false;
+    }
+
+    if control_chars.saturating_mul(5) > non_whitespace {
+        return false;
+    }
+
+    if looks_like_pdf_metadata_only(text) {
+        return false;
+    }
+
+    semantic_chars >= 8 || cjk_chars >= 4
+}
+
+fn is_cjk_char(ch: char) -> bool {
+    matches!(
+        ch as u32,
+        0x3400..=0x4DBF
+            | 0x4E00..=0x9FFF
+            | 0xF900..=0xFAFF
+            | 0x20000..=0x2A6DF
+            | 0x2A700..=0x2B73F
+            | 0x2B740..=0x2B81F
+            | 0x2B820..=0x2CEAF
+    )
+}
+
+fn looks_like_pdf_metadata_only(text: &str) -> bool {
+    let normalized = text.replace(' ', "");
+    (normalized.contains("GeneralInformation")
+        || normalized.contains("ＧｅｎｅｒａｌＩｎｆｏｒｍａｔｉｏｎ"))
+        && normalized.contains("书名")
+        && normalized.contains("作者")
+        && normalized.contains("页数")
+        && (normalized.contains("出版社") || normalized.contains("出版日期"))
 }
 
 fn extract_pdf_with_builtin(bytes: &[u8]) -> Result<String, WorkspaceError> {
@@ -282,19 +351,104 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
+    fn prepare_raw_source_rejects_fallback_text_with_too_many_control_characters() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempdir().unwrap();
+        initialize_llm_wiki_workspace(root.path()).unwrap();
+        std::fs::write(root.path().join("raw/articles/broken.pdf"), b"%PDF-1.7\n").unwrap();
+        let bin = root.path().join("bin");
+        std::fs::create_dir(&bin).unwrap();
+        let pdftotext = bin.join("pdftotext");
+        std::fs::write(
+            &pdftotext,
+            "#!/bin/sh\npython3 - <<'PY' > \"$5\"\nprint('\\x01\\x02\\x03\\x04' * 80 + 'abc123' * 10)\nPY\n",
+        )
+        .unwrap();
+        let mut permissions = std::fs::metadata(&pdftotext).unwrap().permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&pdftotext, permissions).unwrap();
+        let _path = PathEnvGuard::prepend(&bin);
+
+        let error = prepare_raw_source(root.path(), "raw/articles/broken.pdf").unwrap_err();
+
+        assert_eq!(error.error_code(), "pdf_extract_unusable");
+        assert!(error
+            .to_string()
+            .contains("raw PDF source does not contain usable extractable text"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn prepare_raw_source_rejects_fallback_text_with_only_pdf_metadata() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempdir().unwrap();
+        initialize_llm_wiki_workspace(root.path()).unwrap();
+        std::fs::write(root.path().join("raw/articles/broken.pdf"), b"%PDF-1.7\n").unwrap();
+        let bin = root.path().join("bin");
+        std::fs::create_dir(&bin).unwrap();
+        let pdftotext = bin.join("pdftotext");
+        std::fs::write(
+            &pdftotext,
+            "#!/bin/sh\ncat > \"$5\" <<'TXT'\n［Ｇｅｎｅｒａｌ Ｉｎｆｏｒｍａｔｉｏｎ］\n书名＝Ｍａｖｅｎ 实战\n作者＝许虹斌著\n页数＝３６１\n出版社＝机械工业出版社\n出版日期＝２０１１\nTXT\n",
+        )
+        .unwrap();
+        let mut permissions = std::fs::metadata(&pdftotext).unwrap().permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&pdftotext, permissions).unwrap();
+        let _path = PathEnvGuard::prepend(&bin);
+
+        let error = prepare_raw_source(root.path(), "raw/articles/broken.pdf").unwrap_err();
+
+        assert_eq!(error.error_code(), "pdf_extract_unusable");
+    }
+
+    #[test]
+    #[cfg(unix)]
     fn prepare_raw_source_reports_pdf_extract_failure_when_pdftotext_is_unavailable() {
         let root = tempdir().unwrap();
         initialize_llm_wiki_workspace(root.path()).unwrap();
         std::fs::write(root.path().join("raw/articles/broken.pdf"), b"%PDF-1.7\n").unwrap();
-        let empty_path = root.path().join("empty-bin");
-        std::fs::create_dir(&empty_path).unwrap();
-        let _path = PathEnvGuard::replace(&empty_path);
+        let _env = DisablePdftotextGuard::new();
 
         let error = prepare_raw_source(root.path(), "raw/articles/broken.pdf").unwrap_err();
 
         assert_eq!(error.error_code(), "pdf_extract_failed");
         assert!(error.to_string().contains("pdftotext fallback failed"));
-        assert!(error.to_string().contains("failed to run pdftotext"));
+        assert!(error.to_string().contains("pdftotext fallback is disabled"));
+    }
+
+    #[cfg(unix)]
+    struct DisablePdftotextGuard {
+        _lock: MutexGuard<'static, ()>,
+        old_value: Option<std::ffi::OsString>,
+    }
+
+    #[cfg(unix)]
+    impl DisablePdftotextGuard {
+        fn new() -> Self {
+            let lock = path_env_lock()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let old_value = std::env::var_os("MDX_DISABLE_PDFTOTEXT");
+            std::env::set_var("MDX_DISABLE_PDFTOTEXT", "1");
+            Self {
+                _lock: lock,
+                old_value,
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for DisablePdftotextGuard {
+        fn drop(&mut self) {
+            if let Some(old_value) = self.old_value.as_ref() {
+                std::env::set_var("MDX_DISABLE_PDFTOTEXT", old_value);
+            } else {
+                std::env::remove_var("MDX_DISABLE_PDFTOTEXT");
+            }
+        }
     }
 
     #[cfg(unix)]
@@ -327,20 +481,6 @@ mod tests {
             }
             let next_path = std::env::join_paths(paths).unwrap();
             std::env::set_var("PATH", next_path);
-
-            Self {
-                _lock: lock,
-                old_path,
-                restore_path: true,
-            }
-        }
-
-        fn replace(path: &std::path::Path) -> Self {
-            let lock = path_env_lock()
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            let old_path = std::env::var_os("PATH");
-            std::env::set_var("PATH", path);
 
             Self {
                 _lock: lock,

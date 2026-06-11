@@ -61,17 +61,22 @@ export function rescanRaw(
   rootPath: string,
   excludedPendingPaths: string[] = [],
   failed?: LlmWikiFailedFile[],
+  retryFailed = false,
 ): Promise<RawScanResult> {
   const args: {
     rootPath: string;
     excludedPendingPaths: string[];
     failed?: LlmWikiFailedFile[];
+    retryFailed?: boolean;
   } = {
     rootPath,
     excludedPendingPaths,
   };
   if (failed) {
     args.failed = failed;
+  }
+  if (retryFailed) {
+    args.retryFailed = true;
   }
   return invokeCommand<RawScanResultPayload>(
     "llm_wiki_rescan_raw",

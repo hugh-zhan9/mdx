@@ -106,6 +106,7 @@ export function useLlmWikiWorkspace(
   const activeRootPathRef = useRef(rootPath);
   const requestIdRef = useRef(0);
   const queryGenerationRef = useRef(0);
+  const concurrentQueryRef = useRef(false);
   const autoRescanRef = useRef({
     running: false,
     pending: false,
@@ -306,12 +307,22 @@ export function useLlmWikiWorkspace(
                   }
                 : current,
             );
-            try {
-              await rescanRaw(
+          try {
+              const failureScan = await rescanRaw(
                 ingestRootPath,
                 Array.from(failedPaths),
                 toProgressFailures(failed),
               );
+              if (activeRootPathRef.current === ingestRootPath) {
+                setSnapshot((current) =>
+                  current.rootPath === ingestRootPath
+                    ? {
+                        ...current,
+                        scan: failureScan,
+                      }
+                    : current,
+                );
+              }
             } catch (progressError) {
               console.warn(
                 "Failed to persist LLM Wiki ingest failure progress.",
@@ -547,14 +558,16 @@ export function useLlmWikiWorkspace(
     setMessageForError,
   ]);
 
-  const rescan = useCallback(async () => {
+  const runRawRescan = useCallback(async (retryFailed: boolean) => {
     if (!isReady) {
       return;
     }
 
     await runExclusiveOperation("rescan", async () => {
       try {
-        const result = await rescanRaw(rootPath);
+        const result = retryFailed
+          ? await rescanRaw(rootPath, [], undefined, true)
+          : await rescanRaw(rootPath);
 
         if (activeRootPathRef.current !== rootPath) {
           return;
@@ -587,6 +600,10 @@ export function useLlmWikiWorkspace(
     setMessageForError,
   ]);
 
+  const rescan = useCallback(async () => {
+    await runRawRescan(true);
+  }, [runRawRescan]);
+
   useEffect(() => {
     if (
       !shouldStartAutoProcessing({
@@ -605,13 +622,13 @@ export function useLlmWikiWorkspace(
       return;
     }
 
-    void rescan();
+    void runRawRescan(false);
   }, [
     activeOperation,
     canAutoProcess,
     config?.hasApiKey,
     isReady,
-    rescan,
+    runRawRescan,
     rootPath,
     status?.mode,
   ]);
@@ -793,7 +810,7 @@ export function useLlmWikiWorkspace(
         return;
       }
 
-      await runExclusiveOperation("query", async ({ operationId }) => {
+      const executeQuery = async (operationId: string | null) => {
         const queryGeneration = ++queryGenerationRef.current;
 
         setSnapshot((current) =>
@@ -861,9 +878,27 @@ export function useLlmWikiWorkspace(
               : current;
           });
         }
+      };
+
+      if (activeOperation === "ingest") {
+        if (concurrentQueryRef.current) {
+          return;
+        }
+
+        concurrentQueryRef.current = true;
+        try {
+          await executeQuery(createLlmWikiOperationId("query"));
+        } finally {
+          concurrentQueryRef.current = false;
+        }
+        return;
+      }
+
+      await runExclusiveOperation("query", async ({ operationId }) => {
+        await executeQuery(operationId);
       });
     },
-    [isReady, rootPath, runExclusiveOperation, status?.mode],
+    [activeOperation, isReady, rootPath, runExclusiveOperation, status?.mode],
   );
 
   useEffect(() => {
@@ -891,7 +926,7 @@ export function useLlmWikiWorkspace(
               }
             : current,
         );
-      } catch {
+      } catch (error) {
         if (disposed) {
           return;
         }
@@ -899,10 +934,17 @@ export function useLlmWikiWorkspace(
         setSnapshot((current) =>
           current.rootPath === rootPath &&
           current.activeOperationId === activeOperationId
-            ? {
-                ...current,
-                activeStage: null,
-              }
+            ? isOperationNotFoundError(error)
+              ? {
+                  ...current,
+                  activeOperation: null,
+                  activeOperationId: null,
+                  activeStage: null,
+                }
+              : {
+                  ...current,
+                  activeStage: null,
+                }
             : current,
         );
       }
@@ -1139,4 +1181,22 @@ function formatError(error: unknown) {
   }
 
   return "未知错误";
+}
+
+function isOperationNotFoundError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const maybeError = error as {
+    errorCode?: unknown;
+    error_code?: unknown;
+    message?: unknown;
+  };
+  return (
+    maybeError.errorCode === "operation_not_found" ||
+    maybeError.error_code === "operation_not_found" ||
+    (typeof maybeError.message === "string" &&
+      maybeError.message.includes("operation_not_found"))
+  );
 }

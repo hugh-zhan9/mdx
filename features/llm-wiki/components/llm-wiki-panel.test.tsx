@@ -167,8 +167,18 @@ describe("LlmWikiPanel", () => {
             );
         });
 
-        expect(host.textContent).toContain("正在处理 raw");
-        expect(host.textContent).toContain("failed-49.md");
+        const progress = host.querySelector('[data-testid="llm-wiki-progress"]');
+        const failed = host.querySelector(
+            '[data-testid="llm-wiki-failed-details"]',
+        );
+
+        expect(progress).not.toBeNull();
+        expect(failed).not.toBeNull();
+        expect(progress?.textContent).toContain("正在处理 raw");
+        expect(failed?.textContent).toContain("failed-49.md");
+        expect(
+            progress?.compareDocumentPosition(failed as Node) ?? 0,
+        ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     });
 
     it("allows question input while raw ingest is active", () => {

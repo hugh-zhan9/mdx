@@ -73,8 +73,11 @@ pub fn build_wiki_context_with_selector_output(
         if !seen.insert(path.clone()) {
             continue;
         }
-        let contents = read_wiki_page(root, &path)?;
-        pages.push(ContextPage { path, contents });
+        match read_wiki_page(root, &path) {
+            Ok(contents) => pages.push(ContextPage { path, contents }),
+            Err(error) if is_skippable_page_error(&error) => continue,
+            Err(error) => return Err(error),
+        }
     }
 
     if request.max_expanded_pages > 0 {
@@ -99,7 +102,7 @@ pub fn build_wiki_context_with_selector_output(
                         });
                         expanded_count += 1;
                     }
-                    Err(error) if is_skippable_expanded_page_error(&error) => continue,
+                    Err(error) if is_skippable_page_error(&error) => continue,
                     Err(error) => return Err(error),
                 }
                 if expanded_count >= request.max_expanded_pages {
@@ -192,7 +195,7 @@ fn invalid_wiki_page_path(path: &str) -> WorkspaceError {
     )
 }
 
-fn is_skippable_expanded_page_error(error: &WorkspaceError) -> bool {
+fn is_skippable_page_error(error: &WorkspaceError) -> bool {
     matches!(error.error_code(), "not_found" | "path_type_conflict")
 }
 

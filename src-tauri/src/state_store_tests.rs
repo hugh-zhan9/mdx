@@ -130,10 +130,7 @@ fn saves_and_reloads_workspace_state() {
     assert_eq!(raw_json["preferences"]["fileWatchEnabled"], false);
     assert_eq!(raw_json["preferences"]["searchMaxFileBytes"], 1_048_576);
     assert_eq!(raw_json["preferences"]["searchMaxResults"], 100);
-    assert_eq!(
-        raw_json["preferences"]["searchMaxMatchesPerFile"],
-        10
-    );
+    assert_eq!(raw_json["preferences"]["searchMaxMatchesPerFile"], 10);
     assert_eq!(raw_json["workspaces"][0]["activeTabId"], "tab-2");
     assert_eq!(raw_json["workspaces"][0]["panels"]["leftCollapsed"], true);
     assert_eq!(raw_json["windowSize"]["width"], 1440.0);
