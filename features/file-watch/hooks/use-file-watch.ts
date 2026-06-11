@@ -51,6 +51,7 @@ export function useFileWatch({
         if (!watchTarget) {
             return;
         }
+        const resolvedWatchTarget = watchTarget;
 
         let cancelled = false;
         let activeWatchId: string | null = null;
@@ -118,8 +119,8 @@ export function useFileWatch({
             unlisteners.push(...nextUnlisteners);
             const started =
                 mode === "workspace"
-                    ? await startWorkspaceWatch(watchTarget)
-                    : await startDocumentWatch(watchTarget);
+                    ? await startWorkspaceWatch(resolvedWatchTarget)
+                    : await startDocumentWatch(resolvedWatchTarget);
 
             if (cancelled) {
                 await stopWatch(started.watchId).catch((error) => {
