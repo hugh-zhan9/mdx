@@ -1,5 +1,6 @@
 "use client";
 
+import { RefreshCw } from "lucide-react";
 import { type FormEvent, useCallback, useState } from "react";
 import {
   EmptyState,
@@ -85,6 +86,10 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
 
   const panelMessage = message;
   const actionsDisabled = !isReady || isLoading || isProcessing;
+  const queryActionsDisabled =
+    !isReady ||
+    isLoading ||
+    (isProcessing && activeOperation !== "ingest");
   const primaryActionLabel = activeOperationLabel ?? viewModel.primaryAction;
   const emptyStateActionLabel =
     viewModel.emptyState?.actionLabel === "初始化 LLM Wiki" &&
@@ -99,10 +104,10 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
       : activeMode === "digest" && digestMode?.disabled
         ? "status"
         : activeMode;
+  const showStatusProgress = Boolean(panelMessage && effectiveMode === "status");
   const queryDisabled =
-    actionsDisabled ||
+    queryActionsDisabled ||
     status?.mode !== "llmWiki" ||
-    isProcessing ||
     isQuerying ||
     question.trim().length === 0;
   const digestDisabled =
@@ -119,7 +124,7 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
           <>
             <IconButton
               label="刷新状态"
-              icon={isLoading ? "…" : "↻"}
+              icon={<RefreshCw className={isLoading ? "animate-spin" : undefined} />}
               onClick={() => void refresh()}
               disabled={isLoading || isProcessing}
             />
@@ -178,6 +183,15 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
               </div>
             </div>
 
+            {panelMessage ? (
+              <pre
+                data-testid="llm-wiki-progress"
+                className="max-h-72 overflow-auto whitespace-pre-wrap border border-base-300 bg-base-200 p-2 font-sans text-xs leading-relaxed text-base-content/75"
+              >
+                {panelMessage}
+              </pre>
+            ) : null}
+
             {viewModel.emptyState ? (
               <div className="border border-base-300 bg-base-200/60 py-3">
                 <EmptyState
@@ -224,14 +238,17 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
                 <div className="text-xs font-semibold text-base-content/75">
                   失败明细
                 </div>
-                <div className="space-y-2">
+                <div
+                  data-testid="llm-wiki-failed-details"
+                  className="max-h-48 space-y-2 overflow-auto break-words pr-1"
+                >
                   {viewModel.failed.map((failure) => (
                     <div
                       key={failure.path}
                       className="min-w-0 border-t border-base-300 pt-2 first:border-t-0 first:pt-0"
                       title={`${failure.path}\n${failure.reason}`}
                     >
-                      <div className="break-words text-xs font-medium text-base-content/80">
+                      <div className="break-all text-xs font-medium text-base-content/80">
                         {failure.path}
                       </div>
                       <div className="mt-1 break-words text-xs leading-relaxed text-base-content/65">
@@ -254,9 +271,7 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
                 disabled={
-                  actionsDisabled ||
-                  status?.mode !== "llmWiki" ||
-                  isProcessing
+                  queryActionsDisabled || status?.mode !== "llmWiki"
                 }
                 placeholder="询问当前 Wiki"
                 rows={4}
@@ -339,8 +354,11 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
           </div>
         ) : null}
 
-        {panelMessage ? (
-          <pre className="max-h-72 overflow-auto whitespace-pre-wrap border border-base-300 bg-base-200 p-2 font-sans text-xs leading-relaxed text-base-content/75">
+        {panelMessage && !showStatusProgress ? (
+          <pre
+            data-testid="llm-wiki-progress"
+            className="max-h-72 overflow-auto whitespace-pre-wrap border border-base-300 bg-base-200 p-2 font-sans text-xs leading-relaxed text-base-content/75"
+          >
             {panelMessage}
           </pre>
         ) : null}

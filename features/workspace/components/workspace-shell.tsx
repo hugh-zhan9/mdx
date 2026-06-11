@@ -1,6 +1,13 @@
 "use client";
 
 import {
+  FolderOpen,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+} from "lucide-react";
+import {
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -1919,7 +1926,9 @@ export function WorkspaceShell({
             onClick={leftPanel.toggleCollapsed}
             label={leftPanel.isCollapsed ? "展开文件树" : "收起文件树"}
             title={leftPanel.isCollapsed ? "展开文件树" : "收起文件树"}
-            icon="☰"
+            icon={
+              leftPanel.isCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />
+            }
           />
         </div>
 
@@ -1933,6 +1942,7 @@ export function WorkspaceShell({
             onClick={onChooseWorkspace}
             disabled={!canChooseWorkspace}
           >
+            <FolderOpen aria-hidden="true" />
             打开文件夹
           </TextControlButton>
           <SettingsButton
@@ -1945,7 +1955,9 @@ export function WorkspaceShell({
           />
           <IconButton
             label={rightPanel.isCollapsed ? "展开目录" : "收起目录"}
-            icon="☰"
+            icon={
+              rightPanel.isCollapsed ? <PanelRightOpen /> : <PanelRightClose />
+            }
             onClick={rightPanel.toggleCollapsed}
           />
         </div>

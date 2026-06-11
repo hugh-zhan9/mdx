@@ -1,5 +1,6 @@
 "use client";
 
+import { RefreshCw, Save, Settings, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   detectLlmWikiWorkspace,
@@ -47,6 +48,7 @@ export function SettingsButton({
   return (
     <>
       <TextControlButton onClick={() => setOpen(true)}>
+        <Settings aria-hidden="true" />
         设置
       </TextControlButton>
       {actualOpen ? (
@@ -321,9 +323,9 @@ function SettingsDialog({
         role="dialog"
         aria-modal="true"
         aria-label="设置"
-        className="grid w-[min(92vw,880px)] min-w-[min(92vw,560px)] grid-cols-[clamp(112px,18vw,150px)_minmax(0,1fr)] overflow-hidden border border-base-300 bg-base-100 shadow-2xl"
+        className="grid max-h-[calc(100vh-7rem)] w-[min(94vw,880px)] min-w-0 grid-cols-[minmax(104px,152px)_minmax(0,1fr)] overflow-hidden border border-base-300 bg-base-100 shadow-2xl"
       >
-        <aside className="border-r border-base-300 bg-base-200 px-3 py-4">
+        <aside className="min-w-0 overflow-auto border-r border-base-300 bg-base-200 px-3 py-4">
           <h2 className="px-2 text-sm font-semibold">设置</h2>
           <div className="mt-4 space-y-1">
             {SETTINGS_SECTIONS.map((section) => (
@@ -344,25 +346,21 @@ function SettingsDialog({
           </div>
         </aside>
 
-        <div className="min-w-0">
-          <header className="flex h-12 items-center justify-between border-b border-base-300 px-5">
-            <div className="text-sm font-medium">设置</div>
-            <div className="flex items-center gap-2">
+        <div className="flex min-w-0 min-h-0 flex-col">
+          <header className="flex min-w-0 items-center justify-between gap-3 border-b border-base-300 px-5 py-3">
+            <div className="min-w-0 text-sm font-medium">设置</div>
+            <div className="flex min-w-0 shrink-0 items-center gap-2">
               {message ? (
                 <div className="max-w-64 truncate text-xs text-error">
                   {message}
                 </div>
               ) : null}
-              <button
-                type="button"
-                className="h-7 px-2 text-xs text-base-content/70 hover:bg-base-200 hover:text-base-content"
-                onClick={onClose}
-              >
+              <TextControlButton onClick={onClose}>
+                <X aria-hidden="true" />
                 关闭
-              </button>
-              <button
-                type="button"
-                className="h-8 bg-base-content px-3 text-xs text-base-100 disabled:bg-base-content/30"
+              </TextControlButton>
+              <TextControlButton
+                className="h-8 bg-base-content px-3 text-base-100 hover:bg-base-content/85 hover:text-base-100 disabled:bg-base-content/30 disabled:hover:bg-base-content/30"
                 onClick={() => void saveSettings()}
                 disabled={
                   loadingConfig ||
@@ -371,12 +369,13 @@ function SettingsDialog({
                   !model.trim()
                 }
               >
+                <Save aria-hidden="true" />
                 {savingSettings ? "保存中" : "保存"}
-              </button>
+              </TextControlButton>
             </div>
           </header>
 
-          <div className="max-h-[70vh] space-y-7 overflow-auto px-[clamp(16px,3vw,28px)] py-5">
+          <div className="min-h-0 space-y-7 overflow-auto px-[clamp(16px,3vw,28px)] py-5">
             <section
               ref={(node) => {
                 sectionRefs.current.general = node;
@@ -565,25 +564,26 @@ function SettingsDialog({
                     <div className="text-xs text-base-content/70">
                       LLM Wiki 后台处理
                     </div>
-                    <button
-                      type="button"
-                      className="h-8 bg-base-content px-3 text-xs text-base-100 disabled:bg-base-content/30"
+                    <TextControlButton
+                      className="h-8 bg-base-content px-3 text-base-100 hover:bg-base-content/85 hover:text-base-100 disabled:bg-base-content/30 disabled:hover:bg-base-content/30"
                       onClick={() => void toggleLlmWiki()}
                       disabled={!workspaceRoot || !llmWikiConfig || loadingLlmWiki}
                     >
                       {llmWikiConfig?.paused ? "启用" : "暂停"}
-                    </button>
+                    </TextControlButton>
                   </div>
                   <div className="mt-3 flex items-center justify-between gap-3">
                     <div className="text-xs text-base-content/70">日志</div>
-                    <button
-                      type="button"
-                      className="h-7 px-2 text-xs text-base-content/70 hover:bg-base-200 hover:text-base-content disabled:text-base-content/30"
+                    <TextControlButton
                       onClick={() => void refreshLlmWikiLog()}
                       disabled={!workspaceRoot || loadingLlmWiki}
                     >
+                      <RefreshCw
+                        aria-hidden="true"
+                        className={loadingLlmWiki ? "animate-spin" : undefined}
+                      />
                       刷新
-                    </button>
+                    </TextControlButton>
                   </div>
                   <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap border border-base-300 bg-base-200 p-2 font-sans text-xs leading-relaxed text-base-content/75">
                     {workspaceRoot

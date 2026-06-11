@@ -1,5 +1,6 @@
 "use client";
 
+import { X } from "lucide-react";
 import { IconButton } from "../../../common/components/ui-controls";
 import type { WorkspaceAction, WorkspaceTab } from "../lib/types";
 
@@ -50,7 +51,7 @@ export function TabStrip({
                             </button>
                             <IconButton
                                 label={`关闭 ${tab.title}`}
-                                icon="×"
+                                icon={<X />}
                                 className="h-full min-w-8"
                                 onClick={() => void onCloseTab(tab.tabId)}
                             />

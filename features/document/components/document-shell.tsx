@@ -1,5 +1,6 @@
 "use client";
 
+import { PanelRightOpen, PanelRightClose, Save } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { storeImageForDocument } from "@/common/lib/image-storage";
 import { tauriCore, tauriDialog, tauriWindow } from "@/common/lib/tauri";
@@ -930,9 +931,15 @@ export function DocumentShell({
 
         <div className="flex shrink-0 items-center gap-2">
           <TextControlButton onClick={() => void save()} disabled={saving}>
+            <Save aria-hidden="true" />
             {saving ? "保存中" : "保存"}
           </TextControlButton>
           <TextControlButton onClick={toggleOutline}>
+            {state.outlineCollapsed ? (
+              <PanelRightOpen aria-hidden="true" />
+            ) : (
+              <PanelRightClose aria-hidden="true" />
+            )}
             {state.outlineCollapsed ? "展开目录" : "收起目录"}
           </TextControlButton>
         </div>

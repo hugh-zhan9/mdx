@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDown, ChevronRight } from "lucide-react";
 import type {
     DragEvent,
     MouseEvent as ReactMouseEvent,
@@ -99,8 +100,14 @@ export function FileTreeNodeView({
                         : undefined
                 }
             >
-                <span className="w-4 shrink-0 text-center text-xs text-base-content/65">
-                    {node.kind === "folder" ? (isExpanded ? "⌄" : "›") : ""}
+                <span className="inline-flex w-4 shrink-0 items-center justify-center text-base-content/65">
+                    {node.kind === "folder" ? (
+                        isExpanded ? (
+                            <ChevronDown aria-hidden="true" className="h-3.5 w-3.5" />
+                        ) : (
+                            <ChevronRight aria-hidden="true" className="h-3.5 w-3.5" />
+                        )
+                    ) : null}
                 </span>
                 <span className="min-w-0 flex-1 truncate">
                     <HighlightedName

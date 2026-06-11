@@ -51,7 +51,12 @@ export function IconButton({
             ].filter(Boolean).join(" ")}
             {...props}
         >
-            <span aria-hidden="true">{icon}</span>
+            <span
+                aria-hidden="true"
+                className="inline-flex h-4 w-4 shrink-0 items-center justify-center [&>svg]:h-4 [&>svg]:w-4 [&>svg]:shrink-0"
+            >
+                {icon}
+            </span>
         </button>
     );
 }
@@ -65,7 +70,7 @@ export function TextControlButton({
             type="button"
             className={[
                 baseButtonClass,
-                "h-7 px-2 text-xs text-base-content/75 hover:bg-base-200 hover:text-base-content",
+                "inline-flex h-7 min-w-0 max-w-full items-center gap-1 whitespace-nowrap px-2 text-xs text-base-content/75 hover:bg-base-200 hover:text-base-content [&>svg]:h-4 [&>svg]:w-4 [&>svg]:shrink-0",
                 className,
             ].filter(Boolean).join(" ")}
             {...props}
