@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import { tauriCore } from "@/common/lib/tauri";
 import { EditorPane } from "@/features/editor/components/editor-pane";
+import { documentFingerprint } from "@/features/file-watch/lib/external-change";
 import { EmptyState } from "../../../common/components/ui-controls";
 import { createEditorEmptyState } from "../lib/empty-state-copy";
 import {
@@ -80,6 +81,7 @@ export function EditorStage({
           type: "tab/saved",
           tabId: loadingTab.tabId,
           markdown,
+          fingerprint: documentFingerprint(markdown),
         });
         setLoadError((current) =>
           current?.tabId === loadingTab.tabId ? null : current,

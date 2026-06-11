@@ -1,6 +1,7 @@
 use tempfile::tempdir;
 
 use crate::models::FileTreeNode;
+use crate::document::document_fingerprint;
 use crate::workspace_fs::{
     create_markdown_file, open_path_with_default_application_impl, read_markdown_file,
     read_preview_binary_file, read_preview_text_file, scan_workspace_sync,
@@ -303,11 +304,30 @@ fn write_markdown_file_rejects_broken_symlink_leaf_to_outside_root() {
         root.path().to_string_lossy().into_owned(),
         symlink_path.to_string_lossy().into_owned(),
         "# Escaped".to_string(),
+        None,
     )
     .unwrap_err();
 
     assert_eq!(err.error_code(), "outside_workspace");
     assert!(!outside_target.exists());
+}
+
+#[test]
+fn write_markdown_file_rejects_stale_expected_fingerprint() {
+    let root = tempdir().unwrap();
+    let path = root.path().join("note.md");
+    std::fs::write(&path, "# External").unwrap();
+
+    let err = write_markdown_file(
+        root.path().to_string_lossy().into_owned(),
+        path.to_string_lossy().into_owned(),
+        "# Local".to_string(),
+        Some(document_fingerprint("# Original")),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.error_code(), "external_modified");
+    assert_eq!(std::fs::read_to_string(path).unwrap(), "# External");
 }
 
 #[test]
@@ -389,6 +409,7 @@ fn write_markdown_file_rejects_symlink_intermediate_to_outside_root() {
         root.path().to_string_lossy().into_owned(),
         symlink_dir.join("note.md").to_string_lossy().into_owned(),
         "# Escaped".to_string(),
+        None,
     )
     .unwrap_err();
 

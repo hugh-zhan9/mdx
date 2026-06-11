@@ -1,0 +1,556 @@
+{
+  "schema_version": 1,
+  "audit_id": "20260611T085458Z-product-maturity-phase-one",
+  "slug": "product-maturity-phase-one",
+  "status": "audited",
+  "updated_at": "2026-06-11T08:56:30.000Z",
+  "inputs": {
+    "scanned": [
+      "slug=product-maturity-phase-one",
+      "worktree=/Users/zhangyukun/project/mdx",
+      "branch=main",
+      "base_branch=main",
+      "head=a813baa",
+      "change_window_source=baseline",
+      "change_range=dc7feb8..HEAD",
+      "committed_change_count=30",
+      "changed_files_count=59",
+      "uncommitted_change_count=31",
+      "cwd=/Users/zhangyukun/project/mdx",
+      "env.LOOPX_DEVELOPER=unknown"
+    ]
+  },
+  "audit": {
+    "branch": "main",
+    "base_branch": "main",
+    "worktree": "/Users/zhangyukun/project/mdx",
+    "head": "a813baa",
+    "accepted_candidates": [
+      {
+        "id": "spec-review-change-window",
+        "kind": "spec",
+        "target": "docs/loopx/specs/editor.md",
+        "summary": "Document and Workspace recovery flows must preserve drafts until explicit save/discard, expose draft diffs, use backend save fingerprints, and stop discard flows if draft cleanup fails.",
+        "evidence": [
+          "review finding: Document clean auto-reload deleted pending draft recovery data",
+          "review finding: Workspace save lacked expected fingerprint and could overwrite missed external edits",
+          "review finding: workspace discard flows left plaintext drafts after user chose discard",
+          "review finding: draft recovery banners lacked read-only diff viewer",
+          "verification: npm test passed 273 tests",
+          "verification: cargo test --manifest-path src-tauri/Cargo.toml passed 284 lib tests and 13 CLI tests",
+          "spec update: docs/loopx/specs/editor.md#Recovery-And-External-Change-Safety"
+        ]
+      }
+    ],
+    "rejected_candidates": [
+      {
+        "id": "memory-local-review-change-window",
+        "kind": "memory",
+        "scope": "local",
+        "rejection_reason": "The reusable recovery/save/discard constraints were promoted to repo-tracked editor spec; duplicating them in local memory would add stale parallel guidance."
+      },
+      {
+        "id": "memory-shared-review-change-window",
+        "kind": "memory",
+        "scope": "shared",
+        "rejection_reason": "The durable behavior belongs in docs/loopx/specs/editor.md rather than lightweight shared memory."
+      }
+    ],
+    "extraction_candidates": [
+      {
+        "id": "memory-local-review-change-window",
+        "kind": "memory",
+        "scope": "local",
+        "status": "pending-review",
+        "target": ".loopx/memory/entries/",
+        "summary": "Review the committed finish change window for local agent memory worth preserving.",
+        "reason": "Committed code, docs, tests, or workflow files may encode a reusable decision, constraint, pitfall, or handoff that future agents should know.",
+        "evidence": [
+          "change_window.source=baseline",
+          "change_window.range=dc7feb8..HEAD",
+          "change_window.commit_count=30",
+          "commit: fix: resolve maturity phase verification issues",
+          "commit: docs: describe maturity phase features",
+          "commit: polish: refine workspace controls and scroll regions",
+          "commit: fix: reject malformed numeric preference settings",
+          "commit: feat: configure watch and search settings",
+          "file: README.md",
+          "file: README.zh-CN.md",
+          "file: common/components/ui-controls.tsx",
+          "file: features/document/components/document-shell.tsx",
+          "file: features/document/lib/document-state.test.ts"
+        ]
+      },
+      {
+        "id": "memory-shared-review-change-window",
+        "kind": "memory",
+        "scope": "shared",
+        "status": "pending-review",
+        "target": "docs/loopx/memory/",
+        "summary": "Review the committed finish change window for git-tracked shared memory worth preserving across machines.",
+        "reason": "A user may need lightweight project memory across multiple machines before it becomes stable enough to promote to a spec.",
+        "evidence": [
+          "change_window.source=baseline",
+          "change_window.range=dc7feb8..HEAD",
+          "change_window.commit_count=30",
+          "commit: fix: resolve maturity phase verification issues",
+          "commit: docs: describe maturity phase features",
+          "commit: polish: refine workspace controls and scroll regions",
+          "commit: fix: reject malformed numeric preference settings",
+          "commit: feat: configure watch and search settings",
+          "file: README.md",
+          "file: README.zh-CN.md",
+          "file: common/components/ui-controls.tsx",
+          "file: features/document/components/document-shell.tsx",
+          "file: features/document/lib/document-state.test.ts"
+        ]
+      },
+      {
+        "id": "spec-review-change-window",
+        "kind": "spec",
+        "status": "pending-review",
+        "target": "docs/loopx/specs/inbox.md",
+        "summary": "Review the committed finish change window for a repo-tracked spec candidate.",
+        "reason": "Committed workflow, skill, runtime, documentation, or test changes may define a stable team rule that belongs in specs.",
+        "evidence": [
+          "change_window.source=baseline",
+          "change_window.range=dc7feb8..HEAD",
+          "change_window.commit_count=30",
+          "commit: fix: resolve maturity phase verification issues",
+          "commit: docs: describe maturity phase features",
+          "commit: polish: refine workspace controls and scroll regions",
+          "commit: fix: reject malformed numeric preference settings",
+          "commit: feat: configure watch and search settings",
+          "file: README.md",
+          "file: README.zh-CN.md",
+          "file: common/components/ui-controls.tsx",
+          "file: features/document/components/document-shell.tsx",
+          "file: features/document/lib/document-state.test.ts"
+        ]
+      }
+    ],
+    "no_candidates_reason": "Spec candidate accepted; local/shared memory candidates rejected to avoid duplicating durable spec guidance.",
+    "change_window": {
+      "source": "baseline",
+      "baseline_ref": "dc7feb86551d05ff94241c6bdc80689091195956",
+      "baseline_ref_short": "dc7feb8",
+      "range": "dc7feb8..HEAD",
+      "commit_count": 30,
+      "commits": [
+        {
+          "sha": "a813baa99bfc7832864cd23d1fb44a57ba5245d9",
+          "subject": "fix: resolve maturity phase verification issues"
+        },
+        {
+          "sha": "d32fac27a3d9a95e938fe1fa9f05c45f0980595d",
+          "subject": "docs: describe maturity phase features"
+        },
+        {
+          "sha": "50baff6eed0a77e0d93eaf999b7147b79a2aeb90",
+          "subject": "polish: refine workspace controls and scroll regions"
+        },
+        {
+          "sha": "dc4da8a89f6a470ff9d524cbb57f5b6cd3eda164",
+          "subject": "fix: reject malformed numeric preference settings"
+        },
+        {
+          "sha": "7f78f27edf383c315dab35df3ab661e234934bbd",
+          "subject": "feat: configure watch and search settings"
+        },
+        {
+          "sha": "94ccbce8049ffd29ff95e357ad19b2cb63901e15",
+          "subject": "fix: align markdown line scroll with list blocks"
+        },
+        {
+          "sha": "498ca60d539c0f3ceb5843cc62ea206f316a3337",
+          "subject": "fix: serialize workspace search updates"
+        },
+        {
+          "sha": "963d5f1c11f422ddf0ab00a0e0f54d82e58f8066",
+          "subject": "feat: add workspace full text search"
+        },
+        {
+          "sha": "738b50d9796cf1bcbc0413ab5203408e1c66ae03",
+          "subject": "fix: check workspace search limits before matching"
+        },
+        {
+          "sha": "cedf1b6a332a43b677325a6324048086c7883bff",
+          "subject": "fix: stream workspace search matching"
+        },
+        {
+          "sha": "587c743a16949edea4633276945f882f71634363",
+          "subject": "fix: improve workspace search match accuracy"
+        },
+        {
+          "sha": "f33f1c17a6149ab99a4ffeeacf7e1b7f81c0bb7e",
+          "subject": "fix: enforce workspace search limits and symlink skips"
+        },
+        {
+          "sha": "06f627b4313501d740448901eb56abfd395a0695",
+          "subject": "feat: add workspace full text search backend"
+        },
+        {
+          "sha": "7ec64f4a29150de7d4c054c4b0132040d363caf4",
+          "subject": "feat: handle document external changes"
+        },
+        {
+          "sha": "8a11f9feb6aec3ce5e1423f91628b9d8708d61bc",
+          "subject": "feat: handle workspace external changes"
+        },
+        {
+          "sha": "5c139415921239b205a7af517b36b440346cdcb3",
+          "subject": "feat: add file watch service"
+        },
+        {
+          "sha": "4052f9004d6daf037c2dd8959fc2d26972fd10ce",
+          "subject": "fix: guard document draft cleanup races"
+        },
+        {
+          "sha": "d6cbde6ecdc5d3c86b1006fbd980084afebd3ffd",
+          "subject": "feat: recover document drafts"
+        },
+        {
+          "sha": "4e9568cd43317c9be5825039dde89deb6aebbdd2",
+          "subject": "fix: serialize workspace draft mutations"
+        },
+        {
+          "sha": "7649e8539c4f985b6ff94d004b38ab38179b8cf9",
+          "subject": "fix: fence workspace draft autosaves"
+        },
+        {
+          "sha": "e597066a64eb0b88b88b4e0e4b19cbf41105d169",
+          "subject": "fix: delete renamed workspace draft paths"
+        },
+        {
+          "sha": "8e8907fe35006c6d14e84820c0bd123b62bf9ef1",
+          "subject": "fix: avoid stale workspace draft flushes"
+        },
+        {
+          "sha": "568466691fd113a672b3d7143ffd5c0dca8e10ed",
+          "subject": "feat: recover workspace drafts"
+        },
+        {
+          "sha": "c12ef00898208878832e62715b74db060f930601",
+          "subject": "test: harden recovery primitives"
+        },
+        {
+          "sha": "f279ff2909ae3d799b8103530a3fd2db2276c0eb",
+          "subject": "feat: add recovery diff primitives"
+        },
+        {
+          "sha": "74a0406775efe79ebebd035ed83bf814e7235856",
+          "subject": "fix: validate draft cleanup retention"
+        },
+        {
+          "sha": "11a02a57d89c2210e7b63d31694f09f8d52ae2a7",
+          "subject": "test: harden draft store edge cases"
+        },
+        {
+          "sha": "0e02475c51124862fb5cd2b8869857a3cfa10060",
+          "subject": "fix: align draft store test helpers"
+        },
+        {
+          "sha": "b067ce21b3d9369cd0b8bd22693637fe4a9b17b2",
+          "subject": "feat: add plaintext draft store"
+        },
+        {
+          "sha": "cd0403ee447c527445631f487cabf4c7a6095dd1",
+          "subject": "feat: add maturity phase preferences"
+        }
+      ],
+      "changed_files": [
+        {
+          "status": "M",
+          "path": "README.md"
+        },
+        {
+          "status": "M",
+          "path": "README.zh-CN.md"
+        },
+        {
+          "status": "M",
+          "path": "common/components/ui-controls.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/document/components/document-shell.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/document/lib/document-state.test.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/document/lib/document-state.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/document/lib/types.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/components/editor-pane.tsx"
+        },
+        {
+          "status": "A",
+          "path": "features/editor/lib/markdown-line-scroll.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "features/editor/lib/markdown-line-scroll.ts"
+        },
+        {
+          "status": "A",
+          "path": "features/file-watch/hooks/use-file-watch.ts"
+        },
+        {
+          "status": "A",
+          "path": "features/file-watch/lib/external-change.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "features/file-watch/lib/external-change.ts"
+        },
+        {
+          "status": "A",
+          "path": "features/file-watch/lib/file-watch-client.ts"
+        },
+        {
+          "status": "A",
+          "path": "features/file-watch/lib/types.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/llm-wiki/components/llm-wiki-panel.test.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/llm-wiki/components/llm-wiki-panel.tsx"
+        },
+        {
+          "status": "A",
+          "path": "features/recovery/components/diff-viewer.tsx"
+        },
+        {
+          "status": "A",
+          "path": "features/recovery/components/recovery-banner.tsx"
+        },
+        {
+          "status": "A",
+          "path": "features/recovery/hooks/use-draft-autosave.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "features/recovery/hooks/use-draft-autosave.ts"
+        },
+        {
+          "status": "A",
+          "path": "features/recovery/lib/draft-client.ts"
+        },
+        {
+          "status": "A",
+          "path": "features/recovery/lib/line-diff.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "features/recovery/lib/line-diff.ts"
+        },
+        {
+          "status": "A",
+          "path": "features/recovery/lib/recovery-state.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "features/recovery/lib/recovery-state.ts"
+        },
+        {
+          "status": "A",
+          "path": "features/recovery/lib/types.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/workspace/components/editor-stage.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/workspace/components/file-tree-node.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/workspace/components/file-tree-panel.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/workspace/components/file-tree-toolbar.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/workspace/components/settings-button.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/workspace/components/tab-strip.tsx"
+        },
+        {
+          "status": "A",
+          "path": "features/workspace/components/workspace-search-panel.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/workspace/components/workspace-shell.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/workspace/hooks/use-workspace-bootstrap.ts"
+        },
+        {
+          "status": "A",
+          "path": "features/workspace/lib/preferences.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "features/workspace/lib/preferences.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/workspace/lib/types.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/workspace/lib/workspace-reducer.test.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/workspace/lib/workspace-reducer.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/workspace/lib/workspace-save.test.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/workspace/lib/workspace-save.ts"
+        },
+        {
+          "status": "A",
+          "path": "features/workspace/lib/workspace-search.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "features/workspace/lib/workspace-search.ts"
+        },
+        {
+          "status": "M",
+          "path": "package-lock.json"
+        },
+        {
+          "status": "M",
+          "path": "package.json"
+        },
+        {
+          "status": "M",
+          "path": "src-tauri/Cargo.lock"
+        },
+        {
+          "status": "M",
+          "path": "src-tauri/Cargo.toml"
+        },
+        {
+          "status": "A",
+          "path": "src-tauri/src/draft_store.rs"
+        },
+        {
+          "status": "A",
+          "path": "src-tauri/src/draft_store_tests.rs"
+        },
+        {
+          "status": "A",
+          "path": "src-tauri/src/file_watch.rs"
+        },
+        {
+          "status": "A",
+          "path": "src-tauri/src/file_watch_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "src-tauri/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "src-tauri/src/models.rs"
+        },
+        {
+          "status": "M",
+          "path": "src-tauri/src/state_store.rs"
+        },
+        {
+          "status": "M",
+          "path": "src-tauri/src/state_store_tests.rs"
+        },
+        {
+          "status": "A",
+          "path": "src-tauri/src/workspace_search.rs"
+        },
+        {
+          "status": "A",
+          "path": "src-tauri/src/workspace_search_tests.rs"
+        }
+      ],
+      "diff_stat": "README.md                                          |    7 +-\n README.zh-CN.md                                    |    7 +-\n common/components/ui-controls.tsx                  |    9 +-\n features/document/components/document-shell.tsx    | 1661 ++++++++++++-----\n features/document/lib/document-state.test.ts       |  190 +-\n features/document/lib/document-state.ts            |  106 +-\n features/document/lib/types.ts                     |   29 +-\n features/editor/components/editor-pane.tsx         |   14 +\n features/editor/lib/markdown-line-scroll.test.ts   |  109 ++\n features/editor/lib/markdown-line-scroll.ts        |  262 +++\n features/file-watch/hooks/use-file-watch.ts        |  186 ++\n features/file-watch/lib/external-change.test.ts    |  273 +++\n features/file-watch/lib/external-change.ts         |  233 +++\n features/file-watch/lib/file-watch-client.ts       |   29 +\n features/file-watch/lib/types.ts                   |   34 +\n .../llm-wiki/components/llm-wiki-panel.test.tsx    |  137 ++\n features/llm-wiki/components/llm-wiki-panel.tsx    |   38 +-\n features/recovery/components/diff-viewer.tsx       |  194 ++\n features/recovery/components/recovery-banner.tsx   |   61 +\n features/recovery/hooks/use-draft-autosave.test.ts |  324 ++++\n features/recovery/hooks/use-draft-autosave.ts      |  151 ++\n features/recovery/lib/draft-client.ts              |   67 +\n features/recovery/lib/line-diff.test.ts            |   75 +\n features/recovery/lib/line-diff.ts                 |  340 ++++\n features/recovery/lib/recovery-state.test.ts       |   51 +\n features/recovery/lib/recovery-state.ts            |   44 +\n features/recovery/lib/types.ts                     |   53 +\n features/workspace/components/editor-stage.tsx     |    4 +-\n features/workspace/components/file-tree-node.tsx   |   11 +-\n features/workspace/components/file-tree-panel.tsx  |  230 ++-\n .../workspace/components/file-tree-toolbar.tsx     |   49 +-\n features/workspace/components/settings-button.tsx  |  216 ++-\n features/workspace/components/tab-strip.tsx        |    3 +-\n .../components/workspace-search-panel.tsx          |  149 ++\n features/workspace/components/workspace-shell.tsx  | 1906 +++++++++++++++++++-\n .../workspace/hooks/use-workspace-bootstrap.ts     |   59 +-\n features/workspace/lib/preferences.test.ts         |   86 +\n features/workspace/lib/preferences.ts              |  129 ++\n features/workspace/lib/types.ts                    |   84 +-\n features/workspace/lib/workspace-reducer.test.ts   |   95 +-\n features/workspace/lib/workspace-reducer.ts        |   76 +-\n features/workspace/lib/workspace-save.test.ts      |   90 +\n features/workspace/lib/workspace-save.ts           |   16 +-\n features/workspace/lib/workspace-search.test.ts    |   77 +\n features/workspace/lib/workspace-search.ts         |  117 ++\n package-lock.json                                  |   10 +\n package.json                                       |    1 +\n src-tauri/Cargo.lock                               |  159 +-\n src-tauri/Cargo.toml                               |    1 +\n src-tauri/src/draft_store.rs                       |  631 +++++++\n src-tauri/src/draft_store_tests.rs                 |  387 ++++\n src-tauri/src/file_watch.rs                        |  564 ++++++\n src-tauri/src/file_watch_tests.rs                  |  256 +++\n src-tauri/src/lib.rs                               |   38 +-\n src-tauri/src/models.rs                            |  111 ++\n src-tauri/src/state_store.rs                       |   38 +-\n src-tauri/src/state_store_tests.rs                 |   52 +\n src-tauri/src/workspace_search.rs                  |  650 +++++++\n src-tauri/src/workspace_search_tests.rs            |  307 ++++\n 59 files changed, 10448 insertions(+), 838 deletions(-)",
+      "uncommitted_status": [
+        "M features/document/components/document-shell.tsx",
+        " M features/llm-wiki/components/llm-wiki-panel.test.tsx",
+        " M features/llm-wiki/hooks/use-llm-wiki-workspace.test.tsx",
+        " M features/llm-wiki/hooks/use-llm-wiki-workspace.ts",
+        " M features/llm-wiki/lib/llm-wiki-client.test.ts",
+        " M features/llm-wiki/lib/llm-wiki-client.ts",
+        " M features/workspace/components/editor-stage.tsx",
+        " M features/workspace/components/file-tree-panel.tsx",
+        " M features/workspace/components/workspace-app.tsx",
+        " M features/workspace/components/workspace-shell.tsx",
+        " M features/workspace/lib/cli-file-updated.test.ts",
+        " M features/workspace/lib/cli-file-updated.ts",
+        " M features/workspace/lib/types.ts",
+        " M features/workspace/lib/workspace-reducer.test.ts",
+        " M features/workspace/lib/workspace-reducer.ts",
+        " M features/workspace/lib/workspace-save.test.ts",
+        " M features/workspace/lib/workspace-save.ts",
+        " M src-tauri/src/llm_wiki.rs",
+        " M src-tauri/src/llm_wiki_context.rs",
+        " M src-tauri/src/llm_wiki_raw.rs",
+        " M src-tauri/src/llm_wiki_tests.rs",
+        " M src-tauri/src/state_store_tests.rs",
+        " M src-tauri/src/workspace_fs.rs",
+        " M src-tauri/src/workspace_fs_tests.rs",
+        " M vitest.config.ts",
+        "?? \"docs/loopx/design/\\344\\272\\247\\345\\223\\201\\346\\210\\220\\347\\206\\237\\345\\272\\246\\347\\254\\254\\344\\270\\200\\351\\230\\266\\346\\256\\265\\351\\234\\200\\346\\261\\202\\350\\256\\276\\350\\256\\241\\346\\226\\207\\346\\241\\243.md\"",
+        "?? docs/loopx/plans/2026-06-09-product-maturity-phase-one.md",
+        "?? features/document/components/document-shell.test.tsx",
+        "?? features/workspace/components/workspace-shell.test.tsx",
+        "?? features/workspace/lib/discard-drafts.test.ts",
+        "?? features/workspace/lib/discard-drafts.ts"
+      ],
+      "source_artifacts": [
+        "docs/loopx/plans/2026-06-09-product-maturity-phase-one.md"
+      ]
+    },
+    "report_candidates": {
+      "accepted": [
+        {
+          "id": "audit-evidence",
+          "summary": "Finish audit evidence collected from the current worktree."
+        }
+      ],
+      "rejected": []
+    }
+  },
+  "choice": {
+    "action": null,
+    "status": null,
+    "summary": null,
+    "url": null,
+    "recorded_at": null,
+    "updated_at": null
+  },
+  "choice_history": []
+}

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { documentFingerprint } from "../../file-watch/lib/external-change";
 import { refreshCleanOpenTabFromDisk } from "./cli-file-updated";
 import type { WorkspaceState } from "./types";
 
@@ -25,6 +26,7 @@ describe("refreshCleanOpenTabFromDisk", () => {
             type: "tab/saved",
             tabId: "log-tab",
             markdown: "# Log\n\n- query RAG\n",
+            fingerprint: documentFingerprint("# Log\n\n- query RAG\n"),
         });
     });
 

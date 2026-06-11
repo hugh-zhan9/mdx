@@ -6,7 +6,9 @@ import { tauriWindow } from "@/common/lib/tauri";
 import { EmptyState, TextControlButton } from "../../../common/components/ui-controls";
 import { useWorkspaceBootstrap } from "../hooks/use-workspace-bootstrap";
 import { syncCliWorkspaceSnapshot } from "../lib/cli-sync";
+import { deleteDiscardedWorkspaceDrafts } from "../lib/discard-drafts";
 import { createWorkspaceEmptyState } from "../lib/empty-state-copy";
+import { draftDelete } from "@/features/recovery/lib/draft-client";
 import type {
     AppPreferences,
     WorkspaceMenuActions,
@@ -61,6 +63,21 @@ function WorkspaceAppInner() {
             }))
         ) {
             return;
+        }
+
+        if (currentWorkspace && hasDirtyTabs(currentWorkspace)) {
+            try {
+                await deleteDiscardedWorkspaceDrafts(
+                    currentWorkspace,
+                    draftDelete,
+                );
+            } catch (error) {
+                await dialogs.alert({
+                    title: "切换工作区",
+                    message: formatError(error, "无法清理已丢弃草稿。"),
+                });
+                return;
+            }
         }
 
         await chooseWorkspace();
@@ -240,16 +257,21 @@ function useWorkspaceCloseGuard(
                                 closingRef.current = false;
                                 return;
                             }
-
-                            void closeWorkspaceWindow(currentWindow).catch(
-                                (error) => {
-                                    closingRef.current = false;
-                                    console.warn(
-                                        "Failed to close workspace window.",
+                            void deleteDiscardedWorkspaceDrafts(
+                                workspace,
+                                draftDelete,
+                            ).then(() =>
+                                closeWorkspaceWindow(currentWindow),
+                            ).catch((error) => {
+                                closingRef.current = false;
+                                void dialogs.alert({
+                                    title: "关闭窗口",
+                                    message: formatError(
                                         error,
-                                    );
-                                },
-                            );
+                                        "无法清理已丢弃草稿。",
+                                    ),
+                                });
+                            });
                         }).catch((error) => {
                             closingRef.current = false;
                             console.warn(
@@ -351,6 +373,25 @@ function hasDirtyTabs(workspace: WorkspaceState) {
 
 function isDirtyTab(tab: WorkspaceTab | undefined): tab is WorkspaceTab {
     return Boolean(tab?.dirty);
+}
+
+function formatError(error: unknown, fallback: string) {
+    if (error instanceof Error && error.message) {
+        return `${fallback} ${error.message}`;
+    }
+
+    if (typeof error === "string" && error.length > 0) {
+        return `${fallback} ${error}`;
+    }
+
+    if (error && typeof error === "object") {
+        const record = error as Record<string, unknown>;
+        if (typeof record.message === "string" && record.message.length > 0) {
+            return `${fallback} ${record.message}`;
+        }
+    }
+
+    return fallback;
 }
 
 function WorkspaceEmptyState({

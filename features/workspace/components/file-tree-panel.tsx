@@ -280,6 +280,7 @@ export function FileTreePanel({
                         dirty: false,
                         needsRenameOnFirstSave:
                             created.needsRenameOnFirstSave ?? false,
+                        baseFingerprint: null,
                     },
                 });
                 await refreshTree();
@@ -659,6 +660,7 @@ export function FileTreePanel({
                                                         dirty: false,
                                                         needsRenameOnFirstSave:
                                                             false,
+                                                        baseFingerprint: null,
                                                     },
                                                 });
                                             }

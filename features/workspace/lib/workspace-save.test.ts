@@ -162,6 +162,38 @@ describe("workspace save coordination", () => {
         });
     });
 
+    it("passes the tab base fingerprint when writing an existing dirty file", async () => {
+        const invoke = vi.fn(async <T = unknown>() => undefined as T);
+        let workspace = withTab(
+            createWorkspaceState("/tmp/ws"),
+            createTab({
+                markdown: "local edit",
+                baseFingerprint: "fingerprint-before-edit",
+            }),
+        );
+
+        await expect(
+            performSaveTab("tab-1", {
+                getWorkspace: () => workspace,
+                dispatch: (action) => {
+                    workspace = workspaceReducer(workspace, action);
+                },
+                invoke,
+                promptName: () => null,
+                alert: vi.fn(),
+                warn: vi.fn(),
+                refreshTree: vi.fn(),
+            }),
+        ).resolves.toBe(true);
+
+        expect(invoke).toHaveBeenCalledWith("write_markdown_file", {
+            rootPath: "/tmp/ws",
+            path: "/tmp/ws/Note.md",
+            content: "local edit",
+            expectedFingerprint: "fingerprint-before-edit",
+        });
+    });
+
     it("reports the previous path after a first-save rename", async () => {
         let workspace = withTab(
             createWorkspaceState("/tmp/ws"),

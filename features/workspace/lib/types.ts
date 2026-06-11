@@ -41,6 +41,7 @@ export interface WorkspaceTab {
     dirty: boolean;
     needsRenameOnFirstSave: boolean;
     markdown?: string;
+    baseFingerprint?: string | null;
 }
 
 export interface CliSelectionSnapshot {
@@ -310,11 +311,13 @@ export type WorkspaceAction =
           type: "tab/saved";
           tabId: string;
           markdown?: string;
+          fingerprint?: string;
       }
     | {
           type: "tab/savedIfUnchanged";
           tabId: string;
           markdown: string;
+          fingerprint?: string;
       }
     | {
           type: "tab/renamed";

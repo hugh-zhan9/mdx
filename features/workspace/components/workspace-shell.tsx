@@ -180,6 +180,7 @@ export function WorkspaceShell({
   const [activeDraftRecovery, setActiveDraftRecovery] =
     useState<ActiveDraftRecovery | null>(null);
   const [activeDraftDetailsOpen, setActiveDraftDetailsOpen] = useState(true);
+  const [activeDraftDiffOpen, setActiveDraftDiffOpen] = useState(false);
   const [externalConflict, setExternalConflict] =
     useState<ExternalWorkspaceConflict | null>(null);
   const [externalConflictDiffOpen, setExternalConflictDiffOpen] =
@@ -231,7 +232,9 @@ export function WorkspaceShell({
     displayPath: activeTabIsLoadedMarkdown ? activeTabPath : null,
     markdown: activeTabIsLoadedMarkdown ? (activeTab?.markdown ?? null) : null,
     dirty: activeTabIsLoadedMarkdown ? (activeTab?.dirty ?? false) : false,
-    baseFingerprint: null,
+    baseFingerprint: activeTabIsLoadedMarkdown
+      ? (activeTab?.baseFingerprint ?? null)
+      : null,
     mode: "workspace",
     onError: handleDraftAutosaveError,
   });
@@ -342,6 +345,7 @@ export function WorkspaceShell({
       !activeTabPath
     ) {
       setActiveDraftRecovery(null);
+      setActiveDraftDiffOpen(false);
       return;
     }
 
@@ -353,6 +357,7 @@ export function WorkspaceShell({
         ? null
         : current,
     );
+    setActiveDraftDiffOpen(false);
 
     async function loadActiveDraft() {
       try {
@@ -521,7 +526,7 @@ export function WorkspaceShell({
                   realPath: tab.path,
                   displayPath: tab.path,
                   markdown: tab.markdown,
-                  baseFingerprint: null,
+                  baseFingerprint: tab.baseFingerprint ?? null,
                   mode: "workspace",
                 });
               };
@@ -742,6 +747,7 @@ export function WorkspaceShell({
             type: "tab/saved",
             tabId,
             markdown,
+            fingerprint: documentFingerprint(markdown),
           });
           setExternalConflict((conflict) =>
             conflict?.tabId === tabId ? null : conflict,
@@ -816,7 +822,7 @@ export function WorkspaceShell({
         return;
       }
 
-      if (diskMarkdown !== null) {
+        if (diskMarkdown !== null) {
         if (current.dirty) {
           setExternalConflict({
             tabId,
@@ -830,6 +836,7 @@ export function WorkspaceShell({
             type: "tab/saved",
             tabId,
             markdown: diskMarkdown,
+            fingerprint: documentFingerprint(diskMarkdown),
           });
           clearExternalDeletedPromptForTab(tabId);
         }
@@ -1126,6 +1133,7 @@ export function WorkspaceShell({
       markdown: recovery.draft.markdown,
     });
     setActiveDraftRecovery(null);
+    setActiveDraftDiffOpen(false);
   }, [activeDraftRecovery, dispatchAndMirror]);
 
   const keepActiveDiskVersion = useCallback(() => {
@@ -1136,6 +1144,7 @@ export function WorkspaceShell({
     }
 
     setActiveDraftRecovery(null);
+    setActiveDraftDiffOpen(false);
     void deleteWorkspaceDraftForPath(
       recovery.draft.realPath,
       recovery.draft.draftId,
@@ -1146,6 +1155,7 @@ export function WorkspaceShell({
 
   const postponeActiveDraftRecovery = useCallback(() => {
     setActiveDraftDetailsOpen(false);
+    setActiveDraftDiffOpen(false);
   }, []);
 
   const saveOrphanDraftAs = useCallback(
@@ -1188,6 +1198,7 @@ export function WorkspaceShell({
             dirty: true,
             needsRenameOnFirstSave: created.needsRenameOnFirstSave ?? true,
             markdown: draft.markdown,
+            baseFingerprint: documentFingerprint(""),
           },
         });
       } catch (error) {
@@ -1239,6 +1250,7 @@ export function WorkspaceShell({
             dirty: false,
             needsRenameOnFirstSave: false,
             markdown: draft.markdown,
+            baseFingerprint: documentFingerprint(draft.markdown),
           },
         });
         await refreshTree(
@@ -1521,6 +1533,7 @@ export function WorkspaceShell({
             type: "tab/saved",
             tabId: conflict.tabId,
             markdown,
+            fingerprint: documentFingerprint(markdown),
           },
           { skipDraftFlush: true },
         );
@@ -1619,6 +1632,7 @@ export function WorkspaceShell({
             dirty: true,
             needsRenameOnFirstSave: created.needsRenameOnFirstSave ?? true,
             markdown: tab.markdown ?? "",
+            baseFingerprint: documentFingerprint(""),
           },
         });
         await deleteWorkspaceDraftForTab(tab);
@@ -1657,6 +1671,7 @@ export function WorkspaceShell({
           rootPath: workspaceRef.current.rootPath,
           path: prompt.path,
           content: tab.markdown,
+          expectedFingerprint: null,
         });
         rememberSelfWrite(prompt.path, tab.markdown);
         dispatchAndMirror(
@@ -1664,6 +1679,7 @@ export function WorkspaceShell({
             type: "tab/saved",
             tabId: prompt.tabId,
             markdown: tab.markdown,
+            fingerprint: documentFingerprint(tab.markdown),
           },
           { skipDraftFlush: true },
         );
@@ -1768,6 +1784,7 @@ export function WorkspaceShell({
           title: pathTitle(path),
           dirty: false,
           needsRenameOnFirstSave: false,
+          baseFingerprint: null,
         },
       });
       return tabId;
@@ -2028,6 +2045,10 @@ export function WorkspaceShell({
                   onClick: recoverActiveDraft,
                 },
                 {
+                  label: "查看差异",
+                  onClick: () => setActiveDraftDiffOpen(true),
+                },
+                {
                   label: "保留磁盘版本",
                   onClick: keepActiveDiskVersion,
                 },
@@ -2266,6 +2287,31 @@ export function WorkspaceShell({
             },
           ]}
           onClose={postponeExternalConflict}
+        />
+      ) : null}
+      {activeDraftRecovery && activeTab ? (
+        <DiffViewer
+          open={activeDraftDiffOpen}
+          title="草稿差异"
+          leftTitle="磁盘版本"
+          rightTitle="草稿"
+          leftText={activeTab.markdown ?? ""}
+          rightText={activeDraftRecovery.draft.markdown}
+          primaryAction={{
+            label: "恢复草稿",
+            onClick: recoverActiveDraft,
+          }}
+          secondaryActions={[
+            {
+              label: "保留磁盘版本",
+              onClick: keepActiveDiskVersion,
+            },
+            {
+              label: "稍后",
+              onClick: postponeActiveDraftRecovery,
+            },
+          ]}
+          onClose={postponeActiveDraftRecovery}
         />
       ) : null}
     </div>

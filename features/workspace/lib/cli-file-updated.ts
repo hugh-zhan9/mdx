@@ -1,3 +1,4 @@
+import { documentFingerprint } from "../../file-watch/lib/external-change";
 import { normalizeWorkspacePath } from "./path";
 import type { CliFileUpdatedEvent, WorkspaceAction, WorkspaceState } from "./types";
 
@@ -42,6 +43,7 @@ export async function refreshCleanOpenTabFromDisk({
         type: "tab/saved",
         tabId: tab.tabId,
         markdown,
+        fingerprint: documentFingerprint(markdown),
     });
     return true;
 }

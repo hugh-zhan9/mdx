@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::document::document_fingerprint;
 use crate::models::{
     AffectedPrefix, CreateFolderResult, CreateMarkdownFileResult, FileTreeNode, PathChangeResult,
     ScanWorkspaceResult, TrashPathResult, WorkspaceError,
@@ -226,12 +227,14 @@ pub fn write_markdown_file(
     root_path: String,
     path: String,
     content: String,
+    expected_fingerprint: Option<String>,
 ) -> Result<(), WorkspaceError> {
     let path = resolve_workspace_file_path(root_path, path)?;
 
     match path {
         ResolvedWorkspacePath::Existing(target) => {
             ensure_markdown_path(&target.path)?;
+            verify_existing_markdown_fingerprint(&target.path, expected_fingerprint.as_deref())?;
             let mut file = open_markdown_file_write_existing(&target)?;
             file.write_all(content.as_bytes()).map_err(|error| {
                 WorkspaceError::from_io("write_failed", "failed to write markdown file", &error)
@@ -239,6 +242,12 @@ pub fn write_markdown_file(
         }
         ResolvedWorkspacePath::Missing(target) => {
             ensure_markdown_path(&target.path)?;
+            if expected_fingerprint.is_some() {
+                return Err(WorkspaceError::new(
+                    "external_modified",
+                    "workspace file was modified outside MDX",
+                ));
+            }
             ensure_target_available(&target.path)?;
             let mut file = open_markdown_file_write_new(&target)?;
             file.write_all(content.as_bytes()).map_err(|error| {
@@ -246,6 +255,28 @@ pub fn write_markdown_file(
             })
         }
     }
+}
+
+fn verify_existing_markdown_fingerprint(
+    path: &Path,
+    expected_fingerprint: Option<&str>,
+) -> Result<(), WorkspaceError> {
+    let Some(expected_fingerprint) = expected_fingerprint else {
+        return Ok(());
+    };
+    let current_content = fs::read_to_string(path).map_err(|error| {
+        WorkspaceError::from_io("read_failed", "failed to read markdown file", &error)
+    })?;
+    let current_fingerprint = document_fingerprint(&current_content);
+
+    if current_fingerprint != expected_fingerprint {
+        return Err(WorkspaceError::new(
+            "external_modified",
+            "workspace file was modified outside MDX",
+        ));
+    }
+
+    Ok(())
 }
 
 #[tauri::command]

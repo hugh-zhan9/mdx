@@ -1,4 +1,5 @@
 import { planFirstSave } from "../../editor/lib/tab-save";
+import { documentFingerprint } from "../../file-watch/lib/external-change";
 import { normalizeWorkspacePath } from "./path";
 import type {
     FileTreeNode,
@@ -40,6 +41,7 @@ interface SavePlanSnapshot {
     tabId: string;
     path: string;
     markdown: string;
+    baseFingerprint?: string | null;
 }
 
 export function createTabSaveQueue(
@@ -89,6 +91,8 @@ export async function performSaveTab(
             tabId,
             path: initialTab.path,
             markdown,
+            baseFingerprint:
+                initialTab.baseFingerprint ?? documentFingerprint(markdown),
         };
         let renamed = false;
 
@@ -158,6 +162,7 @@ export async function performSaveTab(
             tabId,
             path,
             markdown,
+            baseFingerprint: originalSnapshot.baseFingerprint,
         };
 
         if (!isCurrentTabSnapshot(environment.getWorkspace(), writePlan)) {
@@ -168,7 +173,9 @@ export async function performSaveTab(
             rootPath: writePlan.rootPath,
             path: writePlan.path,
             content: writePlan.markdown,
+            expectedFingerprint: writePlan.baseFingerprint,
         });
+        const savedFingerprint = documentFingerprint(writePlan.markdown);
 
         const savedStillCurrent = isCurrentTabSnapshot(
             environment.getWorkspace(),
@@ -179,6 +186,7 @@ export async function performSaveTab(
                 type: "tab/savedIfUnchanged",
                 tabId,
                 markdown,
+                fingerprint: savedFingerprint,
             });
             try {
                 const previousPath =

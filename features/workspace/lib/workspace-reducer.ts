@@ -2,6 +2,7 @@ import {
     isPathInsideRoot,
     normalizeWorkspacePath,
 } from "./path";
+import { documentFingerprint } from "@/features/file-watch/lib/external-change";
 import {
     createEmptySearchSummary,
     createEmptyWorkspaceSearchState,
@@ -76,9 +77,19 @@ export function workspaceReducer(
                 ...(action.markdown === undefined
                     ? {}
                     : { markdown: action.markdown }),
+                baseFingerprint:
+                    action.fingerprint ??
+                    (action.markdown === undefined
+                        ? state.tabs[action.tabId]?.baseFingerprint
+                        : documentFingerprint(action.markdown)),
             });
         case "tab/savedIfUnchanged":
-            return saveTabIfUnchanged(state, action.tabId, action.markdown);
+            return saveTabIfUnchanged(
+                state,
+                action.tabId,
+                action.markdown,
+                action.fingerprint,
+            );
         case "tab/renamed":
             return renameTab(state, action);
         case "panel/resized":
@@ -268,6 +279,7 @@ function saveTabIfUnchanged(
     state: WorkspaceState,
     tabId: string,
     markdown: string,
+    fingerprint?: string,
 ): WorkspaceState {
     const tab = state.tabs[tabId];
 
@@ -277,6 +289,7 @@ function saveTabIfUnchanged(
 
     return updateTab(state, tabId, {
         dirty: false,
+        baseFingerprint: fingerprint ?? documentFingerprint(markdown),
     });
 }
 

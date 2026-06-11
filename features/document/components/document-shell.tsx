@@ -76,6 +76,7 @@ export function DocumentShell({
   const [draftRecovery, setDraftRecovery] =
     useState<DocumentDraftRecovery | null>(null);
   const [draftDetailsOpen, setDraftDetailsOpen] = useState(true);
+  const [draftDiffOpen, setDraftDiffOpen] = useState(false);
   const [externalConflict, setExternalConflict] =
     useState<ExternalDocumentConflict | null>(null);
   const [conflictDiffOpen, setConflictDiffOpen] = useState(false);
@@ -102,6 +103,7 @@ export function DocumentShell({
     setError(null);
     setDraftRecovery(null);
     setDraftDetailsOpen(true);
+    setDraftDiffOpen(false);
     setExternalConflict(null);
     setConflictDiffOpen(false);
     setCopyMarkdownOpen(false);
@@ -348,6 +350,7 @@ export function DocumentShell({
       current ? applyRecoveredDraft(current, recovery.draft.markdown) : current,
     );
     setDraftRecovery(null);
+    setDraftDiffOpen(false);
   }, [draftRecovery]);
 
   const keepDiskVersion = useCallback(() => {
@@ -358,6 +361,7 @@ export function DocumentShell({
     }
 
     setDraftRecovery(null);
+    setDraftDiffOpen(false);
     void deleteDocumentDraft(
       recovery.draft.realPath,
       recovery.draft.draftId,
@@ -368,6 +372,7 @@ export function DocumentShell({
 
   const postponeDraftRecovery = useCallback(() => {
     setDraftDetailsOpen(false);
+    setDraftDiffOpen(false);
   }, []);
 
   const overwriteWithMyEdits = useCallback(async () => {
@@ -478,7 +483,6 @@ export function DocumentShell({
       });
       setExternalConflict(null);
       setConflictDiffOpen(false);
-      await deleteDocumentDraft(file.realPath);
     } catch (reloadError) {
       console.warn("Failed to reload externally changed document.", reloadError);
     }
@@ -963,6 +967,10 @@ export function DocumentShell({
                   onClick: recoverDraft,
                 },
                 {
+                  label: "查看差异",
+                  onClick: () => setDraftDiffOpen(true),
+                },
+                {
                   label: "保留磁盘版本",
                   onClick: keepDiskVersion,
                 },
@@ -1116,6 +1124,31 @@ export function DocumentShell({
           onClose={postponeExternalConflict}
         />
       ) : null}
+      {draftRecovery ? (
+        <DiffViewer
+          open={draftDiffOpen}
+          title="草稿差异"
+          leftTitle="磁盘版本"
+          rightTitle="草稿"
+          leftText={state.markdown}
+          rightText={draftRecovery.draft.markdown}
+          primaryAction={{
+            label: "恢复草稿",
+            onClick: recoverDraft,
+          }}
+          secondaryActions={[
+            {
+              label: "保留磁盘版本",
+              onClick: keepDiskVersion,
+            },
+            {
+              label: "稍后",
+              onClick: postponeDraftRecovery,
+            },
+          ]}
+          onClose={postponeDraftRecovery}
+        />
+      ) : null}
       {copyMarkdownOpen ? (
         <CopyMarkdownDialog
           markdown={state.markdown}
@@ -1243,6 +1276,7 @@ async function writeDocumentMarkdownPath(path: string, content: string) {
     rootPath,
     path,
     content,
+    expectedFingerprint: null,
   });
 }
 

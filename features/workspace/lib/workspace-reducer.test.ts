@@ -97,6 +97,55 @@ describe("workspaceReducer", () => {
         expect(saved.tabs["tab-1"].dirty).toBe(false);
     });
 
+    it("updates the base fingerprint when a tab is loaded from disk", () => {
+        const initialState = createWorkspaceState("/tmp/ws");
+        const opened = workspaceReducer(initialState, {
+            type: "tab/opened",
+            tab: {
+                tabId: "tab-1",
+                path: "/tmp/ws/Drafts/Idea.md",
+                title: "Idea.md",
+                dirty: false,
+                needsRenameOnFirstSave: false,
+            },
+        });
+
+        const loaded = workspaceReducer(opened, {
+            type: "tab/saved",
+            tabId: "tab-1",
+            markdown: "disk",
+            fingerprint: "fingerprint-disk",
+        });
+
+        expect(loaded.tabs["tab-1"].baseFingerprint).toBe("fingerprint-disk");
+    });
+
+    it("updates the base fingerprint after a current save completes", () => {
+        const initialState = createWorkspaceState("/tmp/ws");
+        const opened = workspaceReducer(initialState, {
+            type: "tab/opened",
+            tab: {
+                tabId: "tab-1",
+                path: "/tmp/ws/Drafts/Idea.md",
+                title: "Idea.md",
+                dirty: true,
+                needsRenameOnFirstSave: false,
+                markdown: "same",
+                baseFingerprint: "fingerprint-before",
+            },
+        });
+
+        const saved = workspaceReducer(opened, {
+            type: "tab/savedIfUnchanged",
+            tabId: "tab-1",
+            markdown: "same",
+            fingerprint: "fingerprint-after",
+        });
+
+        expect(saved.tabs["tab-1"].dirty).toBe(false);
+        expect(saved.tabs["tab-1"].baseFingerprint).toBe("fingerprint-after");
+    });
+
     it("activates existing tabs instead of duplicating paths", () => {
         const initialState = createWorkspaceState("/tmp/ws");
         const opened = workspaceReducer(initialState, {
