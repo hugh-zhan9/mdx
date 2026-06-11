@@ -12,7 +12,10 @@ import {
 } from "@/features/llm-wiki/lib/llm-wiki-client";
 import type { LlmWikiKnowledgeConfig } from "@/features/llm-wiki/lib/types";
 import type { LlmProviderApiMode } from "@/features/llm-wiki/lib/types";
-import { TextControlButton } from "../../../common/components/ui-controls";
+import {
+  PrimaryTextControlButton,
+  TextControlButton,
+} from "../../../common/components/ui-controls";
 import type { AppPreferences } from "../lib/types";
 import {
   useThemePreference,
@@ -80,6 +83,7 @@ function SettingsDialog({
   const { preference, setPreference } = useThemePreference();
   const [activeSection, setActiveSection] =
     useState<SettingsSection>("general");
+  const contentScrollRef = useRef<HTMLDivElement | null>(null);
   const sectionRefs = useRef<Record<SettingsSection, HTMLElement | null>>({
     general: null,
     search: null,
@@ -303,8 +307,15 @@ function SettingsDialog({
   };
   const selectSection = (section: SettingsSection) => {
     setActiveSection(section);
-    sectionRefs.current[section]?.scrollIntoView({
-      block: "start",
+    const container = contentScrollRef.current;
+    const target = sectionRefs.current[section];
+
+    if (!container || !target) {
+      return;
+    }
+
+    container.scrollTo({
+      top: target.offsetTop - container.offsetTop,
       behavior: "smooth",
     });
   };
@@ -359,8 +370,7 @@ function SettingsDialog({
                 <X aria-hidden="true" />
                 关闭
               </TextControlButton>
-              <TextControlButton
-                className="h-8 bg-base-content px-3 text-base-100 hover:bg-base-content/85 hover:text-base-100 disabled:bg-base-content/30 disabled:hover:bg-base-content/30"
+              <PrimaryTextControlButton
                 onClick={() => void saveSettings()}
                 disabled={
                   loadingConfig ||
@@ -371,15 +381,20 @@ function SettingsDialog({
               >
                 <Save aria-hidden="true" />
                 {savingSettings ? "保存中" : "保存"}
-              </TextControlButton>
+              </PrimaryTextControlButton>
             </div>
           </header>
 
-          <div className="min-h-0 space-y-7 overflow-auto px-[clamp(16px,3vw,28px)] py-5">
+          <div
+            ref={contentScrollRef}
+            data-settings-scroll-container
+            className="min-h-0 space-y-7 overflow-y-auto overflow-x-hidden px-[clamp(16px,3vw,28px)] py-5"
+          >
             <section
               ref={(node) => {
                 sectionRefs.current.general = node;
               }}
+              data-settings-section="general"
               className="scroll-mt-5 grid grid-cols-[clamp(64px,12vw,96px)_minmax(0,1fr)] gap-x-5 gap-y-2"
             >
               <h3 className="pt-2 text-xs font-medium text-base-content/70">
@@ -408,6 +423,7 @@ function SettingsDialog({
               ref={(node) => {
                 sectionRefs.current.search = node;
               }}
+              data-settings-section="search"
               className="scroll-mt-5 grid grid-cols-[clamp(64px,12vw,96px)_minmax(0,1fr)] gap-x-5 gap-y-2"
             >
               <h3 className="pt-2 text-xs font-medium text-base-content/70">
@@ -457,6 +473,7 @@ function SettingsDialog({
               ref={(node) => {
                 sectionRefs.current.files = node;
               }}
+              data-settings-section="files"
               className="scroll-mt-5 grid grid-cols-[clamp(64px,12vw,96px)_minmax(0,1fr)] gap-x-5 gap-y-2"
             >
               <h3 className="pt-2 text-xs font-medium text-base-content/70">
@@ -499,6 +516,7 @@ function SettingsDialog({
               ref={(node) => {
                 sectionRefs.current.llm = node;
               }}
+              data-settings-section="llm"
               className="scroll-mt-5 grid grid-cols-[clamp(64px,12vw,96px)_minmax(0,1fr)] gap-x-5 gap-y-2"
             >
               <h3 className="pt-2 text-xs font-medium text-base-content/70">

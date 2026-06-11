@@ -78,6 +78,23 @@ export function TextControlButton({
     );
 }
 
+export function PrimaryTextControlButton({
+    className,
+    ...props
+}: ButtonHTMLAttributes<HTMLButtonElement>) {
+    return (
+        <button
+            type="button"
+            className={[
+                baseButtonClass,
+                "inline-flex h-8 min-w-0 max-w-full items-center gap-1 whitespace-nowrap rounded-sm bg-primary px-3 text-xs text-primary-content hover:bg-primary/90 hover:text-primary-content disabled:bg-primary/30 disabled:text-primary-content/70 [&>svg]:h-4 [&>svg]:w-4 [&>svg]:shrink-0",
+                className,
+            ].filter(Boolean).join(" ")}
+            {...props}
+        />
+    );
+}
+
 export function PanelHeader({ title, actions }: PanelHeaderProps) {
     return (
         <div className="flex h-10 min-w-0 items-center justify-between border-b border-base-300 px-3">
