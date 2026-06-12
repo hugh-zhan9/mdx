@@ -44,6 +44,8 @@ mod window_sessions;
 mod workspace_fs;
 mod workspace_search;
 
+pub use models::WorkspaceError;
+
 #[cfg(test)]
 mod assets_tests;
 #[cfg(test)]

@@ -62,6 +62,10 @@ mdx-cli close [--tab <id>] [--force]
 mdx-cli create-file <dir> [name]
 mdx-cli create-folder <dir> <name>
 mdx-cli rename <path> <new-name>
+mdx-cli llm-wiki status
+mdx-cli llm-wiki ingest <raw-path>
+mdx-cli llm-wiki digest --title "..." <prompt...>
+mdx-cli llm-wiki lint [--json]
 mdx-cli llm-wiki query [--json] <question...>
 mdx-cli llm-wiki search <query...>
 mdx-cli memory status [--json]
@@ -76,7 +80,7 @@ mdx-cli memory --root <workspace> status
 
 Memory 命令管理 `memory/` 和 `.mdx/` 下的 Markdown 原生记忆记录。它们可以通过当前 Workspace Mode socket 运行，也可以使用 `mdx-cli memory --root <workspace> ...` 无界面运行。
 
-LLM Wiki 的 CLI 仍然只通过 socket 工作，并刻意保持为查询/检索入口：只针对当前 Workspace Mode root 暴露 `query` 和 `search`，不对外暴露初始化、扫描、ingest、lint、graph、digest 等操作能力。
+LLM Wiki 的 CLI 仍然只通过 socket 工作，并始终针对当前 Workspace Mode root。只有 Memory 命令支持 `--root` 无界面运行。
 
 ## 构建
 

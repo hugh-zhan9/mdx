@@ -26,7 +26,8 @@ pub fn memory_promote(
         .unwrap_or(&thread.frontmatter.title)
         .trim();
     let slug = crate::memory_fs::slugify_segment(title);
-    let promoted_path = format!("raw/promoted/{date}-{slug}.md");
+    let promoted_path =
+        crate::memory_fs::next_available_markdown_path(root, "raw/promoted", &date, &slug)?;
 
     let promoted_markdown = format!(
         "---\nkind: promoted_thread\nsource_thread: {}\nthread_id: {}\npromoted_at: {}\ntitle: {}\n---\n\n{}",
@@ -37,7 +38,6 @@ pub fn memory_promote(
         thread.body
     );
     crate::memory_fs::write_workspace_file(root, &promoted_path, promoted_markdown.as_bytes())?;
-    mark_thread_promoted(root, &thread.path)?;
 
     if request.ingest {
         crate::llm_wiki::llm_wiki_ingest_raw_file_sync(
@@ -45,6 +45,8 @@ pub fn memory_promote(
             promoted_path.clone(),
         )?;
     }
+
+    mark_thread_promoted(root, &thread.path)?;
 
     crate::memory_fs::append_memory_log_entry(
         root,

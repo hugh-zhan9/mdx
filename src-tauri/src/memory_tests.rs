@@ -1,7 +1,10 @@
+use std::ffi::OsString;
+use std::sync::{Mutex, MutexGuard, OnceLock};
+
 use tempfile::tempdir;
 
 use crate::memory::{
-    default_memory_config, memory_add, memory_archive, memory_detect_workspace,
+    default_memory_config, memory_add, memory_archive, memory_detect_workspace, memory_get,
     memory_initialize_workspace, memory_list, memory_promote, memory_recall, memory_search,
     memory_thread_get, memory_thread_list, memory_thread_save, memory_working_append,
     memory_working_get, memory_working_set, MemoryAddRequest, MemoryListFilter,
@@ -11,6 +14,47 @@ use crate::memory_fs::{append_memory_log_entry, read_workspace_file, write_works
 
 fn sample_thread_body() -> String {
     "## Message 1 — user — 2026-06-12T09:00:01Z\n\nImplement auth middleware.\n\n## Message 2 — assistant — 2026-06-12T09:00:15Z\n\nPlan the work.\n".to_string()
+}
+
+fn llm_config_env_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+struct LlmConfigEnvGuard {
+    _lock: MutexGuard<'static, ()>,
+    home: Option<OsString>,
+    userprofile: Option<OsString>,
+}
+
+impl LlmConfigEnvGuard {
+    fn use_home(path: impl AsRef<std::path::Path>) -> Self {
+        let lock = llm_config_env_lock().lock().unwrap();
+        let home = std::env::var_os("HOME");
+        let userprofile = std::env::var_os("USERPROFILE");
+        std::env::set_var("HOME", path.as_ref());
+        std::env::remove_var("USERPROFILE");
+        Self {
+            _lock: lock,
+            home,
+            userprofile,
+        }
+    }
+}
+
+impl Drop for LlmConfigEnvGuard {
+    fn drop(&mut self) {
+        if let Some(value) = self.home.as_ref() {
+            std::env::set_var("HOME", value);
+        } else {
+            std::env::remove_var("HOME");
+        }
+        if let Some(value) = self.userprofile.as_ref() {
+            std::env::set_var("USERPROFILE", value);
+        } else {
+            std::env::remove_var("USERPROFILE");
+        }
+    }
 }
 
 #[test]
@@ -336,6 +380,44 @@ fn thread_list_filters_by_source() {
 }
 
 #[test]
+fn thread_list_filters_by_since() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    for (thread_id, started_at) in [
+        ("old", "2026-06-10T09:00:00Z"),
+        ("new", "2026-06-12T09:00:00Z"),
+    ] {
+        memory_thread_save(
+            root.path().to_string_lossy().into_owned(),
+            ThreadSaveRequest {
+                source: "manual".to_string(),
+                thread_id: Some(thread_id.to_string()),
+                title: format!("{thread_id} thread"),
+                body: sample_thread_body(),
+                started_at: Some(started_at.to_string()),
+                ended_at: None,
+                model: None,
+                workspace_root: None,
+                tags: Vec::new(),
+            },
+        )
+        .unwrap();
+    }
+
+    let items = memory_thread_list(
+        root.path().to_string_lossy().into_owned(),
+        ThreadListFilter {
+            source: None,
+            since: Some("2026-06-11T00:00:00Z".to_string()),
+        },
+    )
+    .unwrap();
+
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].thread_id, "new");
+}
+
+#[test]
 fn memory_add_creates_markdown_record_with_defaults() {
     let root = tempdir().unwrap();
     memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
@@ -357,6 +439,52 @@ fn memory_add_creates_markdown_record_with_defaults() {
     assert_eq!(record.frontmatter.status, "active");
     assert_eq!(record.frontmatter.importance, Some(0.5));
     assert!(root.path().join(&record.path).is_file());
+}
+
+#[test]
+fn memory_add_preserves_same_title_records() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+
+    let first = memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "Repeated decision".to_string(),
+            body: "First body".to_string(),
+            tags: Vec::new(),
+            source_thread: None,
+            importance: None,
+            confidence: None,
+        },
+    )
+    .unwrap();
+    let second = memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "Repeated decision".to_string(),
+            body: "Second body".to_string(),
+            tags: Vec::new(),
+            source_thread: None,
+            importance: None,
+            confidence: None,
+        },
+    )
+    .unwrap();
+
+    assert_ne!(first.path, second.path);
+    assert_ne!(first.frontmatter.memory_id, second.frontmatter.memory_id);
+    assert!(
+        memory_get(root.path().to_string_lossy().into_owned(), first.path)
+            .unwrap()
+            .body
+            .contains("First body")
+    );
+    assert!(
+        memory_get(root.path().to_string_lossy().into_owned(), second.path)
+            .unwrap()
+            .body
+            .contains("Second body")
+    );
 }
 
 #[test]
@@ -616,6 +744,58 @@ fn promote_copies_thread_into_raw_promoted() {
 }
 
 #[test]
+fn promote_preserves_existing_promoted_files() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_thread_save(
+        root.path().to_string_lossy().into_owned(),
+        ThreadSaveRequest {
+            source: "manual".to_string(),
+            thread_id: Some("cursor:abc123".to_string()),
+            title: "Implement auth middleware".to_string(),
+            body: sample_thread_body(),
+            started_at: Some("2026-06-12T09:00:00Z".to_string()),
+            ended_at: None,
+            model: None,
+            workspace_root: None,
+            tags: Vec::new(),
+        },
+    )
+    .unwrap();
+    std::fs::create_dir_all(root.path().join("raw/promoted")).unwrap();
+    std::fs::write(
+        root.path()
+            .join("raw/promoted/2026-06-12-implement-auth-middleware.md"),
+        "existing promoted material",
+    )
+    .unwrap();
+
+    let promoted = memory_promote(
+        root.path().to_string_lossy().into_owned(),
+        MemoryPromoteRequest {
+            target: "cursor:abc123".to_string(),
+            ingest: false,
+            title: None,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(
+            root.path()
+                .join("raw/promoted/2026-06-12-implement-auth-middleware.md")
+        )
+        .unwrap(),
+        "existing promoted material"
+    );
+    assert_eq!(
+        promoted.promoted_path,
+        "raw/promoted/2026-06-12-implement-auth-middleware-1.md"
+    );
+    assert!(root.path().join(&promoted.promoted_path).is_file());
+}
+
+#[test]
 fn promote_with_ingest_rejects_non_wiki_workspace() {
     let root = tempdir().unwrap();
     memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
@@ -646,4 +826,47 @@ fn promote_with_ingest_rejects_non_wiki_workspace() {
     .unwrap_err();
 
     assert_eq!(error.error_code(), "llm_wiki_not_ready");
+}
+
+#[test]
+fn promote_with_failed_ingest_does_not_mark_thread_promoted() {
+    let root = tempdir().unwrap();
+    let fake_home = root.path().join("home-file");
+    std::fs::write(&fake_home, "not a directory").unwrap();
+    let _env_guard = LlmConfigEnvGuard::use_home(&fake_home);
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    crate::llm_wiki_fs::initialize_llm_wiki_workspace(root.path()).unwrap();
+    memory_thread_save(
+        root.path().to_string_lossy().into_owned(),
+        ThreadSaveRequest {
+            source: "manual".to_string(),
+            thread_id: Some("cursor:abc123".to_string()),
+            title: "Implement auth middleware".to_string(),
+            body: sample_thread_body(),
+            started_at: Some("2026-06-12T09:00:00Z".to_string()),
+            ended_at: None,
+            model: None,
+            workspace_root: None,
+            tags: Vec::new(),
+        },
+    )
+    .unwrap();
+
+    let error = memory_promote(
+        root.path().to_string_lossy().into_owned(),
+        MemoryPromoteRequest {
+            target: "cursor:abc123".to_string(),
+            ingest: true,
+            title: None,
+        },
+    )
+    .unwrap_err();
+
+    assert_eq!(error.error_code(), "llm_config_load_failed");
+    let thread = memory_thread_get(
+        root.path().to_string_lossy().into_owned(),
+        "cursor:abc123".to_string(),
+    )
+    .unwrap();
+    assert!(!thread.frontmatter.promoted_to_wiki);
 }

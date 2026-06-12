@@ -1,9 +1,9 @@
 use std::fs;
 
 use crate::memory_fs::{
-    append_memory_log_entry, date_prefix, ensure_memory_ready, normalize_markdown_body,
-    now_utc_rfc3339, parse_markdown_frontmatter, render_markdown_with_frontmatter, slugify_segment,
-    write_workspace_file,
+    append_memory_log_entry, date_prefix, ensure_memory_ready, next_available_markdown_path,
+    normalize_markdown_body, now_utc_rfc3339, parse_markdown_frontmatter,
+    render_markdown_with_frontmatter, slugify_segment, write_workspace_file,
 };
 use crate::memory_models::{
     MemoryAddRequest, MemoryFrontmatter, MemoryListFilter, MemoryRecord, MemorySummary,
@@ -29,8 +29,12 @@ pub fn memory_add(
     let now = now_utc_rfc3339()?;
     let slug = slugify_segment(&title);
     let date = date_prefix(Some(&now))?;
-    let memory_id = format!("mem_{}_{}", date.replace('-', ""), slug.replace('-', "_"));
-    let path = format!("memory/memories/{date}-{slug}.md");
+    let path = next_available_markdown_path(root, "memory/memories", &date, &slug)?;
+    let memory_stem = path
+        .trim_start_matches("memory/memories/")
+        .trim_end_matches(".md")
+        .replace('-', "_");
+    let memory_id = format!("mem_{memory_stem}");
 
     let frontmatter = MemoryFrontmatter {
         schema_version: 1,

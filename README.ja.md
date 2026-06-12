@@ -57,6 +57,10 @@ mdx-cli close [--tab <id>] [--force]
 mdx-cli create-file <dir> [name]
 mdx-cli create-folder <dir> <name>
 mdx-cli rename <path> <new-name>
+mdx-cli llm-wiki status
+mdx-cli llm-wiki ingest <raw-path>
+mdx-cli llm-wiki digest --title "..." <prompt...>
+mdx-cli llm-wiki lint [--json]
 mdx-cli llm-wiki query [--json] <question...>
 mdx-cli llm-wiki search <query...>
 mdx-cli memory status [--json]
@@ -71,7 +75,7 @@ mdx-cli memory --root <workspace> status
 
 Memory コマンドは `memory/` と `.mdx/` 配下の Markdown ネイティブな記憶レコードを管理します。現在の Workspace Mode socket 経由でも、`mdx-cli memory --root <workspace> ...` によるヘッドレス実行でも使えます。
 
-LLM Wiki の CLI は socket 専用のまま、問い合わせと検索に限定しています。現在の Workspace Mode root に対して `query` と `search` のみを公開し、初期化、スキャン、ingest、lint、graph、digest などの操作系コマンドは公開しません。
+LLM Wiki の CLI は socket 専用のままで、常に現在の Workspace Mode root を対象にします。`--root` によるヘッドレス実行をサポートするのは Memory コマンドだけです。
 
 ## ビルド
 

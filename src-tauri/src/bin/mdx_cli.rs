@@ -673,8 +673,8 @@ fn execute_memory_headless(command: &CommandLine, root_path: String) -> io::Resu
     Ok(response)
 }
 
-fn workspace_error_response(error: impl std::fmt::Display) -> CliResponse {
-    CliResponse::error("workspace_error", error.to_string())
+fn workspace_error_response(error: mdx_lib::WorkspaceError) -> CliResponse {
+    CliResponse::error(error.error_code(), error.to_string())
 }
 
 fn record_response_with_content<T>(
@@ -1297,5 +1297,40 @@ mod tests {
         };
 
         assert_eq!(success_output(&command, &response), "# Working Memory\n");
+    }
+
+    #[test]
+    fn memory_headless_preserves_workspace_error_code() {
+        let root = TempDir::new().unwrap();
+        memory::memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+        memory::memory_thread_save(
+            root.path().to_string_lossy().into_owned(),
+            memory::ThreadSaveRequest {
+                source: "manual".to_string(),
+                thread_id: Some("thread-1".to_string()),
+                title: "Thread".to_string(),
+                body: "Thread body".to_string(),
+                started_at: None,
+                ended_at: None,
+                model: None,
+                workspace_root: None,
+                tags: Vec::new(),
+            },
+        )
+        .unwrap();
+        let command = CommandLine::Memory {
+            root: Some(root.path().to_string_lossy().into_owned()),
+            command: MemoryCommand::Promote {
+                target: "thread-1".to_string(),
+                ingest: true,
+                title: None,
+            },
+        };
+
+        let response =
+            execute_memory_headless(&command, root.path().to_string_lossy().into_owned()).unwrap();
+
+        assert!(!response.ok);
+        assert_eq!(response.error_code.as_deref(), Some("llm_wiki_not_ready"));
     }
 }

@@ -142,6 +142,16 @@ pub fn memory_thread_list(
         {
             continue;
         }
+        if filter.since.as_deref().is_some_and(|since| {
+            frontmatter
+                .started_at
+                .as_deref()
+                .or(frontmatter.ended_at.as_deref())
+                .map(|timestamp| timestamp < since)
+                .unwrap_or(true)
+        }) {
+            continue;
+        }
         items.push(ThreadListItem {
             path: entry.path.clone(),
             thread_id: frontmatter.thread_id,

@@ -168,6 +168,37 @@ pub(crate) fn write_workspace_file(
     })
 }
 
+pub(crate) fn next_available_markdown_path(
+    root: &Path,
+    directory: &str,
+    date: &str,
+    slug: &str,
+) -> Result<String, WorkspaceError> {
+    validate_workspace_relative_path(directory)?;
+    let slug = slugify_segment(slug);
+    for suffix in 0..10_000 {
+        let filename = if suffix == 0 {
+            format!("{date}-{slug}.md")
+        } else {
+            format!("{date}-{slug}-{suffix}.md")
+        };
+        let relative_path = format!("{directory}/{filename}");
+        validate_workspace_relative_path(&relative_path)?;
+        match existing_path_kind(&root.join(&relative_path))? {
+            ExistingPathKind::Missing => return Ok(relative_path),
+            ExistingPathKind::File => {}
+            ExistingPathKind::Directory | ExistingPathKind::Symlink | ExistingPathKind::Other => {
+                return Err(path_type_conflict("file", "not a file", &relative_path));
+            }
+        }
+    }
+
+    Err(WorkspaceError::new(
+        "path_collision",
+        "could not allocate a unique memory markdown path",
+    ))
+}
+
 fn write_workspace_file_if_missing(
     root: &Path,
     relative_path: &str,
