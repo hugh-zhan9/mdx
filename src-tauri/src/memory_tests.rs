@@ -1,8 +1,10 @@
 use tempfile::tempdir;
 
 use crate::memory::{
-    default_memory_config, memory_detect_workspace, memory_initialize_workspace, memory_thread_get,
-    memory_thread_list, memory_thread_save, ThreadListFilter, ThreadSaveRequest,
+    default_memory_config, memory_add, memory_archive, memory_detect_workspace,
+    memory_initialize_workspace, memory_list, memory_thread_get, memory_thread_list,
+    memory_thread_save, memory_working_append, memory_working_get, memory_working_set,
+    MemoryAddRequest, MemoryListFilter, ThreadListFilter, ThreadSaveRequest,
 };
 use crate::memory_fs::{append_memory_log_entry, read_workspace_file, write_workspace_file};
 
@@ -330,4 +332,125 @@ fn thread_list_filters_by_source() {
 
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].source, "manual");
+}
+
+#[test]
+fn memory_add_creates_markdown_record_with_defaults() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+
+    let record = memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "JWT access token is 15 minutes".to_string(),
+            body: "Auth uses a 15 minute JWT access token.".to_string(),
+            tags: vec!["auth".to_string(), "jwt".to_string()],
+            source_thread: Some("memory/threads/manual/2026-06-12-cursor-abc123.md".to_string()),
+            importance: None,
+            confidence: None,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(record.frontmatter.kind, "memory");
+    assert_eq!(record.frontmatter.status, "active");
+    assert_eq!(record.frontmatter.importance, Some(0.5));
+    assert!(root.path().join(&record.path).is_file());
+}
+
+#[test]
+fn memory_archive_marks_record_archived() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    let record = memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "JWT access token is 15 minutes".to_string(),
+            body: "Auth uses a 15 minute JWT access token.".to_string(),
+            tags: vec!["auth".to_string()],
+            source_thread: None,
+            importance: None,
+            confidence: None,
+        },
+    )
+    .unwrap();
+
+    let archived = memory_archive(
+        root.path().to_string_lossy().into_owned(),
+        record.frontmatter.memory_id.clone(),
+    )
+    .unwrap();
+
+    assert_eq!(archived.frontmatter.status, "archived");
+}
+
+#[test]
+fn memory_list_filters_by_tag_and_excludes_archived() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    let active = memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "JWT access token is 15 minutes".to_string(),
+            body: "Auth uses a 15 minute JWT access token.".to_string(),
+            tags: vec!["auth".to_string()],
+            source_thread: None,
+            importance: None,
+            confidence: None,
+        },
+    )
+    .unwrap();
+    let archived = memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "Ignore me".to_string(),
+            body: "Archived memory".to_string(),
+            tags: vec!["auth".to_string()],
+            source_thread: None,
+            importance: None,
+            confidence: None,
+        },
+    )
+    .unwrap();
+    memory_archive(
+        root.path().to_string_lossy().into_owned(),
+        archived.frontmatter.memory_id.clone(),
+    )
+    .unwrap();
+
+    let items = memory_list(
+        root.path().to_string_lossy().into_owned(),
+        MemoryListFilter {
+            tag: Some("auth".to_string()),
+            since: None,
+            include_archived: false,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].memory_id, active.frontmatter.memory_id);
+}
+
+#[test]
+fn working_set_replaces_file_and_working_append_adds_to_section() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+
+    memory_working_set(
+        root.path().to_string_lossy().into_owned(),
+        "# Working Memory\n\n## Focus\n- Ship Memory Phase 1\n".to_string(),
+    )
+    .unwrap();
+    memory_working_append(
+        root.path().to_string_lossy().into_owned(),
+        "Recent Decisions".to_string(),
+        "Keep Memory and Wiki separate.".to_string(),
+    )
+    .unwrap();
+
+    let working = memory_working_get(root.path().to_string_lossy().into_owned()).unwrap();
+    assert!(working.contains("- Ship Memory Phase 1"));
+    assert!(working.contains("## Recent Decisions"));
+    assert!(working.contains("- Keep Memory and Wiki separate."));
 }

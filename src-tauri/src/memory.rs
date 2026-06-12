@@ -6,10 +6,10 @@ use crate::memory_fs::{
     required_path_state, write_workspace_file, RequiredPathKind, RequiredPathState,
 };
 pub use crate::memory_models::{
-    InitializeMemoryResult, MemoryCaptureConfig, MemoryConfig, MemoryDistillConfig,
-    MemoryRecallConfig, MemoryThreadFrontmatter, MemoryThreadRecord, MemoryWorkspaceStatus,
-    ThreadIndex, ThreadIndexEntry, ThreadListFilter, ThreadListItem, ThreadSaveRequest,
-    ThreadSaveResult,
+    InitializeMemoryResult, MemoryAddRequest, MemoryCaptureConfig, MemoryConfig,
+    MemoryDistillConfig, MemoryFrontmatter, MemoryListFilter, MemoryRecallConfig, MemoryRecord,
+    MemorySummary, MemoryThreadFrontmatter, MemoryThreadRecord, MemoryWorkspaceStatus, ThreadIndex,
+    ThreadIndexEntry, ThreadListFilter, ThreadListItem, ThreadSaveRequest, ThreadSaveResult,
 };
 use crate::models::WorkspaceError;
 use crate::path_guard::canonicalize_workspace_root;
@@ -255,4 +255,49 @@ pub fn memory_thread_list(
 ) -> Result<Vec<ThreadListItem>, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
     crate::memory_thread::memory_thread_list(root, filter)
+}
+
+pub fn memory_add(
+    root_path: String,
+    request: MemoryAddRequest,
+) -> Result<MemoryRecord, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    crate::memory_store::memory_add(root, request)
+}
+
+pub fn memory_get(root_path: String, target: String) -> Result<MemoryRecord, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    crate::memory_store::memory_get(root, target)
+}
+
+pub fn memory_list(
+    root_path: String,
+    filter: MemoryListFilter,
+) -> Result<Vec<MemorySummary>, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    crate::memory_store::memory_list(root, filter)
+}
+
+pub fn memory_archive(root_path: String, target: String) -> Result<MemoryRecord, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    crate::memory_store::memory_archive(root, target)
+}
+
+pub fn memory_working_get(root_path: String) -> Result<String, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    crate::memory_working::memory_working_get(root)
+}
+
+pub fn memory_working_set(root_path: String, markdown: String) -> Result<String, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    crate::memory_working::memory_working_set(root, markdown)
+}
+
+pub fn memory_working_append(
+    root_path: String,
+    section: String,
+    text: String,
+) -> Result<String, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    crate::memory_working::memory_working_append(root, section, text)
 }

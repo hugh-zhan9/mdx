@@ -135,3 +135,57 @@ pub struct ThreadListItem {
     pub message_count: Option<usize>,
     pub archived: bool,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryFrontmatter {
+    pub schema_version: u32,
+    pub kind: String,
+    pub memory_id: String,
+    pub title: String,
+    pub status: String,
+    pub created_at: String,
+    pub source_thread: Option<String>,
+    pub importance: Option<f64>,
+    pub confidence: Option<f64>,
+    pub tags: Vec<String>,
+    pub evolves_from: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryRecord {
+    pub path: String,
+    pub frontmatter: MemoryFrontmatter,
+    pub body: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemorySummary {
+    pub path: String,
+    pub memory_id: String,
+    pub title: String,
+    pub status: String,
+    pub created_at: String,
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryAddRequest {
+    pub title: String,
+    pub body: String,
+    pub tags: Vec<String>,
+    pub source_thread: Option<String>,
+    pub importance: Option<f64>,
+    pub confidence: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryListFilter {
+    pub tag: Option<String>,
+    pub since: Option<String>,
+    pub include_archived: bool,
+}
