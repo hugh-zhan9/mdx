@@ -4,6 +4,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use sha2::{Digest, Sha256};
+
+use crate::memory_models::{ThreadIndex, ThreadIndexEntry};
 use crate::models::WorkspaceError;
 
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -262,6 +265,141 @@ pub(crate) fn append_memory_log_entry(
     let root = root.as_ref();
     ensure_directory(root)?;
     append_workspace_file(root, "log.md", &format!("- {}\n", entry.trim()))
+}
+
+pub(crate) fn ensure_memory_ready(root: impl AsRef<Path>) -> Result<(), WorkspaceError> {
+    let status = crate::memory::detect_memory_workspace(root.as_ref())?;
+    if status.has_memory {
+        Ok(())
+    } else {
+        Err(WorkspaceError::new(
+            "memory_not_ready",
+            "memory workspace is not initialized",
+        ))
+    }
+}
+
+pub(crate) fn render_markdown_with_frontmatter<T: serde::Serialize>(
+    frontmatter: &T,
+    body: &str,
+) -> Result<String, WorkspaceError> {
+    let yaml = serde_yaml_ng::to_string(frontmatter).map_err(|error| {
+        WorkspaceError::new(
+            "yaml_encode_failed",
+            format!("failed to encode frontmatter: {error}"),
+        )
+    })?;
+    Ok(format!("---\n{}---\n\n{}", yaml, body))
+}
+
+pub(crate) fn parse_markdown_frontmatter<T: serde::de::DeserializeOwned>(
+    markdown: &str,
+) -> Result<(T, String), WorkspaceError> {
+    let rest = markdown
+        .strip_prefix("---\n")
+        .ok_or_else(|| WorkspaceError::new("invalid_frontmatter", "missing frontmatter start"))?;
+    let (yaml, body) = rest
+        .split_once("\n---\n")
+        .ok_or_else(|| WorkspaceError::new("invalid_frontmatter", "missing frontmatter end"))?;
+    let frontmatter = serde_yaml_ng::from_str::<T>(yaml).map_err(|error| {
+        WorkspaceError::new(
+            "yaml_decode_failed",
+            format!("failed to decode frontmatter: {error}"),
+        )
+    })?;
+    Ok((frontmatter, body.to_string()))
+}
+
+pub(crate) fn read_thread_index(root: &Path) -> Result<ThreadIndex, WorkspaceError> {
+    let contents = read_workspace_file(root, ".mdx/thread-index.json")?;
+    serde_json::from_str(&contents).map_err(|error| {
+        WorkspaceError::new(
+            "json_decode_failed",
+            format!("failed to parse thread index: {error}"),
+        )
+    })
+}
+
+pub(crate) fn write_thread_index(root: &Path, index: &ThreadIndex) -> Result<(), WorkspaceError> {
+    let contents = serde_json::to_vec_pretty(index).map_err(|error| {
+        WorkspaceError::new(
+            "json_encode_failed",
+            format!("failed to encode thread index: {error}"),
+        )
+    })?;
+    write_workspace_file(root, ".mdx/thread-index.json", &contents)
+}
+
+pub(crate) fn thread_index_entry(
+    path: String,
+    content_hash: String,
+) -> Result<ThreadIndexEntry, WorkspaceError> {
+    Ok(ThreadIndexEntry {
+        path,
+        content_hash,
+        updated_at: now_utc_rfc3339()?,
+    })
+}
+
+pub(crate) fn normalize_markdown_body(body: &str) -> String {
+    let trimmed = body.replace("\r\n", "\n").trim().to_string();
+    if trimmed.is_empty() {
+        String::new()
+    } else {
+        format!("{trimmed}\n")
+    }
+}
+
+pub(crate) fn sha256_prefixed(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    format!("sha256:{digest:x}")
+}
+
+pub(crate) fn slugify_segment(value: &str) -> String {
+    let mut slug = String::new();
+    let mut last_dash = false;
+    for ch in value.chars().flat_map(|ch| ch.to_lowercase()) {
+        if ch.is_ascii_alphanumeric() {
+            slug.push(ch);
+            last_dash = false;
+        } else if !last_dash {
+            slug.push('-');
+            last_dash = true;
+        }
+    }
+    let slug = slug.trim_matches('-').to_string();
+    if slug.is_empty() {
+        "untitled".to_string()
+    } else {
+        slug
+    }
+}
+
+pub(crate) fn date_prefix(iso_timestamp: Option<&str>) -> Result<String, WorkspaceError> {
+    let timestamp = match iso_timestamp {
+        Some(value) => {
+            time::OffsetDateTime::parse(value, &time::format_description::well_known::Rfc3339)
+                .map_err(|error| {
+                    WorkspaceError::new(
+                        "invalid_timestamp",
+                        format!("failed to parse timestamp: {error}"),
+                    )
+                })?
+        }
+        None => time::OffsetDateTime::now_utc(),
+    };
+    Ok(timestamp.date().to_string())
+}
+
+pub(crate) fn now_utc_rfc3339() -> Result<String, WorkspaceError> {
+    time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .map_err(|error| {
+            WorkspaceError::new(
+                "time_format_failed",
+                format!("failed to format timestamp: {error}"),
+            )
+        })
 }
 
 pub(crate) fn required_path_state(

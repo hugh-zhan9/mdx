@@ -7,7 +7,9 @@ use crate::memory_fs::{
 };
 pub use crate::memory_models::{
     InitializeMemoryResult, MemoryCaptureConfig, MemoryConfig, MemoryDistillConfig,
-    MemoryRecallConfig, MemoryWorkspaceStatus, ThreadIndex, ThreadIndexEntry,
+    MemoryRecallConfig, MemoryThreadFrontmatter, MemoryThreadRecord, MemoryWorkspaceStatus,
+    ThreadIndex, ThreadIndexEntry, ThreadListFilter, ThreadListItem, ThreadSaveRequest,
+    ThreadSaveResult,
 };
 use crate::models::WorkspaceError;
 use crate::path_guard::canonicalize_workspace_root;
@@ -229,4 +231,28 @@ pub(crate) fn append_memory_log_entry(
     entry: &str,
 ) -> Result<(), WorkspaceError> {
     append_memory_log_entry_impl(root, entry)
+}
+
+pub fn memory_thread_save(
+    root_path: String,
+    request: ThreadSaveRequest,
+) -> Result<ThreadSaveResult, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    crate::memory_thread::memory_thread_save(root, request)
+}
+
+pub fn memory_thread_get(
+    root_path: String,
+    target: String,
+) -> Result<MemoryThreadRecord, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    crate::memory_thread::memory_thread_get(root, target)
+}
+
+pub fn memory_thread_list(
+    root_path: String,
+    filter: ThreadListFilter,
+) -> Result<Vec<ThreadListItem>, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    crate::memory_thread::memory_thread_list(root, filter)
 }

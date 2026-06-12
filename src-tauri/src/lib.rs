@@ -32,6 +32,7 @@ mod macos_launch;
 pub mod memory;
 mod memory_fs;
 mod memory_models;
+mod memory_thread;
 mod models;
 mod path_guard;
 mod state_store;
