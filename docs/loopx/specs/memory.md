@@ -70,8 +70,10 @@ continues_from: string   # previous thread file path
 ### Path
 
 ```
-memory/memories/{yyyy-mm-dd}-{slug}.md
+memory/memories/{yyyy-mm-dd}-{slug}[-n].md
 ```
+
+When a same-day slug collision exists, writers must allocate the next numeric suffix using atomic create-new semantics. Existing memory records must not be overwritten by `memory add`.
 
 ### Required Frontmatter
 
@@ -116,8 +118,7 @@ confidence: float
   "byte_budget": 65536,
   "include_working": true,
   "include_threads": false,
-  "thread_ids": [],
-  "tags": [],
+  "tag": "optional string",
   "since": "optional ISO8601"
 }
 ```
@@ -137,7 +138,16 @@ confidence: float
       "importance": 0.0
     }
   ],
-  "threads": [],
+  "threads": [
+    {
+      "path": "string",
+      "memory_id": "thread_id",
+      "title": "string",
+      "status": "active | archived",
+      "created_at": "string",
+      "tags": []
+    }
+  ],
   "truncated": false,
   "byte_count": 0
 }
@@ -147,7 +157,8 @@ confidence: float
 
 - Scan `memory/memories/` with substring match + tag filter.
 - Sort by score (importance × recency decay).
-- Do **not** scan thread bodies unless `include_threads: true` and `thread_ids` is non-empty.
+- Do **not** scan thread bodies.
+- When `include_threads: true`, return matching thread summaries by title, thread id, or path. Thread body text is not injected into recall output in Phase 1.
 
 ### Phase 2 Retrieval
 
@@ -159,10 +170,11 @@ confidence: float
 mdx-cli memory promote --thread <thread_id|path> [--ingest] [--title "..."]
 ```
 
-1. Copy thread to `raw/promoted/{date}-{slug}.md` with provenance frontmatter.
-2. Set thread `promoted_to_wiki: true`.
+1. Copy thread to `raw/promoted/{date}-{slug}[-n].md` with provenance frontmatter.
+2. Allocate promoted raw files with atomic create-new semantics; existing promoted files must not be overwritten by `memory promote`.
 3. If `--ingest`, require an initialized LLM Wiki workspace before invoking ingest; otherwise fail with `llm_wiki_not_ready`.
-4. Append `log.md` event `memory_promote`.
+4. Set thread `promoted_to_wiki: true` only after the copy succeeds and, when `--ingest` is set, ingest succeeds.
+5. Append `log.md` event `memory_promote` after successful promotion.
 
 ## Config
 
