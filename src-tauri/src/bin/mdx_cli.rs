@@ -1,5 +1,6 @@
 use std::env;
-use std::io::{self, BufRead, BufReader, Write};
+use std::fs;
+use std::io::{self, BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
@@ -8,6 +9,7 @@ use std::time::{Duration, Instant};
 
 use clap::{Parser, Subcommand};
 use mdx_lib::cli_protocol::{CliRequest, CliResponse};
+use mdx_lib::memory;
 
 #[derive(Parser)]
 #[command(
@@ -19,7 +21,7 @@ struct Cli {
     command: CommandLine,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
+#[derive(Debug, Clone, PartialEq, Subcommand)]
 enum CommandLine {
     New,
     Open {
@@ -69,6 +71,12 @@ enum CommandLine {
         #[command(subcommand)]
         command: LlmWikiCommand,
     },
+    Memory {
+        #[arg(long)]
+        root: Option<String>,
+        #[command(subcommand)]
+        command: MemoryCommand,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
@@ -99,6 +107,137 @@ enum LlmWikiCommand {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Subcommand)]
+enum MemoryCommand {
+    Status {
+        #[arg(long)]
+        json: bool,
+    },
+    Init,
+    Thread {
+        #[command(subcommand)]
+        command: MemoryThreadCommand,
+    },
+    Add {
+        #[arg(long)]
+        title: String,
+        #[arg(long)]
+        body: Option<String>,
+        #[arg(long)]
+        file: Option<String>,
+        #[arg(long)]
+        stdin: bool,
+        #[arg(long = "tag")]
+        tags: Vec<String>,
+        #[arg(long)]
+        source_thread: Option<String>,
+        #[arg(long)]
+        importance: Option<f64>,
+        #[arg(long)]
+        confidence: Option<f64>,
+    },
+    Show {
+        target: String,
+    },
+    List {
+        #[arg(long)]
+        tag: Option<String>,
+        #[arg(long)]
+        since: Option<String>,
+    },
+    Search {
+        #[arg(long)]
+        limit: Option<usize>,
+        #[arg(long)]
+        tag: Option<String>,
+        #[arg(long)]
+        since: Option<String>,
+        #[arg(required = true, num_args = 1..)]
+        query: Vec<String>,
+    },
+    Archive {
+        target: String,
+    },
+    Working {
+        #[command(subcommand)]
+        command: MemoryWorkingCommand,
+    },
+    Recall {
+        #[arg(long)]
+        json: bool,
+        #[arg(long)]
+        limit: Option<usize>,
+        #[arg(long)]
+        byte_budget: Option<usize>,
+        #[arg(long)]
+        include_threads: bool,
+        #[arg(long)]
+        tag: Option<String>,
+        #[arg(long)]
+        since: Option<String>,
+        #[arg(required = true, num_args = 1..)]
+        query: Vec<String>,
+    },
+    Promote {
+        #[arg(long = "thread")]
+        target: String,
+        #[arg(long)]
+        ingest: bool,
+        #[arg(long)]
+        title: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
+enum MemoryThreadCommand {
+    Save {
+        #[arg(long)]
+        source: String,
+        #[arg(long)]
+        thread_id: Option<String>,
+        #[arg(long)]
+        title: String,
+        #[arg(long)]
+        body: Option<String>,
+        #[arg(long)]
+        file: Option<String>,
+        #[arg(long)]
+        stdin: bool,
+    },
+    Show {
+        target: String,
+    },
+    List {
+        #[arg(long)]
+        source: Option<String>,
+        #[arg(long)]
+        since: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
+enum MemoryWorkingCommand {
+    Get,
+    Set {
+        #[arg(long)]
+        body: Option<String>,
+        #[arg(long)]
+        file: Option<String>,
+        #[arg(long)]
+        stdin: bool,
+    },
+    Append {
+        #[arg(long)]
+        section: String,
+        #[arg(long)]
+        text: Option<String>,
+        #[arg(long)]
+        file: Option<String>,
+        #[arg(long)]
+        stdin: bool,
+    },
+}
+
 fn main() -> ExitCode {
     match run() {
         Ok((command, response)) => print_response(command, response),
@@ -117,6 +256,11 @@ fn main() -> ExitCode {
 fn run() -> io::Result<(CommandLine, CliResponse)> {
     let cli = Cli::parse();
     let command = cli.command;
+    if let Some(root_path) = memory_root_override(&command)? {
+        let response = execute_memory_headless(&command, root_path)?;
+        return Ok((command, response));
+    }
+
     let request = request_from_command(&command)?;
     let mut conn = Connection::open()?;
 
@@ -179,7 +323,408 @@ fn request_from_command(command: &CommandLine) -> io::Result<CliRequest> {
                 query: join_required_words(query, "query")?,
             },
         },
+        CommandLine::Memory { command, .. } => request_from_memory_command(command)?,
     })
+}
+
+fn request_from_memory_command(command: &MemoryCommand) -> io::Result<CliRequest> {
+    Ok(match command {
+        MemoryCommand::Status { .. } => CliRequest::MemoryStatus,
+        MemoryCommand::Init => CliRequest::MemoryInit,
+        MemoryCommand::Thread { command } => match command {
+            MemoryThreadCommand::Save {
+                source,
+                thread_id,
+                title,
+                body,
+                file,
+                stdin,
+            } => CliRequest::MemoryThreadSave {
+                source: trim_required_value(source, "source")?,
+                thread_id: thread_id.clone(),
+                title: trim_required_value(title, "title")?,
+                body: read_input_from_file_or_stdin(file.as_deref(), body.as_deref(), *stdin)?,
+            },
+            MemoryThreadCommand::Show { target } => CliRequest::MemoryThreadShow {
+                target: trim_required_value(target, "target")?,
+            },
+            MemoryThreadCommand::List { source, since } => CliRequest::MemoryThreadList {
+                source: source.clone(),
+                since: parse_since_arg(since)?,
+            },
+        },
+        MemoryCommand::Add {
+            title,
+            body,
+            file,
+            stdin,
+            tags,
+            source_thread,
+            importance,
+            confidence,
+        } => CliRequest::MemoryAdd {
+            title: trim_required_value(title, "title")?,
+            body: read_input_from_file_or_stdin(file.as_deref(), body.as_deref(), *stdin)?,
+            tags: tags.clone(),
+            source_thread: source_thread.clone(),
+            importance: *importance,
+            confidence: *confidence,
+        },
+        MemoryCommand::Show { target } => CliRequest::MemoryShow {
+            target: trim_required_value(target, "target")?,
+        },
+        MemoryCommand::List { tag, since } => CliRequest::MemoryList {
+            tag: tag.clone(),
+            since: parse_since_arg(since)?,
+        },
+        MemoryCommand::Search {
+            query,
+            limit,
+            tag,
+            since,
+        } => CliRequest::MemorySearch {
+            query: join_required_words(query, "query")?,
+            limit: *limit,
+            tag: tag.clone(),
+            since: parse_since_arg(since)?,
+        },
+        MemoryCommand::Archive { target } => CliRequest::MemoryArchive {
+            target: trim_required_value(target, "target")?,
+        },
+        MemoryCommand::Working { command } => match command {
+            MemoryWorkingCommand::Get => CliRequest::MemoryWorkingGet,
+            MemoryWorkingCommand::Set { body, file, stdin } => CliRequest::MemoryWorkingSet {
+                content: read_input_from_file_or_stdin(file.as_deref(), body.as_deref(), *stdin)?,
+            },
+            MemoryWorkingCommand::Append {
+                section,
+                text,
+                file,
+                stdin,
+            } => CliRequest::MemoryWorkingAppend {
+                section: trim_required_value(section, "section")?,
+                text: read_input_from_file_or_stdin(file.as_deref(), text.as_deref(), *stdin)?,
+            },
+        },
+        MemoryCommand::Recall {
+            query,
+            limit,
+            byte_budget,
+            include_threads,
+            tag,
+            since,
+            ..
+        } => CliRequest::MemoryRecall {
+            query: join_required_words(query, "query")?,
+            limit: *limit,
+            byte_budget: *byte_budget,
+            include_threads: Some(*include_threads),
+            tag: tag.clone(),
+            since: parse_since_arg(since)?,
+        },
+        MemoryCommand::Promote {
+            target,
+            ingest,
+            title,
+        } => CliRequest::MemoryPromote {
+            target: trim_required_value(target, "target")?,
+            ingest: Some(*ingest),
+            title: title.clone(),
+        },
+    })
+}
+
+fn memory_root_override(command: &CommandLine) -> io::Result<Option<String>> {
+    match command {
+        CommandLine::Memory {
+            root: Some(root), ..
+        } => normalize_cli_path(root).map(Some),
+        _ => Ok(None),
+    }
+}
+
+fn execute_memory_headless(command: &CommandLine, root_path: String) -> io::Result<CliResponse> {
+    let CommandLine::Memory { command, .. } = command else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "headless execution is only supported for memory commands",
+        ));
+    };
+
+    let response = match request_from_memory_command(command)? {
+        CliRequest::MemoryStatus => match memory::memory_detect_workspace(root_path.clone()) {
+            Ok(status) => CliResponse {
+                ok: true,
+                root_path: Some(root_path),
+                memory_status: Some(status),
+                ..CliResponse::default()
+            },
+            Err(error) => workspace_error_response(error),
+        },
+        CliRequest::MemoryInit => match memory::memory_initialize_workspace(root_path.clone()) {
+            Ok(result) => CliResponse {
+                ok: true,
+                root_path: Some(root_path),
+                memory_init: Some(result),
+                ..CliResponse::default()
+            },
+            Err(error) => workspace_error_response(error),
+        },
+        CliRequest::MemoryThreadSave {
+            source,
+            thread_id,
+            title,
+            body,
+        } => {
+            let request = memory::ThreadSaveRequest {
+                source,
+                thread_id,
+                title,
+                body,
+                started_at: None,
+                ended_at: None,
+                model: None,
+                workspace_root: None,
+                tags: Vec::new(),
+            };
+            match memory::memory_thread_save(root_path.clone(), request)
+                .and_then(|result| memory::memory_thread_get(root_path, result.thread_id))
+            {
+                Ok(record) => CliResponse {
+                    ok: true,
+                    memory_thread: Some(record),
+                    ..CliResponse::default()
+                },
+                Err(error) => workspace_error_response(error),
+            }
+        }
+        CliRequest::MemoryThreadShow { target } => {
+            match memory::memory_thread_get(root_path.clone(), target) {
+                Ok(record) => {
+                    record_response_with_content(root_path, record.path.clone(), |response| {
+                        CliResponse {
+                            memory_thread: Some(record),
+                            ..response
+                        }
+                    })
+                }
+                Err(error) => workspace_error_response(error),
+            }
+        }
+        CliRequest::MemoryThreadList { source, since } => {
+            match memory::memory_thread_list(root_path, memory::ThreadListFilter { source, since })
+            {
+                Ok(threads) => CliResponse {
+                    ok: true,
+                    memory_threads: Some(threads),
+                    ..CliResponse::default()
+                },
+                Err(error) => workspace_error_response(error),
+            }
+        }
+        CliRequest::MemoryAdd {
+            title,
+            body,
+            tags,
+            source_thread,
+            importance,
+            confidence,
+        } => {
+            let request = memory::MemoryAddRequest {
+                title,
+                body,
+                tags,
+                source_thread,
+                importance,
+                confidence,
+            };
+            match memory::memory_add(root_path, request) {
+                Ok(record) => CliResponse {
+                    ok: true,
+                    memory_entry: Some(record),
+                    ..CliResponse::default()
+                },
+                Err(error) => workspace_error_response(error),
+            }
+        }
+        CliRequest::MemoryShow { target } => match memory::memory_get(root_path.clone(), target) {
+            Ok(record) => {
+                record_response_with_content(root_path, record.path.clone(), |response| {
+                    CliResponse {
+                        memory_entry: Some(record),
+                        ..response
+                    }
+                })
+            }
+            Err(error) => workspace_error_response(error),
+        },
+        CliRequest::MemoryList { tag, since } => match memory::memory_list(
+            root_path,
+            memory::MemoryListFilter {
+                tag,
+                since,
+                include_archived: false,
+            },
+        ) {
+            Ok(entries) => CliResponse {
+                ok: true,
+                memory_entries: Some(entries),
+                ..CliResponse::default()
+            },
+            Err(error) => workspace_error_response(error),
+        },
+        CliRequest::MemorySearch {
+            query,
+            limit,
+            tag,
+            since,
+        } => match memory::memory_search(root_path, query, limit, tag, since) {
+            Ok(entries) => CliResponse {
+                ok: true,
+                memory_entries: Some(entries),
+                ..CliResponse::default()
+            },
+            Err(error) => workspace_error_response(error),
+        },
+        CliRequest::MemoryArchive { target } => match memory::memory_archive(root_path, target) {
+            Ok(record) => CliResponse {
+                ok: true,
+                memory_entry: Some(record),
+                ..CliResponse::default()
+            },
+            Err(error) => workspace_error_response(error),
+        },
+        CliRequest::MemoryWorkingGet => match memory::memory_working_get(root_path) {
+            Ok(content) => CliResponse {
+                ok: true,
+                content: Some(content),
+                ..CliResponse::default()
+            },
+            Err(error) => workspace_error_response(error),
+        },
+        CliRequest::MemoryWorkingSet { content } => {
+            match memory::memory_working_set(root_path, content) {
+                Ok(content) => CliResponse {
+                    ok: true,
+                    content: Some(content),
+                    ..CliResponse::default()
+                },
+                Err(error) => workspace_error_response(error),
+            }
+        }
+        CliRequest::MemoryWorkingAppend { section, text } => {
+            match memory::memory_working_append(root_path, section, text) {
+                Ok(content) => CliResponse {
+                    ok: true,
+                    content: Some(content),
+                    ..CliResponse::default()
+                },
+                Err(error) => workspace_error_response(error),
+            }
+        }
+        CliRequest::MemoryRecall {
+            query,
+            limit,
+            byte_budget,
+            include_threads,
+            tag,
+            since,
+        } => {
+            let request = memory::RecallRequest {
+                query,
+                limit,
+                byte_budget,
+                include_working: true,
+                include_threads: include_threads.unwrap_or(false),
+                tag,
+                since,
+            };
+            match memory::memory_recall(root_path, request) {
+                Ok(result) => CliResponse {
+                    ok: true,
+                    memory_recall: Some(result),
+                    ..CliResponse::default()
+                },
+                Err(error) => workspace_error_response(error),
+            }
+        }
+        CliRequest::MemoryPromote {
+            target,
+            ingest,
+            title,
+        } => {
+            let request = memory::MemoryPromoteRequest {
+                target,
+                ingest: ingest.unwrap_or(false),
+                title,
+            };
+            match memory::memory_promote(root_path, request) {
+                Ok(result) => CliResponse {
+                    ok: true,
+                    memory_promote: Some(result),
+                    ..CliResponse::default()
+                },
+                Err(error) => workspace_error_response(error),
+            }
+        }
+        _ => unreachable!("request_from_memory_command only returns memory requests"),
+    };
+
+    Ok(response)
+}
+
+fn workspace_error_response(error: impl std::fmt::Display) -> CliResponse {
+    CliResponse::error("workspace_error", error.to_string())
+}
+
+fn record_response_with_content<T>(
+    root_path: String,
+    relative_path: String,
+    build: impl FnOnce(CliResponse) -> T,
+) -> T {
+    let response = match fs::read_to_string(PathBuf::from(root_path).join(relative_path)) {
+        Ok(content) => CliResponse {
+            ok: true,
+            content: Some(content),
+            ..CliResponse::default()
+        },
+        Err(error) => CliResponse::error("read_failed", error.to_string()),
+    };
+    build(response)
+}
+
+fn read_input_from_file_or_stdin(
+    file: Option<&str>,
+    inline: Option<&str>,
+    read_stdin: bool,
+) -> io::Result<String> {
+    let sources =
+        usize::from(file.is_some()) + usize::from(inline.is_some()) + usize::from(read_stdin);
+    if sources != 1 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "provide exactly one of --body, --file, or --stdin",
+        ));
+    }
+
+    let value = if let Some(path) = file {
+        fs::read_to_string(path)?
+    } else if read_stdin {
+        let mut value = String::new();
+        io::stdin().read_to_string(&mut value)?;
+        value
+    } else {
+        inline.unwrap_or_default().to_string()
+    };
+
+    trim_required_value(&value, "content")
+}
+
+fn parse_since_arg(since: &Option<String>) -> io::Result<Option<String>> {
+    since
+        .as_deref()
+        .map(|value| trim_required_value(value, "since"))
+        .transpose()
 }
 
 fn join_required_words(words: &[String], noun: &str) -> io::Result<String> {
@@ -229,6 +774,15 @@ fn print_response(command: CommandLine, response: CliResponse) -> ExitCode {
     if !matches!(
         command,
         CommandLine::Content { .. }
+            | CommandLine::Memory {
+                command: MemoryCommand::Working {
+                    command: MemoryWorkingCommand::Get,
+                } | MemoryCommand::Show { .. }
+                    | MemoryCommand::Thread {
+                        command: MemoryThreadCommand::Show { .. },
+                    },
+                ..
+            }
             | CommandLine::LlmWiki {
                 command: LlmWikiCommand::Query { json: false, .. },
             }
@@ -251,8 +805,52 @@ fn success_output(command: &CommandLine, response: &CliResponse) -> String {
         CommandLine::LlmWiki {
             command: LlmWikiCommand::Lint { json: false },
         } => response.lint_report.clone().unwrap_or_default(),
+        CommandLine::Memory {
+            command:
+                MemoryCommand::Working {
+                    command: MemoryWorkingCommand::Get,
+                }
+                | MemoryCommand::Show { .. }
+                | MemoryCommand::Thread {
+                    command: MemoryThreadCommand::Show { .. },
+                },
+            ..
+        } => response.content.clone().unwrap_or_default(),
+        CommandLine::Memory {
+            command: MemoryCommand::Recall { json: false, .. },
+            ..
+        } => response
+            .memory_recall
+            .as_ref()
+            .map(render_memory_recall)
+            .unwrap_or_default(),
         _ => serde_json::to_string(response).unwrap_or_else(|_| "{\"ok\":true}".into()),
     }
+}
+
+fn render_memory_recall(result: &memory::RecallResult) -> String {
+    let mut output = String::new();
+    if let Some(working) = result.working.as_ref() {
+        output.push_str(working);
+        if !output.ends_with('\n') {
+            output.push('\n');
+        }
+    }
+    for item in &result.memories {
+        output.push_str("\n## ");
+        output.push_str(&item.title);
+        output.push('\n');
+        output.push_str(&item.snippet);
+        output.push('\n');
+    }
+    for item in &result.threads {
+        output.push_str("\n## ");
+        output.push_str(&item.title);
+        output.push('\n');
+        output.push_str(&item.path);
+        output.push('\n');
+    }
+    output
 }
 
 struct Connection {
@@ -381,6 +979,7 @@ fn normalize_cli_path(input: &str) -> io::Result<String> {
 mod tests {
     use super::*;
     use mdx_lib::cli_protocol::{CliResponse, CliWikiSearchResult};
+    use tempfile::TempDir;
 
     #[test]
     fn llm_wiki_query_request_joins_multiword_question() {
@@ -608,5 +1207,95 @@ mod tests {
         };
 
         assert_eq!(success_output(&command, &response), "OK");
+    }
+
+    #[test]
+    fn memory_recall_request_joins_multiword_query() {
+        let command = CommandLine::Memory {
+            root: None,
+            command: MemoryCommand::Recall {
+                json: false,
+                limit: Some(3),
+                byte_budget: None,
+                include_threads: true,
+                tag: None,
+                since: None,
+                query: vec!["phase".to_string(), "one".to_string()],
+            },
+        };
+
+        assert!(matches!(
+            request_from_command(&command).unwrap(),
+            CliRequest::MemoryRecall {
+                query,
+                limit: Some(3),
+                include_threads: Some(true),
+                ..
+            } if query == "phase one"
+        ));
+    }
+
+    #[test]
+    fn memory_thread_save_request_reads_file_body() {
+        let root = TempDir::new().unwrap();
+        let body_path = root.path().join("thread.md");
+        fs::write(&body_path, "Thread transcript").unwrap();
+        let command = CommandLine::Memory {
+            root: None,
+            command: MemoryCommand::Thread {
+                command: MemoryThreadCommand::Save {
+                    source: "manual".to_string(),
+                    thread_id: Some("thread-1".to_string()),
+                    title: "Decision".to_string(),
+                    body: None,
+                    file: Some(body_path.to_string_lossy().into_owned()),
+                    stdin: false,
+                },
+            },
+        };
+
+        assert!(matches!(
+            request_from_command(&command).unwrap(),
+            CliRequest::MemoryThreadSave {
+                source,
+                thread_id,
+                title,
+                body,
+            } if source == "manual"
+                && thread_id == Some("thread-1".to_string())
+                && title == "Decision"
+                && body == "Thread transcript"
+        ));
+    }
+
+    #[test]
+    fn memory_root_override_detects_headless_root() {
+        let root = TempDir::new().unwrap();
+        let command = CommandLine::Memory {
+            root: Some(root.path().to_string_lossy().into_owned()),
+            command: MemoryCommand::Status { json: false },
+        };
+
+        assert_eq!(
+            memory_root_override(&command).unwrap(),
+            Some(root.path().to_string_lossy().into_owned())
+        );
+    }
+
+    #[test]
+    fn memory_working_get_default_output_is_markdown_only() {
+        let command = CommandLine::Memory {
+            root: None,
+            command: MemoryCommand::Working {
+                command: MemoryWorkingCommand::Get,
+            },
+        };
+        let response = CliResponse {
+            ok: true,
+            content: Some("# Working Memory\n".to_string()),
+            ..CliResponse::default()
+        };
+
+        assert_eq!(success_output(&command, &response), "# Working Memory\n");
     }
 }
