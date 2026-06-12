@@ -64,9 +64,19 @@ mdx-cli create-folder <dir> <name>
 mdx-cli rename <path> <new-name>
 mdx-cli llm-wiki query [--json] <question...>
 mdx-cli llm-wiki search <query...>
+mdx-cli memory status [--json]
+mdx-cli memory init
+mdx-cli memory thread save --source manual --title "..." --file <path>
+mdx-cli memory add --title "..." --body "..."
+mdx-cli memory recall [--json] <query...>
+mdx-cli memory working get
+mdx-cli memory promote --thread <thread-id>
+mdx-cli memory --root <workspace> status
 ```
 
-The LLM Wiki CLI surface is intentionally read/query oriented: it exposes `query` and `search` for the active Workspace Mode root, but does not expose initialization, scanning, ingest, lint, graph, or digest operations.
+Memory commands manage Markdown-native records under `memory/` and `.mdx/`. They can run through the active Workspace Mode socket, or headlessly with `mdx-cli memory --root <workspace> ...`.
+
+The LLM Wiki CLI surface remains socket-only and intentionally read/query oriented: it exposes `query` and `search` for the active Workspace Mode root, but does not expose initialization, scanning, ingest, lint, graph, or digest operations.
 
 ## Build
 

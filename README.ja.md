@@ -59,9 +59,19 @@ mdx-cli create-folder <dir> <name>
 mdx-cli rename <path> <new-name>
 mdx-cli llm-wiki query [--json] <question...>
 mdx-cli llm-wiki search <query...>
+mdx-cli memory status [--json]
+mdx-cli memory init
+mdx-cli memory thread save --source manual --title "..." --file <path>
+mdx-cli memory add --title "..." --body "..."
+mdx-cli memory recall [--json] <query...>
+mdx-cli memory working get
+mdx-cli memory promote --thread <thread-id>
+mdx-cli memory --root <workspace> status
 ```
 
-LLM Wiki の CLI は問い合わせと検索に限定しています。現在の Workspace Mode root に対して `query` と `search` のみを公開し、初期化、スキャン、ingest、lint、graph、digest などの操作系コマンドは公開しません。
+Memory コマンドは `memory/` と `.mdx/` 配下の Markdown ネイティブな記憶レコードを管理します。現在の Workspace Mode socket 経由でも、`mdx-cli memory --root <workspace> ...` によるヘッドレス実行でも使えます。
+
+LLM Wiki の CLI は socket 専用のまま、問い合わせと検索に限定しています。現在の Workspace Mode root に対して `query` と `search` のみを公開し、初期化、スキャン、ingest、lint、graph、digest などの操作系コマンドは公開しません。
 
 ## ビルド
 
