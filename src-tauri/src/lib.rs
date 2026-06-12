@@ -29,6 +29,9 @@ mod llm_wiki_query;
 mod llm_wiki_raw;
 #[cfg(target_os = "macos")]
 mod macos_launch;
+pub mod memory;
+mod memory_fs;
+mod memory_models;
 mod models;
 mod path_guard;
 mod state_store;
@@ -48,6 +51,8 @@ mod draft_store_tests;
 mod file_watch_tests;
 #[cfg(test)]
 mod llm_wiki_tests;
+#[cfg(test)]
+mod memory_tests;
 #[cfg(test)]
 mod state_store_tests;
 #[cfg(test)]
