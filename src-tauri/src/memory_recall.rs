@@ -1,5 +1,6 @@
 use crate::memory_models::{
     MemoryListFilter, MemoryRecord, MemorySummary, RecallMemoryItem, RecallRequest, RecallResult,
+    ThreadListFilter,
 };
 use crate::models::WorkspaceError;
 
@@ -98,14 +99,58 @@ pub fn memory_recall(
     if byte_count > byte_budget {
         byte_count = byte_budget;
     }
+    let threads = if request.include_threads {
+        recall_threads(root, &request)?
+    } else {
+        Vec::new()
+    };
 
     Ok(RecallResult {
         working,
         memories: selected,
-        threads: Vec::new(),
+        threads,
         truncated,
         byte_count,
     })
+}
+
+fn recall_threads(
+    root: &std::path::Path,
+    request: &RecallRequest,
+) -> Result<Vec<MemorySummary>, WorkspaceError> {
+    let query = request.query.trim().to_ascii_lowercase();
+    if query.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut items = crate::memory_thread::memory_thread_list(
+        root,
+        ThreadListFilter {
+            source: None,
+            since: request.since.clone(),
+        },
+    )?
+    .into_iter()
+    .filter(|thread| {
+        thread.title.to_ascii_lowercase().contains(&query)
+            || thread.thread_id.to_ascii_lowercase().contains(&query)
+            || thread.path.to_ascii_lowercase().contains(&query)
+    })
+    .map(|thread| MemorySummary {
+        path: thread.path,
+        memory_id: thread.thread_id,
+        title: thread.title,
+        status: if thread.archived {
+            "archived".to_string()
+        } else {
+            "active".to_string()
+        },
+        created_at: thread.started_at.or(thread.ended_at).unwrap_or_default(),
+        tags: Vec::new(),
+    })
+    .collect::<Vec<_>>();
+    items.truncate(request.limit.unwrap_or(10));
+    Ok(items)
 }
 
 fn score_memory(record: &MemoryRecord, query: &str, now: time::OffsetDateTime) -> Option<f64> {

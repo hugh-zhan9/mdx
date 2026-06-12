@@ -1,9 +1,9 @@
 use std::fs;
 
 use crate::memory_fs::{
-    append_memory_log_entry, date_prefix, ensure_memory_ready, next_available_markdown_path,
-    normalize_markdown_body, now_utc_rfc3339, parse_markdown_frontmatter,
-    render_markdown_with_frontmatter, slugify_segment, write_workspace_file,
+    append_memory_log_entry, date_prefix, ensure_memory_ready, normalize_markdown_body,
+    now_utc_rfc3339, parse_markdown_frontmatter, render_markdown_with_frontmatter, slugify_segment,
+    write_new_markdown_file, write_workspace_file,
 };
 use crate::memory_models::{
     MemoryAddRequest, MemoryFrontmatter, MemoryListFilter, MemoryRecord, MemorySummary,
@@ -29,13 +29,23 @@ pub fn memory_add(
     let now = now_utc_rfc3339()?;
     let slug = slugify_segment(&title);
     let date = date_prefix(Some(&now))?;
-    let path = next_available_markdown_path(root, "memory/memories", &date, &slug)?;
-    let memory_stem = path
-        .trim_start_matches("memory/memories/")
-        .trim_end_matches(".md")
-        .replace('-', "_");
-    let memory_id = format!("mem_{memory_stem}");
-
+    let path = write_new_markdown_file(root, "memory/memories", &date, &slug, |path| {
+        let frontmatter = MemoryFrontmatter {
+            schema_version: 1,
+            kind: "memory".to_string(),
+            memory_id: memory_id_from_path(path),
+            title: title.clone(),
+            status: "active".to_string(),
+            created_at: now.clone(),
+            source_thread: request.source_thread.clone(),
+            importance: Some(request.importance.unwrap_or(0.5)),
+            confidence: request.confidence.or(Some(0.5)),
+            tags: request.tags.clone(),
+            evolves_from: None,
+        };
+        render_markdown_with_frontmatter(&frontmatter, &body).map(String::into_bytes)
+    })?;
+    let memory_id = memory_id_from_path(&path);
     let frontmatter = MemoryFrontmatter {
         schema_version: 1,
         kind: "memory".to_string(),
@@ -49,8 +59,6 @@ pub fn memory_add(
         tags: request.tags.clone(),
         evolves_from: None,
     };
-    let markdown = render_markdown_with_frontmatter(&frontmatter, &body)?;
-    write_workspace_file(root, &path, markdown.as_bytes())?;
     append_memory_log_entry(
         root,
         &format!("memory_add memory_id={memory_id} path={path}"),
@@ -61,6 +69,14 @@ pub fn memory_add(
         frontmatter,
         body,
     })
+}
+
+fn memory_id_from_path(path: &str) -> String {
+    let memory_stem = path
+        .trim_start_matches("memory/memories/")
+        .trim_end_matches(".md")
+        .replace('-', "_");
+    format!("mem_{memory_stem}")
 }
 
 pub fn memory_get(

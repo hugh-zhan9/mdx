@@ -168,12 +168,16 @@ pub(crate) fn write_workspace_file(
     })
 }
 
-pub(crate) fn next_available_markdown_path(
+pub(crate) fn write_new_markdown_file<F>(
     root: &Path,
     directory: &str,
     date: &str,
     slug: &str,
-) -> Result<String, WorkspaceError> {
+    render: F,
+) -> Result<String, WorkspaceError>
+where
+    F: Fn(&str) -> Result<Vec<u8>, WorkspaceError>,
+{
     validate_workspace_relative_path(directory)?;
     let slug = slugify_segment(slug);
     for suffix in 0..10_000 {
@@ -184,12 +188,10 @@ pub(crate) fn next_available_markdown_path(
         };
         let relative_path = format!("{directory}/{filename}");
         validate_workspace_relative_path(&relative_path)?;
-        match existing_path_kind(&root.join(&relative_path))? {
-            ExistingPathKind::Missing => return Ok(relative_path),
-            ExistingPathKind::File => {}
-            ExistingPathKind::Directory | ExistingPathKind::Symlink | ExistingPathKind::Other => {
-                return Err(path_type_conflict("file", "not a file", &relative_path));
-            }
+        let contents = render(&relative_path)?;
+        match write_workspace_file_new(root, &relative_path, contents)? {
+            NewFileWrite::Created => return Ok(relative_path),
+            NewFileWrite::AlreadyExists => {}
         }
     }
 
@@ -197,6 +199,74 @@ pub(crate) fn next_available_markdown_path(
         "path_collision",
         "could not allocate a unique memory markdown path",
     ))
+}
+
+enum NewFileWrite {
+    Created,
+    AlreadyExists,
+}
+
+fn write_workspace_file_new(
+    root: &Path,
+    relative_path: &str,
+    contents: Vec<u8>,
+) -> Result<NewFileWrite, WorkspaceError> {
+    validate_workspace_relative_path(relative_path)?;
+    let path = root.join(relative_path);
+    ensure_parent_directories(root, relative_path)?;
+    match existing_path_kind(&path)? {
+        ExistingPathKind::Missing => {}
+        ExistingPathKind::File => return Ok(NewFileWrite::AlreadyExists),
+        ExistingPathKind::Directory | ExistingPathKind::Symlink | ExistingPathKind::Other => {
+            return Err(path_type_conflict("file", "not a file", relative_path));
+        }
+    }
+
+    let parent = path
+        .parent()
+        .ok_or_else(|| WorkspaceError::new("write_failed", "memory path has no parent"))?;
+    ensure_directory(parent)?;
+
+    let mut file = match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+    {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            return match existing_path_kind(&path)? {
+                ExistingPathKind::File => Ok(NewFileWrite::AlreadyExists),
+                ExistingPathKind::Directory
+                | ExistingPathKind::Symlink
+                | ExistingPathKind::Other => {
+                    Err(path_type_conflict("file", "not a file", relative_path))
+                }
+                ExistingPathKind::Missing => Err(WorkspaceError::from_io(
+                    "write_failed",
+                    "failed to create new memory file",
+                    &error,
+                )),
+            };
+        }
+        Err(error) => {
+            return Err(WorkspaceError::from_io(
+                "write_failed",
+                "failed to create new memory file",
+                &error,
+            ));
+        }
+    };
+
+    file.write_all(&contents).map_err(|error| {
+        let _ = fs::remove_file(&path);
+        WorkspaceError::from_io("write_failed", "failed to write new memory file", &error)
+    })?;
+    file.sync_all().map_err(|error| {
+        let _ = fs::remove_file(&path);
+        WorkspaceError::from_io("write_failed", "failed to sync new memory file", &error)
+    })?;
+
+    Ok(NewFileWrite::Created)
 }
 
 fn write_workspace_file_if_missing(

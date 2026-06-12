@@ -1,5 +1,7 @@
 use std::ffi::OsString;
+use std::sync::Arc;
 use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::thread;
 
 use tempfile::tempdir;
 
@@ -488,6 +490,48 @@ fn memory_add_preserves_same_title_records() {
 }
 
 #[test]
+fn memory_add_preserves_concurrent_same_title_records() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    let root_path = Arc::new(root.path().to_string_lossy().into_owned());
+    let mut handles = Vec::new();
+
+    for index in 0..8 {
+        let root_path = Arc::clone(&root_path);
+        handles.push(thread::spawn(move || {
+            memory_add(
+                root_path.as_ref().clone(),
+                MemoryAddRequest {
+                    title: "Concurrent decision".to_string(),
+                    body: format!("Body {index}"),
+                    tags: Vec::new(),
+                    source_thread: None,
+                    importance: None,
+                    confidence: None,
+                },
+            )
+            .unwrap()
+        }));
+    }
+
+    let records = handles
+        .into_iter()
+        .map(|handle| handle.join().unwrap())
+        .collect::<Vec<_>>();
+    let mut paths = records
+        .iter()
+        .map(|record| record.path.clone())
+        .collect::<Vec<_>>();
+    paths.sort();
+    paths.dedup();
+
+    assert_eq!(paths.len(), records.len());
+    for record in records {
+        assert!(root.path().join(record.path).is_file());
+    }
+}
+
+#[test]
 fn memory_archive_marks_record_archived() {
     let root = tempdir().unwrap();
     memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
@@ -674,6 +718,45 @@ fn recall_includes_working_memory_and_respects_byte_budget() {
         .contains("Ship JWT auth"));
     assert!(result.truncated);
     assert!(result.byte_count <= 256);
+}
+
+#[test]
+fn recall_include_threads_returns_matching_thread_summaries_without_full_text() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_thread_save(
+        root.path().to_string_lossy().into_owned(),
+        ThreadSaveRequest {
+            source: "manual".to_string(),
+            thread_id: Some("thread-auth".to_string()),
+            title: "Auth middleware discussion".to_string(),
+            body: sample_thread_body(),
+            started_at: Some("2026-06-12T09:00:00Z".to_string()),
+            ended_at: None,
+            model: None,
+            workspace_root: None,
+            tags: Vec::new(),
+        },
+    )
+    .unwrap();
+
+    let result = memory_recall(
+        root.path().to_string_lossy().into_owned(),
+        RecallRequest {
+            query: "auth".to_string(),
+            limit: Some(10),
+            byte_budget: Some(65_536),
+            include_working: false,
+            include_threads: true,
+            tag: None,
+            since: None,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.threads.len(), 1);
+    assert_eq!(result.threads[0].memory_id, "thread-auth");
+    assert!(!result.threads[0].title.contains("Message 1"));
 }
 
 #[test]
