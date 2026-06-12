@@ -5,6 +5,16 @@ pub fn memory_promote(
     root: impl AsRef<std::path::Path>,
     request: MemoryPromoteRequest,
 ) -> Result<MemoryPromoteResult, WorkspaceError> {
+    memory_promote_with_ingest(root, request, |root_path, promoted_path| {
+        crate::llm_wiki::llm_wiki_ingest_raw_file_sync(root_path, promoted_path)
+    })
+}
+
+fn memory_promote_with_ingest(
+    root: impl AsRef<std::path::Path>,
+    request: MemoryPromoteRequest,
+    ingest: impl FnOnce(String, String) -> Result<(), WorkspaceError>,
+) -> Result<MemoryPromoteResult, WorkspaceError> {
     let root = root.as_ref();
     crate::memory_fs::ensure_memory_ready(root)?;
     let thread = crate::memory_thread::memory_thread_get(root, request.target.clone())?;
@@ -41,10 +51,7 @@ pub fn memory_promote(
         })?;
 
     if request.ingest {
-        crate::llm_wiki::llm_wiki_ingest_raw_file_sync(
-            root.to_string_lossy().into_owned(),
-            promoted_path.clone(),
-        )?;
+        ingest(root.to_string_lossy().into_owned(), promoted_path.clone())?;
     }
 
     mark_thread_promoted(root, &thread.path)?;
@@ -62,6 +69,15 @@ pub fn memory_promote(
         promoted_path,
         ingested: request.ingest,
     })
+}
+
+#[cfg(test)]
+pub(crate) fn memory_promote_with_ingest_for_test(
+    root: impl AsRef<std::path::Path>,
+    request: MemoryPromoteRequest,
+    ingest: impl FnOnce(String, String) -> Result<(), WorkspaceError>,
+) -> Result<MemoryPromoteResult, WorkspaceError> {
+    memory_promote_with_ingest(root, request, ingest)
 }
 
 fn mark_thread_promoted(root: &std::path::Path, thread_path: &str) -> Result<(), WorkspaceError> {

@@ -1,6 +1,4 @@
-use std::ffi::OsString;
 use std::sync::Arc;
-use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::thread;
 
 use tempfile::tempdir;
@@ -16,47 +14,6 @@ use crate::memory_fs::{append_memory_log_entry, read_workspace_file, write_works
 
 fn sample_thread_body() -> String {
     "## Message 1 — user — 2026-06-12T09:00:01Z\n\nImplement auth middleware.\n\n## Message 2 — assistant — 2026-06-12T09:00:15Z\n\nPlan the work.\n".to_string()
-}
-
-fn llm_config_env_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-}
-
-struct LlmConfigEnvGuard {
-    _lock: MutexGuard<'static, ()>,
-    home: Option<OsString>,
-    userprofile: Option<OsString>,
-}
-
-impl LlmConfigEnvGuard {
-    fn use_home(path: impl AsRef<std::path::Path>) -> Self {
-        let lock = llm_config_env_lock().lock().unwrap();
-        let home = std::env::var_os("HOME");
-        let userprofile = std::env::var_os("USERPROFILE");
-        std::env::set_var("HOME", path.as_ref());
-        std::env::remove_var("USERPROFILE");
-        Self {
-            _lock: lock,
-            home,
-            userprofile,
-        }
-    }
-}
-
-impl Drop for LlmConfigEnvGuard {
-    fn drop(&mut self) {
-        if let Some(value) = self.home.as_ref() {
-            std::env::set_var("HOME", value);
-        } else {
-            std::env::remove_var("HOME");
-        }
-        if let Some(value) = self.userprofile.as_ref() {
-            std::env::set_var("USERPROFILE", value);
-        } else {
-            std::env::remove_var("USERPROFILE");
-        }
-    }
 }
 
 #[test]
@@ -914,9 +871,6 @@ fn promote_with_ingest_rejects_non_wiki_workspace() {
 #[test]
 fn promote_with_failed_ingest_does_not_mark_thread_promoted() {
     let root = tempdir().unwrap();
-    let fake_home = root.path().join("home-file");
-    std::fs::write(&fake_home, "not a directory").unwrap();
-    let _env_guard = LlmConfigEnvGuard::use_home(&fake_home);
     memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
     crate::llm_wiki_fs::initialize_llm_wiki_workspace(root.path()).unwrap();
     memory_thread_save(
@@ -935,17 +889,18 @@ fn promote_with_failed_ingest_does_not_mark_thread_promoted() {
     )
     .unwrap();
 
-    let error = memory_promote(
-        root.path().to_string_lossy().into_owned(),
+    let error = crate::memory_promote::memory_promote_with_ingest_for_test(
+        root.path(),
         MemoryPromoteRequest {
             target: "cursor:abc123".to_string(),
             ingest: true,
             title: None,
         },
+        |_, _| Err(crate::WorkspaceError::new("llm_failed", "injected failure")),
     )
     .unwrap_err();
 
-    assert_eq!(error.error_code(), "llm_config_load_failed");
+    assert_eq!(error.error_code(), "llm_failed");
     let thread = memory_thread_get(
         root.path().to_string_lossy().into_owned(),
         "cursor:abc123".to_string(),
