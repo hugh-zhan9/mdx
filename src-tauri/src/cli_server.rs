@@ -18,6 +18,7 @@ use crate::cli_protocol::{
 };
 use crate::llm_wiki;
 use crate::llm_wiki_fs::detect_llm_wiki_workspace;
+use crate::memory;
 use crate::models::{CreateFolderResult, PathChangeResult, WorkspaceError};
 use crate::workspace_fs;
 
@@ -261,6 +262,61 @@ fn dispatch(app: &AppHandle, request: CliRequest) -> CliResponse {
         CliRequest::LlmWikiIngest { raw_path } => handle_llm_wiki_ingest(app, raw_path),
         CliRequest::LlmWikiDigest { title, prompt } => handle_llm_wiki_digest(app, title, prompt),
         CliRequest::LlmWikiLint => handle_llm_wiki_lint(app),
+        CliRequest::MemoryStatus => handle_memory_status(app),
+        CliRequest::MemoryInit => handle_memory_init(app),
+        CliRequest::MemoryThreadSave {
+            source,
+            thread_id,
+            title,
+            body,
+        } => handle_memory_thread_save(app, source, thread_id, title, body),
+        CliRequest::MemoryThreadShow { target } => handle_memory_thread_show(app, target),
+        CliRequest::MemoryThreadList { source, since } => {
+            handle_memory_thread_list(app, source, since)
+        }
+        CliRequest::MemoryAdd {
+            title,
+            body,
+            tags,
+            source_thread,
+            importance,
+            confidence,
+        } => handle_memory_add(
+            app,
+            title,
+            body,
+            tags,
+            source_thread,
+            importance,
+            confidence,
+        ),
+        CliRequest::MemoryShow { target } => handle_memory_show(app, target),
+        CliRequest::MemoryList { tag, since } => handle_memory_list(app, tag, since),
+        CliRequest::MemorySearch {
+            query,
+            limit,
+            tag,
+            since,
+        } => handle_memory_search(app, query, limit, tag, since),
+        CliRequest::MemoryArchive { target } => handle_memory_archive(app, target),
+        CliRequest::MemoryWorkingGet => handle_memory_working_get(app),
+        CliRequest::MemoryWorkingSet { content } => handle_memory_working_set(app, content),
+        CliRequest::MemoryWorkingAppend { section, text } => {
+            handle_memory_working_append(app, section, text)
+        }
+        CliRequest::MemoryRecall {
+            query,
+            limit,
+            byte_budget,
+            include_threads,
+            tag,
+            since,
+        } => handle_memory_recall(app, query, limit, byte_budget, include_threads, tag, since),
+        CliRequest::MemoryPromote {
+            target,
+            ingest,
+            title,
+        } => handle_memory_promote(app, target, ingest, title),
     }
 }
 
@@ -739,6 +795,553 @@ fn handle_llm_wiki_lint(app: &AppHandle) -> CliResponse {
     result.response
 }
 
+fn handle_memory_status(app: &AppHandle) -> CliResponse {
+    let Some((_, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match memory_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+
+    memory_status_response_for_root(root_path)
+}
+
+fn handle_memory_init(app: &AppHandle) -> CliResponse {
+    let Some((label, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match memory_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+    let response = memory_init_response_for_root(root_path.clone());
+    if response.ok {
+        emit_log_file_updated(app, &label, &root_path);
+    }
+    response
+}
+
+fn handle_memory_thread_save(
+    app: &AppHandle,
+    source: String,
+    thread_id: Option<String>,
+    title: String,
+    body: String,
+) -> CliResponse {
+    let Some((label, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match memory_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+    let response =
+        memory_thread_save_response_for_root(root_path.clone(), source, thread_id, title, body);
+    if response.ok {
+        emit_log_file_updated(app, &label, &root_path);
+    }
+    response
+}
+
+fn handle_memory_thread_show(app: &AppHandle, target: String) -> CliResponse {
+    let Some((_, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match memory_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+
+    memory_thread_show_response_for_root(root_path, target)
+}
+
+fn handle_memory_thread_list(
+    app: &AppHandle,
+    source: Option<String>,
+    since: Option<String>,
+) -> CliResponse {
+    let Some((_, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match memory_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+
+    memory_thread_list_response_for_root(root_path, source, since)
+}
+
+fn handle_memory_add(
+    app: &AppHandle,
+    title: String,
+    body: String,
+    tags: Vec<String>,
+    source_thread: Option<String>,
+    importance: Option<f64>,
+    confidence: Option<f64>,
+) -> CliResponse {
+    let Some((label, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match memory_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+    let response = memory_add_response_for_root(
+        root_path.clone(),
+        title,
+        body,
+        tags,
+        source_thread,
+        importance,
+        confidence,
+    );
+    if response.ok {
+        emit_log_file_updated(app, &label, &root_path);
+    }
+    response
+}
+
+fn handle_memory_show(app: &AppHandle, target: String) -> CliResponse {
+    let Some((_, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match memory_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+
+    memory_show_response_for_root(root_path, target)
+}
+
+fn handle_memory_list(app: &AppHandle, tag: Option<String>, since: Option<String>) -> CliResponse {
+    let Some((_, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match memory_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+
+    memory_list_response_for_root(root_path, tag, since)
+}
+
+fn handle_memory_search(
+    app: &AppHandle,
+    query: String,
+    limit: Option<usize>,
+    tag: Option<String>,
+    since: Option<String>,
+) -> CliResponse {
+    let Some((_, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match memory_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+
+    memory_search_response_for_root(root_path, query, limit, tag, since)
+}
+
+fn handle_memory_archive(app: &AppHandle, target: String) -> CliResponse {
+    let Some((label, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match memory_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+    let response = memory_archive_response_for_root(root_path.clone(), target);
+    if response.ok {
+        emit_log_file_updated(app, &label, &root_path);
+    }
+    response
+}
+
+fn handle_memory_working_get(app: &AppHandle) -> CliResponse {
+    let Some((_, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match memory_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+
+    memory_working_get_response_for_root(root_path)
+}
+
+fn handle_memory_working_set(app: &AppHandle, content: String) -> CliResponse {
+    let Some((label, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match memory_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+    let response = memory_working_set_response_for_root(root_path.clone(), content);
+    if response.ok {
+        emit_log_file_updated(app, &label, &root_path);
+    }
+    response
+}
+
+fn handle_memory_working_append(app: &AppHandle, section: String, text: String) -> CliResponse {
+    let Some((label, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match memory_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+    let response = memory_working_append_response_for_root(root_path.clone(), section, text);
+    if response.ok {
+        emit_log_file_updated(app, &label, &root_path);
+    }
+    response
+}
+
+fn handle_memory_recall(
+    app: &AppHandle,
+    query: String,
+    limit: Option<usize>,
+    byte_budget: Option<usize>,
+    include_threads: Option<bool>,
+    tag: Option<String>,
+    since: Option<String>,
+) -> CliResponse {
+    let Some((_, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match memory_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+
+    memory_recall_response_for_root(
+        root_path,
+        query,
+        limit,
+        byte_budget,
+        include_threads,
+        tag,
+        since,
+    )
+}
+
+fn handle_memory_promote(
+    app: &AppHandle,
+    target: String,
+    ingest: Option<bool>,
+    title: Option<String>,
+) -> CliResponse {
+    let Some((label, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match memory_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+    let response = memory_promote_response_for_root(root_path.clone(), target, ingest, title);
+    if response.ok {
+        emit_log_file_updated(app, &label, &root_path);
+    }
+    response
+}
+
+fn memory_active_root(snapshot: &WindowSnapshot) -> Result<String, CliResponse> {
+    snapshot
+        .workspace
+        .root_path
+        .clone()
+        .ok_or_else(|| CliResponse::error("no_workspace", "no workspace root is available"))
+}
+
+fn memory_status_response_for_root(root_path: String) -> CliResponse {
+    match memory::memory_detect_workspace(root_path.clone()) {
+        Ok(status) => CliResponse {
+            ok: true,
+            root_path: Some(root_path),
+            memory_status: Some(status),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn memory_init_response_for_root(root_path: String) -> CliResponse {
+    match memory::memory_initialize_workspace(root_path.clone()) {
+        Ok(result) => CliResponse {
+            ok: true,
+            root_path: Some(root_path),
+            memory_init: Some(result),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn memory_thread_save_response_for_root(
+    root_path: String,
+    source: String,
+    thread_id: Option<String>,
+    title: String,
+    body: String,
+) -> CliResponse {
+    let request = memory::ThreadSaveRequest {
+        source,
+        thread_id,
+        title,
+        body,
+        started_at: None,
+        ended_at: None,
+        model: None,
+        workspace_root: None,
+        tags: Vec::new(),
+    };
+    match memory::memory_thread_save(root_path.clone(), request)
+        .and_then(|result| memory::memory_thread_get(root_path, result.thread_id))
+    {
+        Ok(record) => CliResponse {
+            ok: true,
+            memory_thread: Some(record),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn memory_thread_show_response_for_root(root_path: String, target: String) -> CliResponse {
+    match memory::memory_thread_get(root_path.clone(), target) {
+        Ok(record) => {
+            let content = read_workspace_record_markdown(&root_path, &record.path);
+            match content {
+                Ok(content) => CliResponse {
+                    ok: true,
+                    content: Some(content),
+                    memory_thread: Some(record),
+                    ..CliResponse::default()
+                },
+                Err(response) => response,
+            }
+        }
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn memory_thread_list_response_for_root(
+    root_path: String,
+    source: Option<String>,
+    since: Option<String>,
+) -> CliResponse {
+    match memory::memory_thread_list(root_path, memory::ThreadListFilter { source, since }) {
+        Ok(threads) => CliResponse {
+            ok: true,
+            memory_threads: Some(threads),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn memory_add_response_for_root(
+    root_path: String,
+    title: String,
+    body: String,
+    tags: Vec<String>,
+    source_thread: Option<String>,
+    importance: Option<f64>,
+    confidence: Option<f64>,
+) -> CliResponse {
+    let request = memory::MemoryAddRequest {
+        title,
+        body,
+        tags,
+        source_thread,
+        importance,
+        confidence,
+    };
+    match memory::memory_add(root_path, request) {
+        Ok(record) => CliResponse {
+            ok: true,
+            memory_entry: Some(record),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn memory_show_response_for_root(root_path: String, target: String) -> CliResponse {
+    match memory::memory_get(root_path.clone(), target) {
+        Ok(record) => {
+            let content = read_workspace_record_markdown(&root_path, &record.path);
+            match content {
+                Ok(content) => CliResponse {
+                    ok: true,
+                    content: Some(content),
+                    memory_entry: Some(record),
+                    ..CliResponse::default()
+                },
+                Err(response) => response,
+            }
+        }
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn memory_list_response_for_root(
+    root_path: String,
+    tag: Option<String>,
+    since: Option<String>,
+) -> CliResponse {
+    match memory::memory_list(
+        root_path,
+        memory::MemoryListFilter {
+            tag,
+            since,
+            include_archived: false,
+        },
+    ) {
+        Ok(entries) => CliResponse {
+            ok: true,
+            memory_entries: Some(entries),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn memory_search_response_for_root(
+    root_path: String,
+    query: String,
+    limit: Option<usize>,
+    tag: Option<String>,
+    since: Option<String>,
+) -> CliResponse {
+    if query.trim().is_empty() {
+        return CliResponse::error("invalid_query", "query must not be empty");
+    }
+
+    match memory::memory_search(root_path, query, limit, tag, since) {
+        Ok(entries) => CliResponse {
+            ok: true,
+            memory_entries: Some(entries),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn memory_archive_response_for_root(root_path: String, target: String) -> CliResponse {
+    match memory::memory_archive(root_path, target) {
+        Ok(record) => CliResponse {
+            ok: true,
+            memory_entry: Some(record),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn memory_working_get_response_for_root(root_path: String) -> CliResponse {
+    match memory::memory_working_get(root_path) {
+        Ok(content) => CliResponse {
+            ok: true,
+            content: Some(content),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn memory_working_set_response_for_root(root_path: String, content: String) -> CliResponse {
+    match memory::memory_working_set(root_path, content) {
+        Ok(content) => CliResponse {
+            ok: true,
+            content: Some(content),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn memory_working_append_response_for_root(
+    root_path: String,
+    section: String,
+    text: String,
+) -> CliResponse {
+    match memory::memory_working_append(root_path, section, text) {
+        Ok(content) => CliResponse {
+            ok: true,
+            content: Some(content),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn memory_recall_response_for_root(
+    root_path: String,
+    query: String,
+    limit: Option<usize>,
+    byte_budget: Option<usize>,
+    include_threads: Option<bool>,
+    tag: Option<String>,
+    since: Option<String>,
+) -> CliResponse {
+    if query.trim().is_empty() {
+        return CliResponse::error("invalid_query", "query must not be empty");
+    }
+
+    let request = memory::RecallRequest {
+        query,
+        limit,
+        byte_budget,
+        include_working: true,
+        include_threads: include_threads.unwrap_or(false),
+        tag,
+        since,
+    };
+    match memory::memory_recall(root_path, request) {
+        Ok(result) => CliResponse {
+            ok: true,
+            memory_recall: Some(result),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn memory_promote_response_for_root(
+    root_path: String,
+    target: String,
+    ingest: Option<bool>,
+    title: Option<String>,
+) -> CliResponse {
+    let request = memory::MemoryPromoteRequest {
+        target,
+        ingest: ingest.unwrap_or(false),
+        title,
+    };
+    match memory::memory_promote(root_path, request) {
+        Ok(result) => CliResponse {
+            ok: true,
+            memory_promote: Some(result),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn read_workspace_record_markdown(
+    root_path: &str,
+    relative_path: &str,
+) -> Result<String, CliResponse> {
+    fs::read_to_string(PathBuf::from(root_path).join(relative_path))
+        .map_err(|error| CliResponse::error("read_failed", error.to_string()))
+}
+
 fn llm_wiki_active_root(snapshot: &WindowSnapshot) -> Result<String, CliResponse> {
     snapshot
         .workspace
@@ -1154,6 +1757,36 @@ mod tests {
         assert_eq!(response.root_path.as_deref(), Some(root_path.as_str()));
         assert_eq!(response.llm_wiki_mode.as_deref(), Some("ordinary"));
         assert_eq!(response.has_llm_wiki, Some(false));
+    }
+
+    #[test]
+    fn memory_status_response_reports_ordinary_workspace() {
+        let root = TempDir::new().unwrap();
+        let root_path = root.path().to_string_lossy().into_owned();
+
+        let response = memory_status_response_for_root(root_path.clone());
+
+        assert!(response.ok);
+        assert_eq!(response.root_path.as_deref(), Some(root_path.as_str()));
+        let status = response.memory_status.as_ref().unwrap();
+        assert_eq!(status.mode, "ordinary");
+        assert!(!status.has_memory);
+        assert!(status.can_initialize);
+    }
+
+    #[test]
+    fn memory_init_response_creates_structure() {
+        let root = TempDir::new().unwrap();
+        let root_path = root.path().to_string_lossy().into_owned();
+
+        let response = memory_init_response_for_root(root_path.clone());
+
+        assert!(response.ok);
+        assert_eq!(response.root_path.as_deref(), Some(root_path.as_str()));
+        let result = response.memory_init.as_ref().unwrap();
+        assert!(result.status.has_memory);
+        assert!(root.path().join("memory/working.md").is_file());
+        assert!(root.path().join(".mdx/memory-config.json").is_file());
     }
 
     #[test]

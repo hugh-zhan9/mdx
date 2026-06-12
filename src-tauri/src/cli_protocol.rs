@@ -2,7 +2,7 @@ use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "cmd", rename_all = "kebab-case")]
 pub enum CliRequest {
     New,
@@ -70,6 +70,85 @@ pub enum CliRequest {
         prompt: String,
     },
     LlmWikiLint,
+    MemoryStatus,
+    MemoryInit,
+    MemoryThreadSave {
+        source: String,
+        #[serde(default)]
+        thread_id: Option<String>,
+        title: String,
+        body: String,
+    },
+    MemoryThreadShow {
+        target: String,
+    },
+    MemoryThreadList {
+        #[serde(default)]
+        source: Option<String>,
+        #[serde(default)]
+        since: Option<String>,
+    },
+    MemoryAdd {
+        title: String,
+        body: String,
+        #[serde(default)]
+        tags: Vec<String>,
+        #[serde(default)]
+        source_thread: Option<String>,
+        #[serde(default)]
+        importance: Option<f64>,
+        #[serde(default)]
+        confidence: Option<f64>,
+    },
+    MemoryShow {
+        target: String,
+    },
+    MemoryList {
+        #[serde(default)]
+        tag: Option<String>,
+        #[serde(default)]
+        since: Option<String>,
+    },
+    MemorySearch {
+        query: String,
+        #[serde(default)]
+        limit: Option<usize>,
+        #[serde(default)]
+        tag: Option<String>,
+        #[serde(default)]
+        since: Option<String>,
+    },
+    MemoryArchive {
+        target: String,
+    },
+    MemoryWorkingGet,
+    MemoryWorkingSet {
+        content: String,
+    },
+    MemoryWorkingAppend {
+        section: String,
+        text: String,
+    },
+    MemoryRecall {
+        query: String,
+        #[serde(default)]
+        limit: Option<usize>,
+        #[serde(default)]
+        byte_budget: Option<usize>,
+        #[serde(default)]
+        include_threads: Option<bool>,
+        #[serde(default)]
+        tag: Option<String>,
+        #[serde(default)]
+        since: Option<String>,
+    },
+    MemoryPromote {
+        target: String,
+        #[serde(default)]
+        ingest: Option<bool>,
+        #[serde(default)]
+        title: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -112,7 +191,7 @@ pub struct CliWikiSearchResult {
     pub snippet: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub struct CliResponse {
     pub ok: bool,
@@ -160,6 +239,22 @@ pub struct CliResponse {
     pub digest_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lint_report: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_status: Option<crate::memory::MemoryWorkspaceStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_init: Option<crate::memory::InitializeMemoryResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_thread: Option<crate::memory::MemoryThreadRecord>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_threads: Option<Vec<crate::memory::ThreadListItem>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_entry: Option<crate::memory::MemoryRecord>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_entries: Option<Vec<crate::memory::MemorySummary>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_recall: Option<crate::memory::RecallResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_promote: Option<crate::memory::MemoryPromoteResult>,
 }
 
 impl CliResponse {

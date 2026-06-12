@@ -2,6 +2,7 @@ use crate::cli_protocol::{
     list_response_from_snapshot, resolve_cli_path, CliRequest, CliWikiSearchResult, TabSnapshot,
     WorkspaceSnapshot,
 };
+use crate::memory::MemoryWorkspaceStatus;
 
 #[test]
 fn parses_open_and_save_commands() {
@@ -140,5 +141,47 @@ fn serializes_empty_llm_wiki_search_results() {
     assert_eq!(
         serde_json::to_string(&response).unwrap(),
         r#"{"ok":true,"results":[]}"#
+    );
+}
+
+#[test]
+fn parses_memory_status_and_thread_save_requests() {
+    let status: CliRequest = serde_json::from_str(r#"{"cmd":"memory-status"}"#).unwrap();
+    assert_eq!(status, CliRequest::MemoryStatus);
+
+    let save: CliRequest = serde_json::from_str(
+        r#"{"cmd":"memory-thread-save","source":"manual","thread_id":"thread-1","title":"Decision","body":"Use Markdown memory."}"#,
+    )
+    .unwrap();
+    assert!(matches!(
+        save,
+        CliRequest::MemoryThreadSave {
+            source,
+            thread_id,
+            title,
+            body,
+        } if source == "manual"
+            && thread_id == Some("thread-1".to_string())
+            && title == "Decision"
+            && body == "Use Markdown memory."
+    ));
+}
+
+#[test]
+fn serializes_memory_status_response_as_snake_case_json() {
+    let response = crate::cli_protocol::CliResponse {
+        ok: true,
+        memory_status: Some(MemoryWorkspaceStatus {
+            mode: "ordinary".to_string(),
+            has_memory: false,
+            can_initialize: true,
+            missing_paths: vec!["memory".to_string()],
+        }),
+        ..crate::cli_protocol::CliResponse::default()
+    };
+
+    assert_eq!(
+        serde_json::to_string(&response).unwrap(),
+        r#"{"ok":true,"memory_status":{"mode":"ordinary","has_memory":false,"can_initialize":true,"missing_paths":["memory"]}}"#
     );
 }
