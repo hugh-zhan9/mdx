@@ -189,3 +189,52 @@ pub struct MemoryListFilter {
     pub since: Option<String>,
     pub include_archived: bool,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct RecallRequest {
+    pub query: String,
+    pub limit: Option<usize>,
+    pub byte_budget: Option<usize>,
+    pub include_working: bool,
+    pub include_threads: bool,
+    pub tag: Option<String>,
+    pub since: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct RecallMemoryItem {
+    pub memory_id: String,
+    pub title: String,
+    pub path: String,
+    pub snippet: String,
+    pub score: f64,
+    pub importance: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct RecallResult {
+    pub working: Option<String>,
+    pub memories: Vec<RecallMemoryItem>,
+    pub threads: Vec<MemorySummary>,
+    pub truncated: bool,
+    pub byte_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryPromoteRequest {
+    pub target: String,
+    pub ingest: bool,
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryPromoteResult {
+    pub thread_path: String,
+    pub promoted_path: String,
+    pub ingested: bool,
+}

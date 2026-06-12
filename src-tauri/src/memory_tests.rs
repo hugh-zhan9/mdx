@@ -2,9 +2,10 @@ use tempfile::tempdir;
 
 use crate::memory::{
     default_memory_config, memory_add, memory_archive, memory_detect_workspace,
-    memory_initialize_workspace, memory_list, memory_thread_get, memory_thread_list,
-    memory_thread_save, memory_working_append, memory_working_get, memory_working_set,
-    MemoryAddRequest, MemoryListFilter, ThreadListFilter, ThreadSaveRequest,
+    memory_initialize_workspace, memory_list, memory_promote, memory_recall, memory_search,
+    memory_thread_get, memory_thread_list, memory_thread_save, memory_working_append,
+    memory_working_get, memory_working_set, MemoryAddRequest, MemoryListFilter,
+    MemoryPromoteRequest, RecallRequest, ThreadListFilter, ThreadSaveRequest,
 };
 use crate::memory_fs::{append_memory_log_entry, read_workspace_file, write_workspace_file};
 
@@ -453,4 +454,196 @@ fn working_set_replaces_file_and_working_append_adds_to_section() {
     assert!(working.contains("- Ship Memory Phase 1"));
     assert!(working.contains("## Recent Decisions"));
     assert!(working.contains("- Keep Memory and Wiki separate."));
+}
+
+#[test]
+fn recall_orders_matches_by_importance_and_recency() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "JWT access token is 15 minutes".to_string(),
+            body: "Auth uses a 15 minute JWT access token.".to_string(),
+            tags: vec!["auth".to_string()],
+            source_thread: None,
+            importance: Some(0.9),
+            confidence: None,
+        },
+    )
+    .unwrap();
+    memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "JWT refresh token is 30 days".to_string(),
+            body: "Refresh tokens last 30 days.".to_string(),
+            tags: vec!["auth".to_string()],
+            source_thread: None,
+            importance: Some(0.2),
+            confidence: None,
+        },
+    )
+    .unwrap();
+
+    let result = memory_recall(
+        root.path().to_string_lossy().into_owned(),
+        RecallRequest {
+            query: "JWT".to_string(),
+            limit: Some(10),
+            byte_budget: Some(65_536),
+            include_working: true,
+            include_threads: false,
+            tag: None,
+            since: None,
+        },
+    )
+    .unwrap();
+
+    assert!(!result.memories.is_empty());
+    assert!(result.memories[0].title.contains("15 minutes"));
+}
+
+#[test]
+fn recall_includes_working_memory_and_respects_byte_budget() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_working_set(
+        root.path().to_string_lossy().into_owned(),
+        "# Working Memory\n\n## Focus\n- Ship JWT auth\n".to_string(),
+    )
+    .unwrap();
+    memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "JWT access token is 15 minutes".to_string(),
+            body: "Auth uses a 15 minute JWT access token.".repeat(40),
+            tags: vec!["auth".to_string()],
+            source_thread: None,
+            importance: None,
+            confidence: None,
+        },
+    )
+    .unwrap();
+
+    let result = memory_recall(
+        root.path().to_string_lossy().into_owned(),
+        RecallRequest {
+            query: "JWT".to_string(),
+            limit: Some(10),
+            byte_budget: Some(256),
+            include_working: true,
+            include_threads: false,
+            tag: None,
+            since: None,
+        },
+    )
+    .unwrap();
+
+    assert!(result
+        .working
+        .as_deref()
+        .unwrap_or_default()
+        .contains("Ship JWT auth"));
+    assert!(result.truncated);
+    assert!(result.byte_count <= 256);
+}
+
+#[test]
+fn search_returns_memory_summaries_only() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "JWT access token is 15 minutes".to_string(),
+            body: "Auth uses a 15 minute JWT access token.".to_string(),
+            tags: vec!["auth".to_string()],
+            source_thread: None,
+            importance: None,
+            confidence: None,
+        },
+    )
+    .unwrap();
+
+    let items = memory_search(
+        root.path().to_string_lossy().into_owned(),
+        "JWT".to_string(),
+        Some(10),
+        None,
+        None,
+    )
+    .unwrap();
+
+    assert_eq!(items.len(), 1);
+    assert!(items[0].title.contains("JWT"));
+}
+
+#[test]
+fn promote_copies_thread_into_raw_promoted() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_thread_save(
+        root.path().to_string_lossy().into_owned(),
+        ThreadSaveRequest {
+            source: "manual".to_string(),
+            thread_id: Some("cursor:abc123".to_string()),
+            title: "Implement auth middleware".to_string(),
+            body: sample_thread_body(),
+            started_at: Some("2026-06-12T09:00:00Z".to_string()),
+            ended_at: None,
+            model: None,
+            workspace_root: None,
+            tags: Vec::new(),
+        },
+    )
+    .unwrap();
+
+    let promoted = memory_promote(
+        root.path().to_string_lossy().into_owned(),
+        MemoryPromoteRequest {
+            target: "cursor:abc123".to_string(),
+            ingest: false,
+            title: None,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        promoted.promoted_path,
+        "raw/promoted/2026-06-12-implement-auth-middleware.md"
+    );
+    assert!(root.path().join(&promoted.promoted_path).is_file());
+}
+
+#[test]
+fn promote_with_ingest_rejects_non_wiki_workspace() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_thread_save(
+        root.path().to_string_lossy().into_owned(),
+        ThreadSaveRequest {
+            source: "manual".to_string(),
+            thread_id: Some("cursor:abc123".to_string()),
+            title: "Implement auth middleware".to_string(),
+            body: sample_thread_body(),
+            started_at: Some("2026-06-12T09:00:00Z".to_string()),
+            ended_at: None,
+            model: None,
+            workspace_root: None,
+            tags: Vec::new(),
+        },
+    )
+    .unwrap();
+
+    let error = memory_promote(
+        root.path().to_string_lossy().into_owned(),
+        MemoryPromoteRequest {
+            target: "cursor:abc123".to_string(),
+            ingest: true,
+            title: None,
+        },
+    )
+    .unwrap_err();
+
+    assert_eq!(error.error_code(), "llm_wiki_not_ready");
 }

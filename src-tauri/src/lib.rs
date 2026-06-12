@@ -32,6 +32,8 @@ mod macos_launch;
 pub mod memory;
 mod memory_fs;
 mod memory_models;
+mod memory_promote;
+mod memory_recall;
 mod memory_store;
 mod memory_thread;
 mod memory_working;

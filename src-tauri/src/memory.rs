@@ -7,9 +7,11 @@ use crate::memory_fs::{
 };
 pub use crate::memory_models::{
     InitializeMemoryResult, MemoryAddRequest, MemoryCaptureConfig, MemoryConfig,
-    MemoryDistillConfig, MemoryFrontmatter, MemoryListFilter, MemoryRecallConfig, MemoryRecord,
-    MemorySummary, MemoryThreadFrontmatter, MemoryThreadRecord, MemoryWorkspaceStatus, ThreadIndex,
-    ThreadIndexEntry, ThreadListFilter, ThreadListItem, ThreadSaveRequest, ThreadSaveResult,
+    MemoryDistillConfig, MemoryFrontmatter, MemoryListFilter, MemoryPromoteRequest,
+    MemoryPromoteResult, MemoryRecallConfig, MemoryRecord, MemorySummary, MemoryThreadFrontmatter,
+    MemoryThreadRecord, MemoryWorkspaceStatus, RecallMemoryItem, RecallRequest, RecallResult,
+    ThreadIndex, ThreadIndexEntry, ThreadListFilter, ThreadListItem, ThreadSaveRequest,
+    ThreadSaveResult,
 };
 use crate::models::WorkspaceError;
 use crate::path_guard::canonicalize_workspace_root;
@@ -300,4 +302,31 @@ pub fn memory_working_append(
 ) -> Result<String, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
     crate::memory_working::memory_working_append(root, section, text)
+}
+
+pub fn memory_search(
+    root_path: String,
+    query: String,
+    limit: Option<usize>,
+    tag: Option<String>,
+    since: Option<String>,
+) -> Result<Vec<MemorySummary>, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    crate::memory_recall::memory_search(root, query, limit, tag, since)
+}
+
+pub fn memory_recall(
+    root_path: String,
+    request: RecallRequest,
+) -> Result<RecallResult, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    crate::memory_recall::memory_recall(root, request)
+}
+
+pub fn memory_promote(
+    root_path: String,
+    request: MemoryPromoteRequest,
+) -> Result<MemoryPromoteResult, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    crate::memory_promote::memory_promote(root, request)
 }
