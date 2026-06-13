@@ -1044,6 +1044,48 @@ fn recall_includes_working_memory_and_respects_byte_budget() {
 }
 
 #[test]
+fn recall_byte_budget_applies_after_thread_aggregation() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_thread_save(
+        root.path().to_string_lossy().into_owned(),
+        ThreadSaveRequest {
+            source: "manual".to_string(),
+            thread_id: Some("thread-auth".to_string()),
+            title: "Auth middleware discussion with a long summary title".to_string(),
+            body: sample_thread_body(),
+            started_at: Some("2026-06-12T09:00:00Z".to_string()),
+            ended_at: None,
+            model: None,
+            workspace_root: None,
+            tags: Vec::new(),
+        },
+    )
+    .unwrap();
+
+    let result = memory_recall(
+        root.path().to_string_lossy().into_owned(),
+        RecallRequest {
+            query: "missing".to_string(),
+            limit: Some(10),
+            byte_budget: Some(16),
+            include_working: false,
+            include_threads: false,
+            thread_ids: vec!["thread-auth".to_string()],
+            include_wiki_refs: false,
+            include_wiki_snippets: false,
+            tag: None,
+            since: None,
+        },
+    )
+    .unwrap();
+
+    assert!(result.threads.is_empty());
+    assert!(result.truncated);
+    assert!(result.byte_count <= 16);
+}
+
+#[test]
 fn recall_include_threads_returns_matching_thread_summaries_without_full_text() {
     let root = tempdir().unwrap();
     memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
@@ -1258,6 +1300,45 @@ fn search_index_rebuild_recovers_memory_search_from_markdown() {
     .unwrap();
     assert_eq!(results.items.len(), 1);
     assert_eq!(results.items[0].title, "JWT access token lifetime");
+}
+
+#[test]
+fn recall_limit_zero_returns_no_memories_with_available_index() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "JWT access token lifetime".to_string(),
+            body: "Access tokens expire after 15 minutes.".to_string(),
+            tags: vec!["auth".to_string()],
+            source_thread: None,
+            importance: Some(0.8),
+            confidence: Some(0.9),
+        },
+    )
+    .unwrap();
+    crate::memory::memory_index_rebuild(root.path().to_string_lossy().into_owned()).unwrap();
+
+    let result = memory_recall(
+        root.path().to_string_lossy().into_owned(),
+        RecallRequest {
+            query: "JWT".to_string(),
+            limit: Some(0),
+            byte_budget: Some(65_536),
+            include_working: false,
+            include_threads: false,
+            thread_ids: Vec::new(),
+            include_wiki_refs: false,
+            include_wiki_snippets: false,
+            tag: None,
+            since: None,
+        },
+    )
+    .unwrap();
+
+    assert!(result.memories.is_empty());
+    assert!(!result.index_degraded);
 }
 
 #[test]

@@ -71,18 +71,20 @@ pub fn memory_recall(
         Err(error) => return Err(error),
     };
 
-    let (selected, truncated, byte_count) = apply_byte_budget(working.as_ref(), items, byte_budget);
     let threads = if request.include_threads || !request.thread_ids.is_empty() {
         recall_threads(root, &request, limit)?
     } else {
         Vec::new()
     };
+    let wiki_refs = Vec::new();
+    let (selected, selected_threads, selected_wiki_refs, truncated, byte_count) =
+        apply_byte_budget(working.as_ref(), items, threads, wiki_refs, byte_budget);
 
     Ok(RecallResult {
         working,
         memories: selected,
-        threads,
-        wiki_refs: Vec::new(),
+        threads: selected_threads,
+        wiki_refs: selected_wiki_refs,
         truncated,
         byte_count,
         index_degraded,
@@ -95,11 +97,14 @@ fn recall_memories_from_index(
     request: &RecallRequest,
     limit: usize,
 ) -> Result<Vec<RecallMemoryItem>, WorkspaceError> {
+    if limit == 0 {
+        return Ok(Vec::new());
+    }
     let search = crate::search_index::search(
         root,
         MemoryIndexSearchRequest {
             query: request.query.clone(),
-            limit: limit.saturating_mul(4).max(limit).max(1),
+            limit: limit.saturating_mul(4).max(limit),
             kinds: vec!["memory".to_string()],
         },
     )?;
@@ -176,8 +181,16 @@ fn recall_memories_from_markdown(
 fn apply_byte_budget(
     working: Option<&String>,
     items: Vec<RecallMemoryItem>,
+    threads: Vec<MemorySummary>,
+    wiki_refs: Vec<MemorySummary>,
     byte_budget: usize,
-) -> (Vec<RecallMemoryItem>, bool, usize) {
+) -> (
+    Vec<RecallMemoryItem>,
+    Vec<MemorySummary>,
+    Vec<MemorySummary>,
+    bool,
+    usize,
+) {
     let mut byte_count = working.as_ref().map(|value| value.len()).unwrap_or(0);
     let mut truncated = byte_count > byte_budget;
     let mut selected = Vec::new();
@@ -190,10 +203,48 @@ fn apply_byte_budget(
         byte_count += item_bytes;
         selected.push(item);
     }
+    let (selected_threads, threads_truncated, byte_count) =
+        apply_summary_budget(threads, byte_budget, byte_count);
+    truncated |= threads_truncated;
+    let (selected_wiki_refs, wiki_refs_truncated, mut byte_count) =
+        apply_summary_budget(wiki_refs, byte_budget, byte_count);
+    truncated |= wiki_refs_truncated;
     if byte_count > byte_budget {
         byte_count = byte_budget;
     }
-    (selected, truncated, byte_count)
+    (
+        selected,
+        selected_threads,
+        selected_wiki_refs,
+        truncated,
+        byte_count,
+    )
+}
+
+fn apply_summary_budget(
+    items: Vec<MemorySummary>,
+    byte_budget: usize,
+    mut byte_count: usize,
+) -> (Vec<MemorySummary>, bool, usize) {
+    let mut selected = Vec::new();
+    for item in items {
+        let item_bytes = summary_budget_bytes(&item);
+        if byte_count + item_bytes > byte_budget {
+            return (selected, true, byte_count);
+        }
+        byte_count += item_bytes;
+        selected.push(item);
+    }
+    (selected, false, byte_count)
+}
+
+fn summary_budget_bytes(item: &MemorySummary) -> usize {
+    item.path.len()
+        + item.memory_id.len()
+        + item.title.len()
+        + item.status.len()
+        + item.created_at.len()
+        + item.tags.iter().map(|tag| tag.len()).sum::<usize>()
 }
 
 fn recall_threads(
