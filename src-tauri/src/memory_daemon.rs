@@ -52,8 +52,19 @@ pub fn dispatch_for_test(
 }
 
 fn health(root: String) -> Result<DaemonResponse, WorkspaceError> {
-    match crate::memory::memory_detect_workspace(root) {
-        Ok(status) => json_response(200, &json!({ "ok": true, "memory_status": status })),
+    match crate::memory::memory_detect_workspace(root.clone()) {
+        Ok(status) => json_response(
+            200,
+            &json!({
+                "ok": true,
+                "has_memory": status.has_memory,
+                "can_initialize": status.can_initialize,
+                "mode": status.mode,
+                "missing_paths": status.missing_paths,
+                "workspace": root,
+                "memory_status": status,
+            }),
+        ),
         Err(error) => Ok(workspace_error_response(error)),
     }
 }

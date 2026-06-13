@@ -114,7 +114,13 @@ fn daemon_dispatch_health_reports_memory_status() {
     .unwrap();
 
     assert_eq!(response.status, 200);
-    assert!(response.body.contains("\"has_memory\":true"));
+    let body: serde_json::Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(body["ok"], true);
+    assert_eq!(body["has_memory"], true);
+    assert_eq!(
+        body["workspace"],
+        root.path().to_string_lossy().into_owned()
+    );
 }
 
 #[test]
