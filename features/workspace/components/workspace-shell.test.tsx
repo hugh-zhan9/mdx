@@ -46,6 +46,20 @@ vi.mock("@/features/llm-wiki", () => ({
   }),
 }));
 
+vi.mock("@/features/memory", () => ({
+  MemoryPanel: () => null,
+  useMemoryWorkspace: () => ({
+    status: null,
+    viewState: null,
+    hasMemory: false,
+    tabs: [],
+    loading: false,
+    error: null,
+    refresh: vi.fn(async () => {}),
+    initialize: vi.fn(async () => {}),
+  }),
+}));
+
 vi.mock("@/features/recovery/hooks/use-draft-autosave", () => ({
   useDraftAutosave: () => ({
     flush: async () => {},

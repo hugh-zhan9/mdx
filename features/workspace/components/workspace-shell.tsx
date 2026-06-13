@@ -23,6 +23,7 @@ import {
   documentFingerprint,
 } from "@/features/file-watch/lib/external-change";
 import { LlmWikiPanel, useLlmWikiWorkspace } from "@/features/llm-wiki";
+import { MemoryPanel, useMemoryWorkspace } from "@/features/memory";
 import { DiffViewer } from "@/features/recovery/components/diff-viewer";
 import { RecoveryBanner } from "@/features/recovery/components/recovery-banner";
 import { useDraftAutosave } from "@/features/recovery/hooks/use-draft-autosave";
@@ -43,6 +44,10 @@ import { refreshCleanOpenTabFromDisk } from "../lib/cli-file-updated";
 import { parseMarkdownOutline } from "../lib/outline";
 import { calculateWorkspacePanelLayout } from "../lib/panel-layout";
 import { isMarkdownFilePath, normalizeWorkspacePath } from "../lib/path";
+import {
+  buildRightPanelTabs,
+  type RightPanelTabId,
+} from "../lib/right-panel-tabs";
 import { scrollRenderedHeadingIntoView } from "../lib/outline-scroll";
 import {
   collectDirtySearchOverrides,
@@ -131,6 +136,8 @@ interface ExternalDeletedPrompt {
   dirty: boolean;
 }
 
+const RIGHT_PANEL_TABS = buildRightPanelTabs();
+
 export function WorkspaceShell({
   workspace,
   dispatch,
@@ -168,9 +175,8 @@ export function WorkspaceShell({
     "tree",
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [rightPanelTab, setRightPanelTab] = useState<"outline" | "llmWiki">(
-    "outline",
-  );
+  const [rightPanelTab, setRightPanelTab] =
+    useState<RightPanelTabId>("outline");
   const [workspaceBodyWidth, setWorkspaceBodyWidth] = useState(() =>
     typeof window === "undefined" ? 1280 : window.innerWidth,
   );
@@ -199,6 +205,7 @@ export function WorkspaceShell({
   const llmWiki = useLlmWikiWorkspace(workspace.rootPath, {
     canAutoProcess: initialEditorLoadSettled,
   });
+  const memory = useMemoryWorkspace(workspace.rootPath);
   const handleRawFileSavedRef = useRef(llmWiki.handleRawFileSaved);
   const treeFilterQuery = workspace.treeFilterQuery ?? "";
   const fullTextSearchState = ensureWorkspaceSearchState(workspace.search);
@@ -2209,31 +2216,22 @@ export function WorkspaceShell({
           {rightPanel.isCollapsed ? null : (
             <aside className="h-full min-h-0 overflow-hidden border-l border-base-300 bg-base-100">
               <div className="flex h-full min-h-0 flex-col">
-                <div className="grid grid-cols-2 gap-1 border-b border-base-300 bg-base-200 p-1">
-                  <button
-                    type="button"
-                    className={[
-                      "h-7 text-xs outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                      rightPanelTab === "outline"
-                        ? "bg-base-100 text-base-content shadow-sm"
-                        : "text-base-content/70 hover:text-base-content",
-                    ].join(" ")}
-                    onClick={() => setRightPanelTab("outline")}
-                  >
-                    目录
-                  </button>
-                  <button
-                    type="button"
-                    className={[
-                      "h-7 text-xs outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                      rightPanelTab === "llmWiki"
-                        ? "bg-base-100 text-base-content shadow-sm"
-                        : "text-base-content/70 hover:text-base-content",
-                    ].join(" ")}
-                    onClick={() => setRightPanelTab("llmWiki")}
-                  >
-                    LLM Wiki
-                  </button>
+                <div className="grid grid-cols-3 gap-1 border-b border-base-300 bg-base-200 p-1">
+                  {RIGHT_PANEL_TABS.map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      className={[
+                        "h-7 truncate px-2 text-xs outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                        rightPanelTab === tab.id
+                          ? "bg-base-100 text-base-content shadow-sm"
+                          : "text-base-content/70 hover:text-base-content",
+                      ].join(" ")}
+                      onClick={() => setRightPanelTab(tab.id)}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
                 </div>
                 <div className="min-h-0 flex-1 overflow-hidden [&>aside]:h-full [&>aside]:border-l-0 [&>aside]:border-t-0 [&>aside>div:last-child]:hidden">
                   {rightPanelTab === "outline" ? (
@@ -2243,11 +2241,13 @@ export function WorkspaceShell({
                       onHeadingClick={scrollToHeading}
                       resizeHandleProps={{}}
                     />
-                  ) : (
+                  ) : rightPanelTab === "llmWiki" ? (
                     <LlmWikiPanel
                       llmWiki={llmWiki}
                       onConfigureLlm={() => setSettingsOpen(true)}
                     />
+                  ) : (
+                    <MemoryPanel memory={memory} />
                   )}
                 </div>
               </div>
