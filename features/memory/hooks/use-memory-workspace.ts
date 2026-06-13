@@ -5,6 +5,7 @@ import {
   detectMemoryWorkspace,
   initializeMemoryWorkspace,
 } from "../lib/memory-client";
+import { formatMemoryError } from "../lib/memory-error";
 import {
   buildMemoryPanelTabs,
   type MemoryPanelTab,
@@ -101,7 +102,7 @@ export function useMemoryWorkspace(rootPath: string): MemoryWorkspaceHook {
         rootPath,
         status: current.rootPath === rootPath ? current.status : null,
         loading: false,
-        error: formatError(error),
+        error: formatMemoryError(error),
       }));
     }
   }, [rootPath]);
@@ -149,7 +150,7 @@ export function useMemoryWorkspace(rootPath: string): MemoryWorkspaceHook {
         rootPath,
         status: current.rootPath === rootPath ? current.status : null,
         loading: false,
-        error: formatError(error),
+        error: formatMemoryError(error),
       }));
     }
   }, [rootPath]);
@@ -203,16 +204,4 @@ function createMissingRootSnapshot(rootPath: string): MemoryWorkspaceSnapshot {
     loading: false,
     error: null,
   };
-}
-
-function formatError(error: unknown) {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  if (typeof error === "string") {
-    return error;
-  }
-
-  return "Unknown error";
 }
