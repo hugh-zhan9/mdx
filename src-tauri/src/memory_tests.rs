@@ -15,6 +15,12 @@ use crate::memory_fs::{
     append_memory_log_entry, read_workspace_file, try_acquire_memory_lock, write_workspace_file,
 };
 
+fn write_memory_lock_owner(root: &std::path::Path, contents: &str) {
+    let lock_path = root.join(".mdx/memory.lock");
+    std::fs::create_dir(&lock_path).unwrap();
+    std::fs::write(lock_path.join("owner"), contents).unwrap();
+}
+
 fn sample_thread_body() -> String {
     "## Message 1 — user — 2026-06-12T09:00:01Z\n\nImplement auth middleware.\n\n## Message 2 — assistant — 2026-06-12T09:00:15Z\n\nPlan the work.\n".to_string()
 }
@@ -179,59 +185,68 @@ fn workspace_lock_serializes_memory_writes() {
     let lock = try_acquire_memory_lock(root.path()).unwrap();
     let busy = try_acquire_memory_lock(root.path()).unwrap_err();
     assert!(format!("{busy}").starts_with("memory_lock_busy:"));
-    assert!(root.path().join(".mdx/memory.lock").is_file());
+    assert!(root.path().join(".mdx/memory.lock").is_dir());
+    assert!(root.path().join(".mdx/memory.lock/owner").is_file());
+    assert!(!root.path().join(".mdx/tmp/memory.lock").exists());
 
     drop(lock);
 
     let reacquired = try_acquire_memory_lock(root.path()).unwrap();
-    assert!(root.path().join(".mdx/memory.lock").is_file());
+    assert!(root.path().join(".mdx/memory.lock").is_dir());
     drop(reacquired);
     assert!(!root.path().join(".mdx/memory.lock").exists());
 }
 
 #[test]
-fn workspace_lock_drop_preserves_recreated_lock_with_different_owner() {
+fn workspace_lock_token_mismatch_drop_preserves_recreated_lock_directory() {
     let root = tempdir().unwrap();
     memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
 
     let lock = try_acquire_memory_lock(root.path()).unwrap();
     let lock_path = root.path().join(".mdx/memory.lock");
-    std::fs::remove_file(&lock_path).unwrap();
-    std::fs::write(
-        &lock_path,
+    std::fs::remove_file(lock_path.join("owner")).unwrap();
+    std::fs::remove_dir(&lock_path).unwrap();
+    write_memory_lock_owner(
+        root.path(),
         "token=newer-owner\npid=0\ncreated_at_unix=4102444800\n",
-    )
-    .unwrap();
+    );
 
     drop(lock);
 
-    let contents = std::fs::read_to_string(lock_path).unwrap();
+    let contents = std::fs::read_to_string(lock_path.join("owner")).unwrap();
     assert!(contents.contains("token=newer-owner"));
+    assert!(lock_path.is_dir());
 }
 
 #[test]
-fn workspace_lock_recovers_stale_or_malformed_lock_file() {
-    let malformed_root = tempdir().unwrap();
-    memory_initialize_workspace(malformed_root.path().to_string_lossy().into_owned()).unwrap();
-    std::fs::write(
-        malformed_root.path().join(".mdx/memory.lock"),
-        "not a valid memory lock",
-    )
-    .unwrap();
-
-    let malformed_lock = try_acquire_memory_lock(malformed_root.path()).unwrap();
-    drop(malformed_lock);
-
+fn workspace_lock_recovers_stale_lock_directory() {
     let stale_root = tempdir().unwrap();
     memory_initialize_workspace(stale_root.path().to_string_lossy().into_owned()).unwrap();
-    std::fs::write(
-        stale_root.path().join(".mdx/memory.lock"),
+    write_memory_lock_owner(
+        stale_root.path(),
         "token=stale-owner\npid=0\ncreated_at_unix=0\n",
-    )
-    .unwrap();
+    );
 
     let stale_lock = try_acquire_memory_lock(stale_root.path()).unwrap();
+    let owner = std::fs::read_to_string(stale_root.path().join(".mdx/memory.lock/owner")).unwrap();
+    assert!(!owner.contains("token=stale-owner"));
     drop(stale_lock);
+}
+
+#[test]
+fn workspace_lock_non_stale_lock_directory_returns_busy() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    write_memory_lock_owner(
+        root.path(),
+        "token=active-owner\npid=0\ncreated_at_unix=4102444800\n",
+    );
+
+    let busy = try_acquire_memory_lock(root.path()).unwrap_err();
+
+    assert!(format!("{busy}").starts_with("memory_lock_busy:"));
+    let owner = std::fs::read_to_string(root.path().join(".mdx/memory.lock/owner")).unwrap();
+    assert!(owner.contains("token=active-owner"));
 }
 
 #[test]

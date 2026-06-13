@@ -21,22 +21,14 @@ pub(crate) struct MemoryWorkspaceLock {
 
 impl Drop for MemoryWorkspaceLock {
     fn drop(&mut self) {
-        let Ok(contents) = fs::read_to_string(&self.path) else {
-            return;
-        };
-        let Ok(lock_file) = parse_memory_lock_file(&contents) else {
-            return;
-        };
-        if lock_file.token == self.token {
-            let _ = fs::remove_file(&self.path);
-        }
+        let _ = remove_memory_lock_dir_if_token_matches(&self.path, &self.token);
     }
 }
 
 pub(crate) fn try_acquire_memory_lock(root: &Path) -> Result<MemoryWorkspaceLock, WorkspaceError> {
     ensure_directory(root)?;
-    let lock_dir = ensure_temp_dir(root)?;
-    let lock_path = lock_dir.join("memory.lock");
+    let mdx_dir = ensure_temp_dir(root)?;
+    let lock_path = mdx_dir.join("memory.lock");
     let token = new_memory_lock_token();
     let created_at_unix = current_unix_seconds();
     let contents = format!(
@@ -45,23 +37,37 @@ pub(crate) fn try_acquire_memory_lock(root: &Path) -> Result<MemoryWorkspaceLock
     );
 
     for attempt in 0..2 {
-        match create_memory_lock_file(&lock_path, &contents) {
+        match create_memory_lock_dir(&lock_path, &contents) {
             Ok(()) => {
                 return Ok(MemoryWorkspaceLock {
-                    path: lock_path,
+                    path: lock_path.clone(),
                     token,
                 });
             }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                if attempt == 0 && remove_stale_memory_lock(&lock_path, created_at_unix)? {
-                    continue;
+                if attempt == 0 {
+                    match recover_stale_memory_lock_dir(
+                        &lock_path,
+                        &token,
+                        &contents,
+                        created_at_unix,
+                    )? {
+                        StaleLockRecovery::Acquired => {
+                            return Ok(MemoryWorkspaceLock {
+                                path: lock_path.clone(),
+                                token,
+                            });
+                        }
+                        StaleLockRecovery::Retry => continue,
+                        StaleLockRecovery::Busy => {}
+                    }
                 }
                 return Err(memory_lock_busy());
             }
             Err(error) => {
                 return Err(WorkspaceError::from_io(
                     "write_failed",
-                    "failed to create memory lock file",
+                    "failed to create memory lock directory",
                     &error,
                 ));
             }
@@ -71,45 +77,143 @@ pub(crate) fn try_acquire_memory_lock(root: &Path) -> Result<MemoryWorkspaceLock
     Err(memory_lock_busy())
 }
 
-fn create_memory_lock_file(lock_path: &Path, contents: &str) -> Result<(), std::io::Error> {
-    let mut file = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(lock_path)?;
-    if let Err(error) = file.write_all(contents.as_bytes()) {
-        let _ = fs::remove_file(lock_path);
-        return Err(error);
-    }
-    if let Err(error) = file.sync_all() {
-        let _ = fs::remove_file(lock_path);
+fn create_memory_lock_dir(lock_path: &Path, contents: &str) -> Result<(), std::io::Error> {
+    fs::create_dir(lock_path)?;
+    if let Err(error) = create_memory_lock_owner_file(lock_path, contents) {
+        let _ = fs::remove_file(lock_path.join("owner"));
+        let _ = fs::remove_dir(lock_path);
         return Err(error);
     }
     Ok(())
 }
 
-fn remove_stale_memory_lock(lock_path: &Path, now_unix: u64) -> Result<bool, WorkspaceError> {
-    let contents = match fs::read_to_string(lock_path) {
-        Ok(contents) => contents,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(true),
-        Err(_) => return Ok(false),
+fn create_memory_lock_owner_file(lock_path: &Path, contents: &str) -> Result<(), std::io::Error> {
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(lock_path.join("owner"))?;
+    if let Err(error) = file.write_all(contents.as_bytes()) {
+        return Err(error);
+    }
+    file.sync_all()
+}
+
+enum StaleLockRecovery {
+    Acquired,
+    Retry,
+    Busy,
+}
+
+fn recover_stale_memory_lock_dir(
+    lock_path: &Path,
+    recovery_token: &str,
+    contents: &str,
+    now_unix: u64,
+) -> Result<StaleLockRecovery, WorkspaceError> {
+    let lock_file = match read_memory_lock_owner(lock_path) {
+        LockOwnerRead::Parsed(lock_file) => {
+            if !memory_lock_is_stale(&lock_file, now_unix) {
+                return Ok(StaleLockRecovery::Busy);
+            }
+            Some(lock_file)
+        }
+        LockOwnerRead::Malformed => None,
+        LockOwnerRead::Missing => return Ok(StaleLockRecovery::Retry),
+        LockOwnerRead::Unreadable => return Ok(StaleLockRecovery::Busy),
     };
 
-    if !memory_lock_is_stale(&contents, now_unix) {
-        return Ok(false);
+    let stale_path = lock_path.with_file_name(format!("memory.lock.stale-{recovery_token}"));
+    match fs::rename(lock_path, &stale_path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(StaleLockRecovery::Retry);
+        }
+        Err(_) => return Ok(StaleLockRecovery::Busy),
     }
 
-    match fs::remove_file(lock_path) {
-        Ok(()) => Ok(true),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(true),
-        Err(_) => Ok(false),
+    match create_memory_lock_dir(lock_path, contents) {
+        Ok(()) => {
+            remove_stale_lock_dir(&stale_path, lock_file.as_ref());
+            Ok(StaleLockRecovery::Acquired)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            restore_or_clean_stale_lock_dir(lock_path, &stale_path, lock_file.as_ref());
+            Ok(StaleLockRecovery::Busy)
+        }
+        Err(error) => {
+            restore_or_clean_stale_lock_dir(lock_path, &stale_path, lock_file.as_ref());
+            Err(WorkspaceError::from_io(
+                "write_failed",
+                "failed to create memory lock directory",
+                &error,
+            ))
+        }
     }
 }
 
-fn memory_lock_is_stale(contents: &str, now_unix: u64) -> bool {
-    let Ok(lock_file) = parse_memory_lock_file(contents) else {
-        return true;
-    };
+enum LockOwnerRead {
+    Parsed(MemoryLockFile),
+    Malformed,
+    Missing,
+    Unreadable,
+}
+
+fn read_memory_lock_owner(lock_path: &Path) -> LockOwnerRead {
+    match fs::read_to_string(lock_path.join("owner")) {
+        Ok(contents) => match parse_memory_lock_file(&contents) {
+            Ok(lock_file) => LockOwnerRead::Parsed(lock_file),
+            Err(()) => LockOwnerRead::Malformed,
+        },
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            if lock_path.exists() {
+                LockOwnerRead::Malformed
+            } else {
+                LockOwnerRead::Missing
+            }
+        }
+        Err(_) => LockOwnerRead::Unreadable,
+    }
+}
+
+fn memory_lock_is_stale(lock_file: &MemoryLockFile, now_unix: u64) -> bool {
     now_unix.saturating_sub(lock_file.created_at_unix) >= LOCK_STALE_AFTER_SECONDS
+}
+
+fn remove_memory_lock_dir_if_token_matches(
+    lock_path: &Path,
+    expected_token: &str,
+) -> Result<(), std::io::Error> {
+    let owner_path = lock_path.join("owner");
+    let contents = fs::read_to_string(&owner_path)?;
+    let Ok(lock_file) = parse_memory_lock_file(&contents) else {
+        return Ok(());
+    };
+    if lock_file.token == expected_token {
+        fs::remove_file(owner_path)?;
+        fs::remove_dir(lock_path)?;
+    }
+    Ok(())
+}
+
+fn remove_stale_lock_dir(stale_path: &Path, lock_file: Option<&MemoryLockFile>) {
+    if let Some(lock_file) = lock_file {
+        let _ = remove_memory_lock_dir_if_token_matches(stale_path, &lock_file.token);
+    } else {
+        let _ = fs::remove_file(stale_path.join("owner"));
+        let _ = fs::remove_dir(stale_path);
+    }
+}
+
+fn restore_or_clean_stale_lock_dir(
+    lock_path: &Path,
+    stale_path: &Path,
+    lock_file: Option<&MemoryLockFile>,
+) {
+    if fs::rename(stale_path, lock_path).is_err() {
+        if let Some(lock_file) = lock_file {
+            let _ = remove_memory_lock_dir_if_token_matches(stale_path, &lock_file.token);
+        }
+    }
 }
 
 #[derive(Debug)]
