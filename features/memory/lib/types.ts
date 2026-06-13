@@ -13,6 +13,21 @@ export interface InitializeMemoryResult {
   status: MemoryWorkspaceStatus;
 }
 
+export interface MemoryRepairRequest {
+  rebuild_index: boolean;
+}
+
+export interface MemoryRepairResult {
+  repaired_paths: string[];
+  warnings: string[];
+}
+
+export interface MemoryIndexStatus {
+  index_status: string;
+  document_count: number;
+  dirty: boolean;
+}
+
 export interface RecallRequest {
   query: string;
   limit?: number | null;
@@ -75,6 +90,30 @@ export interface ThreadListItem {
   ended_at: string | null;
   message_count: number | null;
   archived: boolean;
+}
+
+export interface MemoryThreadFrontmatter {
+  schema_version: number;
+  kind: string;
+  thread_id: string;
+  source: string;
+  title: string;
+  content_hash: string;
+  started_at: string | null;
+  ended_at: string | null;
+  message_count: number | null;
+  model: string | null;
+  workspace_root: string | null;
+  tags: string[];
+  distilled: boolean;
+  promoted_to_wiki: boolean;
+  archived: boolean;
+}
+
+export interface MemoryThreadRecord {
+  path: string;
+  frontmatter: MemoryThreadFrontmatter;
+  body: string;
 }
 
 export interface MemoryFrontmatter {

@@ -67,6 +67,19 @@ fn memory_initialize_workspace(
 }
 
 #[tauri::command]
+fn memory_repair_workspace(
+    root_path: String,
+    request: memory::MemoryRepairRequest,
+) -> Result<memory::MemoryRepairResult, WorkspaceError> {
+    memory::memory_repair_workspace(root_path, request)
+}
+
+#[tauri::command]
+fn memory_index_rebuild(root_path: String) -> Result<memory::MemoryIndexStatus, WorkspaceError> {
+    memory::memory_index_rebuild(root_path)
+}
+
+#[tauri::command]
 fn memory_working_get(root_path: String) -> Result<String, WorkspaceError> {
     memory::memory_working_get(root_path)
 }
@@ -93,11 +106,32 @@ fn memory_list(
 }
 
 #[tauri::command]
+fn memory_get(root_path: String, target: String) -> Result<memory::MemoryRecord, WorkspaceError> {
+    memory::memory_get(root_path, target)
+}
+
+#[tauri::command]
+fn memory_archive(
+    root_path: String,
+    target: String,
+) -> Result<memory::MemoryRecord, WorkspaceError> {
+    memory::memory_archive(root_path, target)
+}
+
+#[tauri::command]
 fn memory_thread_list(
     root_path: String,
     filter: memory::ThreadListFilter,
 ) -> Result<Vec<memory::ThreadListItem>, WorkspaceError> {
     memory::memory_thread_list(root_path, filter)
+}
+
+#[tauri::command]
+fn memory_thread_get(
+    root_path: String,
+    target: String,
+) -> Result<memory::MemoryThreadRecord, WorkspaceError> {
+    memory::memory_thread_get(root_path, target)
 }
 
 #[tauri::command]
@@ -114,6 +148,14 @@ fn memory_inbox_accept(
     request: memory::InboxReviewRequest,
 ) -> Result<memory::InboxReviewResult, WorkspaceError> {
     memory::memory_inbox_accept(root_path, request)
+}
+
+#[tauri::command]
+fn memory_inbox_reject(
+    root_path: String,
+    target: String,
+) -> Result<memory::InboxReviewResult, WorkspaceError> {
+    memory::memory_inbox_reject(root_path, target)
 }
 
 #[tauri::command]
@@ -656,13 +698,19 @@ pub fn run() {
             llm_wiki::llm_config_update,
             memory_detect_workspace,
             memory_initialize_workspace,
+            memory_repair_workspace,
+            memory_index_rebuild,
             memory_working_get,
             memory_working_set,
             memory_recall,
             memory_list,
+            memory_get,
+            memory_archive,
             memory_thread_list,
+            memory_thread_get,
             memory_inbox_list,
             memory_inbox_accept,
+            memory_inbox_reject,
             memory_promote,
             workspace_search::workspace_search,
             workspace_search::workspace_search_cancel,

@@ -4,10 +4,15 @@ import type {
   InboxReviewRequest,
   InboxReviewResult,
   InitializeMemoryResult,
+  MemoryIndexStatus,
   MemoryListFilter,
   MemoryPromoteRequest,
   MemoryPromoteResult,
+  MemoryRecord,
+  MemoryRepairRequest,
+  MemoryRepairResult,
   MemorySummary,
+  MemoryThreadRecord,
   MemoryWorkspaceStatus,
   RecallRequest,
   RecallResult,
@@ -35,6 +40,17 @@ export function initializeMemoryWorkspace(
   return invokeCommand("memory_initialize_workspace", { rootPath });
 }
 
+export function repairMemoryWorkspace(
+  rootPath: string,
+  request: MemoryRepairRequest,
+): Promise<MemoryRepairResult> {
+  return invokeCommand("memory_repair_workspace", { rootPath, request });
+}
+
+export function rebuildMemoryIndex(rootPath: string): Promise<MemoryIndexStatus> {
+  return invokeCommand("memory_index_rebuild", { rootPath });
+}
+
 export function getWorkingMemory(rootPath: string): Promise<string> {
   return invokeCommand("memory_working_get", { rootPath });
 }
@@ -60,11 +76,32 @@ export function listMemories(
   return invokeCommand("memory_list", { rootPath, filter });
 }
 
+export function getMemory(
+  rootPath: string,
+  target: string,
+): Promise<MemoryRecord> {
+  return invokeCommand("memory_get", { rootPath, target });
+}
+
+export function archiveMemory(
+  rootPath: string,
+  target: string,
+): Promise<MemoryRecord> {
+  return invokeCommand("memory_archive", { rootPath, target });
+}
+
 export function listMemoryThreads(
   rootPath: string,
   filter: ThreadListFilter = {},
 ): Promise<ThreadListItem[]> {
   return invokeCommand("memory_thread_list", { rootPath, filter });
+}
+
+export function getMemoryThread(
+  rootPath: string,
+  target: string,
+): Promise<MemoryThreadRecord> {
+  return invokeCommand("memory_thread_get", { rootPath, target });
 }
 
 export function listMemoryInbox(
@@ -79,6 +116,13 @@ export function acceptMemoryInbox(
   request: InboxReviewRequest,
 ): Promise<InboxReviewResult> {
   return invokeCommand("memory_inbox_accept", { rootPath, request });
+}
+
+export function rejectMemoryInbox(
+  rootPath: string,
+  target: string,
+): Promise<InboxReviewResult> {
+  return invokeCommand("memory_inbox_reject", { rootPath, target });
 }
 
 export function promoteMemory(
