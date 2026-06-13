@@ -282,6 +282,39 @@ pub struct MemoryListFilter {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+pub struct MemoryIndexStatus {
+    pub index_status: String,
+    pub document_count: usize,
+    pub dirty: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryIndexSearchRequest {
+    pub query: String,
+    pub limit: usize,
+    pub kinds: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryIndexSearchResult {
+    pub items: Vec<MemoryIndexSearchItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryIndexSearchItem {
+    pub doc_id: String,
+    pub kind: String,
+    pub path: String,
+    pub title: String,
+    pub snippet: String,
+    pub score: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub struct RecallRequest {
     pub query: String,
     pub limit: Option<usize>,

@@ -8,7 +8,8 @@ use crate::memory_fs::{
 };
 pub use crate::memory_models::{
     InitializeMemoryResult, MemoryAddRequest, MemoryCaptureConfig, MemoryConfig,
-    MemoryDistillConfig, MemoryEmbeddingConfig, MemoryFrontmatter, MemoryListFilter,
+    MemoryDistillConfig, MemoryEmbeddingConfig, MemoryFrontmatter, MemoryIndexSearchItem,
+    MemoryIndexSearchRequest, MemoryIndexSearchResult, MemoryIndexStatus, MemoryListFilter,
     MemoryPromoteRequest, MemoryPromoteResult, MemoryRecallConfig, MemoryRecord,
     MemoryRepairRequest, MemoryRepairResult, MemorySummary, MemoryThreadFrontmatter,
     MemoryThreadRecord, MemoryWorkspaceStatus, RecallMemoryItem, RecallRequest, RecallResult,
@@ -372,6 +373,20 @@ pub fn memory_search(
 ) -> Result<Vec<MemorySummary>, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
     crate::memory_recall::memory_search(root, query, limit, tag, since)
+}
+
+pub fn memory_index_rebuild(root_path: String) -> Result<MemoryIndexStatus, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    let _lock = try_acquire_memory_lock(&root)?;
+    crate::search_index::rebuild(&root)
+}
+
+pub fn memory_index_search(
+    root_path: String,
+    request: MemoryIndexSearchRequest,
+) -> Result<MemoryIndexSearchResult, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    crate::search_index::search(&root, request)
 }
 
 pub fn memory_recall(

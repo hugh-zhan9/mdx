@@ -39,6 +39,7 @@ mod memory_thread;
 mod memory_working;
 mod models;
 mod path_guard;
+mod search_index;
 mod state_store;
 mod window_sessions;
 mod workspace_fs;

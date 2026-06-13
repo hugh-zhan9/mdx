@@ -1101,6 +1101,41 @@ fn search_returns_memory_summaries_only() {
 }
 
 #[test]
+fn search_index_rebuild_recovers_memory_search_from_markdown() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "JWT access token lifetime".to_string(),
+            body: "Access tokens expire after 15 minutes.".to_string(),
+            tags: vec!["auth".to_string()],
+            source_thread: None,
+            importance: Some(0.8),
+            confidence: Some(0.9),
+        },
+    )
+    .unwrap();
+
+    let status =
+        crate::memory::memory_index_rebuild(root.path().to_string_lossy().into_owned()).unwrap();
+
+    assert_eq!(status.index_status, "clean");
+    assert!(root.path().join(".mdx/search.sqlite").is_file());
+    let results = crate::memory::memory_index_search(
+        root.path().to_string_lossy().into_owned(),
+        crate::memory::MemoryIndexSearchRequest {
+            query: "JWT".to_string(),
+            limit: 10,
+            kinds: vec!["memory".to_string()],
+        },
+    )
+    .unwrap();
+    assert_eq!(results.items.len(), 1);
+    assert_eq!(results.items[0].title, "JWT access token lifetime");
+}
+
+#[test]
 fn promote_copies_thread_into_raw_promoted() {
     let root = tempdir().unwrap();
     memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();

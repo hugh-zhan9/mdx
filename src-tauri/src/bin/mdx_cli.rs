@@ -118,6 +118,10 @@ enum MemoryCommand {
         #[arg(long)]
         rebuild_index: bool,
     },
+    Index {
+        #[command(subcommand)]
+        command: MemoryIndexCommand,
+    },
     Thread {
         #[command(subcommand)]
         command: MemoryThreadCommand,
@@ -190,6 +194,12 @@ enum MemoryCommand {
         #[arg(long)]
         title: Option<String>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
+enum MemoryIndexCommand {
+    Status,
+    Rebuild,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
@@ -338,6 +348,16 @@ fn request_from_memory_command(command: &MemoryCommand) -> io::Result<CliRequest
         MemoryCommand::Repair { rebuild_index } => CliRequest::MemoryRepair {
             rebuild_index: *rebuild_index,
         },
+        MemoryCommand::Index { command } => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                match command {
+                    MemoryIndexCommand::Status | MemoryIndexCommand::Rebuild => {
+                        "memory index commands require --root"
+                    }
+                },
+            ));
+        }
         MemoryCommand::Thread { command } => match command {
             MemoryThreadCommand::Save {
                 source,
@@ -457,6 +477,10 @@ fn execute_memory_headless(command: &CommandLine, root_path: String) -> io::Resu
             "headless execution is only supported for memory commands",
         ));
     };
+
+    if let MemoryCommand::Index { command } = command {
+        return Ok(execute_memory_index_headless(command, root_path));
+    }
 
     let response = match request_from_memory_command(command)? {
         CliRequest::MemoryStatus => match memory::memory_detect_workspace(root_path.clone()) {
@@ -690,6 +714,25 @@ fn execute_memory_headless(command: &CommandLine, root_path: String) -> io::Resu
     };
 
     Ok(response)
+}
+
+fn execute_memory_index_headless(command: &MemoryIndexCommand, root_path: String) -> CliResponse {
+    match command {
+        MemoryIndexCommand::Status | MemoryIndexCommand::Rebuild => {
+            match memory::memory_index_rebuild(root_path.clone()) {
+                Ok(status) => match serde_json::to_string(&status) {
+                    Ok(content) => CliResponse {
+                        ok: true,
+                        root_path: Some(root_path),
+                        content: Some(content),
+                        ..CliResponse::default()
+                    },
+                    Err(error) => CliResponse::error("encode_error", error.to_string()),
+                },
+                Err(error) => workspace_error_response(error),
+            }
+        }
+    }
 }
 
 fn workspace_error_response(error: mdx_lib::WorkspaceError) -> CliResponse {
