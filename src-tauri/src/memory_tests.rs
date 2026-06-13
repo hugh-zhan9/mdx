@@ -12,7 +12,8 @@ use crate::memory::{
     ThreadListFilter, ThreadSaveRequest,
 };
 use crate::memory_fs::{
-    append_memory_log_entry, read_workspace_file, try_acquire_memory_lock, write_workspace_file,
+    append_memory_log_entry, read_workspace_file, recover_old_malformed_memory_lock_dir_for_test,
+    try_acquire_memory_lock, write_workspace_file,
 };
 
 fn write_memory_lock_owner(root: &std::path::Path, contents: &str) {
@@ -231,6 +232,35 @@ fn workspace_lock_recovers_stale_lock_directory() {
     let owner = std::fs::read_to_string(stale_root.path().join(".mdx/memory.lock/owner")).unwrap();
     assert!(!owner.contains("token=stale-owner"));
     drop(stale_lock);
+}
+
+#[test]
+fn workspace_lock_fresh_missing_owner_directory_returns_busy() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    let lock_path = root.path().join(".mdx/memory.lock");
+    std::fs::create_dir(&lock_path).unwrap();
+
+    let busy = try_acquire_memory_lock(root.path()).unwrap_err();
+
+    assert!(format!("{busy}").starts_with("memory_lock_busy:"));
+    assert!(lock_path.is_dir());
+    assert!(!lock_path.join("owner").exists());
+}
+
+#[test]
+fn workspace_lock_recovers_old_malformed_lock_directory() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    write_memory_lock_owner(root.path(), "not a valid lock owner\n");
+
+    let lock = recover_old_malformed_memory_lock_dir_for_test(root.path()).unwrap();
+    let owner = std::fs::read_to_string(root.path().join(".mdx/memory.lock/owner")).unwrap();
+
+    assert!(!owner.contains("not a valid lock owner"));
+    assert!(owner.contains("token="));
+    drop(lock);
+    assert!(!root.path().join(".mdx/memory.lock").exists());
 }
 
 #[test]

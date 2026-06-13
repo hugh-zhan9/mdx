@@ -117,9 +117,13 @@ fn recover_stale_memory_lock_dir(
             }
             Some(lock_file)
         }
-        LockOwnerRead::Malformed => None,
-        LockOwnerRead::Missing => return Ok(StaleLockRecovery::Retry),
-        LockOwnerRead::Unreadable => return Ok(StaleLockRecovery::Busy),
+        LockOwnerRead::Malformed | LockOwnerRead::MissingOwner | LockOwnerRead::Unreadable => {
+            if !memory_lock_dir_is_stale(lock_path, now_unix) {
+                return Ok(StaleLockRecovery::Busy);
+            }
+            None
+        }
+        LockOwnerRead::MissingLock => return Ok(StaleLockRecovery::Retry),
     };
 
     let stale_path = lock_path.with_file_name(format!("memory.lock.stale-{recovery_token}"));
@@ -154,7 +158,8 @@ fn recover_stale_memory_lock_dir(
 enum LockOwnerRead {
     Parsed(MemoryLockFile),
     Malformed,
-    Missing,
+    MissingOwner,
+    MissingLock,
     Unreadable,
 }
 
@@ -166,9 +171,9 @@ fn read_memory_lock_owner(lock_path: &Path) -> LockOwnerRead {
         },
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             if lock_path.exists() {
-                LockOwnerRead::Malformed
+                LockOwnerRead::MissingOwner
             } else {
-                LockOwnerRead::Missing
+                LockOwnerRead::MissingLock
             }
         }
         Err(_) => LockOwnerRead::Unreadable,
@@ -177,6 +182,26 @@ fn read_memory_lock_owner(lock_path: &Path) -> LockOwnerRead {
 
 fn memory_lock_is_stale(lock_file: &MemoryLockFile, now_unix: u64) -> bool {
     now_unix.saturating_sub(lock_file.created_at_unix) >= LOCK_STALE_AFTER_SECONDS
+}
+
+fn memory_lock_dir_is_stale(lock_path: &Path, now_unix: u64) -> bool {
+    let Ok(metadata) = fs::symlink_metadata(lock_path) else {
+        return false;
+    };
+
+    let modified_unix = metadata.modified().ok().and_then(system_time_to_unix);
+    let created_unix = metadata.created().ok().and_then(system_time_to_unix);
+    let Some(metadata_unix) = modified_unix.into_iter().chain(created_unix).max() else {
+        return false;
+    };
+
+    now_unix.saturating_sub(metadata_unix) >= LOCK_STALE_AFTER_SECONDS
+}
+
+fn system_time_to_unix(time: SystemTime) -> Option<u64> {
+    time.duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|duration| duration.as_secs())
 }
 
 fn remove_memory_lock_dir_if_token_matches(
@@ -272,6 +297,30 @@ fn current_unix_nanos_for_token() -> u128 {
 
 fn memory_lock_busy() -> WorkspaceError {
     WorkspaceError::new("memory_lock_busy", "memory workspace lock is already held")
+}
+
+#[cfg(test)]
+pub(crate) fn recover_old_malformed_memory_lock_dir_for_test(
+    root: &Path,
+) -> Result<MemoryWorkspaceLock, WorkspaceError> {
+    let mdx_dir = ensure_temp_dir(root)?;
+    let lock_path = mdx_dir.join("memory.lock");
+    let token = new_memory_lock_token();
+    let now_unix = current_unix_seconds()
+        .saturating_add(LOCK_STALE_AFTER_SECONDS)
+        .saturating_add(1);
+    let contents = format!(
+        "token={token}\npid={}\ncreated_at_unix={now_unix}\n",
+        std::process::id()
+    );
+
+    match recover_stale_memory_lock_dir(&lock_path, &token, &contents, now_unix)? {
+        StaleLockRecovery::Acquired => Ok(MemoryWorkspaceLock {
+            path: lock_path,
+            token,
+        }),
+        StaleLockRecovery::Retry | StaleLockRecovery::Busy => Err(memory_lock_busy()),
+    }
 }
 
 pub(crate) fn ensure_directory(path: &Path) -> Result<(), WorkspaceError> {
