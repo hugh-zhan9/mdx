@@ -2704,6 +2704,257 @@ fn distill_with_json_writes_candidates_to_inbox() {
 }
 
 #[test]
+fn distill_without_force_reuses_existing_inbox_run() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_thread_save(
+        root.path().to_string_lossy().into_owned(),
+        ThreadSaveRequest {
+            source: "codex".to_string(),
+            thread_id: Some("codex:distill-idempotent".to_string()),
+            title: "Distill idempotent".to_string(),
+            body: sample_thread_body(),
+            started_at: Some("2026-06-12T09:00:00Z".to_string()),
+            ended_at: None,
+            model: None,
+            workspace_root: None,
+            tags: Vec::new(),
+        },
+    )
+    .unwrap();
+    let json = r#"[{
+      "title": "Use JWT",
+      "body": "Use JWT for access tokens.",
+      "tags": ["auth"],
+      "importance": 0.8,
+      "confidence": 0.9,
+      "source_message_refs": [1]
+    }]"#;
+
+    let first = memory_distill_with_json_for_test(
+        root.path().to_string_lossy().into_owned(),
+        MemoryDistillRequest {
+            target: "codex:distill-idempotent".to_string(),
+            accept: false,
+            force: false,
+        },
+        json,
+    )
+    .unwrap();
+    let second = memory_distill_with_json_for_test(
+        root.path().to_string_lossy().into_owned(),
+        MemoryDistillRequest {
+            target: "codex:distill-idempotent".to_string(),
+            accept: false,
+            force: false,
+        },
+        json,
+    )
+    .unwrap();
+
+    assert_eq!(first.inbox_count, 1);
+    assert_eq!(second.inbox_count, 1);
+    assert_eq!(
+        first.inbox[0].frontmatter.inbox_id,
+        second.inbox[0].frontmatter.inbox_id
+    );
+    let inbox = memory_inbox_list(root.path().to_string_lossy().into_owned(), true).unwrap();
+    assert_eq!(inbox.len(), 1);
+}
+
+#[test]
+fn distill_force_creates_new_inbox_run() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_thread_save(
+        root.path().to_string_lossy().into_owned(),
+        ThreadSaveRequest {
+            source: "codex".to_string(),
+            thread_id: Some("codex:distill-force".to_string()),
+            title: "Distill force".to_string(),
+            body: sample_thread_body(),
+            started_at: Some("2026-06-12T09:00:00Z".to_string()),
+            ended_at: None,
+            model: None,
+            workspace_root: None,
+            tags: Vec::new(),
+        },
+    )
+    .unwrap();
+    let json = r#"[{
+      "title": "Use JWT",
+      "body": "Use JWT for access tokens.",
+      "tags": ["auth"],
+      "importance": 0.8,
+      "confidence": 0.9,
+      "source_message_refs": [1]
+    }]"#;
+
+    memory_distill_with_json_for_test(
+        root.path().to_string_lossy().into_owned(),
+        MemoryDistillRequest {
+            target: "codex:distill-force".to_string(),
+            accept: false,
+            force: false,
+        },
+        json,
+    )
+    .unwrap();
+    memory_distill_with_json_for_test(
+        root.path().to_string_lossy().into_owned(),
+        MemoryDistillRequest {
+            target: "codex:distill-force".to_string(),
+            accept: false,
+            force: true,
+        },
+        json,
+    )
+    .unwrap();
+
+    let inbox = memory_inbox_list(root.path().to_string_lossy().into_owned(), true).unwrap();
+    assert_eq!(inbox.len(), 2);
+    assert_ne!(
+        inbox[0].frontmatter.distill_run_id,
+        inbox[1].frontmatter.distill_run_id
+    );
+}
+
+#[test]
+fn distill_auto_accepts_candidates_above_configured_threshold() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    let mut config = default_memory_config();
+    config.distill.auto_accept = true;
+    config.distill.confidence_threshold = 80;
+    write_workspace_file(
+        root.path(),
+        ".mdx/memory-config.json",
+        serde_json::to_string_pretty(&config).unwrap().as_bytes(),
+    )
+    .unwrap();
+    memory_thread_save(
+        root.path().to_string_lossy().into_owned(),
+        ThreadSaveRequest {
+            source: "codex".to_string(),
+            thread_id: Some("codex:distill-auto".to_string()),
+            title: "Distill auto".to_string(),
+            body: sample_thread_body(),
+            started_at: Some("2026-06-12T09:00:00Z".to_string()),
+            ended_at: None,
+            model: None,
+            workspace_root: None,
+            tags: Vec::new(),
+        },
+    )
+    .unwrap();
+
+    let result = memory_distill_with_json_for_test(
+        root.path().to_string_lossy().into_owned(),
+        MemoryDistillRequest {
+            target: "codex:distill-auto".to_string(),
+            accept: false,
+            force: false,
+        },
+        r#"[{
+          "title": "Use JWT",
+          "body": "Use JWT for access tokens.",
+          "tags": ["auth"],
+          "importance": 0.8,
+          "confidence": 0.9,
+          "source_message_refs": [1]
+        }]"#,
+    )
+    .unwrap();
+
+    assert_eq!(result.memory_count, 1);
+    assert_eq!(result.inbox_count, 0);
+    assert_eq!(result.memories[0].frontmatter.title, "Use JWT");
+}
+
+#[test]
+fn distill_without_force_reuses_mixed_auto_accept_results() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    let mut config = default_memory_config();
+    config.distill.auto_accept = true;
+    config.distill.confidence_threshold = 80;
+    write_workspace_file(
+        root.path(),
+        ".mdx/memory-config.json",
+        serde_json::to_string_pretty(&config).unwrap().as_bytes(),
+    )
+    .unwrap();
+    memory_thread_save(
+        root.path().to_string_lossy().into_owned(),
+        ThreadSaveRequest {
+            source: "codex".to_string(),
+            thread_id: Some("codex:distill-mixed".to_string()),
+            title: "Distill mixed".to_string(),
+            body: sample_thread_body(),
+            started_at: Some("2026-06-12T09:00:00Z".to_string()),
+            ended_at: None,
+            model: None,
+            workspace_root: None,
+            tags: Vec::new(),
+        },
+    )
+    .unwrap();
+    let json = r#"[{
+      "title": "High confidence",
+      "body": "Accept this memory.",
+      "tags": ["auth"],
+      "importance": 0.8,
+      "confidence": 0.9,
+      "source_message_refs": [1]
+    }, {
+      "title": "Low confidence",
+      "body": "Review this memory.",
+      "tags": ["auth"],
+      "importance": 0.5,
+      "confidence": 0.7,
+      "source_message_refs": [2]
+    }]"#;
+
+    let first = memory_distill_with_json_for_test(
+        root.path().to_string_lossy().into_owned(),
+        MemoryDistillRequest {
+            target: "codex:distill-mixed".to_string(),
+            accept: false,
+            force: false,
+        },
+        json,
+    )
+    .unwrap();
+    let second = memory_distill_with_json_for_test(
+        root.path().to_string_lossy().into_owned(),
+        MemoryDistillRequest {
+            target: "codex:distill-mixed".to_string(),
+            accept: false,
+            force: false,
+        },
+        json,
+    )
+    .unwrap();
+
+    assert_eq!(first.memory_count, 1);
+    assert_eq!(first.inbox_count, 1);
+    assert_eq!(second.memory_count, 1);
+    assert_eq!(second.inbox_count, 1);
+    let memories = memory_list(
+        root.path().to_string_lossy().into_owned(),
+        MemoryListFilter {
+            tag: Some("auth".to_string()),
+            since: None,
+            include_archived: false,
+        },
+    )
+    .unwrap();
+    let inbox = memory_inbox_list(root.path().to_string_lossy().into_owned(), true).unwrap();
+    assert_eq!(memories.len(), 1);
+    assert_eq!(inbox.len(), 1);
+}
+
+#[test]
 fn distill_uses_configured_llm_provider_and_writes_inbox() {
     let root = tempdir().unwrap();
     let home = tempdir().unwrap();

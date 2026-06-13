@@ -1,4 +1,6 @@
-use crate::memory_models::{DistillCandidate, MemoryDistillRequest, MemoryDistillResult};
+use crate::memory_models::{
+    DistillCandidate, MemoryDistillRequest, MemoryDistillResult, MemoryRecord,
+};
 use crate::models::WorkspaceError;
 
 const DISTILL_SYSTEM_PROMPT: &str = r#"You distill AI conversation transcripts into durable memory candidates.
@@ -102,9 +104,28 @@ fn memory_distill_with_json(
     let thread = crate::memory_thread::memory_thread_get(root, request.target.clone())?;
     let candidates = parse_distill_candidates(json)?;
     let source_thread = thread.frontmatter.thread_id;
+    let config = crate::memory_fs::read_memory_config(root)?;
+    let base_run_id = distill_run_id(&source_thread, &thread.frontmatter.content_hash);
+    if !request.force {
+        if let Some(existing) = existing_distill_result(
+            root,
+            &request,
+            &source_thread,
+            &base_run_id,
+            &candidates,
+            &config,
+        )? {
+            return Ok(existing);
+        }
+    }
+
     let mut inbox = Vec::new();
     let mut memories = Vec::new();
-    let distill_run_id = Some(format!("distill:{}", source_thread.replace(':', "_")));
+    let distill_run_id = Some(if request.force {
+        format!("{}:{}", base_run_id, crate::memory_fs::now_utc_rfc3339()?)
+    } else {
+        base_run_id
+    });
 
     for candidate in &candidates {
         let source_message_refs = candidate
@@ -112,7 +133,7 @@ fn memory_distill_with_json(
             .iter()
             .map(usize::to_string)
             .collect::<Vec<_>>();
-        if request.accept {
+        if should_accept_candidate(&request, &config, candidate) {
             memories.push(crate::memory_store::memory_add(
                 root,
                 crate::memory_models::MemoryAddRequest {
@@ -145,7 +166,7 @@ fn memory_distill_with_json(
     Ok(MemoryDistillResult {
         target: request.target,
         source_thread,
-        accepted: request.accept,
+        accepted: !memories.is_empty() && inbox.is_empty(),
         candidate_count: candidates.len(),
         inbox_count: inbox.len(),
         memory_count: memories.len(),
@@ -153,6 +174,113 @@ fn memory_distill_with_json(
         inbox,
         memories,
     })
+}
+
+fn existing_distill_result(
+    root: &std::path::Path,
+    request: &MemoryDistillRequest,
+    source_thread: &str,
+    run_id: &str,
+    candidates: &[DistillCandidate],
+    config: &crate::memory_models::MemoryConfig,
+) -> Result<Option<MemoryDistillResult>, WorkspaceError> {
+    let should_accept_all = candidates
+        .iter()
+        .all(|candidate| should_accept_candidate(request, config, candidate));
+    if should_accept_all {
+        let memories = existing_distilled_memories(root, source_thread, candidates)?;
+        if memories.len() == candidates.len() {
+            return Ok(Some(MemoryDistillResult {
+                target: request.target.clone(),
+                source_thread: source_thread.to_string(),
+                accepted: true,
+                candidate_count: candidates.len(),
+                inbox_count: 0,
+                memory_count: memories.len(),
+                candidates: candidates.to_vec(),
+                inbox: Vec::new(),
+                memories,
+            }));
+        }
+        return Ok(None);
+    }
+
+    let memories = existing_distilled_memories(root, source_thread, candidates)?;
+    let inbox = crate::memory_inbox::memory_inbox_list(root, true)?
+        .into_iter()
+        .filter(|record| record.frontmatter.distill_run_id.as_deref() == Some(run_id))
+        .collect::<Vec<_>>();
+    if memories.len() + inbox.len() == candidates.len() {
+        return Ok(Some(MemoryDistillResult {
+            target: request.target.clone(),
+            source_thread: source_thread.to_string(),
+            accepted: memories.len() == candidates.len(),
+            candidate_count: candidates.len(),
+            inbox_count: inbox.len(),
+            memory_count: memories.len(),
+            candidates: candidates.to_vec(),
+            inbox,
+            memories,
+        }));
+    }
+    Ok(None)
+}
+
+fn existing_distilled_memories(
+    root: &std::path::Path,
+    source_thread: &str,
+    candidates: &[DistillCandidate],
+) -> Result<Vec<MemoryRecord>, WorkspaceError> {
+    let mut memories = Vec::new();
+    for summary in crate::memory_store::memory_list(
+        root,
+        crate::memory_models::MemoryListFilter {
+            tag: None,
+            since: None,
+            include_archived: false,
+        },
+    )? {
+        let record = crate::memory_store::memory_get(root, summary.memory_id)?;
+        if record.frontmatter.source_thread.as_deref() == Some(source_thread)
+            && candidates
+                .iter()
+                .any(|candidate| source_refs_match(&record, candidate))
+        {
+            memories.push(record);
+        }
+    }
+    Ok(memories)
+}
+
+fn source_refs_match(record: &MemoryRecord, candidate: &DistillCandidate) -> bool {
+    let refs = candidate
+        .source_message_refs
+        .iter()
+        .map(usize::to_string)
+        .collect::<Vec<_>>();
+    record.frontmatter.source_message_refs == refs
+}
+
+fn should_accept_candidate(
+    request: &MemoryDistillRequest,
+    config: &crate::memory_models::MemoryConfig,
+    candidate: &DistillCandidate,
+) -> bool {
+    request.accept
+        || (config.distill.auto_accept
+            && candidate.confidence * 100.0 >= f64::from(config.distill.confidence_threshold))
+}
+
+fn distill_run_id(source_thread: &str, content_hash: &str) -> String {
+    format!(
+        "distill:{}:{}",
+        source_thread.replace(':', "_"),
+        content_hash
+            .trim_start_matches("sha256:")
+            .chars()
+            .take(12)
+            .collect::<String>()
+    )
 }
 
 fn build_distill_messages(title: &str, body: &str) -> Vec<crate::llm_wiki_llm::LlmChatMessage> {
