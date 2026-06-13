@@ -203,6 +203,22 @@ fn parses_memory_inbox_requests() {
 }
 
 #[test]
+fn parses_memory_distill_request() {
+    let request: CliRequest = serde_json::from_str(
+        r#"{"cmd":"memory-distill","target":"codex:abc123","accept":true,"force":true}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        request,
+        CliRequest::MemoryDistill {
+            target: "codex:abc123".to_string(),
+            accept: Some(true),
+            force: Some(true),
+        }
+    );
+}
+
+#[test]
 fn serializes_memory_status_response_as_snake_case_json() {
     let response = crate::cli_protocol::CliResponse {
         ok: true,
@@ -219,6 +235,38 @@ fn serializes_memory_status_response_as_snake_case_json() {
         serde_json::to_string(&response).unwrap(),
         r#"{"ok":true,"memory_status":{"mode":"ordinary","has_memory":false,"can_initialize":true,"missing_paths":["memory"]}}"#
     );
+}
+
+#[test]
+fn serializes_memory_distill_response_as_snake_case_json() {
+    let response = crate::cli_protocol::CliResponse {
+        ok: true,
+        memory_distill: Some(crate::memory::MemoryDistillResult {
+            target: "codex:abc123".to_string(),
+            source_thread: "codex:abc123".to_string(),
+            accepted: false,
+            candidate_count: 1,
+            inbox_count: 1,
+            memory_count: 0,
+            candidates: vec![crate::memory::DistillCandidate {
+                title: "Use JWT".to_string(),
+                body: "The project uses JWT access tokens.".to_string(),
+                tags: vec!["auth".to_string()],
+                importance: 0.8,
+                confidence: 0.9,
+                source_message_refs: vec![1],
+            }],
+            inbox: Vec::new(),
+            memories: Vec::new(),
+        }),
+        ..crate::cli_protocol::CliResponse::default()
+    };
+
+    let json = serde_json::to_string(&response).unwrap();
+    assert!(json.contains(r#""memory_distill":{"target":"codex:abc123""#));
+    assert!(json.contains(r#""candidate_count":1"#));
+    assert!(json.contains(r#""source_message_refs":[1]"#));
+    assert!(!json.contains("candidateCount"));
 }
 
 #[test]

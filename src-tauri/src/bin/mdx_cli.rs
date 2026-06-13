@@ -192,6 +192,16 @@ enum MemoryCommand {
         #[arg(required = true, num_args = 1..)]
         query: Vec<String>,
     },
+    Distill {
+        #[arg(long = "thread")]
+        target: String,
+        #[arg(long)]
+        accept: bool,
+        #[arg(long)]
+        force: bool,
+        #[arg(long)]
+        json: bool,
+    },
     Promote {
         #[arg(long = "thread")]
         target: String,
@@ -496,6 +506,16 @@ fn request_from_memory_command(command: &MemoryCommand) -> io::Result<CliRequest
             include_threads: Some(*include_threads),
             tag: tag.clone(),
             since: parse_since_arg(since)?,
+        },
+        MemoryCommand::Distill {
+            target,
+            accept,
+            force,
+            ..
+        } => CliRequest::MemoryDistill {
+            target: trim_required_value(target, "thread")?,
+            accept: Some(*accept),
+            force: Some(*force),
         },
         MemoryCommand::Promote {
             target,
@@ -802,6 +822,25 @@ fn execute_memory_headless(command: &CommandLine, root_path: String) -> io::Resu
                 Err(error) => workspace_error_response(error),
             }
         }
+        CliRequest::MemoryDistill {
+            target,
+            accept,
+            force,
+        } => {
+            let request = memory::MemoryDistillRequest {
+                target,
+                accept: accept.unwrap_or(false),
+                force: force.unwrap_or(false),
+            };
+            match memory::memory_distill(root_path, request) {
+                Ok(result) => CliResponse {
+                    ok: true,
+                    memory_distill: Some(result),
+                    ..CliResponse::default()
+                },
+                Err(error) => workspace_error_response(error),
+            }
+        }
         CliRequest::MemoryPromote {
             target,
             ingest,
@@ -1024,7 +1063,29 @@ fn success_output(command: &CommandLine, response: &CliResponse) -> String {
             .as_ref()
             .map(render_memory_recall)
             .unwrap_or_default(),
+        CommandLine::Memory {
+            command: MemoryCommand::Distill { json: false, .. },
+            ..
+        } => response
+            .memory_distill
+            .as_ref()
+            .map(render_memory_distill)
+            .unwrap_or_default(),
         _ => serde_json::to_string(response).unwrap_or_else(|_| "{\"ok\":true}".into()),
+    }
+}
+
+fn render_memory_distill(result: &memory::MemoryDistillResult) -> String {
+    if result.accepted {
+        format!(
+            "distilled {} candidate(s) from {} into {} active memory record(s)",
+            result.candidate_count, result.source_thread, result.memory_count
+        )
+    } else {
+        format!(
+            "distilled {} candidate(s) from {} into {} inbox record(s)",
+            result.candidate_count, result.source_thread, result.inbox_count
+        )
     }
 }
 
@@ -1538,6 +1599,28 @@ mod tests {
             request_from_command(&reject).unwrap(),
             CliRequest::MemoryInboxReject {
                 inbox_id: "inbox_1".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn memory_distill_request_uses_socket_protocol_without_root() {
+        let command = CommandLine::Memory {
+            root: None,
+            command: MemoryCommand::Distill {
+                target: "codex:abc123".to_string(),
+                accept: true,
+                force: true,
+                json: true,
+            },
+        };
+
+        assert_eq!(
+            request_from_command(&command).unwrap(),
+            CliRequest::MemoryDistill {
+                target: "codex:abc123".to_string(),
+                accept: Some(true),
+                force: Some(true),
             }
         );
     }

@@ -166,6 +166,13 @@ pub enum CliRequest {
         #[serde(default)]
         since: Option<String>,
     },
+    MemoryDistill {
+        target: String,
+        #[serde(default)]
+        accept: Option<bool>,
+        #[serde(default)]
+        force: Option<bool>,
+    },
     MemoryPromote {
         target: String,
         #[serde(default)]
@@ -287,6 +294,8 @@ pub struct CliResponse {
     pub memory_inbox_review: Option<crate::memory::InboxReviewResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memory_recall: Option<crate::memory::RecallResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_distill: Option<crate::memory::MemoryDistillResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memory_promote: Option<crate::memory::MemoryPromoteResult>,
 }

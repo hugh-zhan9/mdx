@@ -335,6 +335,11 @@ fn dispatch(app: &AppHandle, request: CliRequest) -> CliResponse {
             tag,
             since,
         ),
+        CliRequest::MemoryDistill {
+            target,
+            accept,
+            force,
+        } => handle_memory_distill(app, target, accept, force),
         CliRequest::MemoryPromote {
             target,
             ingest,
@@ -1146,6 +1151,26 @@ fn handle_memory_recall(
     )
 }
 
+fn handle_memory_distill(
+    app: &AppHandle,
+    target: String,
+    accept: Option<bool>,
+    force: Option<bool>,
+) -> CliResponse {
+    let Some((label, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match memory_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+    let response = memory_distill_response_for_root(root_path.clone(), target, accept, force);
+    if response.ok {
+        emit_log_file_updated(app, &label, &root_path);
+    }
+    response
+}
+
 fn handle_memory_promote(
     app: &AppHandle,
     target: String,
@@ -1509,6 +1534,27 @@ fn memory_recall_response_for_root(
         Ok(result) => CliResponse {
             ok: true,
             memory_recall: Some(result),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn memory_distill_response_for_root(
+    root_path: String,
+    target: String,
+    accept: Option<bool>,
+    force: Option<bool>,
+) -> CliResponse {
+    let request = memory::MemoryDistillRequest {
+        target,
+        accept: accept.unwrap_or(false),
+        force: force.unwrap_or(false),
+    };
+    match memory::memory_distill(root_path, request) {
+        Ok(result) => CliResponse {
+            ok: true,
+            memory_distill: Some(result),
             ..CliResponse::default()
         },
         Err(error) => workspace_error(error),

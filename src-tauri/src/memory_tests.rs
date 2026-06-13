@@ -4,13 +4,14 @@ use std::thread;
 use tempfile::tempdir;
 
 use crate::memory::{
-    default_memory_config, memory_add, memory_archive, memory_detect_workspace, memory_get,
-    memory_inbox_accept, memory_inbox_add, memory_inbox_get, memory_inbox_list,
-    memory_inbox_reject, memory_initialize_workspace, memory_list, memory_promote, memory_recall,
-    memory_repair_workspace, memory_search, memory_thread_get, memory_thread_list,
-    memory_thread_save, memory_working_append, memory_working_get, memory_working_set,
-    InboxAddRequest, InboxReviewRequest, MemoryAddRequest, MemoryListFilter, MemoryPromoteRequest,
-    MemoryRepairRequest, RecallRequest, ThreadListFilter, ThreadSaveRequest,
+    default_memory_config, memory_add, memory_archive, memory_detect_workspace,
+    memory_distill_with_json_for_test, memory_get, memory_inbox_accept, memory_inbox_add,
+    memory_inbox_get, memory_inbox_list, memory_inbox_reject, memory_initialize_workspace,
+    memory_list, memory_promote, memory_recall, memory_repair_workspace, memory_search,
+    memory_thread_get, memory_thread_list, memory_thread_save, memory_working_append,
+    memory_working_get, memory_working_set, InboxAddRequest, InboxReviewRequest, MemoryAddRequest,
+    MemoryDistillRequest, MemoryListFilter, MemoryPromoteRequest, MemoryRepairRequest,
+    RecallRequest, ThreadListFilter, ThreadSaveRequest,
 };
 use crate::memory_fs::{
     append_memory_log_entry, read_workspace_file, recover_old_malformed_memory_lock_dir_for_test,
@@ -25,6 +26,32 @@ fn write_memory_lock_owner(root: &std::path::Path, contents: &str) {
 
 fn sample_thread_body() -> String {
     "## Message 1 — user — 2026-06-12T09:00:01Z\n\nImplement auth middleware.\n\n## Message 2 — assistant — 2026-06-12T09:00:15Z\n\nPlan the work.\n".to_string()
+}
+
+#[test]
+fn distill_parser_rejects_invalid_scores_and_accepts_valid_candidates() {
+    let valid = r#"[{
+      "title": "Use JWT",
+      "body": "The project uses JWT access tokens.",
+      "tags": ["auth"],
+      "importance": 0.8,
+      "confidence": 0.9,
+      "source_message_refs": [1]
+    }]"#;
+    let candidates = crate::memory_distill::parse_distill_candidates_for_test(valid).unwrap();
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].title, "Use JWT");
+
+    let invalid = r#"[{
+      "title": "Bad",
+      "body": "Bad score.",
+      "tags": [],
+      "importance": 2.0,
+      "confidence": 0.9,
+      "source_message_refs": [1]
+    }]"#;
+    let error = crate::memory_distill::parse_distill_candidates_for_test(invalid).unwrap_err();
+    assert!(format!("{error}").starts_with("distill_parse_failed:"));
 }
 
 #[test]
@@ -1714,6 +1741,127 @@ fn inbox_accept_is_idempotent_for_already_accepted_candidate() {
     )
     .unwrap();
     assert_eq!(memories.len(), 1);
+}
+
+#[test]
+fn distill_with_json_writes_candidates_to_inbox() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_thread_save(
+        root.path().to_string_lossy().into_owned(),
+        ThreadSaveRequest {
+            source: "codex".to_string(),
+            thread_id: Some("codex:distill-1".to_string()),
+            title: "Auth discussion".to_string(),
+            body: sample_thread_body(),
+            started_at: None,
+            ended_at: None,
+            model: None,
+            workspace_root: None,
+            tags: Vec::new(),
+        },
+    )
+    .unwrap();
+
+    let json = r#"[{
+      "title": "Use JWT",
+      "body": "The project uses JWT access tokens.",
+      "tags": ["auth"],
+      "importance": 0.8,
+      "confidence": 0.9,
+      "source_message_refs": [1, 2]
+    }]"#;
+    let result = memory_distill_with_json_for_test(
+        root.path().to_string_lossy().into_owned(),
+        MemoryDistillRequest {
+            target: "codex:distill-1".to_string(),
+            accept: false,
+            force: false,
+        },
+        json,
+    )
+    .unwrap();
+
+    assert!(!result.accepted);
+    assert_eq!(result.candidate_count, 1);
+    assert_eq!(result.inbox_count, 1);
+    assert_eq!(result.memory_count, 0);
+    assert_eq!(result.inbox[0].frontmatter.title, "Use JWT");
+    assert_eq!(
+        result.inbox[0].frontmatter.source_thread,
+        Some("codex:distill-1".to_string())
+    );
+    assert_eq!(
+        result.inbox[0].frontmatter.source_message_refs,
+        vec!["1".to_string(), "2".to_string()]
+    );
+
+    let inbox = memory_inbox_list(root.path().to_string_lossy().into_owned(), false).unwrap();
+    assert_eq!(inbox.len(), 1);
+    assert_eq!(inbox[0].frontmatter.title, "Use JWT");
+}
+
+#[test]
+fn distill_with_json_accept_true_writes_active_memories() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_thread_save(
+        root.path().to_string_lossy().into_owned(),
+        ThreadSaveRequest {
+            source: "codex".to_string(),
+            thread_id: Some("codex:distill-2".to_string()),
+            title: "Auth discussion".to_string(),
+            body: sample_thread_body(),
+            started_at: None,
+            ended_at: None,
+            model: None,
+            workspace_root: None,
+            tags: Vec::new(),
+        },
+    )
+    .unwrap();
+
+    let json = r#"[{
+      "title": "Keep auth middleware small",
+      "body": "Auth middleware should only validate tokens and attach identity.",
+      "tags": ["auth", "architecture"],
+      "importance": 0.7,
+      "confidence": 0.85,
+      "source_message_refs": [2]
+    }]"#;
+    let result = memory_distill_with_json_for_test(
+        root.path().to_string_lossy().into_owned(),
+        MemoryDistillRequest {
+            target: "codex:distill-2".to_string(),
+            accept: true,
+            force: false,
+        },
+        json,
+    )
+    .unwrap();
+
+    assert!(result.accepted);
+    assert_eq!(result.candidate_count, 1);
+    assert_eq!(result.inbox_count, 0);
+    assert_eq!(result.memory_count, 1);
+    assert_eq!(
+        result.memories[0].frontmatter.title,
+        "Keep auth middleware small"
+    );
+    assert_eq!(
+        result.memories[0].frontmatter.source_thread,
+        Some("codex:distill-2".to_string())
+    );
+
+    let inbox = memory_inbox_list(root.path().to_string_lossy().into_owned(), true).unwrap();
+    assert!(inbox.is_empty());
+    let memories = memory_list(
+        root.path().to_string_lossy().into_owned(),
+        MemoryListFilter::default(),
+    )
+    .unwrap();
+    assert_eq!(memories.len(), 1);
+    assert_eq!(memories[0].title, "Keep auth middleware small");
 }
 
 #[test]

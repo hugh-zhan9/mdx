@@ -274,6 +274,39 @@ pub struct MemoryAddRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+pub struct DistillCandidate {
+    pub title: String,
+    pub body: String,
+    pub tags: Vec<String>,
+    pub importance: f64,
+    pub confidence: f64,
+    pub source_message_refs: Vec<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryDistillRequest {
+    pub target: String,
+    pub accept: bool,
+    pub force: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryDistillResult {
+    pub target: String,
+    pub source_thread: String,
+    pub accepted: bool,
+    pub candidate_count: usize,
+    pub inbox_count: usize,
+    pub memory_count: usize,
+    pub candidates: Vec<DistillCandidate>,
+    pub inbox: Vec<InboxRecord>,
+    pub memories: Vec<MemoryRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub struct InboxFrontmatter {
     pub schema_version: u32,
     pub kind: String,
