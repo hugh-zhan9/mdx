@@ -52,6 +52,78 @@ mod workspace_search;
 
 pub use models::WorkspaceError;
 
+#[tauri::command]
+fn memory_detect_workspace(
+    root_path: String,
+) -> Result<memory::MemoryWorkspaceStatus, WorkspaceError> {
+    memory::memory_detect_workspace(root_path)
+}
+
+#[tauri::command]
+fn memory_initialize_workspace(
+    root_path: String,
+) -> Result<memory::InitializeMemoryResult, WorkspaceError> {
+    memory::memory_initialize_workspace(root_path)
+}
+
+#[tauri::command]
+fn memory_working_get(root_path: String) -> Result<String, WorkspaceError> {
+    memory::memory_working_get(root_path)
+}
+
+#[tauri::command]
+fn memory_working_set(root_path: String, markdown: String) -> Result<String, WorkspaceError> {
+    memory::memory_working_set(root_path, markdown)
+}
+
+#[tauri::command]
+fn memory_recall(
+    root_path: String,
+    request: memory::RecallRequest,
+) -> Result<memory::RecallResult, WorkspaceError> {
+    memory::memory_recall(root_path, request)
+}
+
+#[tauri::command]
+fn memory_list(
+    root_path: String,
+    filter: memory::MemoryListFilter,
+) -> Result<Vec<memory::MemorySummary>, WorkspaceError> {
+    memory::memory_list(root_path, filter)
+}
+
+#[tauri::command]
+fn memory_thread_list(
+    root_path: String,
+    filter: memory::ThreadListFilter,
+) -> Result<Vec<memory::ThreadListItem>, WorkspaceError> {
+    memory::memory_thread_list(root_path, filter)
+}
+
+#[tauri::command]
+fn memory_inbox_list(
+    root_path: String,
+    include_reviewed: bool,
+) -> Result<Vec<memory::InboxRecord>, WorkspaceError> {
+    memory::memory_inbox_list(root_path, include_reviewed)
+}
+
+#[tauri::command]
+fn memory_inbox_accept(
+    root_path: String,
+    request: memory::InboxReviewRequest,
+) -> Result<memory::InboxReviewResult, WorkspaceError> {
+    memory::memory_inbox_accept(root_path, request)
+}
+
+#[tauri::command]
+fn memory_promote(
+    root_path: String,
+    request: memory::MemoryPromoteRequest,
+) -> Result<memory::MemoryPromoteResult, WorkspaceError> {
+    memory::memory_promote(root_path, request)
+}
+
 #[cfg(test)]
 mod assets_tests;
 #[cfg(test)]
@@ -582,6 +654,16 @@ pub fn run() {
             llm_wiki::llm_config_get,
             llm_wiki::llm_config_set,
             llm_wiki::llm_config_update,
+            memory_detect_workspace,
+            memory_initialize_workspace,
+            memory_working_get,
+            memory_working_set,
+            memory_recall,
+            memory_list,
+            memory_thread_list,
+            memory_inbox_list,
+            memory_inbox_accept,
+            memory_promote,
             workspace_search::workspace_search,
             workspace_search::workspace_search_cancel,
             workspace_fs::scan_workspace,
