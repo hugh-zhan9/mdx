@@ -115,9 +115,11 @@ fn memory_init_appends_a_memory_init_audit_event() {
     let root = tempdir().unwrap();
 
     memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
 
     let log = read_workspace_file(root.path(), "log.md").unwrap();
     assert!(log.contains("memory_init"));
+    assert!(log.contains("memory_init result=noop"));
 }
 
 #[test]
@@ -253,6 +255,56 @@ fn recall_uses_memory_config_defaults_when_request_omits_limit_and_budget() {
     .unwrap();
     assert_eq!(result.memories.len(), 1);
     assert!(result.byte_count <= 64);
+}
+
+#[test]
+fn recall_accepts_previous_memory_config_shape() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    std::fs::write(
+        root.path().join(".mdx/memory-config.json"),
+        r#"{
+  "version": 1,
+  "recall": { "default_limit": 10, "context_byte_budget": 65536 },
+  "distill": {
+    "enabled": false,
+    "min_messages": 4,
+    "skip_patterns": ["^Running terminal command"]
+  },
+  "capture": { "enabled": false, "sources": [] }
+}
+"#,
+    )
+    .unwrap();
+    memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "Legacy config recall".to_string(),
+            body: "legacy config recall succeeds".to_string(),
+            tags: vec!["legacy".to_string()],
+            source_thread: None,
+            importance: Some(0.9),
+            confidence: Some(0.9),
+        },
+    )
+    .unwrap();
+
+    let result = memory_recall(
+        root.path().to_string_lossy().into_owned(),
+        RecallRequest {
+            query: "legacy".to_string(),
+            limit: None,
+            byte_budget: None,
+            include_working: false,
+            include_threads: false,
+            tag: None,
+            since: None,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.memories.len(), 1);
+    assert!(!result.truncated);
 }
 
 #[test]

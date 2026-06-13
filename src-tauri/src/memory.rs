@@ -171,7 +171,12 @@ pub(crate) fn initialize_memory_workspace(
         &mut created_paths,
         &mut preserved_paths,
     )?;
-    append_memory_log_entry_impl(root, "memory_init")?;
+    let init_result = if created_paths.is_empty() {
+        "noop"
+    } else {
+        "initialized"
+    };
+    append_memory_log_entry_impl(root, &format!("memory_init result={init_result}"))?;
 
     let status = detect_memory_workspace(root)?;
 
