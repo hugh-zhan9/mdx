@@ -114,6 +114,10 @@ enum MemoryCommand {
         json: bool,
     },
     Init,
+    Repair {
+        #[arg(long)]
+        rebuild_index: bool,
+    },
     Thread {
         #[command(subcommand)]
         command: MemoryThreadCommand,
@@ -331,6 +335,9 @@ fn request_from_memory_command(command: &MemoryCommand) -> io::Result<CliRequest
     Ok(match command {
         MemoryCommand::Status { .. } => CliRequest::MemoryStatus,
         MemoryCommand::Init => CliRequest::MemoryInit,
+        MemoryCommand::Repair { rebuild_index } => CliRequest::MemoryRepair {
+            rebuild_index: *rebuild_index,
+        },
         MemoryCommand::Thread { command } => match command {
             MemoryThreadCommand::Save {
                 source,
@@ -470,6 +477,18 @@ fn execute_memory_headless(command: &CommandLine, root_path: String) -> io::Resu
             },
             Err(error) => workspace_error_response(error),
         },
+        CliRequest::MemoryRepair { rebuild_index } => {
+            let request = memory::MemoryRepairRequest { rebuild_index };
+            match memory::memory_repair_workspace(root_path.clone(), request) {
+                Ok(result) => CliResponse {
+                    ok: true,
+                    root_path: Some(root_path),
+                    memory_repair: Some(result),
+                    ..CliResponse::default()
+                },
+                Err(error) => workspace_error_response(error),
+            }
+        }
         CliRequest::MemoryThreadSave {
             source,
             thread_id,

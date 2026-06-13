@@ -5,12 +5,15 @@ use tempfile::tempdir;
 
 use crate::memory::{
     default_memory_config, memory_add, memory_archive, memory_detect_workspace, memory_get,
-    memory_initialize_workspace, memory_list, memory_promote, memory_recall, memory_search,
-    memory_thread_get, memory_thread_list, memory_thread_save, memory_working_append,
-    memory_working_get, memory_working_set, MemoryAddRequest, MemoryListFilter,
-    MemoryPromoteRequest, RecallRequest, ThreadListFilter, ThreadSaveRequest,
+    memory_initialize_workspace, memory_list, memory_promote, memory_recall,
+    memory_repair_workspace, memory_search, memory_thread_get, memory_thread_list,
+    memory_thread_save, memory_working_append, memory_working_get, memory_working_set,
+    MemoryAddRequest, MemoryListFilter, MemoryPromoteRequest, MemoryRepairRequest, RecallRequest,
+    ThreadListFilter, ThreadSaveRequest,
 };
-use crate::memory_fs::{append_memory_log_entry, read_workspace_file, write_workspace_file};
+use crate::memory_fs::{
+    append_memory_log_entry, read_workspace_file, try_acquire_memory_lock, write_workspace_file,
+};
 
 fn sample_thread_body() -> String {
     "## Message 1 — user — 2026-06-12T09:00:01Z\n\nImplement auth middleware.\n\n## Message 2 — assistant — 2026-06-12T09:00:15Z\n\nPlan the work.\n".to_string()
@@ -120,6 +123,70 @@ fn memory_init_appends_a_memory_init_audit_event() {
     let log = read_workspace_file(root.path(), "log.md").unwrap();
     assert!(log.contains("memory_init"));
     assert!(log.contains("memory_init result=noop"));
+}
+
+#[test]
+fn memory_repair_recreates_missing_thread_index_and_preserves_markdown() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    std::fs::write(root.path().join("memory/working.md"), "# User Working\n").unwrap();
+    let record = memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "Preserved decision".to_string(),
+            body: "Existing memory stays intact.".to_string(),
+            tags: vec!["repair".to_string()],
+            source_thread: None,
+            importance: None,
+            confidence: None,
+        },
+    )
+    .unwrap();
+    let before_record = std::fs::read_to_string(root.path().join(&record.path)).unwrap();
+    std::fs::remove_file(root.path().join(".mdx/thread-index.json")).unwrap();
+
+    let result = memory_repair_workspace(
+        root.path().to_string_lossy().into_owned(),
+        MemoryRepairRequest {
+            rebuild_index: true,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.repaired_paths, vec![".mdx/thread-index.json"]);
+    assert_eq!(
+        result.warnings,
+        vec!["search index rebuild is handled by the search index task"]
+    );
+    assert!(root.path().join(".mdx/thread-index.json").is_file());
+    assert_eq!(
+        std::fs::read_to_string(root.path().join("memory/working.md")).unwrap(),
+        "# User Working\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(root.path().join(&record.path)).unwrap(),
+        before_record
+    );
+    let log = read_workspace_file(root.path(), "log.md").unwrap();
+    assert!(log.contains("memory_repair"));
+}
+
+#[test]
+fn workspace_lock_serializes_memory_writes() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+
+    let lock = try_acquire_memory_lock(root.path()).unwrap();
+    let busy = try_acquire_memory_lock(root.path()).unwrap_err();
+    assert!(format!("{busy}").starts_with("memory_lock_busy:"));
+    assert!(root.path().join(".mdx/memory.lock").is_file());
+
+    drop(lock);
+
+    let reacquired = try_acquire_memory_lock(root.path()).unwrap();
+    assert!(root.path().join(".mdx/memory.lock").is_file());
+    drop(reacquired);
+    assert!(!root.path().join(".mdx/memory.lock").exists());
 }
 
 #[test]

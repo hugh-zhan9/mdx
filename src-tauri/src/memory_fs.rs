@@ -11,6 +11,50 @@ use crate::models::WorkspaceError;
 
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+#[derive(Debug)]
+pub(crate) struct MemoryWorkspaceLock {
+    path: PathBuf,
+}
+
+impl Drop for MemoryWorkspaceLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
+pub(crate) fn try_acquire_memory_lock(root: &Path) -> Result<MemoryWorkspaceLock, WorkspaceError> {
+    ensure_directory(root)?;
+    let lock_dir = ensure_temp_dir(root)?;
+    let lock_path = lock_dir.join("memory.lock");
+    let pid = std::process::id().to_string();
+
+    match fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&lock_path)
+    {
+        Ok(mut file) => {
+            file.write_all(pid.as_bytes()).map_err(|error| {
+                let _ = fs::remove_file(&lock_path);
+                WorkspaceError::from_io("write_failed", "failed to write memory lock file", &error)
+            })?;
+            file.sync_all().map_err(|error| {
+                let _ = fs::remove_file(&lock_path);
+                WorkspaceError::from_io("write_failed", "failed to sync memory lock file", &error)
+            })?;
+            Ok(MemoryWorkspaceLock { path: lock_path })
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Err(
+            WorkspaceError::new("memory_lock_busy", "memory workspace lock is already held"),
+        ),
+        Err(error) => Err(WorkspaceError::from_io(
+            "write_failed",
+            "failed to create memory lock file",
+            &error,
+        )),
+    }
+}
+
 pub(crate) fn ensure_directory(path: &Path) -> Result<(), WorkspaceError> {
     let metadata = fs::symlink_metadata(path).map_err(|error| {
         let code = if error.kind() == std::io::ErrorKind::NotFound {

@@ -3,15 +3,17 @@ use std::collections::BTreeMap;
 use crate::memory_fs::{
     append_memory_log_entry as append_memory_log_entry_impl, create_dir_if_missing,
     create_file_if_missing, create_json_file_if_missing, ensure_directory, read_workspace_file,
-    required_path_state, write_workspace_file, RequiredPathKind, RequiredPathState,
+    required_path_state, try_acquire_memory_lock, write_workspace_file, RequiredPathKind,
+    RequiredPathState,
 };
 pub use crate::memory_models::{
     InitializeMemoryResult, MemoryAddRequest, MemoryCaptureConfig, MemoryConfig,
     MemoryDistillConfig, MemoryEmbeddingConfig, MemoryFrontmatter, MemoryListFilter,
-    MemoryPromoteRequest, MemoryPromoteResult, MemoryRecallConfig, MemoryRecord, MemorySummary,
-    MemoryThreadFrontmatter, MemoryThreadRecord, MemoryWorkspaceStatus, RecallMemoryItem,
-    RecallRequest, RecallResult, ThreadIndex, ThreadIndexEntry, ThreadListFilter, ThreadListItem,
-    ThreadSaveRequest, ThreadSaveResult,
+    MemoryPromoteRequest, MemoryPromoteResult, MemoryRecallConfig, MemoryRecord,
+    MemoryRepairRequest, MemoryRepairResult, MemorySummary, MemoryThreadFrontmatter,
+    MemoryThreadRecord, MemoryWorkspaceStatus, RecallMemoryItem, RecallRequest, RecallResult,
+    ThreadIndex, ThreadIndexEntry, ThreadListFilter, ThreadListItem, ThreadSaveRequest,
+    ThreadSaveResult,
 };
 use crate::models::WorkspaceError;
 use crate::path_guard::canonicalize_workspace_root;
@@ -79,6 +81,14 @@ pub fn memory_initialize_workspace(
 ) -> Result<InitializeMemoryResult, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
     initialize_memory_workspace(root)
+}
+
+pub fn memory_repair_workspace(
+    root_path: String,
+    request: MemoryRepairRequest,
+) -> Result<MemoryRepairResult, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    repair_memory_workspace(root, request)
 }
 
 pub(crate) fn detect_memory_workspace(
@@ -184,6 +194,38 @@ pub(crate) fn initialize_memory_workspace(
         created_paths,
         preserved_paths,
         status,
+    })
+}
+
+pub(crate) fn repair_memory_workspace(
+    root: impl AsRef<std::path::Path>,
+    request: MemoryRepairRequest,
+) -> Result<MemoryRepairResult, WorkspaceError> {
+    let root = root.as_ref();
+    ensure_directory(root)?;
+    let _lock = try_acquire_memory_lock(root)?;
+
+    let mut repaired_paths = Vec::new();
+    let mut preserved_paths = Vec::new();
+    let mut warnings = Vec::new();
+
+    create_json_file_if_missing(
+        root,
+        ".mdx/thread-index.json",
+        &default_thread_index(),
+        &mut repaired_paths,
+        &mut preserved_paths,
+    )?;
+
+    if request.rebuild_index {
+        warnings.push("search index rebuild is handled by the search index task".to_string());
+    }
+
+    append_memory_log_entry_impl(root, "memory_repair")?;
+
+    Ok(MemoryRepairResult {
+        repaired_paths,
+        warnings,
     })
 }
 

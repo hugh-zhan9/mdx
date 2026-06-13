@@ -264,6 +264,7 @@ fn dispatch(app: &AppHandle, request: CliRequest) -> CliResponse {
         CliRequest::LlmWikiLint => handle_llm_wiki_lint(app),
         CliRequest::MemoryStatus => handle_memory_status(app),
         CliRequest::MemoryInit => handle_memory_init(app),
+        CliRequest::MemoryRepair { rebuild_index } => handle_memory_repair(app, rebuild_index),
         CliRequest::MemoryThreadSave {
             source,
             thread_id,
@@ -822,6 +823,21 @@ fn handle_memory_init(app: &AppHandle) -> CliResponse {
     response
 }
 
+fn handle_memory_repair(app: &AppHandle, rebuild_index: bool) -> CliResponse {
+    let Some((label, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match memory_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+    let response = memory_repair_response_for_root(root_path.clone(), rebuild_index);
+    if response.ok {
+        emit_log_file_updated(app, &label, &root_path);
+    }
+    response
+}
+
 fn handle_memory_thread_save(
     app: &AppHandle,
     source: String,
@@ -1076,6 +1092,19 @@ fn memory_init_response_for_root(root_path: String) -> CliResponse {
             ok: true,
             root_path: Some(root_path),
             memory_init: Some(result),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn memory_repair_response_for_root(root_path: String, rebuild_index: bool) -> CliResponse {
+    let request = memory::MemoryRepairRequest { rebuild_index };
+    match memory::memory_repair_workspace(root_path.clone(), request) {
+        Ok(result) => CliResponse {
+            ok: true,
+            root_path: Some(root_path),
+            memory_repair: Some(result),
             ..CliResponse::default()
         },
         Err(error) => workspace_error(error),

@@ -21,6 +21,19 @@ pub struct InitializeMemoryResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+pub struct MemoryRepairRequest {
+    pub rebuild_index: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryRepairResult {
+    pub repaired_paths: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub struct MemoryConfig {
     pub version: u32,
     pub recall: MemoryRecallConfig,
