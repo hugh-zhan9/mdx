@@ -265,6 +265,8 @@ fn dispatch(app: &AppHandle, request: CliRequest) -> CliResponse {
         CliRequest::MemoryStatus => handle_memory_status(app),
         CliRequest::MemoryInit => handle_memory_init(app),
         CliRequest::MemoryRepair { rebuild_index } => handle_memory_repair(app, rebuild_index),
+        CliRequest::MemoryIndexStatus => handle_memory_index_status(app),
+        CliRequest::MemoryIndexRebuild => handle_memory_index_rebuild(app),
         CliRequest::MemoryThreadSave {
             source,
             thread_id,
@@ -838,6 +840,33 @@ fn handle_memory_repair(app: &AppHandle, rebuild_index: bool) -> CliResponse {
     response
 }
 
+fn handle_memory_index_status(app: &AppHandle) -> CliResponse {
+    let Some((_, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match memory_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+
+    memory_index_status_response_for_root(root_path)
+}
+
+fn handle_memory_index_rebuild(app: &AppHandle) -> CliResponse {
+    let Some((label, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match memory_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+    let response = memory_index_rebuild_response_for_root(root_path.clone());
+    if response.ok {
+        emit_log_file_updated(app, &label, &root_path);
+    }
+    response
+}
+
 fn handle_memory_thread_save(
     app: &AppHandle,
     source: String,
@@ -1105,6 +1134,30 @@ fn memory_repair_response_for_root(root_path: String, rebuild_index: bool) -> Cl
             ok: true,
             root_path: Some(root_path),
             memory_repair: Some(result),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn memory_index_status_response_for_root(root_path: String) -> CliResponse {
+    match memory::memory_index_status(root_path.clone()) {
+        Ok(status) => CliResponse {
+            ok: true,
+            root_path: Some(root_path),
+            memory_index_status: Some(status),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn memory_index_rebuild_response_for_root(root_path: String) -> CliResponse {
+    match memory::memory_index_rebuild(root_path.clone()) {
+        Ok(status) => CliResponse {
+            ok: true,
+            root_path: Some(root_path),
+            memory_index_status: Some(status),
             ..CliResponse::default()
         },
         Err(error) => workspace_error(error),

@@ -381,6 +381,11 @@ pub fn memory_index_rebuild(root_path: String) -> Result<MemoryIndexStatus, Work
     crate::search_index::rebuild(&root)
 }
 
+pub fn memory_index_status(root_path: String) -> Result<MemoryIndexStatus, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    crate::search_index::status(&root)
+}
+
 pub fn memory_index_search(
     root_path: String,
     request: MemoryIndexSearchRequest,

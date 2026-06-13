@@ -348,16 +348,10 @@ fn request_from_memory_command(command: &MemoryCommand) -> io::Result<CliRequest
         MemoryCommand::Repair { rebuild_index } => CliRequest::MemoryRepair {
             rebuild_index: *rebuild_index,
         },
-        MemoryCommand::Index { command } => {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                match command {
-                    MemoryIndexCommand::Status | MemoryIndexCommand::Rebuild => {
-                        "memory index commands require --root"
-                    }
-                },
-            ));
-        }
+        MemoryCommand::Index { command } => match command {
+            MemoryIndexCommand::Status => CliRequest::MemoryIndexStatus,
+            MemoryIndexCommand::Rebuild => CliRequest::MemoryIndexRebuild,
+        },
         MemoryCommand::Thread { command } => match command {
             MemoryThreadCommand::Save {
                 source,
@@ -513,6 +507,24 @@ fn execute_memory_headless(command: &CommandLine, root_path: String) -> io::Resu
                 Err(error) => workspace_error_response(error),
             }
         }
+        CliRequest::MemoryIndexStatus => match memory::memory_index_status(root_path.clone()) {
+            Ok(status) => CliResponse {
+                ok: true,
+                root_path: Some(root_path),
+                memory_index_status: Some(status),
+                ..CliResponse::default()
+            },
+            Err(error) => workspace_error_response(error),
+        },
+        CliRequest::MemoryIndexRebuild => match memory::memory_index_rebuild(root_path.clone()) {
+            Ok(status) => CliResponse {
+                ok: true,
+                root_path: Some(root_path),
+                memory_index_status: Some(status),
+                ..CliResponse::default()
+            },
+            Err(error) => workspace_error_response(error),
+        },
         CliRequest::MemoryThreadSave {
             source,
             thread_id,
@@ -718,20 +730,24 @@ fn execute_memory_headless(command: &CommandLine, root_path: String) -> io::Resu
 
 fn execute_memory_index_headless(command: &MemoryIndexCommand, root_path: String) -> CliResponse {
     match command {
-        MemoryIndexCommand::Status | MemoryIndexCommand::Rebuild => {
-            match memory::memory_index_rebuild(root_path.clone()) {
-                Ok(status) => match serde_json::to_string(&status) {
-                    Ok(content) => CliResponse {
-                        ok: true,
-                        root_path: Some(root_path),
-                        content: Some(content),
-                        ..CliResponse::default()
-                    },
-                    Err(error) => CliResponse::error("encode_error", error.to_string()),
-                },
-                Err(error) => workspace_error_response(error),
-            }
-        }
+        MemoryIndexCommand::Status => match memory::memory_index_status(root_path.clone()) {
+            Ok(status) => CliResponse {
+                ok: true,
+                root_path: Some(root_path),
+                memory_index_status: Some(status),
+                ..CliResponse::default()
+            },
+            Err(error) => workspace_error_response(error),
+        },
+        MemoryIndexCommand::Rebuild => match memory::memory_index_rebuild(root_path.clone()) {
+            Ok(status) => CliResponse {
+                ok: true,
+                root_path: Some(root_path),
+                memory_index_status: Some(status),
+                ..CliResponse::default()
+            },
+            Err(error) => workspace_error_response(error),
+        },
     }
 }
 
@@ -1298,6 +1314,31 @@ mod tests {
     }
 
     #[test]
+    fn memory_index_requests_use_socket_protocol_without_root() {
+        let status = CommandLine::Memory {
+            root: None,
+            command: MemoryCommand::Index {
+                command: MemoryIndexCommand::Status,
+            },
+        };
+        assert_eq!(
+            request_from_command(&status).unwrap(),
+            CliRequest::MemoryIndexStatus
+        );
+
+        let rebuild = CommandLine::Memory {
+            root: None,
+            command: MemoryCommand::Index {
+                command: MemoryIndexCommand::Rebuild,
+            },
+        };
+        assert_eq!(
+            request_from_command(&rebuild).unwrap(),
+            CliRequest::MemoryIndexRebuild
+        );
+    }
+
+    #[test]
     fn memory_thread_save_request_reads_file_body() {
         let root = TempDir::new().unwrap();
         let body_path = root.path().join("thread.md");
@@ -1359,6 +1400,30 @@ mod tests {
         };
 
         assert_eq!(success_output(&command, &response), "# Working Memory\n");
+    }
+
+    #[test]
+    fn memory_index_status_output_uses_structured_response_json() {
+        let command = CommandLine::Memory {
+            root: None,
+            command: MemoryCommand::Index {
+                command: MemoryIndexCommand::Status,
+            },
+        };
+        let response = CliResponse {
+            ok: true,
+            memory_index_status: Some(memory::MemoryIndexStatus {
+                index_status: "clean".to_string(),
+                document_count: 1,
+                dirty: false,
+            }),
+            ..CliResponse::default()
+        };
+
+        assert_eq!(
+            success_output(&command, &response),
+            r#"{"ok":true,"memory_index_status":{"index_status":"clean","document_count":1,"dirty":false}}"#
+        );
     }
 
     #[test]

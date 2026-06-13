@@ -1136,6 +1136,109 @@ fn search_index_rebuild_recovers_memory_search_from_markdown() {
 }
 
 #[test]
+fn search_index_search_reports_unavailable_without_recreating_missing_index() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "JWT access token lifetime".to_string(),
+            body: "Access tokens expire after 15 minutes.".to_string(),
+            tags: vec!["auth".to_string()],
+            source_thread: None,
+            importance: None,
+            confidence: None,
+        },
+    )
+    .unwrap();
+    crate::memory::memory_index_rebuild(root.path().to_string_lossy().into_owned()).unwrap();
+
+    let index_path = root.path().join(".mdx/search.sqlite");
+    assert!(index_path.is_file());
+    std::fs::remove_file(&index_path).unwrap();
+
+    let error = crate::memory::memory_index_search(
+        root.path().to_string_lossy().into_owned(),
+        crate::memory::MemoryIndexSearchRequest {
+            query: "JWT".to_string(),
+            limit: 10,
+            kinds: vec!["memory".to_string()],
+        },
+    )
+    .unwrap_err();
+
+    assert_eq!(error.error_code(), "index_unavailable");
+    assert!(!index_path.exists());
+}
+
+#[test]
+fn search_index_query_tokenization_handles_punctuation_quotes_and_unicode() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "C plus plus tokenizer note".to_string(),
+            body: "Write C plus plus examples with access token checks.".to_string(),
+            tags: vec!["compiler".to_string()],
+            source_thread: None,
+            importance: None,
+            confidence: None,
+        },
+    )
+    .unwrap();
+    memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "鉴权 token note".to_string(),
+            body: "鉴权 token 需要短过期时间。".to_string(),
+            tags: vec!["auth".to_string()],
+            source_thread: None,
+            importance: None,
+            confidence: None,
+        },
+    )
+    .unwrap();
+    crate::memory::memory_index_rebuild(root.path().to_string_lossy().into_owned()).unwrap();
+
+    let punctuation = crate::memory::memory_index_search(
+        root.path().to_string_lossy().into_owned(),
+        crate::memory::MemoryIndexSearchRequest {
+            query: "C++".to_string(),
+            limit: 10,
+            kinds: vec!["memory".to_string()],
+        },
+    )
+    .unwrap();
+    assert_eq!(punctuation.items.len(), 1);
+    assert_eq!(punctuation.items[0].title, "C plus plus tokenizer note");
+
+    let quoted = crate::memory::memory_index_search(
+        root.path().to_string_lossy().into_owned(),
+        crate::memory::MemoryIndexSearchRequest {
+            query: r#""access-token""#.to_string(),
+            limit: 10,
+            kinds: vec!["memory".to_string()],
+        },
+    )
+    .unwrap();
+    assert_eq!(quoted.items.len(), 1);
+    assert_eq!(quoted.items[0].title, "C plus plus tokenizer note");
+
+    let unicode = crate::memory::memory_index_search(
+        root.path().to_string_lossy().into_owned(),
+        crate::memory::MemoryIndexSearchRequest {
+            query: "鉴权 token".to_string(),
+            limit: 10,
+            kinds: vec!["memory".to_string()],
+        },
+    )
+    .unwrap();
+    assert_eq!(unicode.items.len(), 1);
+    assert_eq!(unicode.items[0].title, "鉴权 token note");
+}
+
+#[test]
 fn promote_copies_thread_into_raw_promoted() {
     let root = tempdir().unwrap();
     memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();

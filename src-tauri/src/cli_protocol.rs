@@ -76,6 +76,8 @@ pub enum CliRequest {
         #[serde(default)]
         rebuild_index: bool,
     },
+    MemoryIndexStatus,
+    MemoryIndexRebuild,
     MemoryThreadSave {
         source: String,
         #[serde(default)]
@@ -249,6 +251,8 @@ pub struct CliResponse {
     pub memory_init: Option<crate::memory::InitializeMemoryResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memory_repair: Option<crate::memory::MemoryRepairResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_index_status: Option<crate::memory::MemoryIndexStatus>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memory_thread: Option<crate::memory::MemoryThreadRecord>,
     #[serde(skip_serializing_if = "Option::is_none")]
