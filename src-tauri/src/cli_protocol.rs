@@ -76,6 +76,18 @@ pub enum CliRequest {
         #[serde(default)]
         rebuild_index: bool,
     },
+    MemoryExport {
+        output_path: String,
+        #[serde(default)]
+        include_log: bool,
+    },
+    MemoryImport {
+        input_path: String,
+        #[serde(default = "default_memory_import_strategy")]
+        strategy: String,
+        #[serde(default)]
+        dry_run: bool,
+    },
     MemoryIndexStatus,
     MemoryIndexRebuild,
     MemoryThreadSave {
@@ -194,6 +206,10 @@ pub enum CliRequest {
     MemoryCaptureScan {
         source: String,
     },
+}
+
+fn default_memory_import_strategy() -> String {
+    "skip".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]

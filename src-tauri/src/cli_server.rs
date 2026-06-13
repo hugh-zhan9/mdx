@@ -265,6 +265,15 @@ fn dispatch(app: &AppHandle, request: CliRequest) -> CliResponse {
         CliRequest::MemoryStatus => handle_memory_status(app),
         CliRequest::MemoryInit => handle_memory_init(app),
         CliRequest::MemoryRepair { rebuild_index } => handle_memory_repair(app, rebuild_index),
+        CliRequest::MemoryExport {
+            output_path,
+            include_log,
+        } => handle_memory_export(app, output_path, include_log),
+        CliRequest::MemoryImport {
+            input_path,
+            strategy,
+            dry_run,
+        } => handle_memory_import(app, input_path, strategy, dry_run),
         CliRequest::MemoryIndexStatus => handle_memory_index_status(app),
         CliRequest::MemoryIndexRebuild => handle_memory_index_rebuild(app),
         CliRequest::MemoryThreadSave {
@@ -873,6 +882,39 @@ fn handle_memory_repair(app: &AppHandle, rebuild_index: bool) -> CliResponse {
     response
 }
 
+fn handle_memory_export(app: &AppHandle, output_path: String, include_log: bool) -> CliResponse {
+    let Some((_, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match memory_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+
+    memory_export_response_for_root(root_path, output_path, include_log)
+}
+
+fn handle_memory_import(
+    app: &AppHandle,
+    input_path: String,
+    strategy: String,
+    dry_run: bool,
+) -> CliResponse {
+    let Some((label, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match memory_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+    let response =
+        memory_import_response_for_root(root_path.clone(), input_path, strategy, dry_run);
+    if response.ok && !dry_run {
+        emit_log_file_updated(app, &label, &root_path);
+    }
+    response
+}
+
 fn handle_memory_index_status(app: &AppHandle) -> CliResponse {
     let Some((_, snapshot)) = current_snapshot(app) else {
         return CliResponse::error("no_workspace", "no workspace snapshot is available");
@@ -1278,6 +1320,48 @@ fn memory_repair_response_for_root(root_path: String, rebuild_index: bool) -> Cl
             ok: true,
             root_path: Some(root_path),
             memory_repair: Some(result),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn memory_export_response_for_root(
+    root_path: String,
+    output_path: String,
+    include_log: bool,
+) -> CliResponse {
+    let request = memory::MemoryExportRequest {
+        output_path,
+        include_log,
+    };
+    match memory::memory_export_bundle(root_path.clone(), request) {
+        Ok(result) => CliResponse {
+            ok: true,
+            root_path: Some(root_path),
+            memory_export: Some(result),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn memory_import_response_for_root(
+    root_path: String,
+    input_path: String,
+    strategy: String,
+    dry_run: bool,
+) -> CliResponse {
+    let request = memory::MemoryImportRequest {
+        input_path,
+        strategy,
+        dry_run,
+    };
+    match memory::memory_import_bundle(root_path.clone(), request) {
+        Ok(result) => CliResponse {
+            ok: true,
+            root_path: Some(root_path),
+            memory_import: Some(result),
             ..CliResponse::default()
         },
         Err(error) => workspace_error(error),

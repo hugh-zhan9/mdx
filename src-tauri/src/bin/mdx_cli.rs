@@ -456,12 +456,22 @@ fn request_from_memory_command(command: &MemoryCommand) -> io::Result<CliRequest
         MemoryCommand::Repair { rebuild_index } => CliRequest::MemoryRepair {
             rebuild_index: *rebuild_index,
         },
-        MemoryCommand::Export { .. } | MemoryCommand::Import { .. } => {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "memory bundle export/import require --root",
-            ));
-        }
+        MemoryCommand::Export {
+            output,
+            include_log,
+        } => CliRequest::MemoryExport {
+            output_path: normalize_cli_path(output)?,
+            include_log: *include_log,
+        },
+        MemoryCommand::Import {
+            input,
+            strategy,
+            dry_run,
+        } => CliRequest::MemoryImport {
+            input_path: normalize_cli_path(input)?,
+            strategy: trim_required_value(strategy, "strategy")?,
+            dry_run: *dry_run,
+        },
         MemoryCommand::Index { command } => match command {
             MemoryIndexCommand::Status => CliRequest::MemoryIndexStatus,
             MemoryIndexCommand::Rebuild => CliRequest::MemoryIndexRebuild,
@@ -692,6 +702,9 @@ fn execute_memory_headless(command: &CommandLine, root_path: String) -> io::Resu
     }
 
     let response = match request_from_memory_command(command)? {
+        CliRequest::MemoryExport { .. } | CliRequest::MemoryImport { .. } => {
+            unreachable!("bundle commands are handled before request dispatch")
+        }
         CliRequest::MemoryStatus => match memory::memory_detect_workspace(root_path.clone()) {
             Ok(status) => CliResponse {
                 ok: true,
@@ -1845,6 +1858,41 @@ mod tests {
             request_from_command(&rebuild).unwrap(),
             CliRequest::MemoryIndexRebuild
         );
+    }
+
+    #[test]
+    fn memory_bundle_requests_use_socket_protocol_without_root() {
+        let export = CommandLine::Memory {
+            root: None,
+            command: MemoryCommand::Export {
+                output: "memory-bundle".to_string(),
+                include_log: true,
+            },
+        };
+        assert!(matches!(
+            request_from_command(&export).unwrap(),
+            CliRequest::MemoryExport {
+                output_path,
+                include_log: true,
+            } if output_path.ends_with("memory-bundle")
+        ));
+
+        let import = CommandLine::Memory {
+            root: None,
+            command: MemoryCommand::Import {
+                input: "memory-bundle".to_string(),
+                strategy: "skip".to_string(),
+                dry_run: true,
+            },
+        };
+        assert!(matches!(
+            request_from_command(&import).unwrap(),
+            CliRequest::MemoryImport {
+                input_path,
+                strategy,
+                dry_run: true,
+            } if input_path.ends_with("memory-bundle") && strategy == "skip"
+        ));
     }
 
     #[test]

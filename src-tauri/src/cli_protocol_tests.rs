@@ -168,6 +168,34 @@ fn parses_memory_status_and_thread_save_requests() {
 }
 
 #[test]
+fn parses_memory_bundle_requests() {
+    let export: CliRequest = serde_json::from_str(
+        r#"{"cmd":"memory-export","output_path":"/tmp/memory-bundle","include_log":true}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        export,
+        CliRequest::MemoryExport {
+            output_path: "/tmp/memory-bundle".to_string(),
+            include_log: true,
+        }
+    );
+
+    let import: CliRequest = serde_json::from_str(
+        r#"{"cmd":"memory-import","input_path":"/tmp/memory-bundle","dry_run":true}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        import,
+        CliRequest::MemoryImport {
+            input_path: "/tmp/memory-bundle".to_string(),
+            strategy: "skip".to_string(),
+            dry_run: true,
+        }
+    );
+}
+
+#[test]
 fn parses_memory_inbox_requests() {
     let list: CliRequest =
         serde_json::from_str(r#"{"cmd":"memory-inbox-list","include_reviewed":true}"#).unwrap();
@@ -262,6 +290,31 @@ fn serializes_memory_status_response_as_snake_case_json() {
         serde_json::to_string(&response).unwrap(),
         r#"{"ok":true,"memory_status":{"mode":"ordinary","has_memory":false,"can_initialize":true,"missing_paths":["memory"]}}"#
     );
+}
+
+#[test]
+fn serializes_memory_bundle_response_as_snake_case_json() {
+    let response = crate::cli_protocol::CliResponse {
+        ok: true,
+        memory_export: Some(crate::memory::MemoryExportResult {
+            manifest_path: "/tmp/memory-bundle/manifest.json".to_string(),
+            output_path: "/tmp/memory-bundle".to_string(),
+            version: 1,
+            records_exported: 1,
+            files_exported: 1,
+            memory_count: 1,
+            inbox_count: 0,
+            thread_count: 0,
+            log_included: false,
+            copied_paths: vec!["memory/memories/2026-06-13-bundle.md".to_string()],
+        }),
+        ..crate::cli_protocol::CliResponse::default()
+    };
+
+    let json = serde_json::to_string(&response).unwrap();
+    assert!(json.contains(r#""memory_export":{"manifest_path":"/tmp/memory-bundle/manifest.json""#));
+    assert!(json.contains(r#""records_exported":1"#));
+    assert!(!json.contains("manifestPath"));
 }
 
 #[test]
