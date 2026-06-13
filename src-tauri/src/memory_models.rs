@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use serde::{Deserialize, Serialize};
+use serde::{de, Deserialize, Deserializer, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -33,6 +33,14 @@ pub struct MemoryConfig {
 pub struct MemoryRecallConfig {
     pub default_limit: usize,
     pub context_byte_budget: usize,
+    pub half_life_days: u32,
+    pub embeddings: MemoryEmbeddingConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryEmbeddingConfig {
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -41,6 +49,58 @@ pub struct MemoryDistillConfig {
     pub enabled: bool,
     pub min_messages: usize,
     pub skip_patterns: Vec<String>,
+    pub auto_accept: bool,
+    #[serde(deserialize_with = "deserialize_confidence_threshold")]
+    pub confidence_threshold: u8,
+}
+
+fn deserialize_confidence_threshold<'de, D>(deserializer: D) -> Result<u8, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct ConfidenceThresholdVisitor;
+
+    impl de::Visitor<'_> for ConfidenceThresholdVisitor {
+        type Value = u8;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("an integer 0-100 or decimal 0.0-1.0 confidence threshold")
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            u8::try_from(value)
+                .ok()
+                .filter(|value| *value <= 100)
+                .ok_or_else(|| E::custom("confidence threshold must be between 0 and 100"))
+        }
+
+        fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            if value < 0 {
+                return Err(E::custom("confidence threshold must be between 0 and 100"));
+            }
+            self.visit_u64(value as u64)
+        }
+
+        fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            if !(0.0..=1.0).contains(&value) {
+                return Err(E::custom(
+                    "decimal confidence threshold must be between 0.0 and 1.0",
+                ));
+            }
+            Ok((value * 100.0).round() as u8)
+        }
+    }
+
+    deserializer.deserialize_any(ConfidenceThresholdVisitor)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

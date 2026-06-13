@@ -1,7 +1,7 @@
 use crate::memory_fs::{
     date_prefix, ensure_memory_ready, normalize_markdown_body, parse_markdown_frontmatter,
     read_thread_index, render_markdown_with_frontmatter, sha256_prefixed, slugify_segment,
-    thread_index_entry, write_thread_index, write_workspace_file,
+    thread_index_entry, validate_thread_source, write_thread_index, write_workspace_file,
 };
 use crate::memory_models::{
     MemoryThreadFrontmatter, MemoryThreadRecord, ThreadListFilter, ThreadListItem,
@@ -15,6 +15,7 @@ pub fn memory_thread_save(
 ) -> Result<ThreadSaveResult, WorkspaceError> {
     let root = root.as_ref();
     ensure_memory_ready(root)?;
+    validate_thread_source(&request.source)?;
 
     let body = normalize_markdown_body(&request.body);
     if body.trim().is_empty() {
@@ -90,7 +91,7 @@ pub fn memory_thread_save(
     write_thread_index(root, &index)?;
     crate::memory_fs::append_memory_log_entry(
         root,
-        &format!("memory_thread_save thread_id={thread_id} result={action} path={path}"),
+        &format!("thread_save thread_id={thread_id} result={action} path={path}"),
     )?;
 
     Ok(ThreadSaveResult {

@@ -30,7 +30,7 @@
 memory/threads/{source}/{yyyy-mm-dd}-{thread_id}.md
 ```
 
-`source`: `cursor` | `claude-code` | `import` | `manual`
+`source`: `codex` | `cursor` | `claude-code` | `import` | `manual`
 
 ### Required Frontmatter
 
@@ -64,6 +64,7 @@ continues_from: string   # previous thread file path
 - Existing `thread_id` + new `content_hash` -> overwrite the indexed snapshot file in place.
 - Same `thread_id` + same `content_hash` -> skip (idempotent).
 - Updates must append to `log.md` with event `thread_save`.
+- Unknown sources must fail with `invalid_thread_source`.
 
 ## Memory Contract
 
@@ -156,6 +157,7 @@ confidence: float
 ### Phase 1 Retrieval
 
 - Scan `memory/memories/` with substring match + tag filter.
+- When `limit` or `byte_budget` is omitted, read defaults from `.mdx/memory-config.json`.
 - Sort by score (importance × recency decay).
 - Do **not** scan thread bodies.
 - When `include_threads: true`, return matching thread summaries by title, thread id, or path. Thread body text is not injected into recall output in Phase 1.
@@ -183,18 +185,33 @@ Path: `.mdx/memory-config.json`
 ```json
 {
   "version": 1,
-  "recall": { "defaultLimit": 10, "contextByteBudget": 65536 },
-  "distill": { "enabled": false, "minMessages": 4, "skipPatterns": [] },
+  "recall": {
+    "default_limit": 10,
+    "context_byte_budget": 65536,
+    "half_life_days": 30,
+    "embeddings": { "enabled": false }
+  },
+  "distill": {
+    "enabled": false,
+    "min_messages": 4,
+    "skip_patterns": ["^Running terminal command"],
+    "auto_accept": false,
+    "confidence_threshold": 85
+  },
   "capture": { "enabled": false, "sources": [] }
 }
 ```
+
+`memory recall` reads `.mdx/memory-config.json` for omitted `limit`, omitted `byte_budget`, and recency `half_life_days`.
+
+Config fields use snake_case in JSON. `confidence_threshold` is serialized as an integer percentage (`85` means 0.85).
 
 ## CLI Commands (Phase 1)
 
 | Command | Writes log.md | Notes |
 |---|---|---|
-| `memory init` | yes | creates structure |
-| `memory thread save` | yes | idempotent by hash |
+| `memory init` | yes, `memory_init` | creates structure |
+| `memory thread save` | yes, `thread_save` | idempotent by hash |
 | `memory add` | yes | |
 | `memory archive` | yes | soft delete |
 | `memory working set/append` | yes | |

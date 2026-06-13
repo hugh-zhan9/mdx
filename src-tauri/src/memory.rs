@@ -7,11 +7,11 @@ use crate::memory_fs::{
 };
 pub use crate::memory_models::{
     InitializeMemoryResult, MemoryAddRequest, MemoryCaptureConfig, MemoryConfig,
-    MemoryDistillConfig, MemoryFrontmatter, MemoryListFilter, MemoryPromoteRequest,
-    MemoryPromoteResult, MemoryRecallConfig, MemoryRecord, MemorySummary, MemoryThreadFrontmatter,
-    MemoryThreadRecord, MemoryWorkspaceStatus, RecallMemoryItem, RecallRequest, RecallResult,
-    ThreadIndex, ThreadIndexEntry, ThreadListFilter, ThreadListItem, ThreadSaveRequest,
-    ThreadSaveResult,
+    MemoryDistillConfig, MemoryEmbeddingConfig, MemoryFrontmatter, MemoryListFilter,
+    MemoryPromoteRequest, MemoryPromoteResult, MemoryRecallConfig, MemoryRecord, MemorySummary,
+    MemoryThreadFrontmatter, MemoryThreadRecord, MemoryWorkspaceStatus, RecallMemoryItem,
+    RecallRequest, RecallResult, ThreadIndex, ThreadIndexEntry, ThreadListFilter, ThreadListItem,
+    ThreadSaveRequest, ThreadSaveResult,
 };
 use crate::models::WorkspaceError;
 use crate::path_guard::canonicalize_workspace_root;
@@ -35,6 +35,7 @@ const REQUIRED_FILES: &[&str] = &[
 const INITIAL_DIRS: &[&str] = &[
     "memory",
     "memory/threads",
+    "memory/threads/codex",
     "memory/memories",
     "memory/inbox",
     ".mdx",
@@ -170,6 +171,7 @@ pub(crate) fn initialize_memory_workspace(
         &mut created_paths,
         &mut preserved_paths,
     )?;
+    append_memory_log_entry_impl(root, "memory_init")?;
 
     let status = detect_memory_workspace(root)?;
 
@@ -186,11 +188,15 @@ pub(crate) fn default_memory_config() -> MemoryConfig {
         recall: MemoryRecallConfig {
             default_limit: 10,
             context_byte_budget: 65_536,
+            half_life_days: 30,
+            embeddings: MemoryEmbeddingConfig { enabled: false },
         },
         distill: MemoryDistillConfig {
             enabled: false,
             min_messages: 4,
             skip_patterns: vec!["^Running terminal command".to_string()],
+            auto_accept: false,
+            confidence_threshold: 85,
         },
         capture: MemoryCaptureConfig {
             enabled: false,

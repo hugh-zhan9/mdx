@@ -111,6 +111,151 @@ fn memory_initialize_writes_expected_default_config() {
 }
 
 #[test]
+fn memory_init_appends_a_memory_init_audit_event() {
+    let root = tempdir().unwrap();
+
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+
+    let log = read_workspace_file(root.path(), "log.md").unwrap();
+    assert!(log.contains("memory_init"));
+}
+
+#[test]
+fn thread_save_uses_documented_audit_event_name() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+
+    memory_thread_save(
+        root.path().to_string_lossy().into_owned(),
+        ThreadSaveRequest {
+            source: "codex".to_string(),
+            thread_id: Some("codex:session-1".to_string()),
+            title: "Codex session".to_string(),
+            body: sample_thread_body(),
+            started_at: Some("2026-06-13T08:00:00Z".to_string()),
+            ended_at: None,
+            model: None,
+            workspace_root: None,
+            tags: Vec::new(),
+        },
+    )
+    .unwrap();
+
+    let log = read_workspace_file(root.path(), "log.md").unwrap();
+    assert!(log.contains("thread_save"));
+    assert!(!log.contains("memory_thread_save"));
+}
+
+#[test]
+fn thread_save_rejects_unknown_source_and_accepts_codex() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+
+    let invalid = memory_thread_save(
+        root.path().to_string_lossy().into_owned(),
+        ThreadSaveRequest {
+            source: "unknown-agent".to_string(),
+            thread_id: Some("bad:1".to_string()),
+            title: "Bad".to_string(),
+            body: sample_thread_body(),
+            started_at: Some("2026-06-13T08:00:00Z".to_string()),
+            ended_at: None,
+            model: None,
+            workspace_root: None,
+            tags: Vec::new(),
+        },
+    )
+    .unwrap_err();
+    assert!(format!("{invalid}").starts_with("invalid_thread_source:"));
+
+    let valid = memory_thread_save(
+        root.path().to_string_lossy().into_owned(),
+        ThreadSaveRequest {
+            source: "codex".to_string(),
+            thread_id: Some("codex:1".to_string()),
+            title: "Codex".to_string(),
+            body: sample_thread_body(),
+            started_at: Some("2026-06-13T08:00:00Z".to_string()),
+            ended_at: None,
+            model: None,
+            workspace_root: None,
+            tags: Vec::new(),
+        },
+    )
+    .unwrap();
+    assert!(valid.path.starts_with("memory/threads/codex/"));
+}
+
+#[test]
+fn recall_uses_memory_config_defaults_when_request_omits_limit_and_budget() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    std::fs::write(
+        root.path().join(".mdx/memory-config.json"),
+        r#"{
+  "version": 1,
+  "recall": {
+    "default_limit": 1,
+    "context_byte_budget": 64,
+    "half_life_days": 30,
+    "embeddings": { "enabled": false }
+  },
+  "distill": {
+    "enabled": false,
+    "min_messages": 4,
+    "skip_patterns": ["^Running terminal command"],
+    "auto_accept": false,
+    "confidence_threshold": 0.85
+  },
+  "capture": { "enabled": false, "sources": [] }
+}
+"#,
+    )
+    .unwrap();
+
+    memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "Auth alpha".to_string(),
+            body: "auth alpha decision".to_string(),
+            tags: vec!["auth".to_string()],
+            source_thread: None,
+            importance: Some(0.9),
+            confidence: Some(0.9),
+        },
+    )
+    .unwrap();
+    memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "Auth beta".to_string(),
+            body: "auth beta decision".to_string(),
+            tags: vec!["auth".to_string()],
+            source_thread: None,
+            importance: Some(0.8),
+            confidence: Some(0.8),
+        },
+    )
+    .unwrap();
+
+    let result = memory_recall(
+        root.path().to_string_lossy().into_owned(),
+        RecallRequest {
+            query: "auth".to_string(),
+            limit: None,
+            byte_budget: None,
+            include_working: false,
+            include_threads: false,
+            tag: None,
+            since: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(result.memories.len(), 1);
+    assert!(result.byte_count <= 64);
+}
+
+#[test]
 fn memory_read_rejects_symlinked_parent_directory() {
     let root = tempdir().unwrap();
     let external = tempdir().unwrap();

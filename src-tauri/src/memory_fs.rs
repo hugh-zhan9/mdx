@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use sha2::{Digest, Sha256};
 
-use crate::memory_models::{ThreadIndex, ThreadIndexEntry};
+use crate::memory_models::{MemoryConfig, ThreadIndex, ThreadIndexEntry};
 use crate::models::WorkspaceError;
 
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -419,6 +419,26 @@ pub(crate) fn read_thread_index(root: &Path) -> Result<ThreadIndex, WorkspaceErr
             format!("failed to parse thread index: {error}"),
         )
     })
+}
+
+pub(crate) fn read_memory_config(root: &Path) -> Result<MemoryConfig, WorkspaceError> {
+    let contents = read_workspace_file(root, ".mdx/memory-config.json")?;
+    serde_json::from_str(&contents).map_err(|error| {
+        WorkspaceError::new(
+            "json_decode_failed",
+            format!("failed to parse memory config: {error}"),
+        )
+    })
+}
+
+pub(crate) fn validate_thread_source(source: &str) -> Result<(), WorkspaceError> {
+    match source {
+        "codex" | "cursor" | "claude-code" | "import" | "manual" => Ok(()),
+        _ => Err(WorkspaceError::new(
+            "invalid_thread_source",
+            "thread source must be one of codex, cursor, claude-code, import, manual",
+        )),
+    }
 }
 
 pub(crate) fn write_thread_index(root: &Path, index: &ThreadIndex) -> Result<(), WorkspaceError> {

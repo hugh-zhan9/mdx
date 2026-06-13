@@ -44,6 +44,12 @@ pub fn memory_recall(
 ) -> Result<RecallResult, WorkspaceError> {
     let root = root.as_ref();
     crate::memory_fs::ensure_memory_ready(root)?;
+    let config = crate::memory_fs::read_memory_config(root)?;
+    let limit = request.limit.unwrap_or(config.recall.default_limit);
+    let byte_budget = request
+        .byte_budget
+        .unwrap_or(config.recall.context_byte_budget);
+    let half_life_days = config.recall.half_life_days.max(1) as f64;
 
     let working = if request.include_working {
         Some(crate::memory_working::memory_working_get(root)?)
@@ -62,7 +68,12 @@ pub fn memory_recall(
     .into_iter()
     .filter_map(|summary| {
         let record = crate::memory_store::memory_get(root, summary.memory_id).ok()?;
-        let score = score_memory(&record, &request.query, time::OffsetDateTime::now_utc())?;
+        let score = score_memory(
+            &record,
+            &request.query,
+            time::OffsetDateTime::now_utc(),
+            half_life_days,
+        )?;
         let snippet = snippet_for_body(&record.body, 240);
         Some(RecallMemoryItem {
             memory_id: record.frontmatter.memory_id,
@@ -81,9 +92,8 @@ pub fn memory_recall(
             .partial_cmp(&left.score)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
-    items.truncate(request.limit.unwrap_or(10));
+    items.truncate(limit);
 
-    let byte_budget = request.byte_budget.unwrap_or(65_536);
     let mut byte_count = working.as_ref().map(|value| value.len()).unwrap_or(0);
     let mut truncated = byte_count > byte_budget;
     let mut selected = Vec::new();
@@ -149,11 +159,17 @@ fn recall_threads(
         tags: Vec::new(),
     })
     .collect::<Vec<_>>();
-    items.truncate(request.limit.unwrap_or(10));
+    let config = crate::memory_fs::read_memory_config(root)?;
+    items.truncate(request.limit.unwrap_or(config.recall.default_limit));
     Ok(items)
 }
 
-fn score_memory(record: &MemoryRecord, query: &str, now: time::OffsetDateTime) -> Option<f64> {
+fn score_memory(
+    record: &MemoryRecord,
+    query: &str,
+    now: time::OffsetDateTime,
+    half_life_days: f64,
+) -> Option<f64> {
     let query = query.trim().to_ascii_lowercase();
     if query.is_empty() {
         return None;
@@ -190,7 +206,7 @@ fn score_memory(record: &MemoryRecord, query: &str, now: time::OffsetDateTime) -
     )
     .ok()?;
     let age_days = ((now - created_at).whole_seconds().max(0) as f64) / 86_400.0;
-    let recency_decay = 0.5_f64.powf(age_days / 30.0);
+    let recency_decay = 0.5_f64.powf(age_days / half_life_days);
     Some(text_score * (0.5 + importance) * recency_decay)
 }
 
