@@ -6,6 +6,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import {
@@ -47,8 +48,19 @@ interface MemoryPanelProps {
 
 export function MemoryPanel({ rootPath }: MemoryPanelProps) {
   const memory = useMemoryWorkspace(rootPath);
+  const activeRootPathRef = useRef(rootPath);
+  activeRootPathRef.current = rootPath;
+  const mountedRef = useRef(false);
+  const workingRequestIdRef = useRef(0);
+  const memoriesRequestIdRef = useRef(0);
+  const inboxRequestIdRef = useRef(0);
+  const threadsRequestIdRef = useRef(0);
   const [activeTab, setActiveTab] = useState<MemoryPanelTabId>("settings");
   const [actionError, setActionError] = useState<string | null>(null);
+  const pendingActionsRef = useRef<Set<string>>(new Set());
+  const [pendingActions, setPendingActions] = useState<Set<string>>(
+    () => new Set(),
+  );
   const effectiveTab =
     memory.tabs.find((tab) => tab.id === activeTab)?.disabled === true
       ? "settings"
@@ -88,71 +100,221 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    activeRootPathRef.current = rootPath;
+    workingRequestIdRef.current += 1;
+    memoriesRequestIdRef.current += 1;
+    inboxRequestIdRef.current += 1;
+    threadsRequestIdRef.current += 1;
+    setActionError(null);
+    setStatusMessage(null);
+    setRecallResult(null);
+    setWorkingText("");
+    setWorkingLoaded(false);
+    setWorkingLoading(false);
+    setWorkingSaving(false);
+    setMemories([]);
+    setMemoriesLoaded(false);
+    setMemoriesLoading(false);
+    setInbox([]);
+    setInboxLoaded(false);
+    setInboxLoading(false);
+    setThreads([]);
+    setThreadsLoaded(false);
+    setThreadsLoading(false);
+    setSelectedThreadId(null);
+    setSelectedThread(null);
+    setThreadLoading(false);
+    setRepairResult(null);
+    setIndexStatus(null);
+    setSettingsLoading(false);
+    pendingActionsRef.current = new Set();
+    setPendingActions(new Set());
+  }, [rootPath]);
+
   const setError = useCallback((error: unknown) => {
     setActionError(formatMemoryError(error));
   }, []);
+
+  const isCurrentRoot = useCallback(
+    (requestRootPath: string) =>
+      mountedRef.current && activeRootPathRef.current === requestRootPath,
+    [],
+  );
+
+  const setActionPending = useCallback((key: string, pending: boolean) => {
+    const nextRef = new Set(pendingActionsRef.current);
+    if (pending) {
+      nextRef.add(key);
+    } else {
+      nextRef.delete(key);
+    }
+    pendingActionsRef.current = nextRef;
+    setPendingActions((current) => {
+      const next = new Set(current);
+      if (pending) {
+        next.add(key);
+      } else {
+        next.delete(key);
+      }
+      return next;
+    });
+  }, []);
+
+  const runExclusiveAction = useCallback(
+    async (key: string, action: () => Promise<void>) => {
+      if (pendingActionsRef.current.has(key)) {
+        return;
+      }
+
+      setActionPending(key, true);
+      try {
+        await action();
+      } finally {
+        setActionPending(key, false);
+      }
+    },
+    [setActionPending],
+  );
 
   const refreshWorking = useCallback(async () => {
     if (!rootPath || !memory.hasMemory) {
       return;
     }
 
+    const requestRootPath = rootPath;
+    const requestId = workingRequestIdRef.current + 1;
+    workingRequestIdRef.current = requestId;
     setWorkingLoading(true);
     setActionError(null);
     try {
-      const markdown = await getWorkingMemory(rootPath);
+      const markdown = await getWorkingMemory(requestRootPath);
+      if (
+        !isCurrentRoot(requestRootPath) ||
+        workingRequestIdRef.current !== requestId
+      ) {
+        return;
+      }
       setWorkingText(markdown);
       setWorkingLoaded(true);
     } catch (error) {
-      setError(error);
+      if (
+        isCurrentRoot(requestRootPath) &&
+        workingRequestIdRef.current === requestId
+      ) {
+        setError(error);
+      }
     } finally {
-      setWorkingLoading(false);
+      if (
+        isCurrentRoot(requestRootPath) &&
+        workingRequestIdRef.current === requestId
+      ) {
+        setWorkingLoading(false);
+      }
     }
-  }, [memory.hasMemory, rootPath, setError]);
+  }, [isCurrentRoot, memory.hasMemory, rootPath, setError]);
 
   const refreshMemories = useCallback(async () => {
     if (!rootPath || !memory.hasMemory) {
       return;
     }
 
+    const requestRootPath = rootPath;
+    const requestId = memoriesRequestIdRef.current + 1;
+    memoriesRequestIdRef.current = requestId;
     setMemoriesLoading(true);
     setActionError(null);
     try {
-      setMemories(await listMemories(rootPath, { include_archived: false }));
+      const nextMemories = await listMemories(requestRootPath, {
+        include_archived: false,
+      });
+      if (
+        !isCurrentRoot(requestRootPath) ||
+        memoriesRequestIdRef.current !== requestId
+      ) {
+        return;
+      }
+      setMemories(nextMemories);
       setMemoriesLoaded(true);
     } catch (error) {
-      setError(error);
+      if (
+        isCurrentRoot(requestRootPath) &&
+        memoriesRequestIdRef.current === requestId
+      ) {
+        setError(error);
+      }
     } finally {
-      setMemoriesLoading(false);
+      if (
+        isCurrentRoot(requestRootPath) &&
+        memoriesRequestIdRef.current === requestId
+      ) {
+        setMemoriesLoading(false);
+      }
     }
-  }, [memory.hasMemory, rootPath, setError]);
+  }, [isCurrentRoot, memory.hasMemory, rootPath, setError]);
 
   const refreshInbox = useCallback(async () => {
     if (!rootPath || !memory.hasMemory) {
       return;
     }
 
+    const requestRootPath = rootPath;
+    const requestId = inboxRequestIdRef.current + 1;
+    inboxRequestIdRef.current = requestId;
     setInboxLoading(true);
     setActionError(null);
     try {
-      setInbox(await listMemoryInbox(rootPath, false));
+      const nextInbox = await listMemoryInbox(requestRootPath, false);
+      if (
+        !isCurrentRoot(requestRootPath) ||
+        inboxRequestIdRef.current !== requestId
+      ) {
+        return;
+      }
+      setInbox(nextInbox);
       setInboxLoaded(true);
     } catch (error) {
-      setError(error);
+      if (
+        isCurrentRoot(requestRootPath) &&
+        inboxRequestIdRef.current === requestId
+      ) {
+        setError(error);
+      }
     } finally {
-      setInboxLoading(false);
+      if (
+        isCurrentRoot(requestRootPath) &&
+        inboxRequestIdRef.current === requestId
+      ) {
+        setInboxLoading(false);
+      }
     }
-  }, [memory.hasMemory, rootPath, setError]);
+  }, [isCurrentRoot, memory.hasMemory, rootPath, setError]);
 
   const refreshThreads = useCallback(async () => {
     if (!rootPath || !memory.hasMemory) {
       return;
     }
 
+    const requestRootPath = rootPath;
+    const requestId = threadsRequestIdRef.current + 1;
+    threadsRequestIdRef.current = requestId;
     setThreadsLoading(true);
     setActionError(null);
     try {
-      const items = await listMemoryThreads(rootPath, {});
+      const items = await listMemoryThreads(requestRootPath, {});
+      if (
+        !isCurrentRoot(requestRootPath) ||
+        threadsRequestIdRef.current !== requestId
+      ) {
+        return;
+      }
       setThreads(items);
       setThreadsLoaded(true);
       setSelectedThreadId((current) =>
@@ -161,11 +323,21 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
           : (items[0]?.thread_id ?? null),
       );
     } catch (error) {
-      setError(error);
+      if (
+        isCurrentRoot(requestRootPath) &&
+        threadsRequestIdRef.current === requestId
+      ) {
+        setError(error);
+      }
     } finally {
-      setThreadsLoading(false);
+      if (
+        isCurrentRoot(requestRootPath) &&
+        threadsRequestIdRef.current === requestId
+      ) {
+        setThreadsLoading(false);
+      }
     }
-  }, [memory.hasMemory, rootPath, setError]);
+  }, [isCurrentRoot, memory.hasMemory, rootPath, setError]);
 
   useEffect(() => {
     if (effectiveTab === "working" && !workingLoaded) {
@@ -268,47 +440,54 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
 
   const handleArchiveMemory = useCallback(
     async (target: string) => {
-      setActionError(null);
-      try {
-        await archiveMemory(rootPath, target);
-        await refreshMemories();
-      } catch (error) {
-        setError(error);
-      }
+      await runExclusiveAction(`archive:${target}`, async () => {
+        setActionError(null);
+        try {
+          await archiveMemory(rootPath, target);
+          await refreshMemories();
+        } catch (error) {
+          setError(error);
+        }
+      });
     },
-    [refreshMemories, rootPath, setError],
+    [refreshMemories, rootPath, runExclusiveAction, setError],
   );
 
   const handleAcceptInbox = useCallback(
     async (entry: InboxRecord) => {
-      setActionError(null);
-      try {
-        await acceptMemoryInbox(rootPath, {
-          inbox_id: entry.frontmatter.inbox_id,
-          title: entry.frontmatter.title,
-          body: entry.body,
-          tags: entry.frontmatter.tags,
-        });
-        await refreshInbox();
-        setMemoriesLoaded(false);
-      } catch (error) {
-        setError(error);
-      }
+      const inboxId = entry.frontmatter.inbox_id;
+      await runExclusiveAction(`accept:${inboxId}`, async () => {
+        setActionError(null);
+        try {
+          await acceptMemoryInbox(rootPath, {
+            inbox_id: inboxId,
+            title: entry.frontmatter.title,
+            body: entry.body,
+            tags: entry.frontmatter.tags,
+          });
+          await refreshInbox();
+          setMemoriesLoaded(false);
+        } catch (error) {
+          setError(error);
+        }
+      });
     },
-    [refreshInbox, rootPath, setError],
+    [refreshInbox, rootPath, runExclusiveAction, setError],
   );
 
   const handleRejectInbox = useCallback(
     async (inboxId: string) => {
-      setActionError(null);
-      try {
-        await rejectMemoryInbox(rootPath, inboxId);
-        await refreshInbox();
-      } catch (error) {
-        setError(error);
-      }
+      await runExclusiveAction(`reject:${inboxId}`, async () => {
+        setActionError(null);
+        try {
+          await rejectMemoryInbox(rootPath, inboxId);
+          await refreshInbox();
+        } catch (error) {
+          setError(error);
+        }
+      });
     },
-    [refreshInbox, rootPath, setError],
+    [refreshInbox, rootPath, runExclusiveAction, setError],
   );
 
   const handlePromoteThread = useCallback(async () => {
@@ -316,19 +495,21 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
       return;
     }
 
-    setActionError(null);
-    try {
-      const result = await promoteMemory(rootPath, {
-        target: selectedThreadId,
-        ingest: true,
-      });
-      setStatusMessage(`Promoted ${result.promoted_path}`);
-      await refreshThreads();
-      setMemoriesLoaded(false);
-    } catch (error) {
-      setError(error);
-    }
-  }, [refreshThreads, rootPath, selectedThreadId, setError]);
+    await runExclusiveAction(`promote:${selectedThreadId}`, async () => {
+      setActionError(null);
+      try {
+        const result = await promoteMemory(rootPath, {
+          target: selectedThreadId,
+          ingest: true,
+        });
+        setStatusMessage(`Promoted ${result.promoted_path}`);
+        await refreshThreads();
+        setMemoriesLoaded(false);
+      } catch (error) {
+        setError(error);
+      }
+    });
+  }, [refreshThreads, rootPath, runExclusiveAction, selectedThreadId, setError]);
 
   const handleInitialize = useCallback(async () => {
     await memory.initialize();
@@ -406,10 +587,18 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
         </div>
 
         {memory.error ? (
-          <ErrorBlock message={memory.error} onRetry={memory.refresh} />
+          <ErrorBlock
+            message={memory.error}
+            actionLabel="Retry"
+            onAction={memory.refresh}
+          />
         ) : null}
         {actionError ? (
-          <ErrorBlock message={actionError} onRetry={() => setActionError(null)} />
+          <ErrorBlock
+            message={actionError}
+            actionLabel="Dismiss"
+            onAction={() => setActionError(null)}
+          />
         ) : null}
         {statusMessage ? (
           <div className="border border-base-300 bg-base-200/60 p-2 text-base-content/70">
@@ -440,6 +629,7 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
             loading={memoriesLoading}
             onRefresh={refreshMemories}
             onArchive={handleArchiveMemory}
+            pendingActions={pendingActions}
           />
         ) : effectiveTab === "inbox" ? (
           <InboxTab
@@ -448,6 +638,7 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
             onRefresh={refreshInbox}
             onAccept={handleAcceptInbox}
             onReject={handleRejectInbox}
+            pendingActions={pendingActions}
           />
         ) : effectiveTab === "threads" ? (
           <ThreadsTab
@@ -459,6 +650,7 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
             onRefresh={refreshThreads}
             onSelect={setSelectedThreadId}
             onPromote={handlePromoteThread}
+            pendingActions={pendingActions}
           />
         ) : (
           <SettingsTab
@@ -479,19 +671,21 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
 
 function ErrorBlock({
   message,
-  onRetry,
+  actionLabel,
+  onAction,
 }: {
   message: string;
-  onRetry: () => void | Promise<void>;
+  actionLabel: string;
+  onAction: () => void | Promise<void>;
 }) {
   return (
     <div className="space-y-2 border border-error/40 bg-error/5 p-2 text-error">
       <div className="break-words">{message}</div>
       <TextControlButton
         className="border-error/40 text-error hover:bg-error/10 hover:text-error"
-        onClick={() => void onRetry()}
+        onClick={() => void onAction()}
       >
-        Dismiss
+        {actionLabel}
       </TextControlButton>
     </div>
   );
@@ -590,11 +784,13 @@ function MemoriesTab({
   loading,
   onRefresh,
   onArchive,
+  pendingActions,
 }: {
   memories: MemorySummary[];
   loading: boolean;
   onRefresh: () => Promise<void>;
   onArchive: (target: string) => Promise<void>;
+  pendingActions: Set<string>;
 }) {
   return (
     <ListPanel
@@ -619,8 +815,13 @@ function MemoriesTab({
                 </div>
               ) : null}
             </div>
-            <TextControlButton onClick={() => void onArchive(memory.memory_id)}>
-              Archive
+            <TextControlButton
+              disabled={pendingActions.has(`archive:${memory.memory_id}`)}
+              onClick={() => void onArchive(memory.memory_id)}
+            >
+              {pendingActions.has(`archive:${memory.memory_id}`)
+                ? "Archiving"
+                : "Archive"}
             </TextControlButton>
           </div>
         </div>
@@ -635,12 +836,14 @@ function InboxTab({
   onRefresh,
   onAccept,
   onReject,
+  pendingActions,
 }: {
   inbox: InboxRecord[];
   loading: boolean;
   onRefresh: () => Promise<void>;
   onAccept: (entry: InboxRecord) => Promise<void>;
   onReject: (inboxId: string) => Promise<void>;
+  pendingActions: Set<string>;
 }) {
   return (
     <ListPanel title="Inbox" loading={loading} empty="Inbox empty" onRefresh={onRefresh}>
@@ -656,14 +859,26 @@ function InboxTab({
               </div>
             </div>
             <div className="flex shrink-0 gap-1">
-              <TextControlButton onClick={() => void onAccept(entry)}>
-                Accept
+              <TextControlButton
+                disabled={pendingActions.has(
+                  `accept:${entry.frontmatter.inbox_id}`,
+                )}
+                onClick={() => void onAccept(entry)}
+              >
+                {pendingActions.has(`accept:${entry.frontmatter.inbox_id}`)
+                  ? "Accepting"
+                  : "Accept"}
               </TextControlButton>
               <TextControlButton
                 className="text-error hover:bg-error/10 hover:text-error"
+                disabled={pendingActions.has(
+                  `reject:${entry.frontmatter.inbox_id}`,
+                )}
                 onClick={() => void onReject(entry.frontmatter.inbox_id)}
               >
-                Reject
+                {pendingActions.has(`reject:${entry.frontmatter.inbox_id}`)
+                  ? "Rejecting"
+                  : "Reject"}
               </TextControlButton>
             </div>
           </div>
@@ -682,6 +897,7 @@ function ThreadsTab({
   onRefresh,
   onSelect,
   onPromote,
+  pendingActions,
 }: {
   threads: ThreadListItem[];
   selectedThread: MemoryThreadRecord | null;
@@ -691,6 +907,7 @@ function ThreadsTab({
   onRefresh: () => Promise<void>;
   onSelect: (threadId: string) => void;
   onPromote: () => Promise<void>;
+  pendingActions: Set<string>;
 }) {
   return (
     <div className="space-y-3">
@@ -725,8 +942,18 @@ function ThreadsTab({
             <div className="min-w-0 truncate font-medium text-base-content">
               {selectedThread?.frontmatter.title ?? selectedThreadId}
             </div>
-            <TextControlButton onClick={() => void onPromote()} disabled={threadLoading}>
-              Promote
+            <TextControlButton
+              onClick={() => void onPromote()}
+              disabled={
+                threadLoading ||
+                Boolean(
+                  selectedThreadId && pendingActions.has(`promote:${selectedThreadId}`),
+                )
+              }
+            >
+              {selectedThreadId && pendingActions.has(`promote:${selectedThreadId}`)
+                ? "Promoting"
+                : "Promote"}
             </TextControlButton>
           </div>
           <pre className="max-h-72 overflow-auto whitespace-pre-wrap font-sans text-xs leading-relaxed text-base-content/75">
