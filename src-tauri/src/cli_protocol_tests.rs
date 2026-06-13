@@ -307,6 +307,9 @@ fn serializes_memory_capture_responses_as_snake_case_json() {
             title: "Codex".to_string(),
             message_count: 2,
             distilled: false,
+            distill_status: "failed".to_string(),
+            distill_error_code: Some("distill_unavailable".to_string()),
+            distill_error_message: Some("distill_unavailable: unavailable".to_string()),
             distill_result: None,
         }),
         memory_capture_scan: Some(crate::memory::MemoryCaptureScanResult {
@@ -320,8 +323,11 @@ fn serializes_memory_capture_responses_as_snake_case_json() {
     let json = serde_json::to_string(&response).unwrap();
     assert!(json.contains(r#""memory_capture_import":{"source":"codex""#));
     assert!(json.contains(r#""message_count":2"#));
+    assert!(json.contains(r#""distill_status":"failed""#));
+    assert!(json.contains(r#""distill_error_code":"distill_unavailable""#));
     assert!(json.contains(r#""memory_capture_scan":{"source":"codex","status":"capture_scan_not_configured","paths":[]}"#));
     assert!(!json.contains("messageCount"));
+    assert!(!json.contains("distillStatus"));
 }
 
 #[test]

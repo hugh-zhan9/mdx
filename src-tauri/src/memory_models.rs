@@ -159,6 +159,9 @@ pub struct MemoryCaptureImportResult {
     pub title: String,
     pub message_count: usize,
     pub distilled: bool,
+    pub distill_status: String,
+    pub distill_error_code: Option<String>,
+    pub distill_error_message: Option<String>,
     pub distill_result: Option<MemoryDistillResult>,
 }
 

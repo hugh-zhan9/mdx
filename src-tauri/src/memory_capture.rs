@@ -74,18 +74,30 @@ pub(crate) fn memory_capture_import(
         },
     )?;
 
-    let distill_result = if request.distill {
-        Some(crate::memory_distill::memory_distill(
+    let mut distill_status = "not_requested".to_string();
+    let mut distill_error_code = None;
+    let mut distill_error_message = None;
+    let mut distill_result = None;
+    if request.distill {
+        match crate::memory_distill::memory_distill(
             root,
             MemoryDistillRequest {
                 target: save_result.thread_id.clone(),
                 accept: false,
                 force: false,
             },
-        )?)
-    } else {
-        None
-    };
+        ) {
+            Ok(result) => {
+                distill_status = "succeeded".to_string();
+                distill_result = Some(result);
+            }
+            Err(error) => {
+                distill_status = "failed".to_string();
+                distill_error_code = Some(error.error_code().to_string());
+                distill_error_message = Some(error.to_string());
+            }
+        }
+    }
 
     Ok(MemoryCaptureImportResult {
         source: source.to_string(),
@@ -94,6 +106,9 @@ pub(crate) fn memory_capture_import(
         title,
         message_count: parsed.message_count,
         distilled: distill_result.is_some(),
+        distill_status,
+        distill_error_code,
+        distill_error_message,
         distill_result,
     })
 }

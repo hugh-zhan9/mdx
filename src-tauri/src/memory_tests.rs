@@ -190,12 +190,51 @@ fn capture_imports_codex_jsonl_as_thread() {
     assert_eq!(result.source, "codex");
     assert!(result.path.starts_with("memory/threads/codex/"));
     assert!(!result.distilled);
+    assert_eq!(result.distill_status, "not_requested");
+    assert_eq!(result.distill_error_code, None);
     assert!(result.distill_result.is_none());
     let thread =
         memory_thread_get(root.path().to_string_lossy().into_owned(), result.thread_id).unwrap();
     assert!(thread
         .body
         .contains("## Message 1 — user — 2026-06-13T08:00:00Z"));
+    assert!(thread.body.contains("MDX memory supports Codex"));
+}
+
+#[test]
+fn capture_import_reports_distill_unavailable_as_partial_success() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+
+    let result = memory_capture_import(
+        root.path().to_string_lossy().into_owned(),
+        MemoryCaptureImportRequest {
+            source: "codex".to_string(),
+            path: memory_fixture_path("codex-session.jsonl"),
+            title: Some("Codex fixture".to_string()),
+            thread_id: Some("codex:distill-unavailable".to_string()),
+            distill: true,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.thread_id, "codex:distill-unavailable");
+    assert!(result.path.starts_with("memory/threads/codex/"));
+    assert!(!result.distilled);
+    assert_eq!(result.distill_status, "failed");
+    assert_eq!(
+        result.distill_error_code.as_deref(),
+        Some("distill_unavailable")
+    );
+    assert!(result
+        .distill_error_message
+        .as_deref()
+        .unwrap()
+        .contains("distill_unavailable"));
+    assert!(result.distill_result.is_none());
+
+    let thread =
+        memory_thread_get(root.path().to_string_lossy().into_owned(), result.thread_id).unwrap();
     assert!(thread.body.contains("MDX memory supports Codex"));
 }
 
