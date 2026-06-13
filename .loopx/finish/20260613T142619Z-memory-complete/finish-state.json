@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "audit_id": "20260613T142619Z-memory-complete",
+  "slug": "memory-complete",
+  "status": "completed",
+  "updated_at": "2026-06-13T14:36:40Z",
+  "inputs": {
+    "scanned": [
+      "slug=memory-complete",
+      "worktree=/Users/zhangyukun/project/mdx",
+      "branch=main",
+      "base_branch=main",
+      "head=6ccbfaaa550291d539c2d6a6112e4ab1997ee697",
+      "change_window_source=baseline",
+      "change_range=1154a36..HEAD",
+      "committed_change_count=40",
+      "verification=npm run lint passed",
+      "verification=npm test passed 53 files and 283 tests",
+      "verification=git diff --check passed",
+      "verification=cargo test --lib passed 384 tests",
+      "verification=cargo test --bin mdx-cli passed 29 tests",
+      "verification=cargo test --bin mdx-mcp passed 9 tests",
+      "review=final-review found no Critical/Important/Minor findings at 6ccbfaa"
+    ]
+  },
+  "audit": {
+    "branch": "main",
+    "base_branch": "main",
+    "worktree": "/Users/zhangyukun/project/mdx",
+    "head": "6ccbfaaa550291d539c2d6a6112e4ab1997ee697",
+    "accepted_candidates": [
+      {
+        "id": "spec-memory-complete-runtime-contracts",
+        "kind": "spec",
+        "target": "docs/loopx/specs/memory.md",
+        "summary": "Complete Memory runtime contracts now record dirty-index marker fallback, distill idempotency and force semantics, full CLI/HTTP/MCP/Tauri facade parity, and bundle export locking.",
+        "evidence": [
+          "commits 1154a36..6ccbfaa implement search index dirty marker, distill idempotency/config, full Tauri command surface, and export lock",
+          "final-review loops found and verified these as reusable integration boundaries",
+          "verification suite passed after the fixes"
+        ]
+      }
+    ],
+    "rejected_candidates": [
+      {
+        "id": "memory-local-memory-complete-review",
+        "kind": "memory",
+        "scope": "local",
+        "rejection_reason": "The durable learnings are project contracts and were promoted to docs/loopx/specs/memory.md; a local memory card would duplicate repo-tracked guidance."
+      },
+      {
+        "id": "memory-shared-memory-complete-review",
+        "kind": "memory",
+        "scope": "shared",
+        "rejection_reason": "The reusable Memory behavior is stable enough for the repo spec, not a lightweight shared memory note."
+      }
+    ],
+    "extraction_candidates": [
+      {
+        "id": "memory-local-memory-complete-review",
+        "kind": "memory",
+        "scope": "local",
+        "status": "reviewed-rejected",
+        "target": ".loopx/memory/entries/",
+        "summary": "Review complete Memory implementation for local agent memory.",
+        "reason": "The complete feature produced durable integration rules.",
+        "evidence": [
+          "change_window.range=1154a36..HEAD"
+        ]
+      },
+      {
+        "id": "memory-shared-memory-complete-review",
+        "kind": "memory",
+        "scope": "shared",
+        "status": "reviewed-rejected",
+        "target": "docs/loopx/memory/",
+        "summary": "Review complete Memory implementation for shared memory.",
+        "reason": "The complete feature produced durable integration rules.",
+        "evidence": [
+          "change_window.range=1154a36..HEAD"
+        ]
+      },
+      {
+        "id": "spec-memory-complete-runtime-contracts",
+        "kind": "spec",
+        "status": "reviewed-accepted",
+        "target": "docs/loopx/specs/memory.md",
+        "summary": "Promote complete Memory runtime contracts to spec.",
+        "reason": "Final-review fixes established reusable rules for degraded projections, distill reruns, interface parity, and bundle snapshot consistency.",
+        "evidence": [
+          "docs/loopx/specs/memory.md",
+          "final review findings fixed"
+        ]
+      }
+    ],
+    "no_candidates_reason": "Spec candidate accepted; local/shared memory candidates rejected to avoid duplicating durable spec guidance.",
+    "change_window": {
+      "source": "baseline",
+      "baseline_ref": "1154a36c169b9429d3290c3fc224f79b19d496c4",
+      "baseline_ref_short": "1154a36",
+      "range": "1154a36..HEAD",
+      "commit_count": 40
+    }
+  },
+  "choice": {
+    "action": "push",
+    "status": "done",
+    "summary": "Committed finish audit/spec updates on main and pushed main to origin.",
+    "target": "origin/main",
+    "at": "2026-06-13T14:36:40Z"
+  },
+  "choice_history": [
+    {
+      "action": "push",
+      "status": "done",
+      "summary": "Committed finish audit/spec updates on main and pushed main to origin.",
+      "target": "origin/main",
+      "at": "2026-06-13T14:36:40Z"
+    }
+  ]
+}

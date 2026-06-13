@@ -179,6 +179,9 @@ confidence: float
 - SQLite path: `.mdx/search.sqlite`.
 - Rebuild scans Markdown sources and can restore a missing or dirty projection.
 - Recall/search must not treat SQLite as the source of truth.
+- If a Markdown source write succeeds but SQLite projection sync fails, persist an out-of-band dirty marker outside SQLite.
+- Recall/search/status must treat a dirty marker or non-clean index status as degraded even when `.mdx/search.sqlite` is readable, and recall must fallback to Markdown with `index_degraded=true`.
+- A successful index rebuild clears the dirty marker.
 
 ## Distill Contract
 
@@ -186,6 +189,8 @@ confidence: float
 - Default output is inbox candidates.
 - If `auto_accept=true` and confidence meets `distill.confidence_threshold`, candidates may be written directly to active memory.
 - Distill preserves source thread and message refs when available.
+- Re-running distill without `--force` must be idempotent for the same source thread content and candidate set; it should return existing inbox/active results instead of duplicating candidates.
+- `--force` intentionally creates a new distill run.
 
 ## Capture Contract
 
@@ -198,7 +203,8 @@ confidence: float
 - HTTP daemon: `mdx-cli serve --workspace <workspace> --port 14243`.
 - Health endpoint reports top-level `ok`, `has_memory`, `can_initialize`, `mode`, `missing_paths`, and `workspace`.
 - MCP stdio server: `mdx-mcp --workspace <workspace>`.
-- HTTP/MCP call the same Memory facade as CLI/UI and must not bypass locks or path guards.
+- CLI, HTTP, MCP, and Tauri/UI call the same Memory facade and must not bypass locks or path guards.
+- The Tauri/UI command surface must expose the same complete Memory capability set as the daemon facade, not only the subset currently used by the visible panel.
 
 ## Bundle Contract
 
@@ -207,6 +213,7 @@ confidence: float
 - Bundles include manifest, `memory/**`, required metadata, and optional `log.md`.
 - Bundles do not include `.mdx/search.sqlite`; import/rebuild recreates the projection.
 - Export/import must reject path traversal and unsafe symlink writes.
+- Export and import must acquire the workspace memory lock. Export is a read snapshot, but it copies multiple source directories and must not run concurrently with multi-file memory mutations.
 
 ## Promote Contract
 
