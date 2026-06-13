@@ -42,6 +42,8 @@ CLAUDE.md
 .superpowers/
 ref/
 rust_out
+src-tauri/binaries/*
+!src-tauri/binaries/.gitkeep
 
 # vercel
 .vercel

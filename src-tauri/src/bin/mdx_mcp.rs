@@ -25,6 +25,7 @@ const TOOLS: &[&str] = &[
 #[derive(Debug, Deserialize)]
 struct JsonRpcRequest {
     jsonrpc: String,
+    #[serde(default)]
     id: Value,
     method: String,
     #[serde(default)]
@@ -174,6 +175,8 @@ fn handle_request(workspace: &str, request: JsonRpcRequest) -> JsonRpcResponse {
     }
 
     let result = match request.method.as_str() {
+        "initialize" => Ok(initialize_result()),
+        "notifications/initialized" => Ok(Value::Null),
         "tools/list" => Ok(list_tools_result()),
         "tools/call" => dispatch_tool_call(workspace, request.params),
         method => Err(protocol_error(
@@ -192,6 +195,21 @@ fn handle_request(workspace: &str, request: JsonRpcRequest) -> JsonRpcResponse {
         },
         Err(error) => error_response(id, error.code, error.message, error.data),
     }
+}
+
+fn initialize_result() -> Value {
+    json!({
+        "protocolVersion": "2024-11-05",
+        "capabilities": {
+            "tools": {
+                "listChanged": false
+            }
+        },
+        "serverInfo": {
+            "name": "mdx-memory",
+            "version": env!("CARGO_PKG_VERSION")
+        }
+    })
 }
 
 fn list_tools_result() -> Value {
@@ -479,6 +497,35 @@ mod tests {
             .map(|tool| tool["name"].as_str().unwrap())
             .collect();
         assert_eq!(names, TOOLS);
+    }
+
+    #[test]
+    fn initialize_response_advertises_tools_capability() {
+        let response = handle_request(
+            "/tmp",
+            parse_request(
+                r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"0"}}}"#,
+            )
+            .unwrap(),
+        );
+
+        assert!(response.error.is_none());
+        let result = response.result.unwrap();
+        assert_eq!(result["protocolVersion"], "2024-11-05");
+        assert_eq!(result["serverInfo"]["name"], "mdx-memory");
+        assert_eq!(result["capabilities"]["tools"]["listChanged"], false);
+    }
+
+    #[test]
+    fn initialized_notification_without_id_is_accepted() {
+        let response = handle_request(
+            "/tmp",
+            parse_request(r#"{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}"#)
+                .unwrap(),
+        );
+
+        assert!(response.error.is_none());
+        assert_eq!(response.id, Value::Null);
     }
 
     #[test]

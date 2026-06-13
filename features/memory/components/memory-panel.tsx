@@ -29,6 +29,7 @@ import {
   rejectMemoryInbox,
   repairMemoryWorkspace,
   setWorkingMemory,
+  setupMemoryAgents,
 } from "../lib/memory-client";
 import { formatMemoryError } from "../lib/memory-error";
 import type { MemoryPanelTabId } from "../lib/memory-panel-state";
@@ -101,6 +102,12 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
   const [indexStatus, setIndexStatus] = useState<MemoryIndexStatus | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [agentSetupOptions, setAgentSetupOptions] = useState({
+    codex: true,
+    claude: true,
+    cursor: true,
+    hooks: true,
+  });
 
   useEffect(() => {
     mountedRef.current = true;
@@ -139,6 +146,12 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
     setRepairResult(null);
     setIndexStatus(null);
     setSettingsLoading(false);
+    setAgentSetupOptions({
+      codex: true,
+      claude: true,
+      cursor: true,
+      hooks: true,
+    });
     pendingActionsRef.current = new Map();
     setPendingActions(new Set());
   }, [rootPath]);
@@ -600,6 +613,24 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
     }
   }, [memory, rootPath, setError]);
 
+  const handleSetupAgents = useCallback(async () => {
+    setSettingsLoading(true);
+    setActionError(null);
+    try {
+      const result = await setupMemoryAgents(rootPath, {
+        ...agentSetupOptions,
+        dry_run: false,
+      });
+      setStatusMessage(
+        `Agent integration configured (${result.changed_paths.length} files)`,
+      );
+    } catch (error) {
+      setError(error);
+    } finally {
+      setSettingsLoading(false);
+    }
+  }, [agentSetupOptions, rootPath, setError]);
+
   return (
     <section className="min-h-0 border-t border-base-300 bg-base-100">
       <PanelHeader
@@ -712,6 +743,9 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
             onInitialize={handleInitialize}
             onRepair={handleRepair}
             onRebuildIndex={handleRebuildIndex}
+            agentSetupOptions={agentSetupOptions}
+            onAgentSetupOptionsChange={setAgentSetupOptions}
+            onSetupAgents={handleSetupAgents}
           />
         )}
       </div>
@@ -1026,6 +1060,9 @@ function SettingsTab({
   onInitialize,
   onRepair,
   onRebuildIndex,
+  agentSetupOptions,
+  onAgentSetupOptionsChange,
+  onSetupAgents,
 }: {
   memory: ReturnType<typeof useMemoryWorkspace>;
   initializeDisabled: boolean;
@@ -1035,7 +1072,34 @@ function SettingsTab({
   onInitialize: () => Promise<void>;
   onRepair: () => Promise<void>;
   onRebuildIndex: () => Promise<void>;
+  agentSetupOptions: {
+    codex: boolean;
+    claude: boolean;
+    cursor: boolean;
+    hooks: boolean;
+  };
+  onAgentSetupOptionsChange: (options: {
+    codex: boolean;
+    claude: boolean;
+    cursor: boolean;
+    hooks: boolean;
+  }) => void;
+  onSetupAgents: () => Promise<void>;
 }) {
+  const selectedAgentCount = [
+    agentSetupOptions.codex,
+    agentSetupOptions.claude,
+    agentSetupOptions.cursor,
+  ].filter(Boolean).length;
+  const setupDisabled =
+    settingsLoading || !memory.hasMemory || selectedAgentCount === 0;
+  const setAgentOption = (
+    key: keyof typeof agentSetupOptions,
+    value: boolean,
+  ) => {
+    onAgentSetupOptionsChange({ ...agentSetupOptions, [key]: value });
+  };
+
   return (
     <div className="space-y-3">
       <div className="space-y-1 border border-base-300 bg-base-200/60 p-2 text-base-content/75">
@@ -1073,14 +1137,53 @@ function SettingsTab({
           {memory.loading ? "Initializing" : "Initialize Memory"}
         </button>
       ) : (
-        <div className="grid grid-cols-2 gap-2">
-          <TextControlButton disabled={settingsLoading} onClick={() => void onRepair()}>
-            {settingsLoading ? "Working" : "Repair"}
-          </TextControlButton>
-          <TextControlButton disabled={settingsLoading} onClick={() => void onRebuildIndex()}>
-            Rebuild Index
-          </TextControlButton>
-        </div>
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <TextControlButton disabled={settingsLoading} onClick={() => void onRepair()}>
+              {settingsLoading ? "Working" : "Repair"}
+            </TextControlButton>
+            <TextControlButton disabled={settingsLoading} onClick={() => void onRebuildIndex()}>
+              Rebuild Index
+            </TextControlButton>
+          </div>
+
+          <div className="space-y-2 border border-base-300 bg-base-200/60 p-2">
+            <div className="font-medium text-base-content">Agent Integration</div>
+            <div className="grid grid-cols-2 gap-2">
+              <CheckboxControl
+                label="Codex"
+                checked={agentSetupOptions.codex}
+                disabled={settingsLoading}
+                onChange={(checked) => setAgentOption("codex", checked)}
+              />
+              <CheckboxControl
+                label="Claude"
+                checked={agentSetupOptions.claude}
+                disabled={settingsLoading}
+                onChange={(checked) => setAgentOption("claude", checked)}
+              />
+              <CheckboxControl
+                label="Cursor"
+                checked={agentSetupOptions.cursor}
+                disabled={settingsLoading}
+                onChange={(checked) => setAgentOption("cursor", checked)}
+              />
+              <CheckboxControl
+                label="PreCompact hooks"
+                checked={agentSetupOptions.hooks}
+                disabled={settingsLoading}
+                onChange={(checked) => setAgentOption("hooks", checked)}
+              />
+            </div>
+            <TextControlButton
+              className="w-full justify-center"
+              disabled={setupDisabled}
+              onClick={() => void onSetupAgents()}
+            >
+              {settingsLoading ? "Configuring" : "Configure Agents"}
+            </TextControlButton>
+          </div>
+        </>
       )}
 
       {repairResult ? (
@@ -1104,6 +1207,31 @@ function SettingsTab({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function CheckboxControl({
+  label,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  disabled: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex min-w-0 items-center gap-2 text-base-content/75">
+      <input
+        type="checkbox"
+        className="h-4 w-4 accent-primary disabled:cursor-not-allowed"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.currentTarget.checked)}
+      />
+      <span className="truncate">{label}</span>
+    </label>
   );
 }
 

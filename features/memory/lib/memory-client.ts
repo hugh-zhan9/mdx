@@ -4,6 +4,8 @@ import type {
   InboxReviewRequest,
   InboxReviewResult,
   InitializeMemoryResult,
+  MemoryAgentSetupRequest,
+  MemoryAgentSetupResult,
   MemoryIndexStatus,
   MemoryListFilter,
   MemoryPromoteRequest,
@@ -45,6 +47,13 @@ export function repairMemoryWorkspace(
   request: MemoryRepairRequest,
 ): Promise<MemoryRepairResult> {
   return invokeCommand("memory_repair_workspace", { rootPath, request });
+}
+
+export function setupMemoryAgents(
+  rootPath: string,
+  request: MemoryAgentSetupRequest,
+): Promise<MemoryAgentSetupResult> {
+  return invokeCommand("memory_agent_setup", { rootPath, request });
 }
 
 export function rebuildMemoryIndex(rootPath: string): Promise<MemoryIndexStatus> {

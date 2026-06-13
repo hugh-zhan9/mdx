@@ -93,6 +93,18 @@ describe("SettingsButton", () => {
       behavior: "smooth",
     });
   });
+
+  it("lets the settings content pane own vertical scrolling", async () => {
+    await renderSettings(root);
+
+    const scrollContainer = host.querySelector<HTMLElement>(
+      "[data-settings-scroll-container]",
+    );
+
+    expect(scrollContainer?.className).toContain("min-h-0");
+    expect(scrollContainer?.className).toContain("flex-1");
+    expect(scrollContainer?.className).toContain("overflow-y-auto");
+  });
 });
 
 async function renderSettings(root: ReturnType<typeof createRoot>) {

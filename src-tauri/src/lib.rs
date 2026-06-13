@@ -30,6 +30,7 @@ mod llm_wiki_raw;
 #[cfg(target_os = "macos")]
 mod macos_launch;
 pub mod memory;
+pub mod memory_agent_setup;
 mod memory_bundle;
 mod memory_capture;
 pub mod memory_daemon;
@@ -72,6 +73,16 @@ fn memory_repair_workspace(
     request: memory::MemoryRepairRequest,
 ) -> Result<memory::MemoryRepairResult, WorkspaceError> {
     memory::memory_repair_workspace(root_path, request)
+}
+
+#[tauri::command]
+fn memory_agent_setup(
+    root_path: String,
+    request: memory_agent_setup::MemoryAgentSetupRequest,
+) -> Result<memory_agent_setup::MemoryAgentSetupResult, WorkspaceError> {
+    memory_agent_setup::memory_agent_setup(root_path, request).map_err(|error| {
+        WorkspaceError::from_io("memory_agent_setup_failed", "failed to configure agents", &error)
+    })
 }
 
 #[tauri::command]
@@ -303,6 +314,7 @@ mod memory_tauri_command_tests {
             "memory_detect_workspace",
             "memory_initialize_workspace",
             "memory_repair_workspace",
+            "memory_agent_setup",
             "memory_export_bundle",
             "memory_import_bundle",
             "memory_add",
@@ -848,6 +860,7 @@ pub fn run() {
             memory_detect_workspace,
             memory_initialize_workspace,
             memory_repair_workspace,
+            memory_agent_setup,
             memory_export_bundle,
             memory_import_bundle,
             memory_add,

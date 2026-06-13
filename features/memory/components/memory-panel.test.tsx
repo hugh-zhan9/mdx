@@ -83,4 +83,17 @@ describe("MemoryPanel", () => {
       ]),
     );
   });
+
+  it("renders agent integration controls in settings", () => {
+    act(() => {
+      root.render(<MemoryPanel rootPath="/tmp/ws" />);
+    });
+
+    expect(host.textContent).toContain("Agent Integration");
+    expect(host.textContent).toContain("Codex");
+    expect(host.textContent).toContain("Claude");
+    expect(host.textContent).toContain("Cursor");
+    expect(host.textContent).toContain("PreCompact hooks");
+    expect(host.textContent).toContain("Configure Agents");
+  });
 });

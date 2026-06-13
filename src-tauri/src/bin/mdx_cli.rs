@@ -239,6 +239,10 @@ enum MemoryCommand {
         #[command(subcommand)]
         command: MemoryCaptureCommand,
     },
+    Agent {
+        #[command(subcommand)]
+        command: MemoryAgentCommand,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
@@ -336,6 +340,30 @@ enum MemoryCaptureCommand {
     Scan {
         #[arg(long)]
         source: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
+enum MemoryAgentCommand {
+    Setup {
+        #[arg(long)]
+        codex: bool,
+        #[arg(long)]
+        claude: bool,
+        #[arg(long)]
+        cursor: bool,
+        #[arg(long)]
+        all: bool,
+        #[arg(long)]
+        hooks: bool,
+        #[arg(long)]
+        no_hooks: bool,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        mdx_cli: Option<String>,
+        #[arg(long)]
+        mdx_mcp: Option<String>,
     },
 }
 
@@ -641,6 +669,12 @@ fn request_from_memory_command(command: &MemoryCommand) -> io::Result<CliRequest
                 source: trim_required_value(source, "source")?,
             },
         },
+        MemoryCommand::Agent { .. } => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "memory agent setup requires --root <workspace>",
+            ));
+        }
     })
 }
 
@@ -663,6 +697,10 @@ fn execute_memory_headless(command: &CommandLine, root_path: String) -> io::Resu
 
     if let MemoryCommand::Index { command } = command {
         return Ok(execute_memory_index_headless(command, root_path));
+    }
+
+    if let MemoryCommand::Agent { command } = command {
+        return execute_memory_agent_headless(command, root_path);
     }
 
     if let MemoryCommand::Export {
@@ -1061,6 +1099,51 @@ fn execute_memory_headless(command: &CommandLine, root_path: String) -> io::Resu
     };
 
     Ok(response)
+}
+
+fn execute_memory_agent_headless(
+    command: &MemoryAgentCommand,
+    root_path: String,
+) -> io::Result<CliResponse> {
+    let MemoryAgentCommand::Setup {
+        codex,
+        claude,
+        cursor,
+        all,
+        hooks,
+        no_hooks,
+        dry_run,
+        mdx_cli,
+        mdx_mcp,
+    } = command;
+
+    if *hooks && *no_hooks {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "--hooks and --no-hooks cannot be used together",
+        ));
+    }
+
+    let configure_all = *all || (!*codex && !*claude && !*cursor);
+    let request = mdx_lib::memory_agent_setup::MemoryAgentSetupRequest {
+        codex: configure_all || *codex,
+        claude: configure_all || *claude,
+        cursor: configure_all || *cursor,
+        hooks: !*no_hooks,
+        dry_run: *dry_run,
+        mdx_cli: mdx_cli.clone(),
+        mdx_mcp: mdx_mcp.clone(),
+    };
+
+    match mdx_lib::memory_agent_setup::memory_agent_setup(root_path.clone(), request) {
+        Ok(result) => Ok(CliResponse {
+            ok: true,
+            root_path: Some(root_path),
+            content: Some(result.summary),
+            ..CliResponse::default()
+        }),
+        Err(error) => Err(error),
+    }
 }
 
 fn execute_memory_index_headless(command: &MemoryIndexCommand, root_path: String) -> CliResponse {
@@ -2323,5 +2406,66 @@ mod tests {
             response.memory_capture_scan.unwrap().status,
             "capture_scan_not_configured"
         );
+    }
+
+    #[test]
+    fn memory_agent_setup_dry_run_plans_cross_agent_files_without_writing() {
+        let home = TempDir::new().unwrap();
+        let root = TempDir::new().unwrap();
+        let paths = mdx_lib::memory_agent_setup::AgentSetupPaths {
+            home: home.path().to_path_buf(),
+            mdx_cli: "/tmp/mdx-cli".to_string(),
+            mdx_mcp: "/tmp/mdx-mcp".to_string(),
+            hook_script: home.path().join(".mdx-memory-precompact-hook.mjs"),
+        };
+        let targets = mdx_lib::memory_agent_setup::AgentSetupTargets {
+            codex: true,
+            claude: true,
+            cursor: true,
+            hooks: true,
+        };
+        let changes = mdx_lib::memory_agent_setup::plan_memory_agent_setup(
+            &root.path().to_string_lossy(),
+            &targets,
+            &paths,
+        )
+        .unwrap();
+        let summary = mdx_lib::memory_agent_setup::render_agent_setup_summary(&changes, true);
+        assert!(summary.contains("would_write"));
+        assert!(summary.contains(".codey/config.toml"));
+        assert!(summary.contains(".claude/hooks/hooks.json"));
+        assert!(summary.contains(".cursor/hooks.json"));
+        assert!(!home.path().join(".codey/config.toml").exists());
+    }
+
+    #[test]
+    fn memory_agent_setup_writes_cursor_mcp_and_precompact_hook() {
+        let home = TempDir::new().unwrap();
+        let root = TempDir::new().unwrap();
+        let paths = mdx_lib::memory_agent_setup::AgentSetupPaths {
+            home: home.path().to_path_buf(),
+            mdx_cli: "/tmp/mdx-cli".to_string(),
+            mdx_mcp: "/tmp/mdx-mcp".to_string(),
+            hook_script: home.path().join(".mdx-memory-precompact-hook.mjs"),
+        };
+        let targets = mdx_lib::memory_agent_setup::AgentSetupTargets {
+            codex: false,
+            claude: false,
+            cursor: true,
+            hooks: true,
+        };
+        let changes = mdx_lib::memory_agent_setup::plan_memory_agent_setup(
+            &root.path().to_string_lossy(),
+            &targets,
+            &paths,
+        )
+        .unwrap();
+        mdx_lib::memory_agent_setup::apply_agent_setup_changes(&changes).unwrap();
+        let mcp = fs::read_to_string(home.path().join(".cursor/mcp.json")).unwrap();
+        assert!(mcp.contains("\"mdx-memory\""));
+        assert!(mcp.contains("/tmp/mdx-mcp"));
+        let hook = fs::read_to_string(home.path().join(".mdx-memory-precompact-hook.mjs")).unwrap();
+        assert!(hook.contains("\"distill\""));
+        assert!(hook.contains("\"--accept\""));
     }
 }

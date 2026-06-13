@@ -81,6 +81,7 @@ mdx-cli memory inbox accept <inbox-id>
 mdx-cli memory distill --thread <thread-id>
 mdx-cli memory capture import --source codex --file <path>
 mdx-cli memory promote <thread-id|memory-id|path>
+mdx-cli memory agent setup [--all|--codex|--claude|--cursor] [--no-hooks] [--dry-run]
 mdx-cli memory export --output <dir>
 mdx-cli memory import --input <dir> --dry-run
 mdx-cli memory --root <workspace> status
@@ -89,6 +90,10 @@ mdx-mcp --workspace <workspace>
 ```
 
 Memory 命令管理 `memory/` 和 `.mdx/` 下的 Markdown 原生记忆记录。它们可以通过当前 Workspace Mode socket 运行，也可以使用 `mdx-cli memory --root <workspace> ...` 无界面运行。
+
+正式打包会随应用带上 `mdx-cli` 和 `mdx-mcp` sidecar。Codex、Claude、Cursor 的 Agent 集成需要用户在 Memory Settings 面板或 `mdx-cli memory --root <workspace> agent setup ...` 中主动配置。
+
+Memory 的完整使用说明见 [docs/memory-usage.md](docs/memory-usage.md)。
 
 LLM Wiki 的 CLI 仍然只通过 socket 工作，并始终针对当前 Workspace Mode root。只有 Memory 命令支持 `--root` 无界面运行。
 

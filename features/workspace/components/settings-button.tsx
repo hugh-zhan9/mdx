@@ -388,7 +388,7 @@ function SettingsDialog({
           <div
             ref={contentScrollRef}
             data-settings-scroll-container
-            className="min-h-0 space-y-7 overflow-y-auto overflow-x-hidden px-[clamp(16px,3vw,28px)] py-5"
+            className="min-h-0 flex-1 space-y-7 overflow-y-auto overflow-x-hidden px-[clamp(16px,3vw,28px)] py-5"
           >
             <section
               ref={(node) => {

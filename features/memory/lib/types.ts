@@ -22,6 +22,22 @@ export interface MemoryRepairResult {
   warnings: string[];
 }
 
+export interface MemoryAgentSetupRequest {
+  codex: boolean;
+  claude: boolean;
+  cursor: boolean;
+  hooks: boolean;
+  dry_run?: boolean;
+  mdx_cli?: string | null;
+  mdx_mcp?: string | null;
+}
+
+export interface MemoryAgentSetupResult {
+  dry_run: boolean;
+  changed_paths: string[];
+  summary: string;
+}
+
 export interface MemoryIndexStatus {
   index_status: string;
   document_count: number;

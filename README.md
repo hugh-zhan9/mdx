@@ -81,6 +81,7 @@ mdx-cli memory inbox accept <inbox-id>
 mdx-cli memory distill --thread <thread-id>
 mdx-cli memory capture import --source codex --file <path>
 mdx-cli memory promote <thread-id|memory-id|path>
+mdx-cli memory agent setup [--all|--codex|--claude|--cursor] [--no-hooks] [--dry-run]
 mdx-cli memory export --output <dir>
 mdx-cli memory import --input <dir> --dry-run
 mdx-cli memory --root <workspace> status
@@ -89,6 +90,10 @@ mdx-mcp --workspace <workspace>
 ```
 
 Memory commands manage Markdown-native records under `memory/` and `.mdx/`. They can run through the active Workspace Mode socket, or headlessly with `mdx-cli memory --root <workspace> ...`.
+
+Packaged builds include `mdx-cli` and `mdx-mcp` sidecars. Agent integration for Codex, Claude, and Cursor is opt-in from the Memory Settings panel or `mdx-cli memory --root <workspace> agent setup ...`.
+
+For the full Memory usage guide, see [docs/memory-usage.md](docs/memory-usage.md).
 
 The LLM Wiki CLI surface remains socket-only and always targets the active Workspace Mode root. Only Memory commands support `--root` headless execution.
 
