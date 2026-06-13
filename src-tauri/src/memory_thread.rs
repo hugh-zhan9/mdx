@@ -172,3 +172,76 @@ pub fn memory_thread_list(
     });
     Ok(items)
 }
+
+pub(crate) fn rebuild_thread_index(
+    root: impl AsRef<std::path::Path>,
+) -> Result<usize, WorkspaceError> {
+    let root = root.as_ref();
+    ensure_memory_ready(root)?;
+
+    let mut index = crate::memory::default_thread_index();
+    for relative in thread_markdown_paths(root)? {
+        let markdown = crate::memory_fs::read_workspace_file(root, &relative)?;
+        let (frontmatter, _) = parse_markdown_frontmatter::<MemoryThreadFrontmatter>(&markdown)?;
+        validate_thread_source(&frontmatter.source)?;
+        index.threads.insert(
+            frontmatter.thread_id,
+            thread_index_entry(relative, frontmatter.content_hash)?,
+        );
+    }
+    let count = index.threads.len();
+    write_thread_index(root, &index)?;
+    Ok(count)
+}
+
+fn thread_markdown_paths(root: &std::path::Path) -> Result<Vec<String>, WorkspaceError> {
+    let mut paths = Vec::new();
+    collect_thread_markdown_paths(root, &root.join("memory/threads"), &mut paths)?;
+    paths.sort();
+    Ok(paths)
+}
+
+fn collect_thread_markdown_paths(
+    root: &std::path::Path,
+    dir: &std::path::Path,
+    paths: &mut Vec<String>,
+) -> Result<(), WorkspaceError> {
+    for entry in std::fs::read_dir(dir).map_err(|error| {
+        WorkspaceError::from_io(
+            "scan_failed",
+            "failed to scan memory thread directory",
+            &error,
+        )
+    })? {
+        let path = entry
+            .map_err(|error| {
+                WorkspaceError::from_io("scan_failed", "failed to read memory thread entry", &error)
+            })?
+            .path();
+        let metadata = std::fs::symlink_metadata(&path).map_err(|error| {
+            WorkspaceError::from_io(
+                "scan_failed",
+                "failed to inspect memory thread path",
+                &error,
+            )
+        })?;
+        if metadata.file_type().is_symlink() {
+            return Err(WorkspaceError::new(
+                "path_type_conflict",
+                "memory thread path must not be a symlink",
+            ));
+        }
+        if metadata.is_dir() {
+            collect_thread_markdown_paths(root, &path, paths)?;
+            continue;
+        }
+        if path.extension().and_then(|ext| ext.to_str()) != Some("md") {
+            continue;
+        }
+        let relative = path.strip_prefix(root).map_err(|_| {
+            WorkspaceError::new("outside_workspace", "thread path is outside workspace")
+        })?;
+        paths.push(relative.to_string_lossy().replace('\\', "/"));
+    }
+    Ok(())
+}

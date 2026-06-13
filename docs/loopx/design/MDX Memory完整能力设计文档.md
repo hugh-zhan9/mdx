@@ -205,13 +205,14 @@ flowchart TB
 - 入口：`mdx-cli memory init`、`mdx-cli memory repair`、Workspace UI 初始化按钮、daemon startup 检查。
 - 操作人/调用方：用户、CLI、HTTP/MCP server。
 - 前置条件：workspace root 存在且不是 symlink。
-- 输出结果：Memory-ready workspace、配置文件、SQLite schema、审计日志。
+- 输出结果：Memory-ready workspace、配置文件、可选 SQLite 投影、审计日志。
 
 #### 4.1.2 方案设计
 
 - 核心逻辑：
-  - 必需目录：`memory/threads/{codex,cursor,claude-code,import,manual}`、`memory/memories`、`memory/inbox`、`memory/archive`、`.mdx`.
-  - 必需文件：`memory/working.md`、`memory/MEMORY.md`、`.mdx/memory-config.json`、`.mdx/thread-index.json`、`.mdx/search.sqlite`、`log.md`.
+  - 必需目录：`memory/threads`、`memory/memories`、`memory/inbox`、`.mdx`.
+  - 必需文件：`memory/working.md`、`memory/MEMORY.md`、`.mdx/memory-config.json`、`.mdx/thread-index.json`、`log.md`.
+  - `memory/threads/{codex,cursor,claude-code,import,manual}`、`memory/archive` 可按需创建；`.mdx/search.sqlite` 是可重建投影，不属于 ready-state 必需文件。
   - 初始化只补缺，不覆盖用户 Markdown。
   - 旧配置迁移：接受 camelCase 和 snake_case，写回 snake_case。
 - 状态流转：

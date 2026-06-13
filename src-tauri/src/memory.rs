@@ -232,6 +232,30 @@ pub(crate) fn repair_memory_workspace(
     let mut preserved_paths = Vec::new();
     let warnings = Vec::new();
 
+    for path in REQUIRED_DIRS {
+        create_dir_if_missing(root, path, &mut repaired_paths, &mut preserved_paths)?;
+    }
+    create_file_if_missing(
+        root,
+        "memory/working.md",
+        WORKING_MEMORY_MARKDOWN,
+        &mut repaired_paths,
+        &mut preserved_paths,
+    )?;
+    create_file_if_missing(
+        root,
+        "memory/MEMORY.md",
+        MEMORY_RULES_MARKDOWN,
+        &mut repaired_paths,
+        &mut preserved_paths,
+    )?;
+    create_json_file_if_missing(
+        root,
+        ".mdx/memory-config.json",
+        &default_memory_config(),
+        &mut repaired_paths,
+        &mut preserved_paths,
+    )?;
     create_json_file_if_missing(
         root,
         ".mdx/thread-index.json",
@@ -239,6 +263,15 @@ pub(crate) fn repair_memory_workspace(
         &mut repaired_paths,
         &mut preserved_paths,
     )?;
+    create_file_if_missing(
+        root,
+        "log.md",
+        "# Log\n",
+        &mut repaired_paths,
+        &mut preserved_paths,
+    )?;
+
+    crate::memory_thread::rebuild_thread_index(root)?;
 
     if request.rebuild_index {
         crate::search_index::rebuild(root)?;

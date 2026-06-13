@@ -296,6 +296,61 @@ fn memory_export_writes_manifest_and_import_dry_run_reports_records() {
 }
 
 #[test]
+fn memory_bundle_import_rebuilds_thread_index() {
+    let root = tempdir().unwrap();
+    let target = tempdir().unwrap();
+    let bundle = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_initialize_workspace(target.path().to_string_lossy().into_owned()).unwrap();
+    memory_thread_save(
+        root.path().to_string_lossy().into_owned(),
+        ThreadSaveRequest {
+            source: "manual".to_string(),
+            thread_id: Some("manual:bundle-thread".to_string()),
+            title: "Bundle thread".to_string(),
+            body: sample_thread_body(),
+            started_at: Some("2026-06-12T09:00:00Z".to_string()),
+            ended_at: None,
+            model: None,
+            workspace_root: None,
+            tags: vec!["bundle".to_string()],
+        },
+    )
+    .unwrap();
+    crate::memory::memory_export_bundle(
+        root.path().to_string_lossy().into_owned(),
+        crate::memory::MemoryExportRequest {
+            output_path: bundle.path().to_string_lossy().into_owned(),
+            include_log: false,
+        },
+    )
+    .unwrap();
+
+    crate::memory::memory_import_bundle(
+        target.path().to_string_lossy().into_owned(),
+        crate::memory::MemoryImportRequest {
+            input_path: bundle.path().to_string_lossy().into_owned(),
+            strategy: "skip".to_string(),
+            dry_run: false,
+        },
+    )
+    .unwrap();
+
+    let threads = memory_thread_list(
+        target.path().to_string_lossy().into_owned(),
+        ThreadListFilter {
+            source: Some("manual".to_string()),
+            since: None,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(threads.len(), 1);
+    assert_eq!(threads[0].thread_id, "manual:bundle-thread");
+    assert_eq!(threads[0].title, "Bundle thread");
+}
+
+#[test]
 fn memory_bundle_skip_import_copies_missing_records_once() {
     let root = tempdir().unwrap();
     let target = tempdir().unwrap();
@@ -704,6 +759,82 @@ fn memory_repair_recreates_missing_thread_index_and_preserves_markdown() {
     );
     let log = read_workspace_file(root.path(), "log.md").unwrap();
     assert!(log.contains("memory_repair"));
+}
+
+#[test]
+fn memory_repair_recreates_required_paths_and_rebuilds_indexes() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "Repair required paths".to_string(),
+            body: "Repair should rebuild the search index after required paths return.".to_string(),
+            tags: vec!["repair".to_string()],
+            source_thread: None,
+            source_message_refs: Vec::new(),
+            importance: None,
+            confidence: None,
+        },
+    )
+    .unwrap();
+    memory_thread_save(
+        root.path().to_string_lossy().into_owned(),
+        ThreadSaveRequest {
+            source: "manual".to_string(),
+            thread_id: Some("manual:repair-thread".to_string()),
+            title: "Repair thread".to_string(),
+            body: sample_thread_body(),
+            started_at: Some("2026-06-12T09:00:00Z".to_string()),
+            ended_at: None,
+            model: None,
+            workspace_root: None,
+            tags: Vec::new(),
+        },
+    )
+    .unwrap();
+
+    std::fs::remove_file(root.path().join("memory/working.md")).unwrap();
+    std::fs::remove_file(root.path().join("memory/MEMORY.md")).unwrap();
+    std::fs::remove_file(root.path().join(".mdx/memory-config.json")).unwrap();
+    std::fs::remove_file(root.path().join(".mdx/thread-index.json")).unwrap();
+    std::fs::remove_file(root.path().join("log.md")).unwrap();
+
+    let result = memory_repair_workspace(
+        root.path().to_string_lossy().into_owned(),
+        MemoryRepairRequest {
+            rebuild_index: true,
+        },
+    )
+    .unwrap();
+
+    for path in [
+        "memory/working.md",
+        "memory/MEMORY.md",
+        ".mdx/memory-config.json",
+        ".mdx/thread-index.json",
+        "log.md",
+    ] {
+        assert!(
+            result.repaired_paths.contains(&path.to_string()),
+            "missing repaired path {path}"
+        );
+        assert!(root.path().join(path).is_file(), "{path}");
+    }
+
+    let status =
+        crate::memory::memory_index_status(root.path().to_string_lossy().into_owned()).unwrap();
+    assert_eq!(status.document_count, 1);
+    let threads = memory_thread_list(
+        root.path().to_string_lossy().into_owned(),
+        ThreadListFilter {
+            source: None,
+            since: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(threads.len(), 1);
+    assert_eq!(threads[0].thread_id, "manual:repair-thread");
 }
 
 #[test]
