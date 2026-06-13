@@ -88,6 +88,7 @@ fn memory_distill_with_json(
                     body: candidate.body.clone(),
                     tags: candidate.tags.clone(),
                     source_thread: Some(source_thread.clone()),
+                    source_message_refs,
                     importance: Some(candidate.importance),
                     confidence: Some(candidate.confidence),
                 },

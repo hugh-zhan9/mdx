@@ -236,6 +236,8 @@ pub struct MemoryFrontmatter {
     pub status: String,
     pub created_at: String,
     pub source_thread: Option<String>,
+    #[serde(default)]
+    pub source_message_refs: Vec<String>,
     pub importance: Option<f64>,
     pub confidence: Option<f64>,
     pub tags: Vec<String>,
@@ -268,6 +270,8 @@ pub struct MemoryAddRequest {
     pub body: String,
     pub tags: Vec<String>,
     pub source_thread: Option<String>,
+    #[serde(default)]
+    pub source_message_refs: Vec<String>,
     pub importance: Option<f64>,
     pub confidence: Option<f64>,
 }

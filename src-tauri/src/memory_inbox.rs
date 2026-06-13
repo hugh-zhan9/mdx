@@ -172,6 +172,7 @@ pub fn memory_inbox_accept(
             body: body.clone(),
             tags: tags.clone(),
             source_thread: candidate.frontmatter.source_thread.clone(),
+            source_message_refs: candidate.frontmatter.source_message_refs.clone(),
             importance: candidate.frontmatter.importance,
             confidence: candidate.frontmatter.confidence,
         },

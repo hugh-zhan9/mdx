@@ -664,6 +664,7 @@ fn execute_memory_headless(command: &CommandLine, root_path: String) -> io::Resu
                 body,
                 tags,
                 source_thread,
+                source_message_refs: Vec::new(),
                 importance,
                 confidence,
             };

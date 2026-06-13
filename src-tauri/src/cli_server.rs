@@ -1337,6 +1337,7 @@ fn memory_add_response_for_root(
         body,
         tags,
         source_thread,
+        source_message_refs: Vec::new(),
         importance,
         confidence,
     };

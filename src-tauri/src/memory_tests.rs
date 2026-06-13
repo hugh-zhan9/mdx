@@ -172,6 +172,7 @@ fn memory_repair_recreates_missing_thread_index_and_preserves_markdown() {
             body: "Existing memory stays intact.".to_string(),
             tags: vec!["repair".to_string()],
             source_thread: None,
+            source_message_refs: Vec::new(),
             importance: None,
             confidence: None,
         },
@@ -407,6 +408,7 @@ fn recall_uses_memory_config_defaults_when_request_omits_limit_and_budget() {
             body: "auth alpha decision".to_string(),
             tags: vec!["auth".to_string()],
             source_thread: None,
+            source_message_refs: Vec::new(),
             importance: Some(0.9),
             confidence: Some(0.9),
         },
@@ -419,6 +421,7 @@ fn recall_uses_memory_config_defaults_when_request_omits_limit_and_budget() {
             body: "auth beta decision".to_string(),
             tags: vec!["auth".to_string()],
             source_thread: None,
+            source_message_refs: Vec::new(),
             importance: Some(0.8),
             confidence: Some(0.8),
         },
@@ -471,6 +474,7 @@ fn recall_accepts_previous_memory_config_shape() {
             body: "legacy config recall succeeds".to_string(),
             tags: vec!["legacy".to_string()],
             source_thread: None,
+            source_message_refs: Vec::new(),
             importance: Some(0.9),
             confidence: Some(0.9),
         },
@@ -776,6 +780,7 @@ fn memory_add_creates_markdown_record_with_defaults() {
             body: "Auth uses a 15 minute JWT access token.".to_string(),
             tags: vec!["auth".to_string(), "jwt".to_string()],
             source_thread: Some("memory/threads/manual/2026-06-12-cursor-abc123.md".to_string()),
+            source_message_refs: Vec::new(),
             importance: None,
             confidence: None,
         },
@@ -800,6 +805,7 @@ fn memory_add_preserves_same_title_records() {
             body: "First body".to_string(),
             tags: Vec::new(),
             source_thread: None,
+            source_message_refs: Vec::new(),
             importance: None,
             confidence: None,
         },
@@ -812,6 +818,7 @@ fn memory_add_preserves_same_title_records() {
             body: "Second body".to_string(),
             tags: Vec::new(),
             source_thread: None,
+            source_message_refs: Vec::new(),
             importance: None,
             confidence: None,
         },
@@ -851,6 +858,7 @@ fn memory_add_preserves_concurrent_same_title_records() {
                     body: format!("Body {index}"),
                     tags: Vec::new(),
                     source_thread: None,
+                    source_message_refs: Vec::new(),
                     importance: None,
                     confidence: None,
                 },
@@ -887,6 +895,7 @@ fn memory_archive_marks_record_archived() {
             body: "Auth uses a 15 minute JWT access token.".to_string(),
             tags: vec!["auth".to_string()],
             source_thread: None,
+            source_message_refs: Vec::new(),
             importance: None,
             confidence: None,
         },
@@ -913,6 +922,7 @@ fn memory_list_filters_by_tag_and_excludes_archived() {
             body: "Auth uses a 15 minute JWT access token.".to_string(),
             tags: vec!["auth".to_string()],
             source_thread: None,
+            source_message_refs: Vec::new(),
             importance: None,
             confidence: None,
         },
@@ -925,6 +935,7 @@ fn memory_list_filters_by_tag_and_excludes_archived() {
             body: "Archived memory".to_string(),
             tags: vec!["auth".to_string()],
             source_thread: None,
+            source_message_refs: Vec::new(),
             importance: None,
             confidence: None,
         },
@@ -984,6 +995,7 @@ fn recall_orders_matches_by_importance_and_recency() {
             body: "Auth uses a 15 minute JWT access token.".to_string(),
             tags: vec!["auth".to_string()],
             source_thread: None,
+            source_message_refs: Vec::new(),
             importance: Some(0.9),
             confidence: None,
         },
@@ -996,6 +1008,7 @@ fn recall_orders_matches_by_importance_and_recency() {
             body: "Refresh tokens last 30 days.".to_string(),
             tags: vec!["auth".to_string()],
             source_thread: None,
+            source_message_refs: Vec::new(),
             importance: Some(0.2),
             confidence: None,
         },
@@ -1039,6 +1052,7 @@ fn recall_includes_working_memory_and_respects_byte_budget() {
             body: "Auth uses a 15 minute JWT access token.".repeat(40),
             tags: vec!["auth".to_string()],
             source_thread: None,
+            source_message_refs: Vec::new(),
             importance: None,
             confidence: None,
         },
@@ -1166,6 +1180,7 @@ fn recall_reports_index_degraded_when_sqlite_is_missing_and_scan_fallback_succee
             body: "Access tokens expire after 15 minutes.".to_string(),
             tags: vec!["auth".to_string()],
             source_thread: None,
+            source_message_refs: Vec::new(),
             importance: Some(0.8),
             confidence: Some(0.9),
         },
@@ -1276,6 +1291,7 @@ fn search_returns_memory_summaries_only() {
             body: "Auth uses a 15 minute JWT access token.".to_string(),
             tags: vec!["auth".to_string()],
             source_thread: None,
+            source_message_refs: Vec::new(),
             importance: None,
             confidence: None,
         },
@@ -1306,6 +1322,7 @@ fn search_index_rebuild_recovers_memory_search_from_markdown() {
             body: "Access tokens expire after 15 minutes.".to_string(),
             tags: vec!["auth".to_string()],
             source_thread: None,
+            source_message_refs: Vec::new(),
             importance: Some(0.8),
             confidence: Some(0.9),
         },
@@ -1341,6 +1358,7 @@ fn recall_limit_zero_returns_no_memories_with_available_index() {
             body: "Access tokens expire after 15 minutes.".to_string(),
             tags: vec!["auth".to_string()],
             source_thread: None,
+            source_message_refs: Vec::new(),
             importance: Some(0.8),
             confidence: Some(0.9),
         },
@@ -1380,6 +1398,7 @@ fn search_index_search_reports_unavailable_without_recreating_missing_index() {
             body: "Access tokens expire after 15 minutes.".to_string(),
             tags: vec!["auth".to_string()],
             source_thread: None,
+            source_message_refs: Vec::new(),
             importance: None,
             confidence: None,
         },
@@ -1416,6 +1435,7 @@ fn search_index_query_tokenization_handles_punctuation_quotes_and_unicode() {
             body: "Write C plus plus examples with access token checks.".to_string(),
             tags: vec!["compiler".to_string()],
             source_thread: None,
+            source_message_refs: Vec::new(),
             importance: None,
             confidence: None,
         },
@@ -1428,6 +1448,7 @@ fn search_index_query_tokenization_handles_punctuation_quotes_and_unicode() {
             body: "鉴权 token 需要短过期时间。".to_string(),
             tags: vec!["auth".to_string()],
             source_thread: None,
+            source_message_refs: Vec::new(),
             importance: None,
             confidence: None,
         },
@@ -1681,6 +1702,14 @@ fn inbox_accept_creates_active_memory_and_marks_candidate_accepted() {
         memory.frontmatter.source_thread,
         Some("codex:session-5".to_string())
     );
+    assert_eq!(
+        memory.frontmatter.source_message_refs,
+        vec!["msg-1".to_string(), "msg-2".to_string()]
+    );
+    let memory_markdown = read_workspace_file(root.path(), &memory.path).unwrap();
+    assert!(memory_markdown.contains("source_message_refs:"));
+    assert!(memory_markdown.contains("- msg-1"));
+    assert!(memory_markdown.contains("- msg-2"));
     assert_eq!(memory.frontmatter.tags, vec!["reviewed", "workflow"]);
 
     let reviewed = memory_inbox_get(
@@ -1851,6 +1880,10 @@ fn distill_with_json_accept_true_writes_active_memories() {
     assert_eq!(
         result.memories[0].frontmatter.source_thread,
         Some("codex:distill-2".to_string())
+    );
+    assert_eq!(
+        result.memories[0].frontmatter.source_message_refs,
+        vec!["2".to_string()]
     );
 
     let inbox = memory_inbox_list(root.path().to_string_lossy().into_owned(), true).unwrap();
