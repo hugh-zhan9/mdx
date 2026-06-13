@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+use std::sync::{Arc, MutexGuard};
 use std::thread;
 
 use tempfile::tempdir;
@@ -37,11 +37,6 @@ fn memory_fixture_path(name: &str) -> String {
         .into_owned()
 }
 
-fn memory_llm_config_env_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-}
-
 struct MemoryLlmConfigEnvGuard {
     _lock: MutexGuard<'static, ()>,
     home: Option<std::ffi::OsString>,
@@ -50,7 +45,7 @@ struct MemoryLlmConfigEnvGuard {
 
 impl MemoryLlmConfigEnvGuard {
     fn use_home(path: impl AsRef<std::path::Path>) -> Self {
-        let lock = memory_llm_config_env_lock()
+        let lock = crate::llm_wiki_llm::test_llm_config_env_lock()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let home = std::env::var_os("HOME");
@@ -952,6 +947,79 @@ fn recall_finds_memory_added_after_index_rebuild() {
 }
 
 #[test]
+fn recall_uses_markdown_fallback_when_valid_index_is_dirty() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    crate::memory::memory_index_rebuild(root.path().to_string_lossy().into_owned()).unwrap();
+
+    let record = memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "Dirty projection fallback".to_string(),
+            body: "Recall must find markdown when the valid sqlite projection is stale."
+                .to_string(),
+            tags: vec!["projection".to_string()],
+            source_thread: None,
+            source_message_refs: Vec::new(),
+            importance: None,
+            confidence: None,
+        },
+    )
+    .unwrap();
+    {
+        let conn = rusqlite::Connection::open(root.path().join(".mdx/search.sqlite")).unwrap();
+        conn.execute(
+            "DELETE FROM fts_memories
+             WHERE rowid IN (SELECT rowid FROM documents WHERE doc_id = ?)",
+            [&record.frontmatter.memory_id],
+        )
+        .unwrap();
+        conn.execute(
+            "DELETE FROM documents WHERE doc_id = ?",
+            [&record.frontmatter.memory_id],
+        )
+        .unwrap();
+    }
+    crate::search_index::mark_dirty(root.path(), "test_stale_projection").unwrap();
+
+    let result = memory_recall(
+        root.path().to_string_lossy().into_owned(),
+        RecallRequest {
+            query: "stale".to_string(),
+            limit: Some(10),
+            byte_budget: Some(65_536),
+            include_working: false,
+            include_threads: false,
+            thread_ids: Vec::new(),
+            include_wiki_refs: false,
+            include_wiki_snippets: false,
+            tag: None,
+            since: None,
+        },
+    )
+    .unwrap();
+
+    assert!(result.index_degraded);
+    assert!(result
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("markdown fallback")));
+    assert_eq!(result.memories.len(), 1);
+    assert_eq!(result.memories[0].title, "Dirty projection fallback");
+    let status =
+        crate::memory::memory_index_status(root.path().to_string_lossy().into_owned()).unwrap();
+    assert!(status.dirty);
+    assert_eq!(status.index_status, "dirty");
+
+    crate::memory::memory_index_rebuild(root.path().to_string_lossy().into_owned()).unwrap();
+    let clean_status =
+        crate::memory::memory_index_status(root.path().to_string_lossy().into_owned()).unwrap();
+    assert!(!clean_status.dirty);
+    assert_eq!(clean_status.index_status, "clean");
+    assert!(!root.path().join(".mdx/search-index-dirty").exists());
+}
+
+#[test]
 fn workspace_lock_serializes_memory_writes() {
     let root = tempdir().unwrap();
     memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
@@ -1244,6 +1312,67 @@ fn recall_accepts_previous_memory_config_shape() {
 
     assert_eq!(result.memories.len(), 1);
     assert!(!result.truncated);
+}
+
+#[test]
+fn recall_accepts_camel_case_memory_config_shape() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    std::fs::write(
+        root.path().join(".mdx/memory-config.json"),
+        r#"{
+  "version": 1,
+  "recall": {
+    "defaultLimit": 1,
+    "contextByteBudget": 64,
+    "halfLifeDays": 30,
+    "embeddings": { "enabled": false }
+  },
+  "distill": {
+    "enabled": false,
+    "minMessages": 4,
+    "skipPatterns": ["^Running terminal command"],
+    "autoAccept": false,
+    "confidenceThreshold": 0.85
+  },
+  "capture": { "enabled": false, "sources": [] }
+}
+"#,
+    )
+    .unwrap();
+    memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "Camel config recall".to_string(),
+            body: "camel config recall succeeds".to_string(),
+            tags: vec!["legacy".to_string()],
+            source_thread: None,
+            source_message_refs: Vec::new(),
+            importance: Some(0.9),
+            confidence: Some(0.9),
+        },
+    )
+    .unwrap();
+
+    let result = memory_recall(
+        root.path().to_string_lossy().into_owned(),
+        RecallRequest {
+            query: "camel".to_string(),
+            limit: None,
+            byte_budget: None,
+            include_working: false,
+            include_threads: false,
+            thread_ids: Vec::new(),
+            include_wiki_refs: false,
+            include_wiki_snippets: false,
+            tag: None,
+            since: None,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.memories.len(), 1);
+    assert!(result.byte_count <= 64);
 }
 
 #[test]
@@ -1968,6 +2097,40 @@ fn recall_include_threads_returns_matching_thread_summaries_without_full_text() 
     assert_eq!(result.threads.len(), 1);
     assert_eq!(result.threads[0].memory_id, "thread-auth");
     assert!(!result.threads[0].title.contains("Message 1"));
+}
+
+#[test]
+fn recall_include_wiki_refs_returns_matching_wiki_pages() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    crate::llm_wiki_fs::initialize_llm_wiki_workspace(root.path()).unwrap();
+    write_workspace_file(
+        root.path(),
+        "wiki/auth.md",
+        b"# Auth\n\nJWT access tokens expire after 15 minutes.\n",
+    )
+    .unwrap();
+
+    let result = memory_recall(
+        root.path().to_string_lossy().into_owned(),
+        RecallRequest {
+            query: "JWT".to_string(),
+            limit: Some(10),
+            byte_budget: Some(65_536),
+            include_working: false,
+            include_threads: false,
+            thread_ids: Vec::new(),
+            include_wiki_refs: true,
+            include_wiki_snippets: true,
+            tag: None,
+            since: None,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.wiki_refs.len(), 1);
+    assert_eq!(result.wiki_refs[0].path, "wiki/auth.md");
+    assert_eq!(result.wiki_refs[0].title, "auth");
 }
 
 #[test]

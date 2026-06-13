@@ -91,9 +91,12 @@ pub struct MemoryConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub struct MemoryRecallConfig {
+    #[serde(alias = "defaultLimit")]
     pub default_limit: usize,
+    #[serde(alias = "contextByteBudget")]
     pub context_byte_budget: usize,
     #[serde(default = "default_half_life_days")]
+    #[serde(alias = "halfLifeDays")]
     pub half_life_days: u32,
     #[serde(default)]
     pub embeddings: MemoryEmbeddingConfig,
@@ -113,11 +116,15 @@ fn default_half_life_days() -> u32 {
 #[serde(rename_all = "snake_case")]
 pub struct MemoryDistillConfig {
     pub enabled: bool,
+    #[serde(alias = "minMessages")]
     pub min_messages: usize,
+    #[serde(alias = "skipPatterns")]
     pub skip_patterns: Vec<String>,
     #[serde(default)]
+    #[serde(alias = "autoAccept")]
     pub auto_accept: bool,
     #[serde(
+        alias = "confidenceThreshold",
         default = "default_confidence_threshold",
         deserialize_with = "confidence_threshold_format::deserialize"
     )]

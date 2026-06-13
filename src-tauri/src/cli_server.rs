@@ -2064,13 +2064,8 @@ mod tests {
     use crate::cli_protocol::WorkspaceSnapshot;
     use crate::llm_wiki_fs::initialize_llm_wiki_workspace;
     use std::ffi::OsString;
-    use std::sync::{MutexGuard, OnceLock};
+    use std::sync::MutexGuard;
     use tempfile::TempDir;
-
-    fn llm_config_env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-    }
 
     struct LlmConfigEnvGuard {
         _lock: MutexGuard<'static, ()>,
@@ -2080,7 +2075,9 @@ mod tests {
 
     impl LlmConfigEnvGuard {
         fn use_home(path: impl AsRef<std::path::Path>) -> Self {
-            let lock = llm_config_env_lock().lock().unwrap();
+            let lock = crate::llm_wiki_llm::test_llm_config_env_lock()
+                .lock()
+                .unwrap();
             let home = std::env::var_os("HOME");
             let userprofile = std::env::var_os("USERPROFILE");
             std::env::set_var("HOME", path.as_ref());

@@ -61,14 +61,20 @@ pub fn memory_recall(
 
     let mut warnings = Vec::new();
     let mut index_degraded = false;
-    let items = match recall_memories_from_index(root, &request, limit) {
-        Ok(items) => items,
-        Err(error) if crate::search_index::is_index_degradation_error(&error) => {
-            index_degraded = true;
-            warnings.push("search index unavailable; used markdown fallback".to_string());
-            recall_memories_from_markdown(root, &request, limit, config.recall.half_life_days)?
+    let items = if crate::search_index::is_degraded(root)? {
+        index_degraded = true;
+        warnings.push("search index degraded; used markdown fallback".to_string());
+        recall_memories_from_markdown(root, &request, limit, config.recall.half_life_days)?
+    } else {
+        match recall_memories_from_index(root, &request, limit) {
+            Ok(items) => items,
+            Err(error) if crate::search_index::is_index_degradation_error(&error) => {
+                index_degraded = true;
+                warnings.push("search index unavailable; used markdown fallback".to_string());
+                recall_memories_from_markdown(root, &request, limit, config.recall.half_life_days)?
+            }
+            Err(error) => return Err(error),
         }
-        Err(error) => return Err(error),
     };
 
     let threads = if request.include_threads || !request.thread_ids.is_empty() {
@@ -76,7 +82,7 @@ pub fn memory_recall(
     } else {
         Vec::new()
     };
-    let wiki_refs = Vec::new();
+    let wiki_refs = recall_wiki_refs(root, &request, limit)?;
     let (selected, selected_threads, selected_wiki_refs, truncated, byte_count) =
         apply_byte_budget(working.as_ref(), items, threads, wiki_refs, byte_budget);
 
@@ -299,6 +305,31 @@ fn recall_threads(
     }
     items.truncate(limit);
     Ok(items)
+}
+
+fn recall_wiki_refs(
+    root: &std::path::Path,
+    request: &RecallRequest,
+    limit: usize,
+) -> Result<Vec<MemorySummary>, WorkspaceError> {
+    if !request.include_wiki_refs || limit == 0 || request.query.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut refs = crate::llm_wiki_query::search_wiki_pages(root, &request.query)?
+        .into_iter()
+        .take(limit)
+        .map(|reference| MemorySummary {
+            path: reference.path.clone(),
+            memory_id: reference.path,
+            title: reference.title,
+            status: "active".to_string(),
+            created_at: String::new(),
+            tags: Vec::new(),
+        })
+        .collect::<Vec<_>>();
+    refs.sort_by(|left, right| left.path.cmp(&right.path));
+    Ok(refs)
 }
 
 fn thread_record_summary(record: crate::memory_models::MemoryThreadRecord) -> MemorySummary {

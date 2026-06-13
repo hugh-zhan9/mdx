@@ -1,6 +1,6 @@
 use sha2::{Digest, Sha256};
 use std::ffi::OsString;
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::sync::MutexGuard;
 use tempfile::tempdir;
 
 use crate::llm_wiki::{
@@ -142,11 +142,6 @@ fn report_section<'a>(report: &'a str, heading: &str) -> &'a str {
         .unwrap_or(after_heading)
 }
 
-fn llm_config_env_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-}
-
 struct LlmConfigEnvGuard {
     _lock: MutexGuard<'static, ()>,
     _pdf_lock: MutexGuard<'static, ()>,
@@ -157,7 +152,7 @@ struct LlmConfigEnvGuard {
 
 impl LlmConfigEnvGuard {
     fn use_home(path: impl AsRef<std::path::Path>) -> Self {
-        let lock = llm_config_env_lock()
+        let lock = crate::llm_wiki_llm::test_llm_config_env_lock()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let pdf_lock = crate::llm_wiki_raw::test_pdf_env_lock()

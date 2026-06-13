@@ -179,6 +179,7 @@ fn sync_memory_projection(
     match crate::search_index::sync_memory(root, record) {
         Ok(()) => Ok(()),
         Err(error) if crate::search_index::is_index_degradation_error(&error) => {
+            crate::search_index::mark_dirty(root, error.error_code())?;
             append_memory_log_entry(
                 root,
                 &format!(

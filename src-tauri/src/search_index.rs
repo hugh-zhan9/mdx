@@ -9,6 +9,7 @@ use crate::memory_models::{
 use crate::models::WorkspaceError;
 
 const SCHEMA_VERSION: i64 = 1;
+const DIRTY_MARKER_PATH: &str = ".mdx/search-index-dirty";
 
 pub(crate) fn rebuild(root: &Path) -> Result<MemoryIndexStatus, WorkspaceError> {
     crate::memory_fs::ensure_memory_ready(root)?;
@@ -44,6 +45,7 @@ pub(crate) fn rebuild(root: &Path) -> Result<MemoryIndexStatus, WorkspaceError> 
     )
     .map_err(sql_error)?;
     tx.commit().map_err(sql_error)?;
+    clear_dirty_marker(root)?;
 
     let document_count = conn
         .query_row("SELECT COUNT(*) FROM documents", [], |row| {
@@ -61,6 +63,7 @@ pub(crate) fn rebuild(root: &Path) -> Result<MemoryIndexStatus, WorkspaceError> 
 pub(crate) fn status(root: &Path) -> Result<MemoryIndexStatus, WorkspaceError> {
     crate::memory_fs::ensure_memory_ready(root)?;
 
+    let marker_dirty = has_dirty_marker(root);
     let path = root.join(".mdx/search.sqlite");
     if !path.is_file() {
         return Ok(unavailable_status());
@@ -92,10 +95,48 @@ pub(crate) fn status(root: &Path) -> Result<MemoryIndexStatus, WorkspaceError> {
         .unwrap_or_else(|_| "unknown".to_string());
 
     Ok(MemoryIndexStatus {
-        dirty: index_status != "clean",
-        index_status,
+        dirty: marker_dirty || index_status != "clean",
+        index_status: if marker_dirty {
+            "dirty".to_string()
+        } else {
+            index_status
+        },
         document_count,
     })
+}
+
+pub(crate) fn mark_dirty(root: &Path, reason: &str) -> Result<(), WorkspaceError> {
+    let contents = format!(
+        "reason={}\nupdated_at={}\n",
+        reason.replace('\n', " "),
+        crate::memory_fs::now_utc_rfc3339()?
+    );
+    crate::memory_fs::write_workspace_file(root, DIRTY_MARKER_PATH, contents.as_bytes())
+}
+
+pub(crate) fn has_dirty_marker(root: &Path) -> bool {
+    root.join(DIRTY_MARKER_PATH).is_file()
+}
+
+fn clear_dirty_marker(root: &Path) -> Result<(), WorkspaceError> {
+    let path = root.join(DIRTY_MARKER_PATH);
+    if !path.exists() {
+        return Ok(());
+    }
+    std::fs::remove_file(&path).map_err(|error| {
+        WorkspaceError::from_io(
+            "index_failed",
+            "failed to clear memory search dirty marker",
+            &error,
+        )
+    })
+}
+
+pub(crate) fn is_degraded(root: &Path) -> Result<bool, WorkspaceError> {
+    if has_dirty_marker(root) {
+        return Ok(true);
+    }
+    Ok(status(root)?.dirty)
 }
 
 pub(crate) fn search(
@@ -109,6 +150,11 @@ pub(crate) fn search(
     }
     if !request.kinds.is_empty() && !request.kinds.iter().any(|kind| kind == "memory") {
         return Ok(MemoryIndexSearchResult { items: Vec::new() });
+    }
+    if is_degraded(root)? {
+        return Err(index_unavailable(
+            "memory search index is dirty; rebuild required",
+        ));
     }
 
     let match_query = fts_match_query(&request.query)?;
