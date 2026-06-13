@@ -142,6 +142,42 @@ pub struct MemoryCaptureConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+pub struct MemoryCaptureImportRequest {
+    pub source: String,
+    pub path: String,
+    pub title: Option<String>,
+    pub thread_id: Option<String>,
+    pub distill: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryCaptureImportResult {
+    pub source: String,
+    pub thread_id: String,
+    pub path: String,
+    pub title: String,
+    pub message_count: usize,
+    pub distilled: bool,
+    pub distill_result: Option<MemoryDistillResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryCaptureScanRequest {
+    pub source: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryCaptureScanResult {
+    pub source: String,
+    pub status: String,
+    pub paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub struct ThreadIndex {
     pub version: u32,
     pub threads: BTreeMap<String, ThreadIndexEntry>,

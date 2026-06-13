@@ -210,6 +210,10 @@ enum MemoryCommand {
         #[arg(long)]
         title: Option<String>,
     },
+    Capture {
+        #[command(subcommand)]
+        command: MemoryCaptureCommand,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
@@ -287,6 +291,26 @@ enum MemoryWorkingCommand {
         file: Option<String>,
         #[arg(long)]
         stdin: bool,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
+enum MemoryCaptureCommand {
+    Import {
+        #[arg(long)]
+        source: String,
+        #[arg(long = "file")]
+        file: String,
+        #[arg(long)]
+        thread_id: Option<String>,
+        #[arg(long)]
+        title: Option<String>,
+        #[arg(long)]
+        distill: bool,
+    },
+    Scan {
+        #[arg(long)]
+        source: String,
     },
 }
 
@@ -525,6 +549,27 @@ fn request_from_memory_command(command: &MemoryCommand) -> io::Result<CliRequest
             target: trim_required_value(target, "target")?,
             ingest: Some(*ingest),
             title: title.clone(),
+        },
+        MemoryCommand::Capture { command } => match command {
+            MemoryCaptureCommand::Import {
+                source,
+                file,
+                thread_id,
+                title,
+                distill,
+            } => CliRequest::MemoryCaptureImport {
+                source: trim_required_value(source, "source")?,
+                path: normalize_cli_path(file)?,
+                title: title
+                    .as_deref()
+                    .map(|value| trim_required_value(value, "title"))
+                    .transpose()?,
+                thread_id: thread_id.clone(),
+                distill: *distill,
+            },
+            MemoryCaptureCommand::Scan { source } => CliRequest::MemoryCaptureScan {
+                source: trim_required_value(source, "source")?,
+            },
         },
     })
 }
@@ -856,6 +901,40 @@ fn execute_memory_headless(command: &CommandLine, root_path: String) -> io::Resu
                 Ok(result) => CliResponse {
                     ok: true,
                     memory_promote: Some(result),
+                    ..CliResponse::default()
+                },
+                Err(error) => workspace_error_response(error),
+            }
+        }
+        CliRequest::MemoryCaptureImport {
+            source,
+            path,
+            title,
+            thread_id,
+            distill,
+        } => {
+            let request = memory::MemoryCaptureImportRequest {
+                source,
+                path,
+                title,
+                thread_id,
+                distill,
+            };
+            match memory::memory_capture_import(root_path, request) {
+                Ok(result) => CliResponse {
+                    ok: true,
+                    memory_capture_import: Some(result),
+                    ..CliResponse::default()
+                },
+                Err(error) => workspace_error_response(error),
+            }
+        }
+        CliRequest::MemoryCaptureScan { source } => {
+            let request = memory::MemoryCaptureScanRequest { source };
+            match memory::memory_capture_scan(root_path, request) {
+                Ok(result) => CliResponse {
+                    ok: true,
+                    memory_capture_scan: Some(result),
                     ..CliResponse::default()
                 },
                 Err(error) => workspace_error_response(error),
@@ -1627,6 +1706,47 @@ mod tests {
     }
 
     #[test]
+    fn memory_capture_requests_use_socket_protocol_without_root() {
+        let import = CommandLine::Memory {
+            root: None,
+            command: MemoryCommand::Capture {
+                command: MemoryCaptureCommand::Import {
+                    source: " codex ".to_string(),
+                    file: "/tmp/codex-session.jsonl".to_string(),
+                    thread_id: Some("codex:fixture-1".to_string()),
+                    title: Some(" Codex fixture ".to_string()),
+                    distill: true,
+                },
+            },
+        };
+        assert_eq!(
+            request_from_command(&import).unwrap(),
+            CliRequest::MemoryCaptureImport {
+                source: "codex".to_string(),
+                path: "/tmp/codex-session.jsonl".to_string(),
+                title: Some("Codex fixture".to_string()),
+                thread_id: Some("codex:fixture-1".to_string()),
+                distill: true,
+            }
+        );
+
+        let scan = CommandLine::Memory {
+            root: None,
+            command: MemoryCommand::Capture {
+                command: MemoryCaptureCommand::Scan {
+                    source: "codex".to_string(),
+                },
+            },
+        };
+        assert_eq!(
+            request_from_command(&scan).unwrap(),
+            CliRequest::MemoryCaptureScan {
+                source: "codex".to_string(),
+            }
+        );
+    }
+
+    #[test]
     fn memory_thread_save_request_reads_file_body() {
         let root = TempDir::new().unwrap();
         let body_path = root.path().join("thread.md");
@@ -1747,5 +1867,28 @@ mod tests {
 
         assert!(!response.ok);
         assert_eq!(response.error_code.as_deref(), Some("llm_wiki_not_ready"));
+    }
+
+    #[test]
+    fn memory_capture_scan_headless_returns_not_configured() {
+        let root = TempDir::new().unwrap();
+        memory::memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+        let command = CommandLine::Memory {
+            root: Some(root.path().to_string_lossy().into_owned()),
+            command: MemoryCommand::Capture {
+                command: MemoryCaptureCommand::Scan {
+                    source: "codex".to_string(),
+                },
+            },
+        };
+
+        let response =
+            execute_memory_headless(&command, root.path().to_string_lossy().into_owned()).unwrap();
+
+        assert!(response.ok);
+        assert_eq!(
+            response.memory_capture_scan.unwrap().status,
+            "capture_scan_not_configured"
+        );
     }
 }

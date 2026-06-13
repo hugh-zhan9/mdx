@@ -345,6 +345,14 @@ fn dispatch(app: &AppHandle, request: CliRequest) -> CliResponse {
             ingest,
             title,
         } => handle_memory_promote(app, target, ingest, title),
+        CliRequest::MemoryCaptureImport {
+            source,
+            path,
+            title,
+            thread_id,
+            distill,
+        } => handle_memory_capture_import(app, source, path, title, thread_id, distill),
+        CliRequest::MemoryCaptureScan { source } => handle_memory_capture_scan(app, source),
     }
 }
 
@@ -1191,6 +1199,46 @@ fn handle_memory_promote(
     response
 }
 
+fn handle_memory_capture_import(
+    app: &AppHandle,
+    source: String,
+    path: String,
+    title: Option<String>,
+    thread_id: Option<String>,
+    distill: bool,
+) -> CliResponse {
+    let Some((label, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match memory_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+    let response = memory_capture_import_response_for_root(
+        root_path.clone(),
+        source,
+        path,
+        title,
+        thread_id,
+        distill,
+    );
+    if response.ok {
+        emit_log_file_updated(app, &label, &root_path);
+    }
+    response
+}
+
+fn handle_memory_capture_scan(app: &AppHandle, source: String) -> CliResponse {
+    let Some((_, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match memory_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+    memory_capture_scan_response_for_root(root_path, source)
+}
+
 fn memory_active_root(snapshot: &WindowSnapshot) -> Result<String, CliResponse> {
     snapshot
         .workspace
@@ -1577,6 +1625,43 @@ fn memory_promote_response_for_root(
         Ok(result) => CliResponse {
             ok: true,
             memory_promote: Some(result),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn memory_capture_import_response_for_root(
+    root_path: String,
+    source: String,
+    path: String,
+    title: Option<String>,
+    thread_id: Option<String>,
+    distill: bool,
+) -> CliResponse {
+    let request = memory::MemoryCaptureImportRequest {
+        source,
+        path,
+        title,
+        thread_id,
+        distill,
+    };
+    match memory::memory_capture_import(root_path, request) {
+        Ok(result) => CliResponse {
+            ok: true,
+            memory_capture_import: Some(result),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn memory_capture_scan_response_for_root(root_path: String, source: String) -> CliResponse {
+    let request = memory::MemoryCaptureScanRequest { source };
+    match memory::memory_capture_scan(root_path, request) {
+        Ok(result) => CliResponse {
+            ok: true,
+            memory_capture_scan: Some(result),
             ..CliResponse::default()
         },
         Err(error) => workspace_error(error),

@@ -4,12 +4,13 @@ use std::thread;
 use tempfile::tempdir;
 
 use crate::memory::{
-    default_memory_config, memory_add, memory_archive, memory_detect_workspace,
-    memory_distill_with_json_for_test, memory_get, memory_inbox_accept, memory_inbox_add,
-    memory_inbox_get, memory_inbox_list, memory_inbox_reject, memory_initialize_workspace,
-    memory_list, memory_promote, memory_recall, memory_repair_workspace, memory_search,
-    memory_thread_get, memory_thread_list, memory_thread_save, memory_working_append,
-    memory_working_get, memory_working_set, InboxAddRequest, InboxReviewRequest, MemoryAddRequest,
+    default_memory_config, memory_add, memory_archive, memory_capture_import,
+    memory_detect_workspace, memory_distill_with_json_for_test, memory_get, memory_inbox_accept,
+    memory_inbox_add, memory_inbox_get, memory_inbox_list, memory_inbox_reject,
+    memory_initialize_workspace, memory_list, memory_promote, memory_recall,
+    memory_repair_workspace, memory_search, memory_thread_get, memory_thread_list,
+    memory_thread_save, memory_working_append, memory_working_get, memory_working_set,
+    InboxAddRequest, InboxReviewRequest, MemoryAddRequest, MemoryCaptureImportRequest,
     MemoryDistillRequest, MemoryListFilter, MemoryPromoteRequest, MemoryRepairRequest,
     RecallRequest, ThreadListFilter, ThreadSaveRequest,
 };
@@ -26,6 +27,14 @@ fn write_memory_lock_owner(root: &std::path::Path, contents: &str) {
 
 fn sample_thread_body() -> String {
     "## Message 1 — user — 2026-06-12T09:00:01Z\n\nImplement auth middleware.\n\n## Message 2 — assistant — 2026-06-12T09:00:15Z\n\nPlan the work.\n".to_string()
+}
+
+fn memory_fixture_path(name: &str) -> String {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("fixtures/memory")
+        .join(name)
+        .to_string_lossy()
+        .into_owned()
 }
 
 #[test]
@@ -158,6 +167,90 @@ fn memory_init_appends_a_memory_init_audit_event() {
     let log = read_workspace_file(root.path(), "log.md").unwrap();
     assert!(log.contains("memory_init"));
     assert!(log.contains("memory_init result=noop"));
+}
+
+#[test]
+fn capture_imports_codex_jsonl_as_thread() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+
+    let result = memory_capture_import(
+        root.path().to_string_lossy().into_owned(),
+        MemoryCaptureImportRequest {
+            source: "codex".to_string(),
+            path: memory_fixture_path("codex-session.jsonl"),
+            title: Some("Codex fixture".to_string()),
+            thread_id: Some("codex:fixture-1".to_string()),
+            distill: false,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.thread_id, "codex:fixture-1");
+    assert_eq!(result.source, "codex");
+    assert!(result.path.starts_with("memory/threads/codex/"));
+    assert!(!result.distilled);
+    assert!(result.distill_result.is_none());
+    let thread =
+        memory_thread_get(root.path().to_string_lossy().into_owned(), result.thread_id).unwrap();
+    assert!(thread
+        .body
+        .contains("## Message 1 — user — 2026-06-13T08:00:00Z"));
+    assert!(thread.body.contains("MDX memory supports Codex"));
+}
+
+#[test]
+fn capture_imports_cursor_json_as_thread() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+
+    let result = memory_capture_import(
+        root.path().to_string_lossy().into_owned(),
+        MemoryCaptureImportRequest {
+            source: "cursor".to_string(),
+            path: memory_fixture_path("cursor-session.json"),
+            title: None,
+            thread_id: None,
+            distill: false,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.source, "cursor");
+    assert_eq!(result.thread_id, "cursor-fixture-1");
+    assert!(result.path.starts_with("memory/threads/cursor/"));
+    let thread =
+        memory_thread_get(root.path().to_string_lossy().into_owned(), result.thread_id).unwrap();
+    assert_eq!(thread.frontmatter.title, "cursor-fixture-1");
+    assert!(thread.body.contains("Cursor transcript"));
+    assert!(thread.body.contains("Imported from Cursor"));
+}
+
+#[test]
+fn capture_imports_claude_code_json_as_thread() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+
+    let result = memory_capture_import(
+        root.path().to_string_lossy().into_owned(),
+        MemoryCaptureImportRequest {
+            source: "claude-code".to_string(),
+            path: memory_fixture_path("claude-code-session.json"),
+            title: None,
+            thread_id: None,
+            distill: false,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.source, "claude-code");
+    assert_eq!(result.thread_id, "claude-fixture-1");
+    assert!(result.path.starts_with("memory/threads/claude-code/"));
+    let thread =
+        memory_thread_get(root.path().to_string_lossy().into_owned(), result.thread_id).unwrap();
+    assert_eq!(thread.frontmatter.title, "claude-fixture-1");
+    assert!(thread.body.contains("Claude Code transcript"));
+    assert!(thread.body.contains("Imported from Claude Code"));
 }
 
 #[test]

@@ -1,0 +1,7 @@
+{
+  "id": "cursor-fixture-1",
+  "messages": [
+    {"role": "user", "timestamp": "2026-06-13T08:01:00Z", "content": "Cursor transcript"},
+    {"role": "assistant", "timestamp": "2026-06-13T08:01:05Z", "content": "Imported from Cursor"}
+  ]
+}

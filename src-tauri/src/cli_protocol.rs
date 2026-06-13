@@ -180,6 +180,20 @@ pub enum CliRequest {
         #[serde(default)]
         title: Option<String>,
     },
+    MemoryCaptureImport {
+        source: String,
+        #[serde(alias = "file")]
+        path: String,
+        #[serde(default)]
+        title: Option<String>,
+        #[serde(default)]
+        thread_id: Option<String>,
+        #[serde(default)]
+        distill: bool,
+    },
+    MemoryCaptureScan {
+        source: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -298,6 +312,10 @@ pub struct CliResponse {
     pub memory_distill: Option<crate::memory::MemoryDistillResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memory_promote: Option<crate::memory::MemoryPromoteResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_capture_import: Option<crate::memory::MemoryCaptureImportResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_capture_scan: Option<crate::memory::MemoryCaptureScanResult>,
 }
 
 impl CliResponse {

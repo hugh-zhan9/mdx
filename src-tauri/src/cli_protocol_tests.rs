@@ -219,6 +219,33 @@ fn parses_memory_distill_request() {
 }
 
 #[test]
+fn parses_memory_capture_requests() {
+    let import: CliRequest = serde_json::from_str(
+        r#"{"cmd":"memory-capture-import","source":"codex","file":"/tmp/codex.jsonl","thread_id":"codex:1","title":"Codex","distill":true}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        import,
+        CliRequest::MemoryCaptureImport {
+            source: "codex".to_string(),
+            path: "/tmp/codex.jsonl".to_string(),
+            title: Some("Codex".to_string()),
+            thread_id: Some("codex:1".to_string()),
+            distill: true,
+        }
+    );
+
+    let scan: CliRequest =
+        serde_json::from_str(r#"{"cmd":"memory-capture-scan","source":"codex"}"#).unwrap();
+    assert_eq!(
+        scan,
+        CliRequest::MemoryCaptureScan {
+            source: "codex".to_string()
+        }
+    );
+}
+
+#[test]
 fn serializes_memory_status_response_as_snake_case_json() {
     let response = crate::cli_protocol::CliResponse {
         ok: true,
@@ -267,6 +294,34 @@ fn serializes_memory_distill_response_as_snake_case_json() {
     assert!(json.contains(r#""candidate_count":1"#));
     assert!(json.contains(r#""source_message_refs":[1]"#));
     assert!(!json.contains("candidateCount"));
+}
+
+#[test]
+fn serializes_memory_capture_responses_as_snake_case_json() {
+    let response = crate::cli_protocol::CliResponse {
+        ok: true,
+        memory_capture_import: Some(crate::memory::MemoryCaptureImportResult {
+            source: "codex".to_string(),
+            thread_id: "codex:abc123".to_string(),
+            path: "memory/threads/codex/thread.md".to_string(),
+            title: "Codex".to_string(),
+            message_count: 2,
+            distilled: false,
+            distill_result: None,
+        }),
+        memory_capture_scan: Some(crate::memory::MemoryCaptureScanResult {
+            source: "codex".to_string(),
+            status: "capture_scan_not_configured".to_string(),
+            paths: Vec::new(),
+        }),
+        ..crate::cli_protocol::CliResponse::default()
+    };
+
+    let json = serde_json::to_string(&response).unwrap();
+    assert!(json.contains(r#""memory_capture_import":{"source":"codex""#));
+    assert!(json.contains(r#""message_count":2"#));
+    assert!(json.contains(r#""memory_capture_scan":{"source":"codex","status":"capture_scan_not_configured","paths":[]}"#));
+    assert!(!json.contains("messageCount"));
 }
 
 #[test]

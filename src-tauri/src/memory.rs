@@ -8,14 +8,16 @@ use crate::memory_fs::{
 };
 pub use crate::memory_models::{
     DistillCandidate, InboxAddRequest, InboxFrontmatter, InboxRecord, InboxReviewRequest,
-    InboxReviewResult, InitializeMemoryResult, MemoryAddRequest, MemoryCaptureConfig, MemoryConfig,
-    MemoryDistillConfig, MemoryDistillRequest, MemoryDistillResult, MemoryEmbeddingConfig,
-    MemoryFrontmatter, MemoryIndexSearchItem, MemoryIndexSearchRequest, MemoryIndexSearchResult,
-    MemoryIndexStatus, MemoryListFilter, MemoryPromoteRequest, MemoryPromoteResult,
-    MemoryRecallConfig, MemoryRecord, MemoryRepairRequest, MemoryRepairResult, MemorySummary,
-    MemoryThreadFrontmatter, MemoryThreadRecord, MemoryWorkspaceStatus, RecallMemoryItem,
-    RecallRequest, RecallResult, ThreadIndex, ThreadIndexEntry, ThreadListFilter, ThreadListItem,
-    ThreadSaveRequest, ThreadSaveResult,
+    InboxReviewResult, InitializeMemoryResult, MemoryAddRequest, MemoryCaptureConfig,
+    MemoryCaptureImportRequest, MemoryCaptureImportResult, MemoryCaptureScanRequest,
+    MemoryCaptureScanResult, MemoryConfig, MemoryDistillConfig, MemoryDistillRequest,
+    MemoryDistillResult, MemoryEmbeddingConfig, MemoryFrontmatter, MemoryIndexSearchItem,
+    MemoryIndexSearchRequest, MemoryIndexSearchResult, MemoryIndexStatus, MemoryListFilter,
+    MemoryPromoteRequest, MemoryPromoteResult, MemoryRecallConfig, MemoryRecord,
+    MemoryRepairRequest, MemoryRepairResult, MemorySummary, MemoryThreadFrontmatter,
+    MemoryThreadRecord, MemoryWorkspaceStatus, RecallMemoryItem, RecallRequest, RecallResult,
+    ThreadIndex, ThreadIndexEntry, ThreadListFilter, ThreadListItem, ThreadSaveRequest,
+    ThreadSaveResult,
 };
 use crate::models::WorkspaceError;
 use crate::path_guard::canonicalize_workspace_root;
@@ -459,6 +461,23 @@ pub fn memory_distill(
     let root = canonicalize_workspace_root(root_path)?;
     let _lock = try_acquire_memory_lock(&root)?;
     crate::memory_distill::memory_distill(root, request)
+}
+
+pub fn memory_capture_import(
+    root_path: String,
+    request: MemoryCaptureImportRequest,
+) -> Result<MemoryCaptureImportResult, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    let _lock = try_acquire_memory_lock(&root)?;
+    crate::memory_capture::memory_capture_import(root, request)
+}
+
+pub fn memory_capture_scan(
+    root_path: String,
+    request: MemoryCaptureScanRequest,
+) -> Result<MemoryCaptureScanResult, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    crate::memory_capture::memory_capture_scan(root, request)
 }
 
 #[cfg(test)]

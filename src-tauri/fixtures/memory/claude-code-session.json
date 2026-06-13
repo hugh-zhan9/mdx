@@ -1,0 +1,7 @@
+{
+  "session_id": "claude-fixture-1",
+  "messages": [
+    {"role": "user", "timestamp": "2026-06-13T08:02:00Z", "content": "Claude Code transcript"},
+    {"role": "assistant", "timestamp": "2026-06-13T08:02:05Z", "content": "Imported from Claude Code"}
+  ]
+}
