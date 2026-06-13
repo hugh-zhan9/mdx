@@ -13,6 +13,10 @@ default-run = "mdx"
 name = "mdx-cli"
 path = "src/bin/mdx_cli.rs"
 
+[[bin]]
+name = "mdx-mcp"
+path = "src/bin/mdx_mcp.rs"
+
 [lib]
 name = "mdx_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
