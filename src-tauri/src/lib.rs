@@ -31,6 +31,7 @@ mod llm_wiki_raw;
 mod macos_launch;
 pub mod memory;
 mod memory_fs;
+mod memory_inbox;
 mod memory_models;
 mod memory_promote;
 mod memory_recall;

@@ -166,6 +166,10 @@ enum MemoryCommand {
     Archive {
         target: String,
     },
+    Inbox {
+        #[command(subcommand)]
+        command: MemoryInboxCommand,
+    },
     Working {
         #[command(subcommand)]
         command: MemoryWorkingCommand,
@@ -228,6 +232,28 @@ enum MemoryThreadCommand {
         source: Option<String>,
         #[arg(long)]
         since: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
+enum MemoryInboxCommand {
+    List {
+        #[arg(long)]
+        include_reviewed: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    Accept {
+        inbox_id: String,
+        #[arg(long)]
+        title: Option<String>,
+        #[arg(long)]
+        file: Option<String>,
+        #[arg(long)]
+        body: Option<String>,
+    },
+    Reject {
+        inbox_id: String,
     },
 }
 
@@ -413,6 +439,30 @@ fn request_from_memory_command(command: &MemoryCommand) -> io::Result<CliRequest
         },
         MemoryCommand::Archive { target } => CliRequest::MemoryArchive {
             target: trim_required_value(target, "target")?,
+        },
+        MemoryCommand::Inbox { command } => match command {
+            MemoryInboxCommand::List {
+                include_reviewed, ..
+            } => CliRequest::MemoryInboxList {
+                include_reviewed: *include_reviewed,
+            },
+            MemoryInboxCommand::Accept {
+                inbox_id,
+                title,
+                file,
+                body,
+            } => CliRequest::MemoryInboxAccept {
+                inbox_id: trim_required_value(inbox_id, "inbox_id")?,
+                title: title
+                    .as_deref()
+                    .map(|value| trim_required_value(value, "title"))
+                    .transpose()?,
+                body: read_optional_input_from_file_or_inline(file.as_deref(), body.as_deref())?,
+                tags: None,
+            },
+            MemoryInboxCommand::Reject { inbox_id } => CliRequest::MemoryInboxReject {
+                inbox_id: trim_required_value(inbox_id, "inbox_id")?,
+            },
         },
         MemoryCommand::Working { command } => match command {
             MemoryWorkingCommand::Get => CliRequest::MemoryWorkingGet,
@@ -653,6 +703,47 @@ fn execute_memory_headless(command: &CommandLine, root_path: String) -> io::Resu
             },
             Err(error) => workspace_error_response(error),
         },
+        CliRequest::MemoryInboxList { include_reviewed } => {
+            match memory::memory_inbox_list(root_path, include_reviewed) {
+                Ok(entries) => CliResponse {
+                    ok: true,
+                    memory_inbox_entries: Some(entries),
+                    ..CliResponse::default()
+                },
+                Err(error) => workspace_error_response(error),
+            }
+        }
+        CliRequest::MemoryInboxAccept {
+            inbox_id,
+            title,
+            body,
+            tags,
+        } => {
+            let request = memory::InboxReviewRequest {
+                inbox_id,
+                title,
+                body,
+                tags,
+            };
+            match memory::memory_inbox_accept(root_path, request) {
+                Ok(result) => CliResponse {
+                    ok: true,
+                    memory_inbox_review: Some(result),
+                    ..CliResponse::default()
+                },
+                Err(error) => workspace_error_response(error),
+            }
+        }
+        CliRequest::MemoryInboxReject { inbox_id } => {
+            match memory::memory_inbox_reject(root_path, inbox_id) {
+                Ok(result) => CliResponse {
+                    ok: true,
+                    memory_inbox_review: Some(result),
+                    ..CliResponse::default()
+                },
+                Err(error) => workspace_error_response(error),
+            }
+        }
         CliRequest::MemoryWorkingGet => match memory::memory_working_get(root_path) {
             Ok(content) => CliResponse {
                 ok: true,
@@ -804,6 +895,29 @@ fn read_input_from_file_or_stdin(
     };
 
     trim_required_value(&value, "content")
+}
+
+fn read_optional_input_from_file_or_inline(
+    file: Option<&str>,
+    inline: Option<&str>,
+) -> io::Result<Option<String>> {
+    if file.is_some() && inline.is_some() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "provide at most one of --body or --file",
+        ));
+    }
+
+    let value = if let Some(path) = file {
+        Some(fs::read_to_string(path)?)
+    } else {
+        inline.map(ToString::to_string)
+    };
+
+    value
+        .as_deref()
+        .map(|content| trim_required_value(content, "content"))
+        .transpose()
 }
 
 fn parse_since_arg(since: &Option<String>) -> io::Result<Option<String>> {
@@ -1370,6 +1484,61 @@ mod tests {
         assert_eq!(
             request_from_command(&rebuild).unwrap(),
             CliRequest::MemoryIndexRebuild
+        );
+    }
+
+    #[test]
+    fn memory_inbox_requests_use_socket_protocol_without_root() {
+        let list = CommandLine::Memory {
+            root: None,
+            command: MemoryCommand::Inbox {
+                command: MemoryInboxCommand::List {
+                    include_reviewed: true,
+                    json: true,
+                },
+            },
+        };
+        assert_eq!(
+            request_from_command(&list).unwrap(),
+            CliRequest::MemoryInboxList {
+                include_reviewed: true
+            }
+        );
+
+        let accept = CommandLine::Memory {
+            root: None,
+            command: MemoryCommand::Inbox {
+                command: MemoryInboxCommand::Accept {
+                    inbox_id: "inbox_1".to_string(),
+                    title: Some("Reviewed".to_string()),
+                    file: None,
+                    body: Some("Accepted body".to_string()),
+                },
+            },
+        };
+        assert_eq!(
+            request_from_command(&accept).unwrap(),
+            CliRequest::MemoryInboxAccept {
+                inbox_id: "inbox_1".to_string(),
+                title: Some("Reviewed".to_string()),
+                body: Some("Accepted body".to_string()),
+                tags: None,
+            }
+        );
+
+        let reject = CommandLine::Memory {
+            root: None,
+            command: MemoryCommand::Inbox {
+                command: MemoryInboxCommand::Reject {
+                    inbox_id: "inbox_1".to_string(),
+                },
+            },
+        };
+        assert_eq!(
+            request_from_command(&reject).unwrap(),
+            CliRequest::MemoryInboxReject {
+                inbox_id: "inbox_1".to_string(),
+            }
         );
     }
 

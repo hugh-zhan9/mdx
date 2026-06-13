@@ -168,6 +168,41 @@ fn parses_memory_status_and_thread_save_requests() {
 }
 
 #[test]
+fn parses_memory_inbox_requests() {
+    let list: CliRequest =
+        serde_json::from_str(r#"{"cmd":"memory-inbox-list","include_reviewed":true}"#).unwrap();
+    assert_eq!(
+        list,
+        CliRequest::MemoryInboxList {
+            include_reviewed: true
+        }
+    );
+
+    let accept: CliRequest = serde_json::from_str(
+        r#"{"cmd":"memory-inbox-accept","inbox_id":"inbox_1","title":"Reviewed","body":"Accepted"}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        accept,
+        CliRequest::MemoryInboxAccept {
+            inbox_id: "inbox_1".to_string(),
+            title: Some("Reviewed".to_string()),
+            body: Some("Accepted".to_string()),
+            tags: None,
+        }
+    );
+
+    let reject: CliRequest =
+        serde_json::from_str(r#"{"cmd":"memory-inbox-reject","inbox_id":"inbox_1"}"#).unwrap();
+    assert_eq!(
+        reject,
+        CliRequest::MemoryInboxReject {
+            inbox_id: "inbox_1".to_string()
+        }
+    );
+}
+
+#[test]
 fn serializes_memory_status_response_as_snake_case_json() {
     let response = crate::cli_protocol::CliResponse {
         ok: true,
@@ -183,5 +218,25 @@ fn serializes_memory_status_response_as_snake_case_json() {
     assert_eq!(
         serde_json::to_string(&response).unwrap(),
         r#"{"ok":true,"memory_status":{"mode":"ordinary","has_memory":false,"can_initialize":true,"missing_paths":["memory"]}}"#
+    );
+}
+
+#[test]
+fn serializes_memory_inbox_review_response_as_snake_case_json() {
+    let response = crate::cli_protocol::CliResponse {
+        ok: true,
+        memory_inbox_review: Some(crate::memory::InboxReviewResult {
+            inbox_id: "inbox_1".to_string(),
+            path: "memory/inbox/2026-06-13-decision.md".to_string(),
+            status: "rejected".to_string(),
+            accepted_memory_id: None,
+            memory: None,
+        }),
+        ..crate::cli_protocol::CliResponse::default()
+    };
+
+    assert_eq!(
+        serde_json::to_string(&response).unwrap(),
+        r#"{"ok":true,"memory_inbox_review":{"inbox_id":"inbox_1","path":"memory/inbox/2026-06-13-decision.md","status":"rejected","accepted_memory_id":null,"memory":null}}"#
     );
 }

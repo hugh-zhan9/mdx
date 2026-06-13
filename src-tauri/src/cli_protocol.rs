@@ -127,6 +127,22 @@ pub enum CliRequest {
     MemoryArchive {
         target: String,
     },
+    MemoryInboxList {
+        #[serde(default)]
+        include_reviewed: bool,
+    },
+    MemoryInboxAccept {
+        inbox_id: String,
+        #[serde(default)]
+        title: Option<String>,
+        #[serde(default)]
+        body: Option<String>,
+        #[serde(default)]
+        tags: Option<Vec<String>>,
+    },
+    MemoryInboxReject {
+        inbox_id: String,
+    },
     MemoryWorkingGet,
     MemoryWorkingSet {
         content: String,
@@ -263,6 +279,12 @@ pub struct CliResponse {
     pub memory_entry: Option<crate::memory::MemoryRecord>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memory_entries: Option<Vec<crate::memory::MemorySummary>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_inbox: Option<crate::memory::InboxRecord>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_inbox_entries: Option<Vec<crate::memory::InboxRecord>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_inbox_review: Option<crate::memory::InboxReviewResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memory_recall: Option<crate::memory::RecallResult>,
     #[serde(skip_serializing_if = "Option::is_none")]

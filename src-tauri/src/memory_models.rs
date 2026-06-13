@@ -272,6 +272,64 @@ pub struct MemoryAddRequest {
     pub confidence: Option<f64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct InboxFrontmatter {
+    pub schema_version: u32,
+    pub kind: String,
+    pub inbox_id: String,
+    pub title: String,
+    pub status: String,
+    pub created_at: String,
+    pub source_thread: Option<String>,
+    pub source_message_refs: Vec<String>,
+    pub importance: Option<f64>,
+    pub confidence: Option<f64>,
+    pub tags: Vec<String>,
+    pub distill_run_id: Option<String>,
+    pub accepted_memory_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct InboxRecord {
+    pub path: String,
+    pub frontmatter: InboxFrontmatter,
+    pub body: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct InboxAddRequest {
+    pub title: String,
+    pub body: String,
+    pub source_thread: Option<String>,
+    pub source_message_refs: Vec<String>,
+    pub importance: Option<f64>,
+    pub confidence: Option<f64>,
+    pub tags: Vec<String>,
+    pub distill_run_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct InboxReviewRequest {
+    pub inbox_id: String,
+    pub title: Option<String>,
+    pub body: Option<String>,
+    pub tags: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub struct InboxReviewResult {
+    pub inbox_id: String,
+    pub path: String,
+    pub status: String,
+    pub accepted_memory_id: Option<String>,
+    pub memory: Option<MemoryRecord>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub struct MemoryListFilter {

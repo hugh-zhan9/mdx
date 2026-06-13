@@ -7,6 +7,7 @@ use crate::memory_fs::{
     RequiredPathState,
 };
 pub use crate::memory_models::{
+    InboxAddRequest, InboxFrontmatter, InboxRecord, InboxReviewRequest, InboxReviewResult,
     InitializeMemoryResult, MemoryAddRequest, MemoryCaptureConfig, MemoryConfig,
     MemoryDistillConfig, MemoryEmbeddingConfig, MemoryFrontmatter, MemoryIndexSearchItem,
     MemoryIndexSearchRequest, MemoryIndexSearchResult, MemoryIndexStatus, MemoryListFilter,
@@ -341,6 +342,46 @@ pub fn memory_archive(root_path: String, target: String) -> Result<MemoryRecord,
     let root = canonicalize_workspace_root(root_path)?;
     let _lock = try_acquire_memory_lock(&root)?;
     crate::memory_store::memory_archive(root, target)
+}
+
+pub fn memory_inbox_add(
+    root_path: String,
+    request: InboxAddRequest,
+) -> Result<InboxRecord, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    let _lock = try_acquire_memory_lock(&root)?;
+    crate::memory_inbox::memory_inbox_add(root, request)
+}
+
+pub fn memory_inbox_get(root_path: String, target: String) -> Result<InboxRecord, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    crate::memory_inbox::memory_inbox_get(root, target)
+}
+
+pub fn memory_inbox_list(
+    root_path: String,
+    include_reviewed: bool,
+) -> Result<Vec<InboxRecord>, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    crate::memory_inbox::memory_inbox_list(root, include_reviewed)
+}
+
+pub fn memory_inbox_accept(
+    root_path: String,
+    request: InboxReviewRequest,
+) -> Result<InboxReviewResult, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    let _lock = try_acquire_memory_lock(&root)?;
+    crate::memory_inbox::memory_inbox_accept(root, request)
+}
+
+pub fn memory_inbox_reject(
+    root_path: String,
+    target: String,
+) -> Result<InboxReviewResult, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    let _lock = try_acquire_memory_lock(&root)?;
+    crate::memory_inbox::memory_inbox_reject(root, target)
 }
 
 pub fn memory_working_get(root_path: String) -> Result<String, WorkspaceError> {

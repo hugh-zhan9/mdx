@@ -5,11 +5,12 @@ use tempfile::tempdir;
 
 use crate::memory::{
     default_memory_config, memory_add, memory_archive, memory_detect_workspace, memory_get,
-    memory_initialize_workspace, memory_list, memory_promote, memory_recall,
+    memory_inbox_accept, memory_inbox_add, memory_inbox_get, memory_inbox_list,
+    memory_inbox_reject, memory_initialize_workspace, memory_list, memory_promote, memory_recall,
     memory_repair_workspace, memory_search, memory_thread_get, memory_thread_list,
     memory_thread_save, memory_working_append, memory_working_get, memory_working_set,
-    MemoryAddRequest, MemoryListFilter, MemoryPromoteRequest, MemoryRepairRequest, RecallRequest,
-    ThreadListFilter, ThreadSaveRequest,
+    InboxAddRequest, InboxReviewRequest, MemoryAddRequest, MemoryListFilter, MemoryPromoteRequest,
+    MemoryRepairRequest, RecallRequest, ThreadListFilter, ThreadSaveRequest,
 };
 use crate::memory_fs::{
     append_memory_log_entry, read_workspace_file, recover_old_malformed_memory_lock_dir_for_test,
@@ -1605,4 +1606,121 @@ fn promote_with_failed_ingest_does_not_mark_thread_promoted() {
     )
     .unwrap();
     assert!(!thread.frontmatter.promoted_to_wiki);
+}
+
+#[test]
+fn inbox_accept_creates_active_memory_and_marks_candidate_accepted() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+
+    let candidate = memory_inbox_add(
+        root.path().to_string_lossy().into_owned(),
+        InboxAddRequest {
+            title: "Persist inbox decisions".to_string(),
+            body: "Inbox candidates are reviewed before becoming active memory.".to_string(),
+            source_thread: Some("codex:session-5".to_string()),
+            source_message_refs: vec!["msg-1".to_string(), "msg-2".to_string()],
+            importance: Some(0.8),
+            confidence: Some(0.7),
+            tags: vec!["workflow".to_string()],
+            distill_run_id: Some("distill-1".to_string()),
+        },
+    )
+    .unwrap();
+
+    let result = memory_inbox_accept(
+        root.path().to_string_lossy().into_owned(),
+        InboxReviewRequest {
+            inbox_id: candidate.frontmatter.inbox_id.clone(),
+            title: Some("Reviewed inbox decision".to_string()),
+            body: Some("Reviewed body becomes the active memory.".to_string()),
+            tags: Some(vec!["reviewed".to_string(), "workflow".to_string()]),
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.status, "accepted");
+    let memory = memory_get(
+        root.path().to_string_lossy().into_owned(),
+        result.accepted_memory_id.clone().unwrap(),
+    )
+    .unwrap();
+    assert_eq!(memory.frontmatter.title, "Reviewed inbox decision");
+    assert_eq!(
+        memory.body.trim(),
+        "Reviewed body becomes the active memory."
+    );
+    assert_eq!(
+        memory.frontmatter.source_thread,
+        Some("codex:session-5".to_string())
+    );
+    assert_eq!(memory.frontmatter.tags, vec!["reviewed", "workflow"]);
+
+    let reviewed = memory_inbox_get(
+        root.path().to_string_lossy().into_owned(),
+        candidate.frontmatter.inbox_id,
+    )
+    .unwrap();
+    assert_eq!(reviewed.frontmatter.status, "accepted");
+    assert_eq!(
+        reviewed.frontmatter.accepted_memory_id,
+        Some(memory.frontmatter.memory_id)
+    );
+}
+
+#[test]
+fn inbox_reject_marks_candidate_rejected_and_list_hides_reviewed_by_default() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+
+    let rejected = memory_inbox_add(
+        root.path().to_string_lossy().into_owned(),
+        InboxAddRequest {
+            title: "Reject this candidate".to_string(),
+            body: "This should not become active memory.".to_string(),
+            source_thread: None,
+            source_message_refs: Vec::new(),
+            importance: None,
+            confidence: None,
+            tags: vec!["inbox".to_string()],
+            distill_run_id: None,
+        },
+    )
+    .unwrap();
+    let pending = memory_inbox_add(
+        root.path().to_string_lossy().into_owned(),
+        InboxAddRequest {
+            title: "Keep this pending".to_string(),
+            body: "This still needs review.".to_string(),
+            source_thread: None,
+            source_message_refs: Vec::new(),
+            importance: None,
+            confidence: None,
+            tags: Vec::new(),
+            distill_run_id: None,
+        },
+    )
+    .unwrap();
+
+    let result = memory_inbox_reject(
+        root.path().to_string_lossy().into_owned(),
+        rejected.frontmatter.inbox_id.clone(),
+    )
+    .unwrap();
+    assert_eq!(result.status, "rejected");
+    assert_eq!(result.accepted_memory_id, None);
+
+    let pending_only =
+        memory_inbox_list(root.path().to_string_lossy().into_owned(), false).unwrap();
+    assert_eq!(pending_only.len(), 1);
+    assert_eq!(
+        pending_only[0].frontmatter.inbox_id,
+        pending.frontmatter.inbox_id
+    );
+
+    let all = memory_inbox_list(root.path().to_string_lossy().into_owned(), true).unwrap();
+    assert_eq!(all.len(), 2);
+    assert!(all
+        .iter()
+        .any(|record| record.frontmatter.status == "rejected"));
 }

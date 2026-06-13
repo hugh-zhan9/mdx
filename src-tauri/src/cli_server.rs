@@ -302,6 +302,16 @@ fn dispatch(app: &AppHandle, request: CliRequest) -> CliResponse {
             since,
         } => handle_memory_search(app, query, limit, tag, since),
         CliRequest::MemoryArchive { target } => handle_memory_archive(app, target),
+        CliRequest::MemoryInboxList { include_reviewed } => {
+            handle_memory_inbox_list(app, include_reviewed)
+        }
+        CliRequest::MemoryInboxAccept {
+            inbox_id,
+            title,
+            body,
+            tags,
+        } => handle_memory_inbox_accept(app, inbox_id, title, body, tags),
+        CliRequest::MemoryInboxReject { inbox_id } => handle_memory_inbox_reject(app, inbox_id),
         CliRequest::MemoryWorkingGet => handle_memory_working_get(app),
         CliRequest::MemoryWorkingSet { content } => handle_memory_working_set(app, content),
         CliRequest::MemoryWorkingAppend { section, text } => {
@@ -1015,6 +1025,55 @@ fn handle_memory_archive(app: &AppHandle, target: String) -> CliResponse {
     response
 }
 
+fn handle_memory_inbox_list(app: &AppHandle, include_reviewed: bool) -> CliResponse {
+    let Some((_, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match memory_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+
+    memory_inbox_list_response_for_root(root_path, include_reviewed)
+}
+
+fn handle_memory_inbox_accept(
+    app: &AppHandle,
+    inbox_id: String,
+    title: Option<String>,
+    body: Option<String>,
+    tags: Option<Vec<String>>,
+) -> CliResponse {
+    let Some((label, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match memory_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+    let response =
+        memory_inbox_accept_response_for_root(root_path.clone(), inbox_id, title, body, tags);
+    if response.ok {
+        emit_log_file_updated(app, &label, &root_path);
+    }
+    response
+}
+
+fn handle_memory_inbox_reject(app: &AppHandle, inbox_id: String) -> CliResponse {
+    let Some((label, snapshot)) = current_snapshot(app) else {
+        return CliResponse::error("no_workspace", "no workspace snapshot is available");
+    };
+    let root_path = match memory_active_root(&snapshot) {
+        Ok(root_path) => root_path,
+        Err(response) => return response,
+    };
+    let response = memory_inbox_reject_response_for_root(root_path.clone(), inbox_id);
+    if response.ok {
+        emit_log_file_updated(app, &label, &root_path);
+    }
+    response
+}
+
 fn handle_memory_working_get(app: &AppHandle) -> CliResponse {
     let Some((_, snapshot)) = current_snapshot(app) else {
         return CliResponse::error("no_workspace", "no workspace snapshot is available");
@@ -1332,6 +1391,51 @@ fn memory_archive_response_for_root(root_path: String, target: String) -> CliRes
         Ok(record) => CliResponse {
             ok: true,
             memory_entry: Some(record),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn memory_inbox_list_response_for_root(root_path: String, include_reviewed: bool) -> CliResponse {
+    match memory::memory_inbox_list(root_path, include_reviewed) {
+        Ok(entries) => CliResponse {
+            ok: true,
+            memory_inbox_entries: Some(entries),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn memory_inbox_accept_response_for_root(
+    root_path: String,
+    inbox_id: String,
+    title: Option<String>,
+    body: Option<String>,
+    tags: Option<Vec<String>>,
+) -> CliResponse {
+    let request = memory::InboxReviewRequest {
+        inbox_id,
+        title,
+        body,
+        tags,
+    };
+    match memory::memory_inbox_accept(root_path, request) {
+        Ok(result) => CliResponse {
+            ok: true,
+            memory_inbox_review: Some(result),
+            ..CliResponse::default()
+        },
+        Err(error) => workspace_error(error),
+    }
+}
+
+fn memory_inbox_reject_response_for_root(root_path: String, inbox_id: String) -> CliResponse {
+    match memory::memory_inbox_reject(root_path, inbox_id) {
+        Ok(result) => CliResponse {
+            ok: true,
+            memory_inbox_review: Some(result),
             ..CliResponse::default()
         },
         Err(error) => workspace_error(error),
