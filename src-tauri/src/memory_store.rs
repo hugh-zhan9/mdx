@@ -61,16 +61,17 @@ pub fn memory_add(
         tags: request.tags.clone(),
         evolves_from: None,
     };
-    append_memory_log_entry(
-        root,
-        &format!("memory_add memory_id={memory_id} path={path}"),
-    )?;
-
-    Ok(MemoryRecord {
+    let record = MemoryRecord {
         path,
         frontmatter,
         body,
-    })
+    };
+    crate::search_index::sync_memory(root, &record)?;
+    append_memory_log_entry(
+        root,
+        &format!("memory_add memory_id={memory_id} path={}", record.path),
+    )?;
+    Ok(record)
 }
 
 fn memory_id_from_path(path: &str) -> String {
@@ -160,6 +161,7 @@ pub fn memory_archive(
     record.frontmatter.status = "archived".to_string();
     let markdown = render_markdown_with_frontmatter(&record.frontmatter, &record.body)?;
     write_workspace_file(root, &record.path, markdown.as_bytes())?;
+    crate::search_index::sync_memory(root, &record)?;
     append_memory_log_entry(
         root,
         &format!(

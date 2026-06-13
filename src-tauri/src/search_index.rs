@@ -170,6 +170,34 @@ pub(crate) fn search(
     Ok(MemoryIndexSearchResult { items })
 }
 
+pub(crate) fn sync_memory(root: &Path, record: &MemoryRecord) -> Result<(), WorkspaceError> {
+    crate::memory_fs::ensure_memory_ready(root)?;
+
+    let index_path = root.join(".mdx/search.sqlite");
+    if !index_path.is_file() {
+        return Ok(());
+    }
+
+    let mut conn = open_read_write(&index_path)?;
+    init_schema(&conn)?;
+    let tx = conn.transaction().map_err(sql_error)?;
+    if record.frontmatter.status == "archived" {
+        delete_memory(&tx, &record.frontmatter.memory_id)?;
+    } else {
+        upsert_memory(&tx, record)?;
+    }
+    tx.execute(
+        "INSERT OR REPLACE INTO metadata(key, value) VALUES('index_status', 'clean')",
+        [],
+    )
+    .map_err(sql_error)?;
+    tx.commit().map_err(sql_error)
+}
+
+pub(crate) fn has_index(root: &Path) -> bool {
+    root.join(".mdx/search.sqlite").is_file()
+}
+
 pub(crate) fn is_index_degradation_error(error: &WorkspaceError) -> bool {
     matches!(error.error_code(), "index_unavailable" | "index_failed")
 }
@@ -227,6 +255,18 @@ pub(crate) fn upsert_memory(
         ],
     )
     .map_err(sql_error)?;
+    Ok(())
+}
+
+fn delete_memory(tx: &Transaction<'_>, memory_id: &str) -> Result<(), WorkspaceError> {
+    tx.execute(
+        "DELETE FROM fts_memories
+         WHERE rowid IN (SELECT rowid FROM documents WHERE doc_id = ?)",
+        [memory_id],
+    )
+    .map_err(sql_error)?;
+    tx.execute("DELETE FROM documents WHERE doc_id = ?", [memory_id])
+        .map_err(sql_error)?;
     Ok(())
 }
 

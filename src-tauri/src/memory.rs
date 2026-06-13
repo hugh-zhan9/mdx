@@ -230,7 +230,7 @@ pub(crate) fn repair_memory_workspace(
 
     let mut repaired_paths = Vec::new();
     let mut preserved_paths = Vec::new();
-    let mut warnings = Vec::new();
+    let warnings = Vec::new();
 
     create_json_file_if_missing(
         root,
@@ -241,7 +241,7 @@ pub(crate) fn repair_memory_workspace(
     )?;
 
     if request.rebuild_index {
-        warnings.push("search index rebuild is handled by the search index task".to_string());
+        crate::search_index::rebuild(root)?;
     }
 
     append_memory_log_entry_impl(root, "memory_repair")?;

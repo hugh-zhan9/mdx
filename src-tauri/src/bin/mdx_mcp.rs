@@ -3,6 +3,7 @@ use std::io::{self, BufRead, Write};
 use mdx_lib::memory::{
     memory_add, memory_detect_workspace, memory_distill, memory_inbox_accept, memory_inbox_list,
     memory_promote, memory_recall, memory_search, memory_thread_get, memory_thread_save,
+    memory_working_get,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -10,6 +11,7 @@ use serde_json::{json, Value};
 const TOOLS: &[&str] = &[
     "memory_status",
     "memory_recall",
+    "memory_working_get",
     "memory_add",
     "memory_thread_save",
     "memory_thread_show",
@@ -220,6 +222,11 @@ fn tool_descriptor(name: &str) -> Value {
             }),
             json!(["query"]),
         ),
+        "memory_working_get" => (
+            "Read the workspace working memory markdown.",
+            json!({}),
+            json!([]),
+        ),
         "memory_add" => (
             "Add a durable memory snapshot.",
             json!({
@@ -326,6 +333,7 @@ fn dispatch_tool_call(workspace: &str, params: Value) -> Result<Value, ProtocolE
             let request = parse_arguments(arguments)?;
             memory_result(memory_recall(workspace.to_string(), request))
         }
+        "memory_working_get" => memory_result(memory_working_get(workspace.to_string())),
         "memory_add" => {
             let request = parse_arguments(arguments)?;
             memory_result(memory_add(workspace.to_string(), request))
@@ -487,6 +495,30 @@ mod tests {
         let result = response.result.unwrap();
         assert_eq!(result["mode"], "ordinary");
         assert_eq!(result["has_memory"], false);
+    }
+
+    #[test]
+    fn dispatches_memory_working_get_tool_call() {
+        let root = tempfile::tempdir().unwrap();
+        mdx_lib::memory::memory_initialize_workspace(root.path().to_string_lossy().into_owned())
+            .unwrap();
+        mdx_lib::memory::memory_working_set(
+            root.path().to_string_lossy().into_owned(),
+            "# Working Memory\n\n## Focus\n- MCP startup\n".to_string(),
+        )
+        .unwrap();
+        let request = parse_request(
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"memory_working_get","arguments":{}}}"#,
+        )
+        .unwrap();
+
+        let response = handle_request(root.path().to_str().unwrap(), request);
+
+        assert!(response.error.is_none());
+        assert_eq!(
+            response.result.unwrap(),
+            "# Working Memory\n\n## Focus\n- MCP startup\n"
+        );
     }
 
     #[test]

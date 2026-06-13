@@ -205,6 +205,10 @@ pub fn memory_import_bundle(
         .filter(|path| is_any_record_path(path))
         .count();
 
+    if !request.dry_run && records_imported > 0 && crate::search_index::has_index(root) {
+        crate::search_index::rebuild(root)?;
+    }
+
     Ok(MemoryImportResult {
         manifest_path: manifest_path.to_string_lossy().into_owned(),
         input_path: input.to_string_lossy().into_owned(),

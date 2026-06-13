@@ -145,6 +145,46 @@ fn daemon_dispatch_memory_add_accepts_json_body() {
 }
 
 #[test]
+fn daemon_dispatch_exposes_complete_memory_routes() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+
+    let routes = [
+        ("GET", "/memory/status", ""),
+        ("GET", "/memory/working", ""),
+        ("GET", "/memory/index/status", ""),
+        ("POST", "/memory/index/rebuild", ""),
+        (
+            "POST",
+            "/memory/inbox/list",
+            r#"{"include_reviewed":false}"#,
+        ),
+        (
+            "POST",
+            "/memory/distill",
+            r#"{"target":"missing-thread","accept":false,"force":false}"#,
+        ),
+        (
+            "POST",
+            "/memory/promote",
+            r#"{"target":"missing-memory","ingest":false,"title":null}"#,
+        ),
+        ("POST", "/memory/capture/scan", r#"{"source":"codex"}"#),
+    ];
+
+    for (method, path, body) in routes {
+        let response = crate::memory_daemon::dispatch_for_test(
+            root.path().to_string_lossy().into_owned(),
+            method,
+            path,
+            body,
+        )
+        .unwrap();
+        assert_ne!(response.status, 404, "{method} {path}");
+    }
+}
+
+#[test]
 fn memory_initialize_preserves_existing_markdown() {
     let root = tempdir().unwrap();
     std::fs::write(root.path().join("existing.md"), "# Existing\n").unwrap();
@@ -649,10 +689,10 @@ fn memory_repair_recreates_missing_thread_index_and_preserves_markdown() {
     .unwrap();
 
     assert_eq!(result.repaired_paths, vec![".mdx/thread-index.json"]);
-    assert_eq!(
-        result.warnings,
-        vec!["search index rebuild is handled by the search index task"]
-    );
+    assert!(result.warnings.is_empty());
+    let status =
+        crate::memory::memory_index_status(root.path().to_string_lossy().into_owned()).unwrap();
+    assert_eq!(status.document_count, 1);
     assert!(root.path().join(".mdx/thread-index.json").is_file());
     assert_eq!(
         std::fs::read_to_string(root.path().join("memory/working.md")).unwrap(),
@@ -664,6 +704,48 @@ fn memory_repair_recreates_missing_thread_index_and_preserves_markdown() {
     );
     let log = read_workspace_file(root.path(), "log.md").unwrap();
     assert!(log.contains("memory_repair"));
+}
+
+#[test]
+fn recall_finds_memory_added_after_index_rebuild() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    crate::memory::memory_index_rebuild(root.path().to_string_lossy().into_owned()).unwrap();
+
+    memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "Needle after index".to_string(),
+            body: "The indexed recall path must find this post-rebuild memory.".to_string(),
+            tags: vec!["needle".to_string()],
+            source_thread: None,
+            source_message_refs: Vec::new(),
+            importance: None,
+            confidence: None,
+        },
+    )
+    .unwrap();
+
+    let result = memory_recall(
+        root.path().to_string_lossy().into_owned(),
+        RecallRequest {
+            query: "post-rebuild".to_string(),
+            limit: Some(10),
+            byte_budget: Some(65_536),
+            include_working: false,
+            include_threads: false,
+            thread_ids: Vec::new(),
+            include_wiki_refs: false,
+            include_wiki_snippets: false,
+            tag: None,
+            since: None,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.memories.len(), 1);
+    assert_eq!(result.memories[0].title, "Needle after index");
+    assert!(!result.index_degraded);
 }
 
 #[test]
