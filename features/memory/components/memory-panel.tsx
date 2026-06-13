@@ -51,13 +51,15 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
   const activeRootPathRef = useRef(rootPath);
   activeRootPathRef.current = rootPath;
   const mountedRef = useRef(false);
+  const recallRequestIdRef = useRef(0);
   const workingRequestIdRef = useRef(0);
+  const workingSaveRequestIdRef = useRef(0);
   const memoriesRequestIdRef = useRef(0);
   const inboxRequestIdRef = useRef(0);
   const threadsRequestIdRef = useRef(0);
   const [activeTab, setActiveTab] = useState<MemoryPanelTabId>("settings");
   const [actionError, setActionError] = useState<string | null>(null);
-  const pendingActionsRef = useRef<Set<string>>(new Set());
+  const pendingActionsRef = useRef<Map<string, symbol>>(new Map());
   const [pendingActions, setPendingActions] = useState<Set<string>>(
     () => new Set(),
   );
@@ -109,7 +111,9 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
 
   useEffect(() => {
     activeRootPathRef.current = rootPath;
+    recallRequestIdRef.current += 1;
     workingRequestIdRef.current += 1;
+    workingSaveRequestIdRef.current += 1;
     memoriesRequestIdRef.current += 1;
     inboxRequestIdRef.current += 1;
     threadsRequestIdRef.current += 1;
@@ -135,7 +139,7 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
     setRepairResult(null);
     setIndexStatus(null);
     setSettingsLoading(false);
-    pendingActionsRef.current = new Set();
+    pendingActionsRef.current = new Map();
     setPendingActions(new Set());
   }, [rootPath]);
 
@@ -150,13 +154,6 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
   );
 
   const setActionPending = useCallback((key: string, pending: boolean) => {
-    const nextRef = new Set(pendingActionsRef.current);
-    if (pending) {
-      nextRef.add(key);
-    } else {
-      nextRef.delete(key);
-    }
-    pendingActionsRef.current = nextRef;
     setPendingActions((current) => {
       const next = new Set(current);
       if (pending) {
@@ -168,20 +165,35 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
     });
   }, []);
 
+  const pendingKey = useCallback(
+    (key: string) => `${rootPath}:${key}`,
+    [rootPath],
+  );
+  const isActionPending = useCallback(
+    (key: string) => pendingActions.has(pendingKey(key)),
+    [pendingActions, pendingKey],
+  );
+
   const runExclusiveAction = useCallback(
     async (key: string, action: () => Promise<void>) => {
-      if (pendingActionsRef.current.has(key)) {
+      const scopedKey = pendingKey(key);
+      if (pendingActionsRef.current.has(scopedKey)) {
         return;
       }
 
-      setActionPending(key, true);
+      const token = Symbol(scopedKey);
+      pendingActionsRef.current.set(scopedKey, token);
+      setActionPending(scopedKey, true);
       try {
         await action();
       } finally {
-        setActionPending(key, false);
+        if (pendingActionsRef.current.get(scopedKey) === token) {
+          pendingActionsRef.current.delete(scopedKey);
+          setActionPending(scopedKey, false);
+        }
       }
     },
-    [setActionPending],
+    [pendingKey, setActionPending],
   );
 
   const refreshWorking = useCallback(async () => {
@@ -401,42 +413,80 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
         return;
       }
 
+      const requestRootPath = rootPath;
+      const requestId = recallRequestIdRef.current + 1;
+      recallRequestIdRef.current = requestId;
       setRecallLoading(true);
       setActionError(null);
       try {
-        setRecallResult(
-          await recallMemory(rootPath, {
-            query,
-            limit: 8,
-            byte_budget: 12000,
-            include_working: true,
-            include_threads: true,
-            include_wiki_refs: false,
-            include_wiki_snippets: false,
-          }),
-        );
+        const result = await recallMemory(requestRootPath, {
+          query,
+          limit: 8,
+          byte_budget: 12000,
+          include_working: true,
+          include_threads: true,
+          include_wiki_refs: false,
+          include_wiki_snippets: false,
+        });
+        if (
+          !isCurrentRoot(requestRootPath) ||
+          recallRequestIdRef.current !== requestId
+        ) {
+          return;
+        }
+        setRecallResult(result);
       } catch (error) {
-        setError(error);
+        if (
+          isCurrentRoot(requestRootPath) &&
+          recallRequestIdRef.current === requestId
+        ) {
+          setError(error);
+        }
       } finally {
-        setRecallLoading(false);
+        if (
+          isCurrentRoot(requestRootPath) &&
+          recallRequestIdRef.current === requestId
+        ) {
+          setRecallLoading(false);
+        }
       }
     },
-    [recallQuery, rootPath, setError],
+    [isCurrentRoot, recallQuery, rootPath, setError],
   );
 
   const handleSaveWorking = useCallback(async () => {
+    const requestRootPath = rootPath;
+    const requestId = workingSaveRequestIdRef.current + 1;
+    workingSaveRequestIdRef.current = requestId;
     setWorkingSaving(true);
     setActionError(null);
     try {
-      setWorkingText(await setWorkingMemory(rootPath, workingText));
+      const savedText = await setWorkingMemory(requestRootPath, workingText);
+      if (
+        !isCurrentRoot(requestRootPath) ||
+        workingSaveRequestIdRef.current !== requestId
+      ) {
+        return;
+      }
+      setWorkingText(savedText);
       setWorkingLoaded(true);
       setStatusMessage("Working memory saved");
     } catch (error) {
-      setError(error);
+      if (
+        isCurrentRoot(requestRootPath) &&
+        workingSaveRequestIdRef.current === requestId
+      ) {
+        setError(error);
+      }
     } finally {
-      setWorkingSaving(false);
+      if (
+        isCurrentRoot(requestRootPath) &&
+        workingSaveRequestIdRef.current === requestId
+      ) {
+        setWorkingSaving(false);
+      }
     }
-  }, [rootPath, setError, workingText]);
+  }, [isCurrentRoot, rootPath, setError, workingText]);
 
   const handleArchiveMemory = useCallback(
     async (target: string) => {
@@ -456,7 +506,7 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
   const handleAcceptInbox = useCallback(
     async (entry: InboxRecord) => {
       const inboxId = entry.frontmatter.inbox_id;
-      await runExclusiveAction(`accept:${inboxId}`, async () => {
+      await runExclusiveAction(`inbox:${inboxId}`, async () => {
         setActionError(null);
         try {
           await acceptMemoryInbox(rootPath, {
@@ -477,7 +527,7 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
 
   const handleRejectInbox = useCallback(
     async (inboxId: string) => {
-      await runExclusiveAction(`reject:${inboxId}`, async () => {
+      await runExclusiveAction(`inbox:${inboxId}`, async () => {
         setActionError(null);
         try {
           await rejectMemoryInbox(rootPath, inboxId);
@@ -629,7 +679,7 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
             loading={memoriesLoading}
             onRefresh={refreshMemories}
             onArchive={handleArchiveMemory}
-            pendingActions={pendingActions}
+            isActionPending={isActionPending}
           />
         ) : effectiveTab === "inbox" ? (
           <InboxTab
@@ -638,7 +688,7 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
             onRefresh={refreshInbox}
             onAccept={handleAcceptInbox}
             onReject={handleRejectInbox}
-            pendingActions={pendingActions}
+            isActionPending={isActionPending}
           />
         ) : effectiveTab === "threads" ? (
           <ThreadsTab
@@ -650,7 +700,7 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
             onRefresh={refreshThreads}
             onSelect={setSelectedThreadId}
             onPromote={handlePromoteThread}
-            pendingActions={pendingActions}
+            isActionPending={isActionPending}
           />
         ) : (
           <SettingsTab
@@ -784,13 +834,13 @@ function MemoriesTab({
   loading,
   onRefresh,
   onArchive,
-  pendingActions,
+  isActionPending,
 }: {
   memories: MemorySummary[];
   loading: boolean;
   onRefresh: () => Promise<void>;
   onArchive: (target: string) => Promise<void>;
-  pendingActions: Set<string>;
+  isActionPending: (key: string) => boolean;
 }) {
   return (
     <ListPanel
@@ -816,10 +866,10 @@ function MemoriesTab({
               ) : null}
             </div>
             <TextControlButton
-              disabled={pendingActions.has(`archive:${memory.memory_id}`)}
+              disabled={isActionPending(`archive:${memory.memory_id}`)}
               onClick={() => void onArchive(memory.memory_id)}
             >
-              {pendingActions.has(`archive:${memory.memory_id}`)
+              {isActionPending(`archive:${memory.memory_id}`)
                 ? "Archiving"
                 : "Archive"}
             </TextControlButton>
@@ -836,14 +886,14 @@ function InboxTab({
   onRefresh,
   onAccept,
   onReject,
-  pendingActions,
+  isActionPending,
 }: {
   inbox: InboxRecord[];
   loading: boolean;
   onRefresh: () => Promise<void>;
   onAccept: (entry: InboxRecord) => Promise<void>;
   onReject: (inboxId: string) => Promise<void>;
-  pendingActions: Set<string>;
+  isActionPending: (key: string) => boolean;
 }) {
   return (
     <ListPanel title="Inbox" loading={loading} empty="Inbox empty" onRefresh={onRefresh}>
@@ -859,27 +909,28 @@ function InboxTab({
               </div>
             </div>
             <div className="flex shrink-0 gap-1">
+              {(() => {
+                const inboxPending = isActionPending(
+                  `inbox:${entry.frontmatter.inbox_id}`,
+                );
+                return (
+                  <>
               <TextControlButton
-                disabled={pendingActions.has(
-                  `accept:${entry.frontmatter.inbox_id}`,
-                )}
+                disabled={inboxPending}
                 onClick={() => void onAccept(entry)}
               >
-                {pendingActions.has(`accept:${entry.frontmatter.inbox_id}`)
-                  ? "Accepting"
-                  : "Accept"}
+                {inboxPending ? "Working" : "Accept"}
               </TextControlButton>
               <TextControlButton
                 className="text-error hover:bg-error/10 hover:text-error"
-                disabled={pendingActions.has(
-                  `reject:${entry.frontmatter.inbox_id}`,
-                )}
+                disabled={inboxPending}
                 onClick={() => void onReject(entry.frontmatter.inbox_id)}
               >
-                {pendingActions.has(`reject:${entry.frontmatter.inbox_id}`)
-                  ? "Rejecting"
-                  : "Reject"}
+                {inboxPending ? "Working" : "Reject"}
               </TextControlButton>
+                  </>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -897,7 +948,7 @@ function ThreadsTab({
   onRefresh,
   onSelect,
   onPromote,
-  pendingActions,
+  isActionPending,
 }: {
   threads: ThreadListItem[];
   selectedThread: MemoryThreadRecord | null;
@@ -907,7 +958,7 @@ function ThreadsTab({
   onRefresh: () => Promise<void>;
   onSelect: (threadId: string) => void;
   onPromote: () => Promise<void>;
-  pendingActions: Set<string>;
+  isActionPending: (key: string) => boolean;
 }) {
   return (
     <div className="space-y-3">
@@ -947,11 +998,12 @@ function ThreadsTab({
               disabled={
                 threadLoading ||
                 Boolean(
-                  selectedThreadId && pendingActions.has(`promote:${selectedThreadId}`),
+                  selectedThreadId &&
+                    isActionPending(`promote:${selectedThreadId}`),
                 )
               }
             >
-              {selectedThreadId && pendingActions.has(`promote:${selectedThreadId}`)
+              {selectedThreadId && isActionPending(`promote:${selectedThreadId}`)
                 ? "Promoting"
                 : "Promote"}
             </TextControlButton>
