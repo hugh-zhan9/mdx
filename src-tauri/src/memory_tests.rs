@@ -101,6 +101,41 @@ fn memory_initialize_creates_memory_structure_without_creating_wiki() {
 }
 
 #[test]
+fn daemon_dispatch_health_reports_memory_status() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+
+    let response = crate::memory_daemon::dispatch_for_test(
+        root.path().to_string_lossy().into_owned(),
+        "GET",
+        "/health",
+        "",
+    )
+    .unwrap();
+
+    assert_eq!(response.status, 200);
+    assert!(response.body.contains("\"has_memory\":true"));
+}
+
+#[test]
+fn daemon_dispatch_memory_add_accepts_json_body() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+
+    let response = crate::memory_daemon::dispatch_for_test(
+        root.path().to_string_lossy().into_owned(),
+        "POST",
+        "/memory/add",
+        r#"{"title":"Daemon memory","body":"Saved through HTTP dispatch.","tags":["daemon"],"source_thread":null,"importance":0.7,"confidence":0.8}"#,
+    )
+    .unwrap();
+
+    assert_eq!(response.status, 200);
+    assert!(response.body.contains("\"ok\":true"));
+    assert!(response.body.contains("\"title\":\"Daemon memory\""));
+}
+
+#[test]
 fn memory_initialize_preserves_existing_markdown() {
     let root = tempdir().unwrap();
     std::fs::write(root.path().join("existing.md"), "# Existing\n").unwrap();

@@ -1,6 +1,7 @@
 use std::env;
 use std::fs;
 use std::io::{self, BufRead, BufReader, Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
@@ -10,6 +11,7 @@ use std::time::{Duration, Instant};
 use clap::{Parser, Subcommand};
 use mdx_lib::cli_protocol::{CliRequest, CliResponse};
 use mdx_lib::memory;
+use mdx_lib::memory_daemon;
 
 #[derive(Parser)]
 #[command(
@@ -76,6 +78,14 @@ enum CommandLine {
         root: Option<String>,
         #[command(subcommand)]
         command: MemoryCommand,
+    },
+    Serve {
+        #[arg(long)]
+        workspace: String,
+        #[arg(long)]
+        port: u16,
+        #[arg(long)]
+        api_key: Option<String>,
     },
 }
 
@@ -332,6 +342,22 @@ fn main() -> ExitCode {
 fn run() -> io::Result<(CommandLine, CliResponse)> {
     let cli = Cli::parse();
     let command = cli.command;
+    if let CommandLine::Serve {
+        workspace,
+        port,
+        api_key,
+    } = &command
+    {
+        serve_memory_daemon(workspace, *port, api_key.as_deref())?;
+        return Ok((
+            command,
+            CliResponse {
+                ok: true,
+                ..CliResponse::default()
+            },
+        ));
+    }
+
     if let Some(root_path) = memory_root_override(&command)? {
         let response = execute_memory_headless(&command, root_path)?;
         return Ok((command, response));
@@ -400,6 +426,12 @@ fn request_from_command(command: &CommandLine) -> io::Result<CliRequest> {
             },
         },
         CommandLine::Memory { command, .. } => request_from_memory_command(command)?,
+        CommandLine::Serve { .. } => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "serve does not use the MDX desktop socket",
+            ));
+        }
     })
 }
 
@@ -967,6 +999,129 @@ fn execute_memory_index_headless(command: &MemoryIndexCommand, root_path: String
             Err(error) => workspace_error_response(error),
         },
     }
+}
+
+fn serve_memory_daemon(workspace: &str, port: u16, _api_key: Option<&str>) -> io::Result<()> {
+    let root_path = normalize_cli_path(workspace)?;
+    let listener = TcpListener::bind(("127.0.0.1", port))?;
+    eprintln!("mdx memory daemon listening on 127.0.0.1:{port}");
+
+    for stream in listener.incoming() {
+        match stream {
+            Ok(mut stream) => {
+                if let Err(error) = handle_http_connection(&mut stream, root_path.clone()) {
+                    eprintln!("mdx memory daemon request failed: {error}");
+                }
+            }
+            Err(error) => eprintln!("mdx memory daemon accept failed: {error}"),
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_http_connection(stream: &mut TcpStream, root_path: String) -> io::Result<()> {
+    let request = read_http_request(stream)?;
+    let response =
+        match memory_daemon::dispatch(root_path, &request.method, &request.path, &request.body) {
+            Ok(response) => response,
+            Err(error) => memory_daemon::DaemonResponse {
+                status: 500,
+                body: serde_json::json!({
+                    "ok": false,
+                    "error_code": error.error_code(),
+                    "message": error.to_string(),
+                })
+                .to_string(),
+            },
+        };
+
+    write_http_response(stream, response)
+}
+
+struct HttpRequest {
+    method: String,
+    path: String,
+    body: String,
+}
+
+fn read_http_request(stream: &mut TcpStream) -> io::Result<HttpRequest> {
+    let mut reader = BufReader::new(stream.try_clone()?);
+    let mut request_line = String::new();
+    if reader.read_line(&mut request_line)? == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "empty HTTP request",
+        ));
+    }
+
+    let mut parts = request_line.split_whitespace();
+    let method = parts
+        .next()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing HTTP method"))?
+        .to_string();
+    let raw_path = parts
+        .next()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing HTTP path"))?;
+    let path = raw_path
+        .split_once('?')
+        .map(|(path, _)| path)
+        .unwrap_or(raw_path)
+        .to_string();
+
+    let mut content_length = 0usize;
+    loop {
+        let mut line = String::new();
+        let read = reader.read_line(&mut line)?;
+        if read == 0 {
+            break;
+        }
+        let trimmed = line.trim_end_matches(['\r', '\n']);
+        if trimmed.is_empty() {
+            break;
+        }
+        if let Some((name, value)) = trimmed.split_once(':') {
+            if name.eq_ignore_ascii_case("content-length") {
+                content_length = value.trim().parse::<usize>().map_err(|error| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("invalid Content-Length: {error}"),
+                    )
+                })?;
+            }
+        }
+    }
+
+    let mut body = vec![0; content_length];
+    reader.read_exact(&mut body)?;
+    let body = String::from_utf8(body)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+
+    Ok(HttpRequest { method, path, body })
+}
+
+fn write_http_response(
+    stream: &mut TcpStream,
+    response: memory_daemon::DaemonResponse,
+) -> io::Result<()> {
+    let status_text = match response.status {
+        200 => "OK",
+        400 => "Bad Request",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        500 => "Internal Server Error",
+        _ => "OK",
+    };
+    let bytes = response.body.as_bytes();
+    write!(
+        stream,
+        "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        response.status,
+        status_text,
+        bytes.len()
+    )?;
+    stream.write_all(bytes)?;
+    stream.flush()
 }
 
 fn workspace_error_response(error: mdx_lib::WorkspaceError) -> CliResponse {

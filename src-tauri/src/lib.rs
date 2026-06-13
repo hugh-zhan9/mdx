@@ -31,6 +31,7 @@ mod llm_wiki_raw;
 mod macos_launch;
 pub mod memory;
 mod memory_capture;
+pub mod memory_daemon;
 mod memory_distill;
 mod memory_fs;
 mod memory_inbox;
