@@ -361,6 +361,28 @@ fn memory_export_writes_manifest_and_import_dry_run_reports_records() {
 }
 
 #[test]
+fn memory_export_respects_workspace_lock() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    let _lock = try_acquire_memory_lock(root.path()).unwrap();
+
+    let error = crate::memory::memory_export_bundle(
+        root.path().to_string_lossy().into_owned(),
+        crate::memory::MemoryExportRequest {
+            output_path: root
+                .path()
+                .join("memory-bundle")
+                .to_string_lossy()
+                .into_owned(),
+            include_log: false,
+        },
+    )
+    .unwrap_err();
+
+    assert_eq!(error.error_code(), "memory_lock_busy");
+}
+
+#[test]
 fn memory_bundle_import_rebuilds_thread_index() {
     let root = tempdir().unwrap();
     let target = tempdir().unwrap();

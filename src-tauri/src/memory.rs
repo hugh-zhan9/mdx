@@ -103,6 +103,7 @@ pub fn memory_export_bundle(
     request: MemoryExportRequest,
 ) -> Result<MemoryExportResult, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
+    let _lock = try_acquire_memory_lock(&root)?;
     crate::memory_bundle::memory_export_bundle(root, request)
 }
 
