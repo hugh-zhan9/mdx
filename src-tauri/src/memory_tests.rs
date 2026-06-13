@@ -369,6 +369,121 @@ fn memory_bundle_import_rejects_manifest_path_traversal() {
     assert!(format!("{error}").starts_with("invalid_bundle_path:"));
 }
 
+#[cfg(unix)]
+#[test]
+fn memory_bundle_export_skips_symlinked_directory_to_outside_file() {
+    use std::os::unix::fs::symlink;
+
+    let root = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    std::fs::write(outside.path().join("outside.md"), "outside secret").unwrap();
+    symlink(
+        outside.path(),
+        root.path().join("memory/memories/linked-outside"),
+    )
+    .unwrap();
+
+    let bundle_path = root.path().join("memory-bundle");
+    let export = crate::memory::memory_export_bundle(
+        root.path().to_string_lossy().into_owned(),
+        crate::memory::MemoryExportRequest {
+            output_path: bundle_path.to_string_lossy().into_owned(),
+            include_log: false,
+        },
+    )
+    .unwrap();
+
+    assert!(!export
+        .copied_paths
+        .iter()
+        .any(|path| path.contains("linked-outside")));
+    assert!(!bundle_path
+        .join("memory/memories/linked-outside/outside.md")
+        .exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn memory_bundle_import_skips_dangling_target_symlink_without_external_write() {
+    use std::os::unix::fs::symlink;
+
+    let source = tempdir().unwrap();
+    let target = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    memory_initialize_workspace(source.path().to_string_lossy().into_owned()).unwrap();
+    memory_initialize_workspace(target.path().to_string_lossy().into_owned()).unwrap();
+    memory_add(
+        source.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "Imported".to_string(),
+            body: "Should not write through symlink.".to_string(),
+            tags: vec!["bundle".to_string()],
+            source_thread: None,
+            source_message_refs: Vec::new(),
+            importance: Some(0.5),
+            confidence: Some(0.8),
+        },
+    )
+    .unwrap();
+    let bundle_path = source.path().join("memory-bundle");
+    let export = crate::memory::memory_export_bundle(
+        source.path().to_string_lossy().into_owned(),
+        crate::memory::MemoryExportRequest {
+            output_path: bundle_path.to_string_lossy().into_owned(),
+            include_log: false,
+        },
+    )
+    .unwrap();
+    let imported_path = export
+        .copied_paths
+        .iter()
+        .find(|path| path.starts_with("memory/memories/"))
+        .unwrap()
+        .clone();
+    let outside_target = outside.path().join("dangling.md");
+    symlink(&outside_target, target.path().join(&imported_path)).unwrap();
+
+    let import = crate::memory::memory_import_bundle(
+        target.path().to_string_lossy().into_owned(),
+        crate::memory::MemoryImportRequest {
+            input_path: bundle_path.to_string_lossy().into_owned(),
+            strategy: "skip".to_string(),
+            dry_run: false,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(import.records_imported, 0);
+    assert_eq!(import.records_skipped, 1);
+    assert!(!outside_target.exists());
+    assert!(std::fs::symlink_metadata(target.path().join(imported_path))
+        .unwrap()
+        .file_type()
+        .is_symlink());
+}
+
+#[test]
+fn memory_bundle_export_rejects_output_under_memory_source_dirs() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+
+    let error = crate::memory::memory_export_bundle(
+        root.path().to_string_lossy().into_owned(),
+        crate::memory::MemoryExportRequest {
+            output_path: root
+                .path()
+                .join("memory/memories/bundle")
+                .to_string_lossy()
+                .into_owned(),
+            include_log: false,
+        },
+    )
+    .unwrap_err();
+
+    assert!(format!("{error}").starts_with("invalid_bundle_output:"));
+}
+
 #[test]
 fn memory_init_appends_a_memory_init_audit_event() {
     let root = tempdir().unwrap();

@@ -1,4 +1,5 @@
 use std::fs;
+use std::io;
 use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -32,6 +33,7 @@ pub fn memory_export_bundle(
     ensure_memory_ready(root)?;
 
     let output = PathBuf::from(request.output_path);
+    reject_output_inside_bundle_source_dirs(root, &output)?;
     fs::create_dir_all(&output).map_err(|error| {
         WorkspaceError::from_io(
             "bundle_export_failed",
@@ -152,7 +154,7 @@ pub fn memory_import_bundle(
     for relative in files {
         let source = input.join(&relative);
         let target = root.join(&relative);
-        if target.exists() {
+        if target_conflicts_for_skip(root, &relative)? {
             skipped_paths.push(relative);
             continue;
         }
@@ -173,6 +175,19 @@ pub fn memory_import_bundle(
                 &error,
             )
         })?;
+        let source_metadata = fs::symlink_metadata(&source).map_err(|error| {
+            WorkspaceError::from_io(
+                "bundle_import_failed",
+                "failed to inspect bundle source file",
+                &error,
+            )
+        })?;
+        if !source_metadata.file_type().is_file() || source_metadata.file_type().is_symlink() {
+            return Err(WorkspaceError::new(
+                "bundle_import_failed",
+                format!("bundle source path is not a regular file: {relative}"),
+            ));
+        }
         fs::copy(&source, &target).map_err(|error| {
             WorkspaceError::from_io("bundle_import_failed", "failed to copy bundle file", &error)
         })?;
@@ -228,11 +243,22 @@ fn copy_dir_files(
                 )
             })?
             .path();
-        if path.is_dir() {
+        let metadata = fs::symlink_metadata(&path).map_err(|error| {
+            WorkspaceError::from_io(
+                "bundle_export_failed",
+                "failed to inspect memory bundle file",
+                &error,
+            )
+        })?;
+        let file_type = metadata.file_type();
+        if file_type.is_symlink() {
+            continue;
+        }
+        if file_type.is_dir() {
             copy_dir_files(root, &path, output, copied_paths)?;
             continue;
         }
-        if !path.is_file() {
+        if !file_type.is_file() {
             continue;
         }
         let relative = path.strip_prefix(root).map_err(|_| {
@@ -247,6 +273,20 @@ fn copy_dir_files(
 }
 
 fn copy_relative_file(root: &Path, output: &Path, relative: &str) -> Result<(), WorkspaceError> {
+    let source = root.join(relative);
+    let source_metadata = fs::symlink_metadata(&source).map_err(|error| {
+        WorkspaceError::from_io(
+            "bundle_export_failed",
+            "failed to inspect bundle source file",
+            &error,
+        )
+    })?;
+    if !source_metadata.file_type().is_file() || source_metadata.file_type().is_symlink() {
+        return Err(WorkspaceError::new(
+            "bundle_export_failed",
+            format!("bundle source path is not a regular file: {relative}"),
+        ));
+    }
     let target = output.join(relative);
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent).map_err(|error| {
@@ -257,10 +297,72 @@ fn copy_relative_file(root: &Path, output: &Path, relative: &str) -> Result<(), 
             )
         })?;
     }
-    fs::copy(root.join(relative), target).map_err(|error| {
+    fs::copy(source, target).map_err(|error| {
         WorkspaceError::from_io("bundle_export_failed", "failed to copy bundle file", &error)
     })?;
     Ok(())
+}
+
+fn reject_output_inside_bundle_source_dirs(
+    root: &Path,
+    output: &Path,
+) -> Result<(), WorkspaceError> {
+    let output = if output.is_absolute() {
+        normalize_existing_ancestor(output)?
+    } else {
+        normalize_existing_ancestor(&root.join(output))?
+    };
+    for relative_dir in BUNDLE_DIRS {
+        let source_dir = normalize_existing_ancestor(&root.join(relative_dir))?;
+        if path_eq_or_under(&output, &source_dir) {
+            return Err(WorkspaceError::new(
+                "invalid_bundle_output",
+                format!("bundle output must not be inside {relative_dir}"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn target_conflicts_for_skip(root: &Path, relative: &str) -> Result<bool, WorkspaceError> {
+    let target = root.join(relative);
+    match fs::symlink_metadata(&target) {
+        Ok(_) => return Ok(true),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(WorkspaceError::from_io(
+                "bundle_import_failed",
+                "failed to inspect import target",
+                &error,
+            ));
+        }
+    }
+
+    let relative_path = Path::new(relative);
+    let mut current = root.to_path_buf();
+    for component in relative_path.components() {
+        let Component::Normal(part) = component else {
+            continue;
+        };
+        current.push(part);
+        if current == target {
+            break;
+        }
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => return Ok(true),
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => {
+                return Err(WorkspaceError::from_io(
+                    "bundle_import_failed",
+                    "failed to inspect import target parent",
+                    &error,
+                ));
+            }
+        }
+    }
+
+    Ok(false)
 }
 
 fn validated_manifest_files(
@@ -324,4 +426,50 @@ fn is_record_path(path: &str, prefix: &str) -> bool {
 fn path_is_under(path: &str, prefix: &str) -> bool {
     path.strip_prefix(prefix)
         .is_some_and(|rest| rest.starts_with('/'))
+}
+
+fn path_eq_or_under(path: &Path, parent: &Path) -> bool {
+    path == parent || path.starts_with(parent)
+}
+
+fn normalize_path_lexically(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            Component::Normal(part) => normalized.push(part),
+            Component::RootDir | Component::Prefix(_) => normalized.push(component.as_os_str()),
+        }
+    }
+    normalized
+}
+
+fn normalize_existing_ancestor(path: &Path) -> Result<PathBuf, WorkspaceError> {
+    let mut missing = Vec::new();
+    let mut current = path;
+    while !current.exists() {
+        let Some(name) = current.file_name() else {
+            break;
+        };
+        missing.push(name.to_os_string());
+        let Some(parent) = current.parent() else {
+            break;
+        };
+        current = parent;
+    }
+
+    let mut normalized = current.canonicalize().map_err(|error| {
+        WorkspaceError::from_io(
+            "invalid_bundle_output",
+            "failed to resolve bundle output path",
+            &error,
+        )
+    })?;
+    for name in missing.iter().rev() {
+        normalized.push(name);
+    }
+    Ok(normalize_path_lexically(&normalized))
 }
