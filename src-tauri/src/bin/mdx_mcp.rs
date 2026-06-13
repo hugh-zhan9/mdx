@@ -92,20 +92,36 @@ fn main() {
     }
 }
 
-fn parse_workspace_arg<I>(mut args: I) -> Result<String, String>
+fn parse_workspace_arg<I>(args: I) -> Result<String, String>
 where
-    I: Iterator<Item = String>,
+    I: IntoIterator<Item = String>,
 {
+    let mut workspace = None;
+    let mut args = args.into_iter();
+
     while let Some(arg) = args.next() {
-        if arg == "--workspace" {
-            return args
-                .next()
-                .filter(|value| !value.trim().is_empty())
-                .ok_or_else(|| "mdx-mcp requires --workspace <path>".to_string());
+        match arg.as_str() {
+            "--workspace" => {
+                if workspace.is_some() {
+                    return Err("mdx-mcp received duplicate --workspace argument".to_string());
+                }
+
+                let value = args
+                    .next()
+                    .ok_or_else(|| "mdx-mcp requires --workspace <path>".to_string())?;
+                if value.trim().is_empty() || value.starts_with("--") {
+                    return Err("mdx-mcp requires --workspace <path>".to_string());
+                }
+
+                workspace = Some(value);
+            }
+            _ => {
+                return Err(format!("mdx-mcp unknown argument: {arg}"));
+            }
         }
     }
 
-    Err("mdx-mcp requires --workspace <path>".to_string())
+    workspace.ok_or_else(|| "mdx-mcp requires --workspace <path>".to_string())
 }
 
 fn run_stdio<R, W>(workspace: &str, reader: R, mut writer: W) -> io::Result<()>
@@ -196,6 +212,9 @@ fn tool_descriptor(name: &str) -> Value {
                 "byte_budget": { "type": "integer" },
                 "include_working": { "type": "boolean" },
                 "include_threads": { "type": "boolean" },
+                "thread_ids": { "type": "array", "items": { "type": "string" } },
+                "include_wiki_refs": { "type": "boolean" },
+                "include_wiki_snippets": { "type": "boolean" },
                 "tag": { "type": "string" },
                 "since": { "type": "string" }
             }),
@@ -468,5 +487,44 @@ mod tests {
         let result = response.result.unwrap();
         assert_eq!(result["mode"], "ordinary");
         assert_eq!(result["has_memory"], false);
+    }
+
+    #[test]
+    fn parse_workspace_arg_accepts_workspace_path() {
+        let workspace = parse_workspace_arg(["--workspace", "/tmp/mdx"].map(String::from)).unwrap();
+
+        assert_eq!(workspace, "/tmp/mdx");
+    }
+
+    #[test]
+    fn parse_workspace_arg_rejects_unknown_argument() {
+        let error = parse_workspace_arg(["--bogus", "--workspace", "/tmp/mdx"].map(String::from))
+            .unwrap_err();
+
+        assert_eq!(error, "mdx-mcp unknown argument: --bogus");
+    }
+
+    #[test]
+    fn parse_workspace_arg_rejects_missing_workspace_value() {
+        let error = parse_workspace_arg(["--workspace"].map(String::from)).unwrap_err();
+
+        assert_eq!(error, "mdx-mcp requires --workspace <path>");
+    }
+
+    #[test]
+    fn parse_workspace_arg_rejects_empty_workspace_value() {
+        let error = parse_workspace_arg(["--workspace", "  "].map(String::from)).unwrap_err();
+
+        assert_eq!(error, "mdx-mcp requires --workspace <path>");
+    }
+
+    #[test]
+    fn parse_workspace_arg_rejects_duplicate_workspace_argument() {
+        let error = parse_workspace_arg(
+            ["--workspace", "/tmp/one", "--workspace", "/tmp/two"].map(String::from),
+        )
+        .unwrap_err();
+
+        assert_eq!(error, "mdx-mcp received duplicate --workspace argument");
     }
 }
