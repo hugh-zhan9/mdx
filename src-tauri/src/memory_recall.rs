@@ -1,6 +1,6 @@
 use crate::memory_models::{
-    MemoryListFilter, MemoryRecord, MemorySummary, RecallMemoryItem, RecallRequest, RecallResult,
-    ThreadListFilter,
+    MemoryIndexSearchRequest, MemoryListFilter, MemoryRecord, MemorySummary, RecallMemoryItem,
+    RecallRequest, RecallResult, ThreadListFilter,
 };
 use crate::models::WorkspaceError;
 
@@ -19,6 +19,9 @@ pub fn memory_search(
             byte_budget: Some(65_536),
             include_working: false,
             include_threads: false,
+            thread_ids: Vec::new(),
+            include_wiki_refs: false,
+            include_wiki_snippets: false,
             tag,
             since,
         },
@@ -49,7 +52,6 @@ pub fn memory_recall(
     let byte_budget = request
         .byte_budget
         .unwrap_or(config.recall.context_byte_budget);
-    let half_life_days = config.recall.half_life_days.max(1) as f64;
 
     let working = if request.include_working {
         Some(crate::memory_working::memory_working_get(root)?)
@@ -57,6 +59,81 @@ pub fn memory_recall(
         None
     };
 
+    let mut warnings = Vec::new();
+    let mut index_degraded = false;
+    let items = match recall_memories_from_index(root, &request, limit) {
+        Ok(items) => items,
+        Err(error) if crate::search_index::is_index_degradation_error(&error) => {
+            index_degraded = true;
+            warnings.push("search index unavailable; used markdown fallback".to_string());
+            recall_memories_from_markdown(root, &request, limit, config.recall.half_life_days)?
+        }
+        Err(error) => return Err(error),
+    };
+
+    let (selected, truncated, byte_count) = apply_byte_budget(working.as_ref(), items, byte_budget);
+    let threads = if request.include_threads || !request.thread_ids.is_empty() {
+        recall_threads(root, &request, limit)?
+    } else {
+        Vec::new()
+    };
+
+    Ok(RecallResult {
+        working,
+        memories: selected,
+        threads,
+        wiki_refs: Vec::new(),
+        truncated,
+        byte_count,
+        index_degraded,
+        warnings,
+    })
+}
+
+fn recall_memories_from_index(
+    root: &std::path::Path,
+    request: &RecallRequest,
+    limit: usize,
+) -> Result<Vec<RecallMemoryItem>, WorkspaceError> {
+    let search = crate::search_index::search(
+        root,
+        MemoryIndexSearchRequest {
+            query: request.query.clone(),
+            limit: limit.saturating_mul(4).max(limit).max(1),
+            kinds: vec!["memory".to_string()],
+        },
+    )?;
+
+    let mut items = Vec::new();
+    for hit in search.items {
+        let Ok(record) = crate::memory_store::memory_get(root, hit.doc_id) else {
+            continue;
+        };
+        if !record_matches_recall_filters(&record, request) {
+            continue;
+        }
+        items.push(RecallMemoryItem {
+            memory_id: record.frontmatter.memory_id,
+            title: record.frontmatter.title,
+            path: record.path,
+            snippet: snippet_for_body(&record.body, 240),
+            score: hit.score,
+            importance: record.frontmatter.importance.unwrap_or(0.5),
+        });
+        if items.len() >= limit {
+            break;
+        }
+    }
+    Ok(items)
+}
+
+fn recall_memories_from_markdown(
+    root: &std::path::Path,
+    request: &RecallRequest,
+    limit: usize,
+    half_life_days: u32,
+) -> Result<Vec<RecallMemoryItem>, WorkspaceError> {
+    let half_life_days = half_life_days.max(1) as f64;
     let mut items = crate::memory_store::memory_list(
         root,
         MemoryListFilter {
@@ -93,7 +170,14 @@ pub fn memory_recall(
             .unwrap_or(std::cmp::Ordering::Equal)
     });
     items.truncate(limit);
+    Ok(items)
+}
 
+fn apply_byte_budget(
+    working: Option<&String>,
+    items: Vec<RecallMemoryItem>,
+    byte_budget: usize,
+) -> (Vec<RecallMemoryItem>, bool, usize) {
     let mut byte_count = working.as_ref().map(|value| value.len()).unwrap_or(0);
     let mut truncated = byte_count > byte_budget;
     let mut selected = Vec::new();
@@ -109,59 +193,101 @@ pub fn memory_recall(
     if byte_count > byte_budget {
         byte_count = byte_budget;
     }
-    let threads = if request.include_threads {
-        recall_threads(root, &request)?
-    } else {
-        Vec::new()
-    };
-
-    Ok(RecallResult {
-        working,
-        memories: selected,
-        threads,
-        truncated,
-        byte_count,
-    })
+    (selected, truncated, byte_count)
 }
 
 fn recall_threads(
     root: &std::path::Path,
     request: &RecallRequest,
+    limit: usize,
 ) -> Result<Vec<MemorySummary>, WorkspaceError> {
     let query = request.query.trim().to_ascii_lowercase();
-    if query.is_empty() {
+    if query.is_empty() && request.thread_ids.is_empty() {
         return Ok(Vec::new());
     }
 
-    let mut items = crate::memory_thread::memory_thread_list(
-        root,
-        ThreadListFilter {
-            source: None,
-            since: request.since.clone(),
-        },
-    )?
-    .into_iter()
-    .filter(|thread| {
-        thread.title.to_ascii_lowercase().contains(&query)
-            || thread.thread_id.to_ascii_lowercase().contains(&query)
-            || thread.path.to_ascii_lowercase().contains(&query)
-    })
-    .map(|thread| MemorySummary {
-        path: thread.path,
-        memory_id: thread.thread_id,
-        title: thread.title,
-        status: if thread.archived {
+    let mut seen = std::collections::BTreeSet::new();
+    let mut items = Vec::new();
+    for thread_id in &request.thread_ids {
+        let record = crate::memory_thread::memory_thread_get(root, thread_id.clone())?;
+        let summary = thread_record_summary(record);
+        seen.insert(summary.memory_id.clone());
+        items.push(summary);
+    }
+
+    if request.include_threads && !query.is_empty() {
+        for thread in crate::memory_thread::memory_thread_list(
+            root,
+            ThreadListFilter {
+                source: None,
+                since: request.since.clone(),
+            },
+        )?
+        .into_iter()
+        .filter(|thread| {
+            thread.title.to_ascii_lowercase().contains(&query)
+                || thread.thread_id.to_ascii_lowercase().contains(&query)
+                || thread.path.to_ascii_lowercase().contains(&query)
+        }) {
+            if !seen.insert(thread.thread_id.clone()) {
+                continue;
+            }
+            items.push(MemorySummary {
+                path: thread.path,
+                memory_id: thread.thread_id,
+                title: thread.title,
+                status: if thread.archived {
+                    "archived".to_string()
+                } else {
+                    "active".to_string()
+                },
+                created_at: thread.started_at.or(thread.ended_at).unwrap_or_default(),
+                tags: Vec::new(),
+            });
+        }
+    }
+    items.truncate(limit);
+    Ok(items)
+}
+
+fn thread_record_summary(record: crate::memory_models::MemoryThreadRecord) -> MemorySummary {
+    MemorySummary {
+        path: record.path,
+        memory_id: record.frontmatter.thread_id,
+        title: record.frontmatter.title,
+        status: if record.frontmatter.archived {
             "archived".to_string()
         } else {
             "active".to_string()
         },
-        created_at: thread.started_at.or(thread.ended_at).unwrap_or_default(),
-        tags: Vec::new(),
-    })
-    .collect::<Vec<_>>();
-    let config = crate::memory_fs::read_memory_config(root)?;
-    items.truncate(request.limit.unwrap_or(config.recall.default_limit));
-    Ok(items)
+        created_at: record
+            .frontmatter
+            .started_at
+            .or(record.frontmatter.ended_at)
+            .unwrap_or_default(),
+        tags: record.frontmatter.tags,
+    }
+}
+
+fn record_matches_recall_filters(record: &MemoryRecord, request: &RecallRequest) -> bool {
+    if record.frontmatter.status == "archived" {
+        return false;
+    }
+    if request
+        .tag
+        .as_deref()
+        .is_some_and(|tag| !record.frontmatter.tags.iter().any(|item| item == tag))
+    {
+        return false;
+    }
+    if request
+        .since
+        .as_deref()
+        .is_some_and(|since| record.frontmatter.created_at.as_str() < since)
+    {
+        return false;
+    }
+    true
 }
 
 fn score_memory(

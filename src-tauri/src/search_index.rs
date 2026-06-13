@@ -170,6 +170,10 @@ pub(crate) fn search(
     Ok(MemoryIndexSearchResult { items })
 }
 
+pub(crate) fn is_index_degradation_error(error: &WorkspaceError) -> bool {
+    matches!(error.error_code(), "index_unavailable" | "index_failed")
+}
+
 pub(crate) fn upsert_memory(
     tx: &Transaction<'_>,
     record: &MemoryRecord,

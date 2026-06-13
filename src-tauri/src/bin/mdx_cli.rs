@@ -178,6 +178,8 @@ enum MemoryCommand {
         #[arg(long)]
         byte_budget: Option<usize>,
         #[arg(long)]
+        no_working: bool,
+        #[arg(long)]
         include_threads: bool,
         #[arg(long)]
         tag: Option<String>,
@@ -431,6 +433,7 @@ fn request_from_memory_command(command: &MemoryCommand) -> io::Result<CliRequest
             query,
             limit,
             byte_budget,
+            no_working,
             include_threads,
             tag,
             since,
@@ -439,6 +442,7 @@ fn request_from_memory_command(command: &MemoryCommand) -> io::Result<CliRequest
             query: join_required_words(query, "query")?,
             limit: *limit,
             byte_budget: *byte_budget,
+            include_working: if *no_working { Some(false) } else { None },
             include_threads: Some(*include_threads),
             tag: tag.clone(),
             since: parse_since_arg(since)?,
@@ -681,6 +685,7 @@ fn execute_memory_headless(command: &CommandLine, root_path: String) -> io::Resu
             query,
             limit,
             byte_budget,
+            include_working,
             include_threads,
             tag,
             since,
@@ -689,8 +694,11 @@ fn execute_memory_headless(command: &CommandLine, root_path: String) -> io::Resu
                 query,
                 limit,
                 byte_budget,
-                include_working: true,
+                include_working: include_working.unwrap_or(true),
                 include_threads: include_threads.unwrap_or(false),
+                thread_ids: Vec::new(),
+                include_wiki_refs: false,
+                include_wiki_snippets: false,
                 tag,
                 since,
             };
@@ -1295,6 +1303,7 @@ mod tests {
                 json: false,
                 limit: Some(3),
                 byte_budget: None,
+                no_working: false,
                 include_threads: true,
                 tag: None,
                 since: None,
@@ -1307,9 +1316,35 @@ mod tests {
             CliRequest::MemoryRecall {
                 query,
                 limit: Some(3),
+                include_working: None,
                 include_threads: Some(true),
                 ..
             } if query == "phase one"
+        ));
+    }
+
+    #[test]
+    fn memory_recall_no_working_passes_false_to_protocol() {
+        let command = CommandLine::Memory {
+            root: None,
+            command: MemoryCommand::Recall {
+                json: false,
+                limit: None,
+                byte_budget: None,
+                no_working: true,
+                include_threads: false,
+                tag: None,
+                since: None,
+                query: vec!["phase".to_string()],
+            },
+        };
+
+        assert!(matches!(
+            request_from_command(&command).unwrap(),
+            CliRequest::MemoryRecall {
+                include_working: Some(false),
+                ..
+            }
         ));
     }
 

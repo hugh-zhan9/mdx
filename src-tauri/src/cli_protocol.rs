@@ -142,6 +142,8 @@ pub enum CliRequest {
         #[serde(default)]
         byte_budget: Option<usize>,
         #[serde(default)]
+        include_working: Option<bool>,
+        #[serde(default)]
         include_threads: Option<bool>,
         #[serde(default)]
         tag: Option<String>,

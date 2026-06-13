@@ -319,8 +319,16 @@ pub struct RecallRequest {
     pub query: String,
     pub limit: Option<usize>,
     pub byte_budget: Option<usize>,
+    #[serde(default)]
     pub include_working: bool,
+    #[serde(default)]
     pub include_threads: bool,
+    #[serde(default)]
+    pub thread_ids: Vec<String>,
+    #[serde(default)]
+    pub include_wiki_refs: bool,
+    #[serde(default)]
+    pub include_wiki_snippets: bool,
     pub tag: Option<String>,
     pub since: Option<String>,
 }
@@ -342,8 +350,11 @@ pub struct RecallResult {
     pub working: Option<String>,
     pub memories: Vec<RecallMemoryItem>,
     pub threads: Vec<MemorySummary>,
+    pub wiki_refs: Vec<MemorySummary>,
     pub truncated: bool,
     pub byte_count: usize,
+    pub index_degraded: bool,
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

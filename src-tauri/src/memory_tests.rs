@@ -405,6 +405,9 @@ fn recall_uses_memory_config_defaults_when_request_omits_limit_and_budget() {
             byte_budget: None,
             include_working: false,
             include_threads: false,
+            thread_ids: Vec::new(),
+            include_wiki_refs: false,
+            include_wiki_snippets: false,
             tag: None,
             since: None,
         },
@@ -454,6 +457,9 @@ fn recall_accepts_previous_memory_config_shape() {
             byte_budget: None,
             include_working: false,
             include_threads: false,
+            thread_ids: Vec::new(),
+            include_wiki_refs: false,
+            include_wiki_snippets: false,
             tag: None,
             since: None,
         },
@@ -976,6 +982,9 @@ fn recall_orders_matches_by_importance_and_recency() {
             byte_budget: Some(65_536),
             include_working: true,
             include_threads: false,
+            thread_ids: Vec::new(),
+            include_wiki_refs: false,
+            include_wiki_snippets: false,
             tag: None,
             since: None,
         },
@@ -1016,6 +1025,9 @@ fn recall_includes_working_memory_and_respects_byte_budget() {
             byte_budget: Some(256),
             include_working: true,
             include_threads: false,
+            thread_ids: Vec::new(),
+            include_wiki_refs: false,
+            include_wiki_snippets: false,
             tag: None,
             since: None,
         },
@@ -1059,6 +1071,9 @@ fn recall_include_threads_returns_matching_thread_summaries_without_full_text() 
             byte_budget: Some(65_536),
             include_working: false,
             include_threads: true,
+            thread_ids: Vec::new(),
+            include_wiki_refs: false,
+            include_wiki_snippets: false,
             tag: None,
             since: None,
         },
@@ -1068,6 +1083,116 @@ fn recall_include_threads_returns_matching_thread_summaries_without_full_text() 
     assert_eq!(result.threads.len(), 1);
     assert_eq!(result.threads[0].memory_id, "thread-auth");
     assert!(!result.threads[0].title.contains("Message 1"));
+}
+
+#[test]
+fn recall_reports_index_degraded_when_sqlite_is_missing_and_scan_fallback_succeeds() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "JWT access token lifetime".to_string(),
+            body: "Access tokens expire after 15 minutes.".to_string(),
+            tags: vec!["auth".to_string()],
+            source_thread: None,
+            importance: Some(0.8),
+            confidence: Some(0.9),
+        },
+    )
+    .unwrap();
+
+    let result = memory_recall(
+        root.path().to_string_lossy().into_owned(),
+        RecallRequest {
+            query: "JWT".to_string(),
+            limit: Some(10),
+            byte_budget: Some(65_536),
+            include_working: false,
+            include_threads: false,
+            thread_ids: Vec::new(),
+            include_wiki_refs: false,
+            include_wiki_snippets: false,
+            tag: None,
+            since: None,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.memories.len(), 1);
+    assert_eq!(result.memories[0].title, "JWT access token lifetime");
+    assert!(result.index_degraded);
+    assert!(result
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("markdown fallback")));
+}
+
+#[test]
+fn recall_can_include_explicit_thread_excerpt_but_not_default_thread_body() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_thread_save(
+        root.path().to_string_lossy().into_owned(),
+        ThreadSaveRequest {
+            source: "manual".to_string(),
+            thread_id: Some("thread-auth".to_string()),
+            title: "Auth middleware discussion".to_string(),
+            body: sample_thread_body(),
+            started_at: Some("2026-06-12T09:00:00Z".to_string()),
+            ended_at: None,
+            model: None,
+            workspace_root: None,
+            tags: Vec::new(),
+        },
+    )
+    .unwrap();
+
+    let default_result = memory_recall(
+        root.path().to_string_lossy().into_owned(),
+        RecallRequest {
+            query: "Implement auth middleware".to_string(),
+            limit: Some(10),
+            byte_budget: Some(65_536),
+            include_working: false,
+            include_threads: true,
+            thread_ids: Vec::new(),
+            include_wiki_refs: false,
+            include_wiki_snippets: false,
+            tag: None,
+            since: None,
+        },
+    )
+    .unwrap();
+    assert!(default_result.threads.is_empty());
+    assert!(default_result.memories.is_empty());
+
+    let explicit_result = memory_recall(
+        root.path().to_string_lossy().into_owned(),
+        RecallRequest {
+            query: "missing".to_string(),
+            limit: Some(10),
+            byte_budget: Some(65_536),
+            include_working: false,
+            include_threads: false,
+            thread_ids: vec!["thread-auth".to_string()],
+            include_wiki_refs: false,
+            include_wiki_snippets: false,
+            tag: None,
+            since: None,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(explicit_result.threads.len(), 1);
+    assert_eq!(explicit_result.threads[0].memory_id, "thread-auth");
+    assert_eq!(
+        explicit_result.threads[0].title,
+        "Auth middleware discussion"
+    );
+    assert!(!explicit_result.threads[0]
+        .title
+        .contains("Implement auth middleware"));
 }
 
 #[test]
