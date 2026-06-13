@@ -2,32 +2,32 @@ export type MemoryMode = "ordinary" | "memory";
 
 export interface MemoryWorkspaceStatus {
   mode: MemoryMode;
-  hasMemory: boolean;
-  canInitialize: boolean;
-  missingPaths: string[];
+  has_memory: boolean;
+  can_initialize: boolean;
+  missing_paths: string[];
 }
 
 export interface InitializeMemoryResult {
-  createdPaths: string[];
-  preservedPaths: string[];
+  created_paths: string[];
+  preserved_paths: string[];
   status: MemoryWorkspaceStatus;
 }
 
 export interface RecallRequest {
   query: string;
   limit?: number | null;
-  byteBudget?: number | null;
-  includeWorking?: boolean;
-  includeThreads?: boolean;
-  threadIds?: string[];
-  includeWikiRefs?: boolean;
-  includeWikiSnippets?: boolean;
+  byte_budget?: number | null;
+  include_working?: boolean;
+  include_threads?: boolean;
+  thread_ids?: string[];
+  include_wiki_refs?: boolean;
+  include_wiki_snippets?: boolean;
   tag?: string | null;
   since?: string | null;
 }
 
 export interface RecallMemoryItem {
-  memoryId: string;
+  memory_id: string;
   title: string;
   path: string;
   snippet: string;
@@ -39,25 +39,25 @@ export interface RecallResult {
   working: string | null;
   memories: RecallMemoryItem[];
   threads: MemorySummary[];
-  wikiRefs: MemorySummary[];
+  wiki_refs: MemorySummary[];
   truncated: boolean;
-  byteCount: number;
-  indexDegraded: boolean;
+  byte_count: number;
+  index_degraded: boolean;
   warnings: string[];
 }
 
 export interface MemoryListFilter {
   tag?: string | null;
   since?: string | null;
-  includeArchived?: boolean;
+  include_archived?: boolean;
 }
 
 export interface MemorySummary {
   path: string;
-  memoryId: string;
+  memory_id: string;
   title: string;
   status: string;
-  createdAt: string;
+  created_at: string;
   tags: string[];
 }
 
@@ -68,28 +68,28 @@ export interface ThreadListFilter {
 
 export interface ThreadListItem {
   path: string;
-  threadId: string;
+  thread_id: string;
   source: string;
   title: string;
-  startedAt: string | null;
-  endedAt: string | null;
-  messageCount: number | null;
+  started_at: string | null;
+  ended_at: string | null;
+  message_count: number | null;
   archived: boolean;
 }
 
 export interface MemoryFrontmatter {
-  schemaVersion: number;
+  schema_version: number;
   kind: string;
-  memoryId: string;
+  memory_id: string;
   title: string;
   status: string;
-  createdAt: string;
-  sourceThread: string | null;
-  sourceMessageRefs: string[];
+  created_at: string;
+  source_thread: string | null;
+  source_message_refs: string[];
   importance: number | null;
   confidence: number | null;
   tags: string[];
-  evolvesFrom: string | null;
+  evolves_from: string | null;
 }
 
 export interface MemoryRecord {
@@ -99,19 +99,19 @@ export interface MemoryRecord {
 }
 
 export interface InboxFrontmatter {
-  schemaVersion: number;
+  schema_version: number;
   kind: string;
-  inboxId: string;
+  inbox_id: string;
   title: string;
   status: string;
-  createdAt: string;
-  sourceThread: string | null;
-  sourceMessageRefs: string[];
+  created_at: string;
+  source_thread: string | null;
+  source_message_refs: string[];
   importance: number | null;
   confidence: number | null;
   tags: string[];
-  distillRunId: string | null;
-  acceptedMemoryId: string | null;
+  distill_run_id: string | null;
+  accepted_memory_id: string | null;
 }
 
 export interface InboxRecord {
@@ -121,17 +121,17 @@ export interface InboxRecord {
 }
 
 export interface InboxReviewRequest {
-  inboxId: string;
+  inbox_id: string;
   title?: string | null;
   body?: string | null;
   tags?: string[] | null;
 }
 
 export interface InboxReviewResult {
-  inboxId: string;
+  inbox_id: string;
   path: string;
   status: string;
-  acceptedMemoryId: string | null;
+  accepted_memory_id: string | null;
   memory: MemoryRecord | null;
 }
 
@@ -142,7 +142,7 @@ export interface MemoryPromoteRequest {
 }
 
 export interface MemoryPromoteResult {
-  threadPath: string;
-  promotedPath: string;
+  thread_path: string;
+  promoted_path: string;
   ingested: boolean;
 }
