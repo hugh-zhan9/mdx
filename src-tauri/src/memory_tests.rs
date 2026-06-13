@@ -190,6 +190,51 @@ fn workspace_lock_serializes_memory_writes() {
 }
 
 #[test]
+fn workspace_lock_drop_preserves_recreated_lock_with_different_owner() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+
+    let lock = try_acquire_memory_lock(root.path()).unwrap();
+    let lock_path = root.path().join(".mdx/memory.lock");
+    std::fs::remove_file(&lock_path).unwrap();
+    std::fs::write(
+        &lock_path,
+        "token=newer-owner\npid=0\ncreated_at_unix=4102444800\n",
+    )
+    .unwrap();
+
+    drop(lock);
+
+    let contents = std::fs::read_to_string(lock_path).unwrap();
+    assert!(contents.contains("token=newer-owner"));
+}
+
+#[test]
+fn workspace_lock_recovers_stale_or_malformed_lock_file() {
+    let malformed_root = tempdir().unwrap();
+    memory_initialize_workspace(malformed_root.path().to_string_lossy().into_owned()).unwrap();
+    std::fs::write(
+        malformed_root.path().join(".mdx/memory.lock"),
+        "not a valid memory lock",
+    )
+    .unwrap();
+
+    let malformed_lock = try_acquire_memory_lock(malformed_root.path()).unwrap();
+    drop(malformed_lock);
+
+    let stale_root = tempdir().unwrap();
+    memory_initialize_workspace(stale_root.path().to_string_lossy().into_owned()).unwrap();
+    std::fs::write(
+        stale_root.path().join(".mdx/memory.lock"),
+        "token=stale-owner\npid=0\ncreated_at_unix=0\n",
+    )
+    .unwrap();
+
+    let stale_lock = try_acquire_memory_lock(stale_root.path()).unwrap();
+    drop(stale_lock);
+}
+
+#[test]
 fn thread_save_uses_documented_audit_event_name() {
     let root = tempdir().unwrap();
     memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
@@ -714,13 +759,13 @@ fn memory_add_preserves_same_title_records() {
 fn memory_add_preserves_concurrent_same_title_records() {
     let root = tempdir().unwrap();
     memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
-    let root_path = Arc::new(root.path().to_string_lossy().into_owned());
+    let root_path = Arc::new(root.path().to_path_buf());
     let mut handles = Vec::new();
 
     for index in 0..8 {
         let root_path = Arc::clone(&root_path);
         handles.push(thread::spawn(move || {
-            memory_add(
+            crate::memory_store::memory_add(
                 root_path.as_ref().clone(),
                 MemoryAddRequest {
                     title: "Concurrent decision".to_string(),

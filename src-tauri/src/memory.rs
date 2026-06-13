@@ -80,6 +80,7 @@ pub fn memory_initialize_workspace(
     root_path: String,
 ) -> Result<InitializeMemoryResult, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
+    let _lock = try_acquire_memory_lock(&root)?;
     initialize_memory_workspace(root)
 }
 
@@ -88,6 +89,7 @@ pub fn memory_repair_workspace(
     request: MemoryRepairRequest,
 ) -> Result<MemoryRepairResult, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
+    let _lock = try_acquire_memory_lock(&root)?;
     repair_memory_workspace(root, request)
 }
 
@@ -203,7 +205,6 @@ pub(crate) fn repair_memory_workspace(
 ) -> Result<MemoryRepairResult, WorkspaceError> {
     let root = root.as_ref();
     ensure_directory(root)?;
-    let _lock = try_acquire_memory_lock(root)?;
 
     let mut repaired_paths = Vec::new();
     let mut preserved_paths = Vec::new();
@@ -293,6 +294,7 @@ pub fn memory_thread_save(
     request: ThreadSaveRequest,
 ) -> Result<ThreadSaveResult, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
+    let _lock = try_acquire_memory_lock(&root)?;
     crate::memory_thread::memory_thread_save(root, request)
 }
 
@@ -317,6 +319,7 @@ pub fn memory_add(
     request: MemoryAddRequest,
 ) -> Result<MemoryRecord, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
+    let _lock = try_acquire_memory_lock(&root)?;
     crate::memory_store::memory_add(root, request)
 }
 
@@ -335,6 +338,7 @@ pub fn memory_list(
 
 pub fn memory_archive(root_path: String, target: String) -> Result<MemoryRecord, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
+    let _lock = try_acquire_memory_lock(&root)?;
     crate::memory_store::memory_archive(root, target)
 }
 
@@ -345,6 +349,7 @@ pub fn memory_working_get(root_path: String) -> Result<String, WorkspaceError> {
 
 pub fn memory_working_set(root_path: String, markdown: String) -> Result<String, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
+    let _lock = try_acquire_memory_lock(&root)?;
     crate::memory_working::memory_working_set(root, markdown)
 }
 
@@ -354,6 +359,7 @@ pub fn memory_working_append(
     text: String,
 ) -> Result<String, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
+    let _lock = try_acquire_memory_lock(&root)?;
     crate::memory_working::memory_working_append(root, section, text)
 }
 
@@ -381,5 +387,6 @@ pub fn memory_promote(
     request: MemoryPromoteRequest,
 ) -> Result<MemoryPromoteResult, WorkspaceError> {
     let root = canonicalize_workspace_root(root_path)?;
+    let _lock = try_acquire_memory_lock(&root)?;
     crate::memory_promote::memory_promote(root, request)
 }

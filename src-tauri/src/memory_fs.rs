@@ -10,15 +10,26 @@ use crate::memory_models::{MemoryConfig, ThreadIndex, ThreadIndexEntry};
 use crate::models::WorkspaceError;
 
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
+static LOCK_TOKEN_COUNTER: AtomicU64 = AtomicU64::new(0);
+const LOCK_STALE_AFTER_SECONDS: u64 = 60 * 60;
 
 #[derive(Debug)]
 pub(crate) struct MemoryWorkspaceLock {
     path: PathBuf,
+    token: String,
 }
 
 impl Drop for MemoryWorkspaceLock {
     fn drop(&mut self) {
-        let _ = fs::remove_file(&self.path);
+        let Ok(contents) = fs::read_to_string(&self.path) else {
+            return;
+        };
+        let Ok(lock_file) = parse_memory_lock_file(&contents) else {
+            return;
+        };
+        if lock_file.token == self.token {
+            let _ = fs::remove_file(&self.path);
+        }
     }
 }
 
@@ -26,33 +37,137 @@ pub(crate) fn try_acquire_memory_lock(root: &Path) -> Result<MemoryWorkspaceLock
     ensure_directory(root)?;
     let lock_dir = ensure_temp_dir(root)?;
     let lock_path = lock_dir.join("memory.lock");
-    let pid = std::process::id().to_string();
+    let token = new_memory_lock_token();
+    let created_at_unix = current_unix_seconds();
+    let contents = format!(
+        "token={token}\npid={}\ncreated_at_unix={created_at_unix}\n",
+        std::process::id()
+    );
 
-    match fs::OpenOptions::new()
+    for attempt in 0..2 {
+        match create_memory_lock_file(&lock_path, &contents) {
+            Ok(()) => {
+                return Ok(MemoryWorkspaceLock {
+                    path: lock_path,
+                    token,
+                });
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                if attempt == 0 && remove_stale_memory_lock(&lock_path, created_at_unix)? {
+                    continue;
+                }
+                return Err(memory_lock_busy());
+            }
+            Err(error) => {
+                return Err(WorkspaceError::from_io(
+                    "write_failed",
+                    "failed to create memory lock file",
+                    &error,
+                ));
+            }
+        }
+    }
+
+    Err(memory_lock_busy())
+}
+
+fn create_memory_lock_file(lock_path: &Path, contents: &str) -> Result<(), std::io::Error> {
+    let mut file = fs::OpenOptions::new()
         .write(true)
         .create_new(true)
-        .open(&lock_path)
-    {
-        Ok(mut file) => {
-            file.write_all(pid.as_bytes()).map_err(|error| {
-                let _ = fs::remove_file(&lock_path);
-                WorkspaceError::from_io("write_failed", "failed to write memory lock file", &error)
-            })?;
-            file.sync_all().map_err(|error| {
-                let _ = fs::remove_file(&lock_path);
-                WorkspaceError::from_io("write_failed", "failed to sync memory lock file", &error)
-            })?;
-            Ok(MemoryWorkspaceLock { path: lock_path })
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Err(
-            WorkspaceError::new("memory_lock_busy", "memory workspace lock is already held"),
-        ),
-        Err(error) => Err(WorkspaceError::from_io(
-            "write_failed",
-            "failed to create memory lock file",
-            &error,
-        )),
+        .open(lock_path)?;
+    if let Err(error) = file.write_all(contents.as_bytes()) {
+        let _ = fs::remove_file(lock_path);
+        return Err(error);
     }
+    if let Err(error) = file.sync_all() {
+        let _ = fs::remove_file(lock_path);
+        return Err(error);
+    }
+    Ok(())
+}
+
+fn remove_stale_memory_lock(lock_path: &Path, now_unix: u64) -> Result<bool, WorkspaceError> {
+    let contents = match fs::read_to_string(lock_path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(true),
+        Err(_) => return Ok(false),
+    };
+
+    if !memory_lock_is_stale(&contents, now_unix) {
+        return Ok(false);
+    }
+
+    match fs::remove_file(lock_path) {
+        Ok(()) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(true),
+        Err(_) => Ok(false),
+    }
+}
+
+fn memory_lock_is_stale(contents: &str, now_unix: u64) -> bool {
+    let Ok(lock_file) = parse_memory_lock_file(contents) else {
+        return true;
+    };
+    now_unix.saturating_sub(lock_file.created_at_unix) >= LOCK_STALE_AFTER_SECONDS
+}
+
+#[derive(Debug)]
+struct MemoryLockFile {
+    token: String,
+    created_at_unix: u64,
+}
+
+fn parse_memory_lock_file(contents: &str) -> Result<MemoryLockFile, ()> {
+    let mut token = None;
+    let mut pid = None;
+    let mut created_at_unix = None;
+
+    for line in contents.lines() {
+        let (key, value) = line.split_once('=').ok_or(())?;
+        match key {
+            "token" if !value.is_empty() => token = Some(value.to_string()),
+            "pid" => pid = Some(value.parse::<u32>().map_err(|_| ())?),
+            "created_at_unix" => created_at_unix = Some(value.parse::<u64>().map_err(|_| ())?),
+            _ => {}
+        }
+    }
+
+    if pid.is_none() {
+        return Err(());
+    }
+
+    Ok(MemoryLockFile {
+        token: token.ok_or(())?,
+        created_at_unix: created_at_unix.ok_or(())?,
+    })
+}
+
+fn new_memory_lock_token() -> String {
+    let counter = LOCK_TOKEN_COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!(
+        "{}-{}-{counter}",
+        std::process::id(),
+        current_unix_nanos_for_token()
+    )
+}
+
+fn current_unix_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0)
+}
+
+fn current_unix_nanos_for_token() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0)
+}
+
+fn memory_lock_busy() -> WorkspaceError {
+    WorkspaceError::new("memory_lock_busy", "memory workspace lock is already held")
 }
 
 pub(crate) fn ensure_directory(path: &Path) -> Result<(), WorkspaceError> {
