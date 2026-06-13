@@ -169,14 +169,15 @@ confidence: float
 ## Promote Contract
 
 ```bash
-mdx-cli memory promote --thread <thread_id|path> [--ingest] [--title "..."]
+mdx-cli memory promote <thread_id|memory_id|path> [--ingest] [--title "..."]
 ```
 
-1. Copy thread to `raw/promoted/{date}-{slug}[-n].md` with provenance frontmatter.
+1. Copy a thread or memory record to `raw/promoted/{date}-{slug}[-n].md` with provenance frontmatter.
 2. Allocate promoted raw files with atomic create-new semantics; existing promoted files must not be overwritten by `memory promote`.
 3. If `--ingest`, require an initialized LLM Wiki workspace before invoking ingest; otherwise fail with `llm_wiki_not_ready`.
-4. Set thread `promoted_to_wiki: true` only after the copy succeeds and, when `--ingest` is set, ingest succeeds.
+4. Set thread `promoted_to_wiki: true` only after a thread copy succeeds and, when `--ingest` is set, ingest succeeds. Promoting a memory record does not mutate LLM Wiki state unless ingest succeeds.
 5. Append `log.md` event `memory_promote` after successful promotion.
+6. `MemoryPromoteResult.thread_path` is retained for wire compatibility and contains the promoted source path, which can be a thread path or memory record path.
 
 ## Config
 

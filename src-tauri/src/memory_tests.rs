@@ -2042,6 +2042,78 @@ fn promote_preserves_existing_promoted_files() {
 }
 
 #[test]
+fn promote_can_copy_memory_record_to_raw_promoted_without_ingest() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    let record = memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "Promote memory".to_string(),
+            body: "This memory should become raw promoted material.".to_string(),
+            tags: vec!["wiki".to_string()],
+            source_thread: None,
+            source_message_refs: Vec::new(),
+            importance: Some(0.7),
+            confidence: Some(0.8),
+        },
+    )
+    .unwrap();
+
+    let result = memory_promote(
+        root.path().to_string_lossy().into_owned(),
+        MemoryPromoteRequest {
+            target: record.frontmatter.memory_id,
+            ingest: false,
+            title: Some("Promoted Memory".to_string()),
+        },
+    )
+    .unwrap();
+
+    assert!(result.promoted_path.starts_with("raw/promoted/"));
+    let promoted = std::fs::read_to_string(root.path().join(result.promoted_path)).unwrap();
+    assert!(promoted.contains("kind: promoted_memory"));
+    assert!(promoted.contains("source_memory:"));
+    assert!(promoted.contains("title: Promoted Memory"));
+    assert!(promoted.contains("This memory should become raw promoted material."));
+}
+
+#[test]
+fn promote_memory_record_serializes_frontmatter_safely() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    let record = memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "Memory with yaml title".to_string(),
+            body: "Body remains plain markdown.".to_string(),
+            tags: Vec::new(),
+            source_thread: None,
+            source_message_refs: Vec::new(),
+            importance: None,
+            confidence: None,
+        },
+    )
+    .unwrap();
+
+    let result = memory_promote(
+        root.path().to_string_lossy().into_owned(),
+        MemoryPromoteRequest {
+            target: record.frontmatter.memory_id,
+            ingest: false,
+            title: Some("A: B # not comment".to_string()),
+        },
+    )
+    .unwrap();
+
+    let promoted = std::fs::read_to_string(root.path().join(result.promoted_path)).unwrap();
+    let (frontmatter, body) =
+        crate::memory_fs::parse_markdown_frontmatter::<serde_json::Value>(&promoted).unwrap();
+    assert_eq!(frontmatter["kind"], "promoted_memory");
+    assert_eq!(frontmatter["title"], "A: B # not comment");
+    assert!(body.contains("Body remains plain markdown."));
+}
+
+#[test]
 fn promote_with_ingest_rejects_non_wiki_workspace() {
     let root = tempdir().unwrap();
     memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();

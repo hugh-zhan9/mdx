@@ -227,8 +227,9 @@ enum MemoryCommand {
         json: bool,
     },
     Promote {
-        #[arg(long = "thread")]
-        target: String,
+        target: Option<String>,
+        #[arg(long = "target", alias = "thread")]
+        target_flag: Option<String>,
         #[arg(long)]
         ingest: bool,
         #[arg(long)]
@@ -605,10 +606,17 @@ fn request_from_memory_command(command: &MemoryCommand) -> io::Result<CliRequest
         },
         MemoryCommand::Promote {
             target,
+            target_flag,
             ingest,
             title,
         } => CliRequest::MemoryPromote {
-            target: trim_required_value(target, "target")?,
+            target: trim_required_value(
+                target
+                    .as_deref()
+                    .or(target_flag.as_deref())
+                    .unwrap_or_default(),
+                "target",
+            )?,
             ingest: Some(*ingest),
             title: title.clone(),
         },
@@ -1973,6 +1981,67 @@ mod tests {
     }
 
     #[test]
+    fn memory_promote_request_accepts_target_or_legacy_thread_flag() {
+        let parsed = Cli::try_parse_from(["mdx-cli", "memory", "promote", "mem_1"]).unwrap();
+        assert_eq!(
+            request_from_command(&parsed.command).unwrap(),
+            CliRequest::MemoryPromote {
+                target: "mem_1".to_string(),
+                ingest: Some(false),
+                title: None,
+            }
+        );
+
+        let legacy_parsed =
+            Cli::try_parse_from(["mdx-cli", "memory", "promote", "--thread", "cursor:abc123"])
+                .unwrap();
+        assert_eq!(
+            request_from_command(&legacy_parsed.command).unwrap(),
+            CliRequest::MemoryPromote {
+                target: "cursor:abc123".to_string(),
+                ingest: Some(false),
+                title: None,
+            }
+        );
+
+        let positional = CommandLine::Memory {
+            root: None,
+            command: MemoryCommand::Promote {
+                target: Some("mem_1".to_string()),
+                target_flag: None,
+                ingest: true,
+                title: Some("Promoted".to_string()),
+            },
+        };
+        assert_eq!(
+            request_from_command(&positional).unwrap(),
+            CliRequest::MemoryPromote {
+                target: "mem_1".to_string(),
+                ingest: Some(true),
+                title: Some("Promoted".to_string()),
+            }
+        );
+
+        let legacy = CommandLine::Memory {
+            root: None,
+            command: MemoryCommand::Promote {
+                target: None,
+                target_flag: Some("cursor:abc123".to_string()),
+                ingest: false,
+                title: None,
+            },
+        };
+        assert_eq!(
+            request_from_command(&legacy).unwrap(),
+            CliRequest::MemoryPromote {
+                target: "cursor:abc123".to_string(),
+                ingest: Some(false),
+                title: None,
+            }
+        );
+    }
+
+    #[test]
     fn memory_capture_requests_use_socket_protocol_without_root() {
         let import = CommandLine::Memory {
             root: None,
@@ -2123,7 +2192,8 @@ mod tests {
         let command = CommandLine::Memory {
             root: Some(root.path().to_string_lossy().into_owned()),
             command: MemoryCommand::Promote {
-                target: "thread-1".to_string(),
+                target: Some("thread-1".to_string()),
+                target_flag: None,
                 ingest: true,
                 title: None,
             },
