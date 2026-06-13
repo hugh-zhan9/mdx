@@ -65,12 +65,22 @@ mdx-cli llm-wiki query [--json] <question...>
 mdx-cli llm-wiki search <query...>
 mdx-cli memory status [--json]
 mdx-cli memory init
+mdx-cli memory repair [--rebuild-index]
+mdx-cli memory index rebuild
 mdx-cli memory thread save --source manual --title "..." --file <path>
 mdx-cli memory add --title "..." --body "..."
 mdx-cli memory recall [--json] <query...>
 mdx-cli memory working get
-mdx-cli memory promote --thread <thread-id>
+mdx-cli memory inbox list
+mdx-cli memory inbox accept <inbox-id>
+mdx-cli memory distill --thread <thread-id>
+mdx-cli memory capture import --source codex --file <path>
+mdx-cli memory promote <thread-id|memory-id|path>
+mdx-cli memory export --output <dir>
+mdx-cli memory import --input <dir> --dry-run
 mdx-cli memory --root <workspace> status
+mdx-cli serve --workspace <workspace> --port 14243
+mdx-mcp --workspace <workspace>
 ```
 
 Memory コマンドは `memory/` と `.mdx/` 配下の Markdown ネイティブな記憶レコードを管理します。現在の Workspace Mode socket 経由でも、`mdx-cli memory --root <workspace> ...` によるヘッドレス実行でも使えます。

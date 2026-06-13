@@ -6,7 +6,7 @@
 
 | 层 | 路径 | 职责 |
 |---|---|---|
-| **Memory — Threads** | `memory/threads/` | 完整 AI 对话原文；Phase 1 按全量快照替换；Agent recall 默认 **不** 注入全文 |
+| **Memory — Threads** | `memory/threads/` | 完整 AI 对话原文；按全量快照替换；Agent recall 默认 **不** 注入全文 |
 | **Memory — Memories** | `memory/memories/` | 原子记忆；Agent recall 的主检索对象 |
 | **Memory — Working** | `memory/working.md` | 当前关注；session 启动优先读取 |
 | **Memory — Inbox** | `memory/inbox/` | 待确认记忆（自动蒸馏时使用） |
@@ -154,17 +154,59 @@ confidence: float
 }
 ```
 
-### Phase 1 Retrieval
+### Retrieval
 
 - Scan `memory/memories/` with substring match + tag filter.
 - When `limit` or `byte_budget` is omitted, read defaults from `.mdx/memory-config.json`.
 - Sort by score (importance × recency decay).
 - Do **not** scan thread bodies.
-- When `include_threads: true`, return matching thread summaries by title, thread id, or path. Thread body text is not injected into recall output in Phase 1.
+- Use `.mdx/search.sqlite` as a rebuildable projection when available; fallback scan must return a degraded warning instead of failing recall.
+- When `include_threads: true`, return matching thread summaries by title, thread id, or path. Thread body text is not injected into recall output by default.
+- Optional vector rerank may be enabled by config, but Markdown remains the source of truth.
 
-### Phase 2 Retrieval
+## Inbox Contract
 
-- Add FTS5 from `.mdx/search.sqlite`; optional vector rerank.
+- Path: `memory/inbox/{yyyy-mm-dd}-{slug}[-n].md`
+- Distill and capture write candidates to inbox by default.
+- `memory inbox list` excludes reviewed records unless requested.
+- `memory inbox accept <inbox_id>` creates an active memory, marks the inbox record accepted, and is idempotent for an already accepted record.
+- `memory inbox reject <inbox_id>` marks the inbox record rejected without creating active memory.
+
+## Index Contract
+
+- Rebuild command: `mdx-cli memory index rebuild`.
+- Status command: `mdx-cli memory index status`.
+- SQLite path: `.mdx/search.sqlite`.
+- Rebuild scans Markdown sources and can restore a missing or dirty projection.
+- Recall/search must not treat SQLite as the source of truth.
+
+## Distill Contract
+
+- Command: `mdx-cli memory distill --thread <thread_id|path> [--accept] [--force]`.
+- Default output is inbox candidates.
+- If `auto_accept=true` and confidence meets `distill.confidence_threshold`, candidates may be written directly to active memory.
+- Distill preserves source thread and message refs when available.
+
+## Capture Contract
+
+- Commands: `memory capture scan --source <source>` and `memory capture import --source <source> --file <path> [--distill]`.
+- Supported capture sources are `codex`, `cursor`, `claude-code`, and `manual`.
+- Import writes a thread snapshot first. If optional distill fails, the saved thread remains visible and the result reports partial distill failure.
+
+## HTTP And MCP Contract
+
+- HTTP daemon: `mdx-cli serve --workspace <workspace> --port 14243`.
+- Health endpoint reports top-level `ok`, `has_memory`, `can_initialize`, `mode`, `missing_paths`, and `workspace`.
+- MCP stdio server: `mdx-mcp --workspace <workspace>`.
+- HTTP/MCP call the same Memory facade as CLI/UI and must not bypass locks or path guards.
+
+## Bundle Contract
+
+- Export: `mdx-cli memory export --output <dir> [--include-log]`.
+- Import: `mdx-cli memory import --input <dir> [--dry-run] [--strategy skip]`.
+- Bundles include manifest, `memory/**`, required metadata, and optional `log.md`.
+- Bundles do not include `.mdx/search.sqlite`; import/rebuild recreates the projection.
+- Export/import must reject path traversal and unsafe symlink writes.
 
 ## Promote Contract
 
@@ -207,7 +249,7 @@ Path: `.mdx/memory-config.json`
 
 Config fields use snake_case in JSON. `confidence_threshold` is serialized as an integer percentage (`85` means 0.85).
 
-## CLI Commands (Phase 1)
+## CLI Commands
 
 | Command | Writes log.md | Notes |
 |---|---|---|
@@ -218,7 +260,12 @@ Config fields use snake_case in JSON. `confidence_threshold` is serialized as an
 | `memory working set/append` | yes | |
 | `memory recall` | no | read-only |
 | `memory search` | no | read-only |
+| `memory inbox accept/reject` | yes | review candidate |
+| `memory distill` | yes | may write inbox or active memory |
+| `memory capture import` | yes | saves thread first |
+| `memory index rebuild` | no | rebuildable projection |
 | `memory promote` | yes | may trigger ingest |
+| `memory export/import` | import only | portable bundle |
 
 ## CLI Runtime
 
@@ -226,18 +273,23 @@ Config fields use snake_case in JSON. `confidence_threshold` is serialized as an
   - Workspace Mode socket runtime against the current active root.
   - Explicit headless runtime via `mdx-cli memory --root <workspace> ...`.
 - `--root` wins when both `--root` and a running GUI are present.
-- `llm-wiki *` remains socket-only in Phase 1.
+- `llm-wiki *` remains socket-only and targets the active Workspace Mode root.
 
-## MCP Tools (Phase 3)
+## MCP Tools
 
 | Tool | Maps to |
 |---|---|
+| `memory_status` | `memory status` |
 | `memory_recall` | `memory recall` |
 | `memory_add` | `memory add` |
 | `memory_working_get` | `memory working get` |
 | `memory_thread_save` | `memory thread save` |
 | `memory_thread_show` | `memory thread show` |
+| `memory_inbox_list` | `memory inbox list` |
+| `memory_inbox_accept` | `memory inbox accept` |
+| `memory_distill` | `memory distill` |
 | `memory_search` | `memory search` |
+| `memory_promote` | `memory promote` |
 
 ## Agent Session Startup (Recommended)
 

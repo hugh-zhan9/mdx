@@ -29,7 +29,7 @@ Document Mode is not controlled by `mdx-cli`, does not restore the recent worksp
 
 ## Scope
 
-MDX is desktop-first. The current app does not provide a web product, Quick Look extension, an auto-update flow, multi-root workspaces, PDF/image/binary full-text search, or LLM Wiki onboarding in this phase.
+MDX is desktop-first. The current app does not provide a web product, Quick Look extension, an auto-update flow, multi-root workspaces, PDF/image/binary full-text search, or LLM Wiki onboarding.
 
 The editor currently supports `.md` and `.markdown` files. This MVP does not treat `.mdx` as a Document Mode file and does not display `.mdx` files in the workspace file tree.
 
@@ -70,12 +70,22 @@ mdx-cli llm-wiki query [--json] <question...>
 mdx-cli llm-wiki search <query...>
 mdx-cli memory status [--json]
 mdx-cli memory init
+mdx-cli memory repair [--rebuild-index]
+mdx-cli memory index rebuild
 mdx-cli memory thread save --source manual --title "..." --file <path>
 mdx-cli memory add --title "..." --body "..."
 mdx-cli memory recall [--json] <query...>
 mdx-cli memory working get
-mdx-cli memory promote --thread <thread-id>
+mdx-cli memory inbox list
+mdx-cli memory inbox accept <inbox-id>
+mdx-cli memory distill --thread <thread-id>
+mdx-cli memory capture import --source codex --file <path>
+mdx-cli memory promote <thread-id|memory-id|path>
+mdx-cli memory export --output <dir>
+mdx-cli memory import --input <dir> --dry-run
 mdx-cli memory --root <workspace> status
+mdx-cli serve --workspace <workspace> --port 14243
+mdx-mcp --workspace <workspace>
 ```
 
 Memory commands manage Markdown-native records under `memory/` and `.mdx/`. They can run through the active Workspace Mode socket, or headlessly with `mdx-cli memory --root <workspace> ...`.

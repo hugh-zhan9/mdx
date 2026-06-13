@@ -29,7 +29,7 @@ Document Mode 不参与 `mdx-cli` 自动化，不恢复为最近工作区，也�
 
 ## 范围
 
-MDX 当前优先服务桌面端。本期不提供 Web 产品形态、Quick Look 扩展、自动更新流程、多根工作区、PDF/图片/二进制全文搜索，也不包含 LLM Wiki onboarding。
+MDX 当前优先服务桌面端。当前应用不提供 Web 产品形态、Quick Look 扩展、自动更新流程、多根工作区、PDF/图片/二进制全文搜索，也不包含 LLM Wiki onboarding。
 
 当前编辑器支持 `.md` 和 `.markdown` 文件。这个 MVP 不把 `.mdx` 作为 Document Mode 文件处理，也不在工作区文件树中显示 `.mdx` 文件。
 
@@ -70,12 +70,22 @@ mdx-cli llm-wiki query [--json] <question...>
 mdx-cli llm-wiki search <query...>
 mdx-cli memory status [--json]
 mdx-cli memory init
+mdx-cli memory repair [--rebuild-index]
+mdx-cli memory index rebuild
 mdx-cli memory thread save --source manual --title "..." --file <path>
 mdx-cli memory add --title "..." --body "..."
 mdx-cli memory recall [--json] <query...>
 mdx-cli memory working get
-mdx-cli memory promote --thread <thread-id>
+mdx-cli memory inbox list
+mdx-cli memory inbox accept <inbox-id>
+mdx-cli memory distill --thread <thread-id>
+mdx-cli memory capture import --source codex --file <path>
+mdx-cli memory promote <thread-id|memory-id|path>
+mdx-cli memory export --output <dir>
+mdx-cli memory import --input <dir> --dry-run
 mdx-cli memory --root <workspace> status
+mdx-cli serve --workspace <workspace> --port 14243
+mdx-mcp --workspace <workspace>
 ```
 
 Memory 命令管理 `memory/` 和 `.mdx/` 下的 Markdown 原生记忆记录。它们可以通过当前 Workspace Mode socket 运行，也可以使用 `mdx-cli memory --root <workspace> ...` 无界面运行。
