@@ -66,7 +66,7 @@ pub fn memory_add(
         frontmatter,
         body,
     };
-    crate::search_index::sync_memory(root, &record)?;
+    sync_memory_projection(root, &record)?;
     append_memory_log_entry(
         root,
         &format!("memory_add memory_id={memory_id} path={}", record.path),
@@ -161,7 +161,7 @@ pub fn memory_archive(
     record.frontmatter.status = "archived".to_string();
     let markdown = render_markdown_with_frontmatter(&record.frontmatter, &record.body)?;
     write_workspace_file(root, &record.path, markdown.as_bytes())?;
-    crate::search_index::sync_memory(root, &record)?;
+    sync_memory_projection(root, &record)?;
     append_memory_log_entry(
         root,
         &format!(
@@ -170,6 +170,28 @@ pub fn memory_archive(
         ),
     )?;
     Ok(record)
+}
+
+fn sync_memory_projection(
+    root: &std::path::Path,
+    record: &MemoryRecord,
+) -> Result<(), WorkspaceError> {
+    match crate::search_index::sync_memory(root, record) {
+        Ok(()) => Ok(()),
+        Err(error) if crate::search_index::is_index_degradation_error(&error) => {
+            append_memory_log_entry(
+                root,
+                &format!(
+                    "memory_index_sync_failed memory_id={} error_code={} message={}",
+                    record.frontmatter.memory_id,
+                    error.error_code(),
+                    error
+                ),
+            )?;
+            Ok(())
+        }
+        Err(error) => Err(error),
+    }
 }
 
 fn memory_markdown_paths(root: &std::path::Path) -> Result<Vec<String>, WorkspaceError> {

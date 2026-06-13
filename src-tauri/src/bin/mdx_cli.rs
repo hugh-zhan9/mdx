@@ -1086,15 +1086,21 @@ fn execute_memory_index_headless(command: &MemoryIndexCommand, root_path: String
     }
 }
 
-fn serve_memory_daemon(workspace: &str, port: u16, _api_key: Option<&str>) -> io::Result<()> {
+fn serve_memory_daemon(workspace: &str, port: u16, api_key: Option<&str>) -> io::Result<()> {
     let root_path = normalize_cli_path(workspace)?;
+    let api_key = api_key
+        .map(str::trim)
+        .filter(|key| !key.is_empty())
+        .map(str::to_string);
     let listener = TcpListener::bind(("127.0.0.1", port))?;
     eprintln!("mdx memory daemon listening on 127.0.0.1:{port}");
 
     for stream in listener.incoming() {
         match stream {
             Ok(mut stream) => {
-                if let Err(error) = handle_http_connection(&mut stream, root_path.clone()) {
+                if let Err(error) =
+                    handle_http_connection(&mut stream, root_path.clone(), api_key.as_deref())
+                {
                     eprintln!("mdx memory daemon request failed: {error}");
                 }
             }
@@ -1105,8 +1111,26 @@ fn serve_memory_daemon(workspace: &str, port: u16, _api_key: Option<&str>) -> io
     Ok(())
 }
 
-fn handle_http_connection(stream: &mut TcpStream, root_path: String) -> io::Result<()> {
+fn handle_http_connection(
+    stream: &mut TcpStream,
+    root_path: String,
+    api_key: Option<&str>,
+) -> io::Result<()> {
     let request = read_http_request(stream)?;
+    if !is_authorized(api_key, request.authorization.as_deref()) {
+        return write_http_response(
+            stream,
+            memory_daemon::DaemonResponse {
+                status: 401,
+                body: serde_json::json!({
+                    "ok": false,
+                    "error_code": "unauthorized",
+                    "message": "missing or invalid Authorization bearer token",
+                })
+                .to_string(),
+            },
+        );
+    }
     let response =
         match memory_daemon::dispatch(root_path, &request.method, &request.path, &request.body) {
             Ok(response) => response,
@@ -1127,6 +1151,7 @@ fn handle_http_connection(stream: &mut TcpStream, root_path: String) -> io::Resu
 struct HttpRequest {
     method: String,
     path: String,
+    authorization: Option<String>,
     body: String,
 }
 
@@ -1155,6 +1180,7 @@ fn read_http_request(stream: &mut TcpStream) -> io::Result<HttpRequest> {
         .to_string();
 
     let mut content_length = 0usize;
+    let mut authorization = None;
     loop {
         let mut line = String::new();
         let read = reader.read_line(&mut line)?;
@@ -1173,6 +1199,8 @@ fn read_http_request(stream: &mut TcpStream) -> io::Result<HttpRequest> {
                         format!("invalid Content-Length: {error}"),
                     )
                 })?;
+            } else if name.eq_ignore_ascii_case("authorization") {
+                authorization = Some(value.trim().to_string());
             }
         }
     }
@@ -1182,7 +1210,25 @@ fn read_http_request(stream: &mut TcpStream) -> io::Result<HttpRequest> {
     let body = String::from_utf8(body)
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
 
-    Ok(HttpRequest { method, path, body })
+    Ok(HttpRequest {
+        method,
+        path,
+        authorization,
+        body,
+    })
+}
+
+fn is_authorized(api_key: Option<&str>, authorization: Option<&str>) -> bool {
+    let Some(api_key) = api_key.map(str::trim).filter(|key| !key.is_empty()) else {
+        return true;
+    };
+    let Some(authorization) = authorization.map(str::trim) else {
+        return false;
+    };
+    authorization
+        .strip_prefix("Bearer ")
+        .map(str::trim)
+        .is_some_and(|token| token == api_key)
 }
 
 fn write_http_response(
@@ -1191,6 +1237,7 @@ fn write_http_response(
 ) -> io::Result<()> {
     let status_text = match response.status {
         200 => "OK",
+        401 => "Unauthorized",
         400 => "Bad Request",
         404 => "Not Found",
         405 => "Method Not Allowed",
@@ -2168,6 +2215,55 @@ mod tests {
             success_output(&command, &response),
             r#"{"ok":true,"memory_index_status":{"index_status":"clean","document_count":1,"dirty":false}}"#
         );
+    }
+
+    #[test]
+    fn serve_authorization_requires_matching_bearer_token_when_configured() {
+        assert!(is_authorized(None, None));
+        assert!(is_authorized(Some("secret"), Some("Bearer secret")));
+        assert!(is_authorized(Some(" secret "), Some("Bearer secret")));
+        assert!(!is_authorized(Some("secret"), None));
+        assert!(!is_authorized(Some("secret"), Some("Bearer wrong")));
+        assert!(!is_authorized(Some("secret"), Some("Basic secret")));
+    }
+
+    #[test]
+    fn serve_http_connection_enforces_api_key_on_routes() {
+        fn request(root: String, api_key: Option<&'static str>, raw: &'static str) -> String {
+            let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+            let addr = listener.local_addr().unwrap();
+            let client = std::thread::spawn(move || {
+                let mut stream = TcpStream::connect(addr).unwrap();
+                stream.write_all(raw.as_bytes()).unwrap();
+                stream.shutdown(std::net::Shutdown::Write).unwrap();
+                let mut response = String::new();
+                stream.read_to_string(&mut response).unwrap();
+                response
+            });
+            let (mut server_stream, _) = listener.accept().unwrap();
+            handle_http_connection(&mut server_stream, root, api_key).unwrap();
+            drop(server_stream);
+            client.join().unwrap()
+        }
+
+        let root = TempDir::new().unwrap();
+        memory::memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+        let root_path = root.path().to_string_lossy().into_owned();
+
+        let unauthorized = request(
+            root_path.clone(),
+            Some("secret"),
+            "GET /memory/status HTTP/1.1\r\nHost: localhost\r\n\r\n",
+        );
+        assert!(unauthorized.starts_with("HTTP/1.1 401 Unauthorized"));
+
+        let authorized = request(
+            root_path,
+            Some("secret"),
+            "GET /memory/status HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer secret\r\n\r\n",
+        );
+        assert!(authorized.starts_with("HTTP/1.1 200 OK"));
+        assert!(authorized.contains("\"ok\":true"));
     }
 
     #[test]

@@ -1,13 +1,13 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::thread;
 
 use tempfile::tempdir;
 
 use crate::memory::{
     default_memory_config, memory_add, memory_archive, memory_capture_import,
-    memory_detect_workspace, memory_distill_with_json_for_test, memory_get, memory_inbox_accept,
-    memory_inbox_add, memory_inbox_get, memory_inbox_list, memory_inbox_reject,
-    memory_initialize_workspace, memory_list, memory_promote, memory_recall,
+    memory_detect_workspace, memory_distill, memory_distill_with_json_for_test, memory_get,
+    memory_inbox_accept, memory_inbox_add, memory_inbox_get, memory_inbox_list,
+    memory_inbox_reject, memory_initialize_workspace, memory_list, memory_promote, memory_recall,
     memory_repair_workspace, memory_search, memory_thread_get, memory_thread_list,
     memory_thread_save, memory_working_append, memory_working_get, memory_working_set,
     InboxAddRequest, InboxReviewRequest, MemoryAddRequest, MemoryCaptureImportRequest,
@@ -37,6 +37,50 @@ fn memory_fixture_path(name: &str) -> String {
         .into_owned()
 }
 
+fn memory_llm_config_env_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+struct MemoryLlmConfigEnvGuard {
+    _lock: MutexGuard<'static, ()>,
+    home: Option<std::ffi::OsString>,
+    userprofile: Option<std::ffi::OsString>,
+}
+
+impl MemoryLlmConfigEnvGuard {
+    fn use_home(path: impl AsRef<std::path::Path>) -> Self {
+        let lock = memory_llm_config_env_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let home = std::env::var_os("HOME");
+        let userprofile = std::env::var_os("USERPROFILE");
+        let canonical_home = std::fs::canonicalize(path.as_ref()).unwrap();
+        std::env::set_var("HOME", canonical_home);
+        std::env::remove_var("USERPROFILE");
+        Self {
+            _lock: lock,
+            home,
+            userprofile,
+        }
+    }
+}
+
+impl Drop for MemoryLlmConfigEnvGuard {
+    fn drop(&mut self) {
+        if let Some(value) = self.home.take() {
+            std::env::set_var("HOME", value);
+        } else {
+            std::env::remove_var("HOME");
+        }
+        if let Some(value) = self.userprofile.take() {
+            std::env::set_var("USERPROFILE", value);
+        } else {
+            std::env::remove_var("USERPROFILE");
+        }
+    }
+}
+
 #[test]
 fn distill_parser_rejects_invalid_scores_and_accepts_valid_candidates() {
     let valid = r#"[{
@@ -61,6 +105,32 @@ fn distill_parser_rejects_invalid_scores_and_accepts_valid_candidates() {
     }]"#;
     let error = crate::memory_distill::parse_distill_candidates_for_test(invalid).unwrap_err();
     assert!(format!("{error}").starts_with("distill_parse_failed:"));
+}
+
+#[test]
+fn distill_prompt_requests_json_array_and_includes_thread_body() {
+    let messages = crate::memory_distill::build_distill_messages_for_test(
+        "Auth thread",
+        "## Message 1 — user\n\nRemember JWT TTL.",
+    );
+
+    assert_eq!(messages[0].role, "system");
+    assert!(messages[0].content.contains("Return only a JSON array"));
+    assert_eq!(messages[1].role, "user");
+    assert!(messages[1].content.contains("Auth thread"));
+    assert!(messages[1].content.contains("Remember JWT TTL."));
+}
+
+#[test]
+fn distill_extracts_json_array_from_fenced_output() {
+    let json = crate::memory_distill::extract_json_array_for_test(
+        "```json\n[{\"title\":\"A\",\"body\":\"B\",\"tags\":[],\"importance\":0.5,\"confidence\":0.8,\"source_message_refs\":[1]}]\n```",
+    )
+    .unwrap();
+
+    let candidates = crate::memory_distill::parse_distill_candidates_for_test(&json).unwrap();
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].title, "A");
 }
 
 #[test]
@@ -626,6 +696,8 @@ fn capture_imports_codex_jsonl_as_thread() {
 #[test]
 fn capture_import_reports_distill_unavailable_as_partial_success() {
     let root = tempdir().unwrap();
+    let home = tempdir().unwrap();
+    let _env = MemoryLlmConfigEnvGuard::use_home(home.path());
     memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
 
     let result = memory_capture_import(
@@ -1463,6 +1535,63 @@ fn memory_add_creates_markdown_record_with_defaults() {
     assert_eq!(record.frontmatter.status, "active");
     assert_eq!(record.frontmatter.importance, Some(0.5));
     assert!(root.path().join(&record.path).is_file());
+}
+
+#[test]
+fn memory_add_succeeds_when_search_index_is_corrupt_projection() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    std::fs::write(root.path().join(".mdx/search.sqlite"), "not sqlite").unwrap();
+
+    let record = memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "Corrupt index write".to_string(),
+            body: "Source of truth write should survive a corrupt projection.".to_string(),
+            tags: vec!["index".to_string()],
+            source_thread: None,
+            source_message_refs: Vec::new(),
+            importance: None,
+            confidence: None,
+        },
+    )
+    .unwrap();
+
+    assert!(root.path().join(&record.path).is_file());
+    let log = read_workspace_file(root.path(), "log.md").unwrap();
+    assert!(log.contains("memory_index_sync_failed"));
+    assert!(log.contains("memory_add"));
+}
+
+#[test]
+fn memory_archive_succeeds_when_search_index_is_corrupt_projection() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    let record = memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "Archive corrupt index".to_string(),
+            body: "Archiving should survive a corrupt projection.".to_string(),
+            tags: vec!["index".to_string()],
+            source_thread: None,
+            source_message_refs: Vec::new(),
+            importance: None,
+            confidence: None,
+        },
+    )
+    .unwrap();
+    std::fs::write(root.path().join(".mdx/search.sqlite"), "not sqlite").unwrap();
+
+    let archived = memory_archive(
+        root.path().to_string_lossy().into_owned(),
+        record.frontmatter.memory_id,
+    )
+    .unwrap();
+
+    assert_eq!(archived.frontmatter.status, "archived");
+    let log = read_workspace_file(root.path(), "log.md").unwrap();
+    assert!(log.contains("memory_index_sync_failed"));
+    assert!(log.contains("memory_archive"));
 }
 
 #[test]
@@ -2572,6 +2701,85 @@ fn distill_with_json_writes_candidates_to_inbox() {
     let inbox = memory_inbox_list(root.path().to_string_lossy().into_owned(), false).unwrap();
     assert_eq!(inbox.len(), 1);
     assert_eq!(inbox[0].frontmatter.title, "Use JWT");
+}
+
+#[test]
+fn distill_uses_configured_llm_provider_and_writes_inbox() {
+    let root = tempdir().unwrap();
+    let home = tempdir().unwrap();
+    let _env = MemoryLlmConfigEnvGuard::use_home(home.path());
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_thread_save(
+        root.path().to_string_lossy().into_owned(),
+        ThreadSaveRequest {
+            source: "manual".to_string(),
+            thread_id: Some("manual:llm-distill".to_string()),
+            title: "LLM distill".to_string(),
+            body: sample_thread_body(),
+            started_at: Some("2026-06-12T09:00:00Z".to_string()),
+            ended_at: None,
+            model: None,
+            workspace_root: None,
+            tags: Vec::new(),
+        },
+    )
+    .unwrap();
+
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        use std::io::{Read, Write};
+        let mut request = [0_u8; 4096];
+        let read = stream.read(&mut request).unwrap();
+        let request = String::from_utf8_lossy(&request[..read]);
+        assert!(request.contains("POST /v1/responses HTTP/1.1"));
+
+        let body = serde_json::json!({
+            "output": [{
+                "content": [{
+                    "type": "output_text",
+                    "text": "[{\"title\":\"Use auth middleware\",\"body\":\"The project discussed auth middleware implementation planning.\",\"tags\":[\"auth\"],\"importance\":0.7,\"confidence\":0.9,\"source_message_refs\":[1,2]}]"
+                }]
+            }]
+        })
+        .to_string();
+        write!(
+            stream,
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        )
+        .unwrap();
+    });
+    let config_dir = home.path().join(".mdx");
+    std::fs::create_dir_all(&config_dir).unwrap();
+    std::fs::write(
+        config_dir.join("llm-config.json"),
+        serde_json::json!({
+            "baseUrl": format!("http://{}/v1", addr),
+            "model": "test-model",
+            "apiKey": null,
+            "apiMode": "responses"
+        })
+        .to_string(),
+    )
+    .unwrap();
+
+    let result = memory_distill(
+        root.path().to_string_lossy().into_owned(),
+        MemoryDistillRequest {
+            target: "manual:llm-distill".to_string(),
+            accept: false,
+            force: false,
+        },
+    )
+    .unwrap();
+    server.join().unwrap();
+
+    assert_eq!(result.candidate_count, 1);
+    assert_eq!(result.inbox_count, 1);
+    assert_eq!(result.inbox[0].frontmatter.title, "Use auth middleware");
 }
 
 #[test]
