@@ -1662,10 +1662,58 @@ fn inbox_accept_creates_active_memory_and_marks_candidate_accepted() {
     )
     .unwrap();
     assert_eq!(reviewed.frontmatter.status, "accepted");
+    assert_eq!(reviewed.frontmatter.title, "Reviewed inbox decision");
+    assert_eq!(
+        reviewed.body.trim(),
+        "Reviewed body becomes the active memory."
+    );
+    assert_eq!(reviewed.frontmatter.tags, vec!["reviewed", "workflow"]);
     assert_eq!(
         reviewed.frontmatter.accepted_memory_id,
         Some(memory.frontmatter.memory_id)
     );
+}
+
+#[test]
+fn inbox_accept_is_idempotent_for_already_accepted_candidate() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+
+    let candidate = memory_inbox_add(
+        root.path().to_string_lossy().into_owned(),
+        InboxAddRequest {
+            title: "Accepted once".to_string(),
+            body: "Only one active memory should be created.".to_string(),
+            source_thread: None,
+            source_message_refs: Vec::new(),
+            importance: None,
+            confidence: None,
+            tags: vec!["inbox".to_string()],
+            distill_run_id: None,
+        },
+    )
+    .unwrap();
+    let request = InboxReviewRequest {
+        inbox_id: candidate.frontmatter.inbox_id,
+        title: None,
+        body: None,
+        tags: None,
+    };
+
+    let first =
+        memory_inbox_accept(root.path().to_string_lossy().into_owned(), request.clone()).unwrap();
+    let second = memory_inbox_accept(root.path().to_string_lossy().into_owned(), request).unwrap();
+
+    assert_eq!(second.status, "accepted");
+    assert_eq!(second.accepted_memory_id, first.accepted_memory_id);
+    assert!(second.memory.is_some());
+
+    let memories = memory_list(
+        root.path().to_string_lossy().into_owned(),
+        MemoryListFilter::default(),
+    )
+    .unwrap();
+    assert_eq!(memories.len(), 1);
 }
 
 #[test]

@@ -137,6 +137,18 @@ pub fn memory_inbox_accept(
 ) -> Result<InboxReviewResult, WorkspaceError> {
     let root = root.as_ref();
     let mut candidate = memory_inbox_get(root, request.inbox_id)?;
+    if candidate.frontmatter.status == "accepted" {
+        if let Some(memory_id) = candidate.frontmatter.accepted_memory_id.clone() {
+            let memory = crate::memory_store::memory_get(root, memory_id.clone()).ok();
+            return Ok(InboxReviewResult {
+                inbox_id: candidate.frontmatter.inbox_id,
+                path: candidate.path,
+                status: "accepted".to_string(),
+                accepted_memory_id: Some(memory_id),
+                memory,
+            });
+        }
+    }
     ensure_pending(&candidate)?;
 
     let title = request
@@ -145,7 +157,10 @@ pub fn memory_inbox_accept(
         .unwrap_or(&candidate.frontmatter.title)
         .trim()
         .to_string();
-    let body = request.body.unwrap_or_else(|| candidate.body.clone());
+    let body = request
+        .body
+        .map(|body| normalize_markdown_body(&body))
+        .unwrap_or_else(|| normalize_markdown_body(&candidate.body));
     let tags = request
         .tags
         .unwrap_or_else(|| candidate.frontmatter.tags.clone());
@@ -153,15 +168,18 @@ pub fn memory_inbox_accept(
     let memory = crate::memory_store::memory_add(
         root,
         MemoryAddRequest {
-            title,
-            body,
-            tags,
+            title: title.clone(),
+            body: body.clone(),
+            tags: tags.clone(),
             source_thread: candidate.frontmatter.source_thread.clone(),
             importance: candidate.frontmatter.importance,
             confidence: candidate.frontmatter.confidence,
         },
     )?;
 
+    candidate.frontmatter.title = title;
+    candidate.body = body;
+    candidate.frontmatter.tags = tags;
     candidate.frontmatter.status = "accepted".to_string();
     candidate.frontmatter.accepted_memory_id = Some(memory.frontmatter.memory_id.clone());
     write_inbox_record(root, &candidate)?;
