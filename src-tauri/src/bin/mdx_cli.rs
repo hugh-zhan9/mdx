@@ -128,6 +128,20 @@ enum MemoryCommand {
         #[arg(long)]
         rebuild_index: bool,
     },
+    Export {
+        #[arg(long)]
+        output: String,
+        #[arg(long)]
+        include_log: bool,
+    },
+    Import {
+        #[arg(long)]
+        input: String,
+        #[arg(long, default_value = "skip")]
+        strategy: String,
+        #[arg(long)]
+        dry_run: bool,
+    },
     Index {
         #[command(subcommand)]
         command: MemoryIndexCommand,
@@ -442,6 +456,12 @@ fn request_from_memory_command(command: &MemoryCommand) -> io::Result<CliRequest
         MemoryCommand::Repair { rebuild_index } => CliRequest::MemoryRepair {
             rebuild_index: *rebuild_index,
         },
+        MemoryCommand::Export { .. } | MemoryCommand::Import { .. } => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "memory bundle export/import require --root",
+            ));
+        }
         MemoryCommand::Index { command } => match command {
             MemoryIndexCommand::Status => CliRequest::MemoryIndexStatus,
             MemoryIndexCommand::Rebuild => CliRequest::MemoryIndexRebuild,
@@ -625,6 +645,50 @@ fn execute_memory_headless(command: &CommandLine, root_path: String) -> io::Resu
 
     if let MemoryCommand::Index { command } = command {
         return Ok(execute_memory_index_headless(command, root_path));
+    }
+
+    if let MemoryCommand::Export {
+        output,
+        include_log,
+    } = command
+    {
+        let request = memory::MemoryExportRequest {
+            output_path: normalize_cli_path(output)?,
+            include_log: *include_log,
+        };
+        let response = match memory::memory_export_bundle(root_path.clone(), request) {
+            Ok(result) => CliResponse {
+                ok: true,
+                root_path: Some(root_path),
+                memory_export: Some(result),
+                ..CliResponse::default()
+            },
+            Err(error) => workspace_error_response(error),
+        };
+        return Ok(response);
+    }
+
+    if let MemoryCommand::Import {
+        input,
+        strategy,
+        dry_run,
+    } = command
+    {
+        let request = memory::MemoryImportRequest {
+            input_path: normalize_cli_path(input)?,
+            strategy: strategy.clone(),
+            dry_run: *dry_run,
+        };
+        let response = match memory::memory_import_bundle(root_path.clone(), request) {
+            Ok(result) => CliResponse {
+                ok: true,
+                root_path: Some(root_path),
+                memory_import: Some(result),
+                ..CliResponse::default()
+            },
+            Err(error) => workspace_error_response(error),
+        };
+        return Ok(response);
     }
 
     let response = match request_from_memory_command(command)? {

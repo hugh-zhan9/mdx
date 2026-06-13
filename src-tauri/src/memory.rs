@@ -11,7 +11,8 @@ pub use crate::memory_models::{
     InboxReviewResult, InitializeMemoryResult, MemoryAddRequest, MemoryCaptureConfig,
     MemoryCaptureImportRequest, MemoryCaptureImportResult, MemoryCaptureScanRequest,
     MemoryCaptureScanResult, MemoryConfig, MemoryDistillConfig, MemoryDistillRequest,
-    MemoryDistillResult, MemoryEmbeddingConfig, MemoryFrontmatter, MemoryIndexSearchItem,
+    MemoryDistillResult, MemoryEmbeddingConfig, MemoryExportRequest, MemoryExportResult,
+    MemoryFrontmatter, MemoryImportRequest, MemoryImportResult, MemoryIndexSearchItem,
     MemoryIndexSearchRequest, MemoryIndexSearchResult, MemoryIndexStatus, MemoryListFilter,
     MemoryPromoteRequest, MemoryPromoteResult, MemoryRecallConfig, MemoryRecord,
     MemoryRepairRequest, MemoryRepairResult, MemorySummary, MemoryThreadFrontmatter,
@@ -95,6 +96,23 @@ pub fn memory_repair_workspace(
     let root = canonicalize_workspace_root(root_path)?;
     let _lock = try_acquire_memory_lock(&root)?;
     repair_memory_workspace(root, request)
+}
+
+pub fn memory_export_bundle(
+    root_path: String,
+    request: MemoryExportRequest,
+) -> Result<MemoryExportResult, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    crate::memory_bundle::memory_export_bundle(root, request)
+}
+
+pub fn memory_import_bundle(
+    root_path: String,
+    request: MemoryImportRequest,
+) -> Result<MemoryImportResult, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    let _lock = try_acquire_memory_lock(&root)?;
+    crate::memory_bundle::memory_import_bundle(root, request)
 }
 
 pub(crate) fn detect_memory_workspace(

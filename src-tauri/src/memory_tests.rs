@@ -202,6 +202,174 @@ fn memory_initialize_writes_expected_default_config() {
 }
 
 #[test]
+fn memory_export_writes_manifest_and_import_dry_run_reports_records() {
+    let root = tempdir().unwrap();
+    let target = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_initialize_workspace(target.path().to_string_lossy().into_owned()).unwrap();
+    memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "Bundle memory".to_string(),
+            body: "Export this memory.".to_string(),
+            tags: vec!["bundle".to_string()],
+            source_thread: None,
+            source_message_refs: Vec::new(),
+            importance: Some(0.5),
+            confidence: Some(0.8),
+        },
+    )
+    .unwrap();
+
+    let bundle_path = root.path().join("memory-bundle");
+    let export = crate::memory::memory_export_bundle(
+        root.path().to_string_lossy().into_owned(),
+        crate::memory::MemoryExportRequest {
+            output_path: bundle_path.to_string_lossy().into_owned(),
+            include_log: false,
+        },
+    )
+    .unwrap();
+    assert!(std::path::Path::new(&export.manifest_path).is_file());
+
+    let dry_run = crate::memory::memory_import_bundle(
+        target.path().to_string_lossy().into_owned(),
+        crate::memory::MemoryImportRequest {
+            input_path: bundle_path.to_string_lossy().into_owned(),
+            strategy: "skip".to_string(),
+            dry_run: true,
+        },
+    )
+    .unwrap();
+    assert_eq!(dry_run.records_seen, 1);
+    assert_eq!(dry_run.records_imported, 0);
+    let target_records = memory_list(
+        target.path().to_string_lossy().into_owned(),
+        MemoryListFilter {
+            tag: None,
+            since: None,
+            include_archived: true,
+        },
+    )
+    .unwrap();
+    assert_eq!(target_records.len(), 0);
+}
+
+#[test]
+fn memory_bundle_skip_import_copies_missing_records_once() {
+    let root = tempdir().unwrap();
+    let target = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_initialize_workspace(target.path().to_string_lossy().into_owned()).unwrap();
+    memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "Skip bundle memory".to_string(),
+            body: "Import this memory once.".to_string(),
+            tags: vec!["bundle".to_string()],
+            source_thread: None,
+            source_message_refs: Vec::new(),
+            importance: Some(0.5),
+            confidence: Some(0.8),
+        },
+    )
+    .unwrap();
+    let bundle_path = root.path().join("memory-bundle");
+    crate::memory::memory_export_bundle(
+        root.path().to_string_lossy().into_owned(),
+        crate::memory::MemoryExportRequest {
+            output_path: bundle_path.to_string_lossy().into_owned(),
+            include_log: false,
+        },
+    )
+    .unwrap();
+
+    let imported = crate::memory::memory_import_bundle(
+        target.path().to_string_lossy().into_owned(),
+        crate::memory::MemoryImportRequest {
+            input_path: bundle_path.to_string_lossy().into_owned(),
+            strategy: "skip".to_string(),
+            dry_run: false,
+        },
+    )
+    .unwrap();
+    assert_eq!(imported.records_imported, 1);
+    assert_eq!(imported.records_skipped, 0);
+    let target_records = memory_list(
+        target.path().to_string_lossy().into_owned(),
+        MemoryListFilter {
+            tag: None,
+            since: None,
+            include_archived: true,
+        },
+    )
+    .unwrap();
+    assert_eq!(target_records.len(), 1);
+
+    let skipped = crate::memory::memory_import_bundle(
+        target.path().to_string_lossy().into_owned(),
+        crate::memory::MemoryImportRequest {
+            input_path: bundle_path.to_string_lossy().into_owned(),
+            strategy: "skip".to_string(),
+            dry_run: false,
+        },
+    )
+    .unwrap();
+    assert_eq!(skipped.records_imported, 0);
+    assert_eq!(skipped.records_skipped, 1);
+}
+
+#[test]
+fn memory_bundle_import_rejects_manifest_path_traversal() {
+    let root = tempdir().unwrap();
+    let target = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_initialize_workspace(target.path().to_string_lossy().into_owned()).unwrap();
+    memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "Traversal bundle memory".to_string(),
+            body: "Export this memory.".to_string(),
+            tags: vec!["bundle".to_string()],
+            source_thread: None,
+            source_message_refs: Vec::new(),
+            importance: Some(0.5),
+            confidence: Some(0.8),
+        },
+    )
+    .unwrap();
+    let bundle_path = root.path().join("memory-bundle");
+    crate::memory::memory_export_bundle(
+        root.path().to_string_lossy().into_owned(),
+        crate::memory::MemoryExportRequest {
+            output_path: bundle_path.to_string_lossy().into_owned(),
+            include_log: false,
+        },
+    )
+    .unwrap();
+    let manifest_path = bundle_path.join("manifest.json");
+    let mut manifest: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&manifest_path).unwrap()).unwrap();
+    manifest["files"] = serde_json::json!(["../evil.md"]);
+    std::fs::write(
+        &manifest_path,
+        serde_json::to_string_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
+
+    let error = crate::memory::memory_import_bundle(
+        target.path().to_string_lossy().into_owned(),
+        crate::memory::MemoryImportRequest {
+            input_path: bundle_path.to_string_lossy().into_owned(),
+            strategy: "skip".to_string(),
+            dry_run: true,
+        },
+    )
+    .unwrap_err();
+    assert!(format!("{error}").starts_with("invalid_bundle_path:"));
+}
+
+#[test]
 fn memory_init_appends_a_memory_init_audit_event() {
     let root = tempdir().unwrap();
 

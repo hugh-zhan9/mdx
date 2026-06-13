@@ -30,6 +30,7 @@ mod llm_wiki_raw;
 #[cfg(target_os = "macos")]
 mod macos_launch;
 pub mod memory;
+mod memory_bundle;
 mod memory_capture;
 pub mod memory_daemon;
 mod memory_distill;

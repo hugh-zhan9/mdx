@@ -34,6 +34,53 @@ pub struct MemoryRepairResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+pub struct MemoryExportRequest {
+    pub output_path: String,
+    pub include_log: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryExportResult {
+    pub manifest_path: String,
+    pub output_path: String,
+    pub version: u32,
+    pub records_exported: usize,
+    pub files_exported: usize,
+    pub memory_count: usize,
+    pub inbox_count: usize,
+    pub thread_count: usize,
+    pub log_included: bool,
+    pub copied_paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryImportRequest {
+    pub input_path: String,
+    pub strategy: String,
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryImportResult {
+    pub manifest_path: String,
+    pub input_path: String,
+    pub strategy: String,
+    pub dry_run: bool,
+    pub records_seen: usize,
+    pub records_imported: usize,
+    pub records_skipped: usize,
+    pub files_seen: usize,
+    pub files_imported: usize,
+    pub files_skipped: usize,
+    pub copied_paths: Vec<String>,
+    pub skipped_paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub struct MemoryConfig {
     pub version: u32,
     pub recall: MemoryRecallConfig,

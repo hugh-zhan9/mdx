@@ -291,6 +291,10 @@ pub struct CliResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memory_repair: Option<crate::memory::MemoryRepairResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_export: Option<crate::memory::MemoryExportResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_import: Option<crate::memory::MemoryImportResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub memory_index_status: Option<crate::memory::MemoryIndexStatus>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memory_thread: Option<crate::memory::MemoryThreadRecord>,
