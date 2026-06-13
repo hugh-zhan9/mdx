@@ -507,7 +507,7 @@ pub struct RecallRequest {
     pub query: String,
     pub limit: Option<usize>,
     pub byte_budget: Option<usize>,
-    #[serde(default)]
+    #[serde(default = "default_include_working")]
     pub include_working: bool,
     #[serde(default)]
     pub include_threads: bool,
@@ -519,6 +519,10 @@ pub struct RecallRequest {
     pub include_wiki_snippets: bool,
     pub tag: Option<String>,
     pub since: Option<String>,
+}
+
+fn default_include_working() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -80,6 +80,19 @@ fn memory_index_rebuild(root_path: String) -> Result<memory::MemoryIndexStatus, 
 }
 
 #[tauri::command]
+fn memory_index_status(root_path: String) -> Result<memory::MemoryIndexStatus, WorkspaceError> {
+    memory::memory_index_status(root_path)
+}
+
+#[tauri::command]
+fn memory_index_search(
+    root_path: String,
+    request: memory::MemoryIndexSearchRequest,
+) -> Result<memory::MemoryIndexSearchResult, WorkspaceError> {
+    memory::memory_index_search(root_path, request)
+}
+
+#[tauri::command]
 fn memory_working_get(root_path: String) -> Result<String, WorkspaceError> {
     memory::memory_working_get(root_path)
 }
@@ -90,11 +103,39 @@ fn memory_working_set(root_path: String, markdown: String) -> Result<String, Wor
 }
 
 #[tauri::command]
+fn memory_working_append(
+    root_path: String,
+    section: String,
+    text: String,
+) -> Result<String, WorkspaceError> {
+    memory::memory_working_append(root_path, section, text)
+}
+
+#[tauri::command]
 fn memory_recall(
     root_path: String,
     request: memory::RecallRequest,
 ) -> Result<memory::RecallResult, WorkspaceError> {
     memory::memory_recall(root_path, request)
+}
+
+#[tauri::command]
+fn memory_add(
+    root_path: String,
+    request: memory::MemoryAddRequest,
+) -> Result<memory::MemoryRecord, WorkspaceError> {
+    memory::memory_add(root_path, request)
+}
+
+#[tauri::command]
+fn memory_search(
+    root_path: String,
+    query: String,
+    limit: Option<usize>,
+    tag: Option<String>,
+    since: Option<String>,
+) -> Result<Vec<memory::MemorySummary>, WorkspaceError> {
+    memory::memory_search(root_path, query, limit, tag, since)
 }
 
 #[tauri::command]
@@ -119,6 +160,14 @@ fn memory_archive(
 }
 
 #[tauri::command]
+fn memory_thread_save(
+    root_path: String,
+    request: memory::ThreadSaveRequest,
+) -> Result<memory::ThreadSaveResult, WorkspaceError> {
+    memory::memory_thread_save(root_path, request)
+}
+
+#[tauri::command]
 fn memory_thread_list(
     root_path: String,
     filter: memory::ThreadListFilter,
@@ -132,6 +181,22 @@ fn memory_thread_get(
     target: String,
 ) -> Result<memory::MemoryThreadRecord, WorkspaceError> {
     memory::memory_thread_get(root_path, target)
+}
+
+#[tauri::command]
+fn memory_inbox_add(
+    root_path: String,
+    request: memory::InboxAddRequest,
+) -> Result<memory::InboxRecord, WorkspaceError> {
+    memory::memory_inbox_add(root_path, request)
+}
+
+#[tauri::command]
+fn memory_inbox_get(
+    root_path: String,
+    target: String,
+) -> Result<memory::InboxRecord, WorkspaceError> {
+    memory::memory_inbox_get(root_path, target)
 }
 
 #[tauri::command]
@@ -166,6 +231,46 @@ fn memory_promote(
     memory::memory_promote(root_path, request)
 }
 
+#[tauri::command]
+fn memory_distill(
+    root_path: String,
+    request: memory::MemoryDistillRequest,
+) -> Result<memory::MemoryDistillResult, WorkspaceError> {
+    memory::memory_distill(root_path, request)
+}
+
+#[tauri::command]
+fn memory_capture_import(
+    root_path: String,
+    request: memory::MemoryCaptureImportRequest,
+) -> Result<memory::MemoryCaptureImportResult, WorkspaceError> {
+    memory::memory_capture_import(root_path, request)
+}
+
+#[tauri::command]
+fn memory_capture_scan(
+    root_path: String,
+    request: memory::MemoryCaptureScanRequest,
+) -> Result<memory::MemoryCaptureScanResult, WorkspaceError> {
+    memory::memory_capture_scan(root_path, request)
+}
+
+#[tauri::command]
+fn memory_export_bundle(
+    root_path: String,
+    request: memory::MemoryExportRequest,
+) -> Result<memory::MemoryExportResult, WorkspaceError> {
+    memory::memory_export_bundle(root_path, request)
+}
+
+#[tauri::command]
+fn memory_import_bundle(
+    root_path: String,
+    request: memory::MemoryImportRequest,
+) -> Result<memory::MemoryImportResult, WorkspaceError> {
+    memory::memory_import_bundle(root_path, request)
+}
+
 #[cfg(test)]
 mod assets_tests;
 #[cfg(test)]
@@ -188,6 +293,50 @@ mod window_sessions_tests;
 mod workspace_fs_tests;
 #[cfg(test)]
 mod workspace_search_tests;
+
+#[cfg(test)]
+mod memory_tauri_command_tests {
+    #[test]
+    fn registers_complete_memory_command_surface() {
+        let source = include_str!("lib.rs");
+        for command in [
+            "memory_detect_workspace",
+            "memory_initialize_workspace",
+            "memory_repair_workspace",
+            "memory_export_bundle",
+            "memory_import_bundle",
+            "memory_add",
+            "memory_search",
+            "memory_index_rebuild",
+            "memory_index_status",
+            "memory_index_search",
+            "memory_working_get",
+            "memory_working_set",
+            "memory_working_append",
+            "memory_recall",
+            "memory_list",
+            "memory_get",
+            "memory_archive",
+            "memory_thread_save",
+            "memory_thread_list",
+            "memory_thread_get",
+            "memory_inbox_add",
+            "memory_inbox_get",
+            "memory_inbox_list",
+            "memory_inbox_accept",
+            "memory_inbox_reject",
+            "memory_distill",
+            "memory_capture_import",
+            "memory_capture_scan",
+            "memory_promote",
+        ] {
+            assert!(
+                source.contains(&format!("            {command},")),
+                "missing Tauri command registration for {command}"
+            );
+        }
+    }
+}
 
 static WIN_ID: AtomicU32 = AtomicU32::new(0);
 
@@ -699,18 +848,31 @@ pub fn run() {
             memory_detect_workspace,
             memory_initialize_workspace,
             memory_repair_workspace,
+            memory_export_bundle,
+            memory_import_bundle,
+            memory_add,
+            memory_search,
             memory_index_rebuild,
+            memory_index_status,
+            memory_index_search,
             memory_working_get,
             memory_working_set,
+            memory_working_append,
             memory_recall,
             memory_list,
             memory_get,
             memory_archive,
+            memory_thread_save,
             memory_thread_list,
             memory_thread_get,
+            memory_inbox_add,
+            memory_inbox_get,
             memory_inbox_list,
             memory_inbox_accept,
             memory_inbox_reject,
+            memory_distill,
+            memory_capture_import,
+            memory_capture_scan,
             memory_promote,
             workspace_search::workspace_search,
             workspace_search::workspace_search_cancel,

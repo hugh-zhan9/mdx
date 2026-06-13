@@ -2016,6 +2016,26 @@ fn recall_includes_working_memory_and_respects_byte_budget() {
 }
 
 #[test]
+fn recall_request_serde_defaults_include_working_to_true() {
+    let request: RecallRequest = serde_json::from_str(
+        r#"{
+          "query": "auth",
+          "limit": null,
+          "byte_budget": null,
+          "include_threads": false,
+          "thread_ids": [],
+          "include_wiki_refs": false,
+          "include_wiki_snippets": false,
+          "tag": null,
+          "since": null
+        }"#,
+    )
+    .unwrap();
+
+    assert!(request.include_working);
+}
+
+#[test]
 fn recall_byte_budget_applies_after_thread_aggregation() {
     let root = tempdir().unwrap();
     memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
