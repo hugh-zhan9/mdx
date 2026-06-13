@@ -23,7 +23,7 @@ import {
   documentFingerprint,
 } from "@/features/file-watch/lib/external-change";
 import { LlmWikiPanel, useLlmWikiWorkspace } from "@/features/llm-wiki";
-import { MemoryPanel, useMemoryWorkspace } from "@/features/memory";
+import { MemoryPanel } from "@/features/memory";
 import { DiffViewer } from "@/features/recovery/components/diff-viewer";
 import { RecoveryBanner } from "@/features/recovery/components/recovery-banner";
 import { useDraftAutosave } from "@/features/recovery/hooks/use-draft-autosave";
@@ -205,7 +205,6 @@ export function WorkspaceShell({
   const llmWiki = useLlmWikiWorkspace(workspace.rootPath, {
     canAutoProcess: initialEditorLoadSettled,
   });
-  const memory = useMemoryWorkspace(workspace.rootPath);
   const handleRawFileSavedRef = useRef(llmWiki.handleRawFileSaved);
   const treeFilterQuery = workspace.treeFilterQuery ?? "";
   const fullTextSearchState = ensureWorkspaceSearchState(workspace.search);
@@ -2216,11 +2215,17 @@ export function WorkspaceShell({
           {rightPanel.isCollapsed ? null : (
             <aside className="h-full min-h-0 overflow-hidden border-l border-base-300 bg-base-100">
               <div className="flex h-full min-h-0 flex-col">
-                <div className="grid grid-cols-3 gap-1 border-b border-base-300 bg-base-200 p-1">
+                <div
+                  role="tablist"
+                  aria-label="Right panel"
+                  className="grid grid-cols-3 gap-1 border-b border-base-300 bg-base-200 p-1"
+                >
                   {RIGHT_PANEL_TABS.map((tab) => (
                     <button
                       key={tab.id}
                       type="button"
+                      role="tab"
+                      aria-selected={rightPanelTab === tab.id}
                       className={[
                         "h-7 truncate px-2 text-xs outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                         rightPanelTab === tab.id
@@ -2247,7 +2252,7 @@ export function WorkspaceShell({
                       onConfigureLlm={() => setSettingsOpen(true)}
                     />
                   ) : (
-                    <MemoryPanel memory={memory} />
+                    <MemoryPanel rootPath={workspace.rootPath} />
                   )}
                 </div>
               </div>

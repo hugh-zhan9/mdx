@@ -7,14 +7,15 @@ import {
   PanelHeader,
   TextControlButton,
 } from "../../../common/components/ui-controls";
-import type { MemoryWorkspaceHook } from "../hooks/use-memory-workspace";
+import { useMemoryWorkspace } from "../hooks/use-memory-workspace";
 import type { MemoryPanelTabId } from "../lib/memory-panel-state";
 
 interface MemoryPanelProps {
-  memory: MemoryWorkspaceHook;
+  rootPath: string;
 }
 
-export function MemoryPanel({ memory }: MemoryPanelProps) {
+export function MemoryPanel({ rootPath }: MemoryPanelProps) {
+  const memory = useMemoryWorkspace(rootPath);
   const [activeTab, setActiveTab] = useState<MemoryPanelTabId>("settings");
   const effectiveTab =
     memory.tabs.find((tab) => tab.id === activeTab)?.disabled === true
