@@ -340,6 +340,10 @@ enum MemoryCaptureCommand {
     Scan {
         #[arg(long)]
         source: String,
+        #[arg(long = "import")]
+        import_threads: bool,
+        #[arg(long)]
+        distill: bool,
     },
 }
 
@@ -665,8 +669,14 @@ fn request_from_memory_command(command: &MemoryCommand) -> io::Result<CliRequest
                 thread_id: thread_id.clone(),
                 distill: *distill,
             },
-            MemoryCaptureCommand::Scan { source } => CliRequest::MemoryCaptureScan {
+            MemoryCaptureCommand::Scan {
+                source,
+                import_threads,
+                distill,
+            } => CliRequest::MemoryCaptureScan {
                 source: trim_required_value(source, "source")?,
+                import_threads: *import_threads,
+                distill: *distill,
             },
         },
         MemoryCommand::Agent { .. } => {
@@ -1084,21 +1094,51 @@ fn execute_memory_headless(command: &CommandLine, root_path: String) -> io::Resu
                 Err(error) => workspace_error_response(error),
             }
         }
-        CliRequest::MemoryCaptureScan { source } => {
-            let request = memory::MemoryCaptureScanRequest { source };
-            match memory::memory_capture_scan(root_path, request) {
-                Ok(result) => CliResponse {
-                    ok: true,
-                    memory_capture_scan: Some(result),
-                    ..CliResponse::default()
-                },
-                Err(error) => workspace_error_response(error),
-            }
-        }
+        CliRequest::MemoryCaptureScan {
+            source,
+            import_threads,
+            distill,
+        } => memory_capture_scan_response_for_root(root_path, source, import_threads, distill),
         _ => unreachable!("request_from_memory_command only returns memory requests"),
     };
 
     Ok(response)
+}
+
+fn memory_capture_scan_response_for_root(
+    root_path: String,
+    source: String,
+    import_threads: bool,
+    distill: bool,
+) -> CliResponse {
+    let scan_request = memory::MemoryCaptureScanRequest {
+        source: source.clone(),
+    };
+    let scan_result = match memory::memory_capture_scan(root_path.clone(), scan_request) {
+        Ok(result) => result,
+        Err(error) => return workspace_error_response(error),
+    };
+
+    if import_threads {
+        for path in &scan_result.paths {
+            let import_request = memory::MemoryCaptureImportRequest {
+                source: source.clone(),
+                path: path.clone(),
+                title: None,
+                thread_id: None,
+                distill,
+            };
+            if let Err(error) = memory::memory_capture_import(root_path.clone(), import_request) {
+                return workspace_error_response(error);
+            }
+        }
+    }
+
+    CliResponse {
+        ok: true,
+        memory_capture_scan: Some(scan_result),
+        ..CliResponse::default()
+    }
 }
 
 fn execute_memory_agent_headless(
@@ -1690,7 +1730,67 @@ fn normalize_cli_path(input: &str) -> io::Result<String> {
 mod tests {
     use super::*;
     use mdx_lib::cli_protocol::{CliResponse, CliWikiSearchResult};
+    use std::ffi::OsString;
+    use std::sync::{Mutex, MutexGuard};
     use tempfile::TempDir;
+
+    static CODEX_CAPTURE_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    struct CodexCaptureEnvGuard {
+        _lock: MutexGuard<'static, ()>,
+        home: Option<OsString>,
+        userprofile: Option<OsString>,
+        codex_session_dirs: Option<OsString>,
+    }
+
+    impl CodexCaptureEnvGuard {
+        fn use_home_and_session_dirs(
+            home_path: impl AsRef<std::path::Path>,
+            session_dirs: impl AsRef<std::ffi::OsStr>,
+        ) -> Self {
+            let lock = CODEX_CAPTURE_ENV_LOCK
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let home = std::env::var_os("HOME");
+            let userprofile = std::env::var_os("USERPROFILE");
+            let codex_session_dirs = std::env::var_os("MDX_CODEX_SESSION_DIRS");
+            std::env::set_var("HOME", home_path.as_ref());
+            std::env::remove_var("USERPROFILE");
+            std::env::set_var("MDX_CODEX_SESSION_DIRS", session_dirs);
+            Self {
+                _lock: lock,
+                home,
+                userprofile,
+                codex_session_dirs,
+            }
+        }
+    }
+
+    impl Drop for CodexCaptureEnvGuard {
+        fn drop(&mut self) {
+            if let Some(value) = self.home.take() {
+                std::env::set_var("HOME", value);
+            } else {
+                std::env::remove_var("HOME");
+            }
+            if let Some(value) = self.userprofile.take() {
+                std::env::set_var("USERPROFILE", value);
+            } else {
+                std::env::remove_var("USERPROFILE");
+            }
+            if let Some(value) = self.codex_session_dirs.take() {
+                std::env::set_var("MDX_CODEX_SESSION_DIRS", value);
+            } else {
+                std::env::remove_var("MDX_CODEX_SESSION_DIRS");
+            }
+        }
+    }
+
+    fn memory_fixture_path(name: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("fixtures/memory")
+            .join(name)
+    }
 
     #[test]
     fn llm_wiki_query_request_joins_multiword_question() {
@@ -2201,6 +2301,8 @@ mod tests {
             command: MemoryCommand::Capture {
                 command: MemoryCaptureCommand::Scan {
                     source: "codex".to_string(),
+                    import_threads: false,
+                    distill: false,
                 },
             },
         };
@@ -2208,6 +2310,31 @@ mod tests {
             request_from_command(&scan).unwrap(),
             CliRequest::MemoryCaptureScan {
                 source: "codex".to_string(),
+                import_threads: false,
+                distill: false,
+            }
+        );
+    }
+
+    #[test]
+    fn memory_capture_scan_accepts_import_and_distill_flags() {
+        let scan = CommandLine::Memory {
+            root: None,
+            command: MemoryCommand::Capture {
+                command: MemoryCaptureCommand::Scan {
+                    source: " codex ".to_string(),
+                    import_threads: true,
+                    distill: true,
+                },
+            },
+        };
+
+        assert_eq!(
+            request_from_command(&scan).unwrap(),
+            CliRequest::MemoryCaptureScan {
+                source: "codex".to_string(),
+                import_threads: true,
+                distill: true,
             }
         );
     }
@@ -2388,12 +2515,19 @@ mod tests {
     #[test]
     fn memory_capture_scan_headless_returns_not_configured() {
         let root = TempDir::new().unwrap();
+        let home = TempDir::new().unwrap();
+        let _env = CodexCaptureEnvGuard::use_home_and_session_dirs(
+            home.path(),
+            home.path().join("missing-sessions").as_os_str(),
+        );
         memory::memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
         let command = CommandLine::Memory {
             root: Some(root.path().to_string_lossy().into_owned()),
             command: MemoryCommand::Capture {
                 command: MemoryCaptureCommand::Scan {
                     source: "codex".to_string(),
+                    import_threads: false,
+                    distill: false,
                 },
             },
         };
@@ -2406,6 +2540,66 @@ mod tests {
             response.memory_capture_scan.unwrap().status,
             "capture_scan_not_configured"
         );
+    }
+
+    #[test]
+    fn memory_capture_scan_headless_imports_codex_threads() {
+        let root = TempDir::new().unwrap();
+        let home = TempDir::new().unwrap();
+        let sessions = TempDir::new().unwrap();
+        memory::memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+        let rollout_path = sessions.path().join("rollout-real-session.jsonl");
+        fs::copy(
+            memory_fixture_path("codex-real-session.jsonl"),
+            &rollout_path,
+        )
+        .unwrap();
+        let _env = CodexCaptureEnvGuard::use_home_and_session_dirs(
+            home.path(),
+            sessions.path().as_os_str(),
+        );
+        let command = CommandLine::Memory {
+            root: Some(root.path().to_string_lossy().into_owned()),
+            command: MemoryCommand::Capture {
+                command: MemoryCaptureCommand::Scan {
+                    source: "codex".to_string(),
+                    import_threads: true,
+                    distill: false,
+                },
+            },
+        };
+
+        let response =
+            execute_memory_headless(&command, root.path().to_string_lossy().into_owned()).unwrap();
+
+        assert!(response.ok);
+        let scan = response.memory_capture_scan.unwrap();
+        assert_eq!(scan.status, "configured");
+        assert_eq!(
+            scan.paths,
+            vec![std::fs::canonicalize(&rollout_path)
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()]
+        );
+        let threads = memory::memory_thread_list(
+            root.path().to_string_lossy().into_owned(),
+            memory::ThreadListFilter {
+                source: Some("codex".to_string()),
+                since: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(threads.len(), 1);
+        let thread = memory::memory_thread_get(
+            root.path().to_string_lossy().into_owned(),
+            threads[0].thread_id.clone(),
+        )
+        .unwrap();
+        assert!(thread.body.contains("## Raw Codex JSONL"));
+        assert!(thread
+            .body
+            .contains("Please preserve this real Codex user text."));
     }
 
     #[test]

@@ -262,13 +262,31 @@ fn parses_memory_capture_requests() {
             distill: true,
         }
     );
+}
 
+#[test]
+fn parses_memory_capture_scan_request() {
     let scan: CliRequest =
         serde_json::from_str(r#"{"cmd":"memory-capture-scan","source":"codex"}"#).unwrap();
     assert_eq!(
         scan,
         CliRequest::MemoryCaptureScan {
-            source: "codex".to_string()
+            source: "codex".to_string(),
+            import_threads: false,
+            distill: false,
+        }
+    );
+
+    let scan_with_import: CliRequest = serde_json::from_str(
+        r#"{"cmd":"memory-capture-scan","source":"codex","import":true,"distill":true}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        scan_with_import,
+        CliRequest::MemoryCaptureScan {
+            source: "codex".to_string(),
+            import_threads: true,
+            distill: true,
         }
     );
 }
@@ -395,10 +413,7 @@ fn serializes_memory_capture_responses_as_snake_case_json() {
     assert_eq!(scan["paths"][0], capture_path);
     assert_eq!(scan["candidates"][0]["path"], capture_path);
     assert_eq!(scan["candidates"][0]["thread_id"], "codex:abc123");
-    assert_eq!(
-        scan["candidates"][0]["modified_at"],
-        "2026-06-14T01:00:00Z"
-    );
+    assert_eq!(scan["candidates"][0]["modified_at"], "2026-06-14T01:00:00Z");
     assert!(!json.contains("messageCount"));
     assert!(!json.contains("distillStatus"));
     assert!(!json.contains("threadId"));

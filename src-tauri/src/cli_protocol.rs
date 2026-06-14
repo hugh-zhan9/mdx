@@ -205,6 +205,10 @@ pub enum CliRequest {
     },
     MemoryCaptureScan {
         source: String,
+        #[serde(default, rename = "import")]
+        import_threads: bool,
+        #[serde(default)]
+        distill: bool,
     },
 }
 
