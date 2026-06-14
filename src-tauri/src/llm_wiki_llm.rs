@@ -772,8 +772,18 @@ fn read_chat_completion_stream(reader: impl Read) -> Result<String, ChatStreamRe
         }
     }
 
-    if !content.trim().is_empty() {
+    if !content.trim().is_empty() && saw_terminal {
         return Ok(content);
+    }
+    if !content.trim().is_empty() {
+        return Err(ChatStreamReadError::with_code(
+            "llm_partial_stream",
+            format!(
+                "llm chat completion stream ended before [DONE]; received partial stream content before failure; stream preview: {}",
+                response_preview(&preview)
+            ),
+            true,
+        ));
     }
 
     let noun = if saw_data {
@@ -942,8 +952,12 @@ impl ChatStreamReadError {
         } else {
             message
         };
+        Self::with_code("llm_failed", message, received_content)
+    }
+
+    fn with_code(code: impl Into<String>, message: String, received_content: bool) -> Self {
         Self {
-            error: WorkspaceError::new("llm_failed", message),
+            error: WorkspaceError::new(code, message),
             received_content,
         }
     }
@@ -1145,5 +1159,16 @@ mod tests {
             "llm_failed",
             "stream not supported"
         )));
+    }
+
+    #[test]
+    fn chat_stream_rejects_content_without_terminal_event() {
+        let bytes = br#"data: {"choices":[{"delta":{"content":"---FILE: index.md---\n# Index\n"}}]}
+"#;
+
+        let error = extract_chat_completion_stream_content(bytes).unwrap_err();
+
+        assert_eq!(error.error_code(), "llm_partial_stream");
+        assert!(error.to_string().contains("ended before [DONE]"));
     }
 }
