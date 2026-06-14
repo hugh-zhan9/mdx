@@ -29,7 +29,15 @@
 
 - Long LLM Wiki operations with an operation id must route LLM calls through cancellable control.
 - Cancellation should return `cancelled` to the caller before later write stages.
-- Streaming timeout must not trigger a second non-stream fallback timeout for the same logical LLM step.
+- Incomplete chat streams that end without `[DONE]` or a non-null `finish_reason` must be treated as transport failures, not parsed as complete LLM output.
+- Streaming timeout and partial-stream failures may retry once through non-streaming chat; cancellation must not fallback and must remain visible as `cancelled`.
+- Providers with unreliable streaming may use the canonical `chatNoStream` API mode, including config aliases `chat-no-stream` and `chat_non_stream`.
+
+## Ingest File-Block Output
+
+- Ingest generation output must parse as strict file blocks and pass managed output path validation before any generated wiki file or cache entry is written.
+- The parser may strip one whole-output markdown fence around otherwise valid file blocks, but prose before or after file blocks remains invalid.
+- A malformed ingest generation may run one repair prompt. If repair output is invalid or repair transport fails, ingest should report the original parse error; user cancellation during repair remains `cancelled`.
 
 ## CLI
 
