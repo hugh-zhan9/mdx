@@ -67,7 +67,7 @@ pub fn memory_thread_save(
         content_hash: content_hash.clone(),
         started_at: request.started_at.clone(),
         ended_at: request.ended_at.clone(),
-        message_count: Some(body.matches("## Message ").count()),
+        message_count: Some(count_thread_messages(&body)),
         model: request.model.clone(),
         workspace_root: request.workspace_root.clone(),
         tags: request.tags.clone(),
@@ -100,6 +100,38 @@ pub fn memory_thread_save(
         thread_id,
         content_hash,
     })
+}
+
+fn count_thread_messages(body: &str) -> usize {
+    let mut message_count = 0;
+    let mut open_fence: Option<(char, usize)> = None;
+    for line in body.lines() {
+        if let Some((fence_char, fence_len)) = open_fence {
+            if markdown_fence(line, fence_char).is_some_and(|len| len >= fence_len) {
+                open_fence = None;
+            }
+            continue;
+        }
+        if line.starts_with("## Message ") {
+            message_count += 1;
+            continue;
+        }
+        if let Some(fence) = markdown_fence(line, '`').map(|len| ('`', len)) {
+            open_fence = Some(fence);
+        } else if let Some(fence) = markdown_fence(line, '~').map(|len| ('~', len)) {
+            open_fence = Some(fence);
+        }
+    }
+    message_count
+}
+
+fn markdown_fence(line: &str, fence_char: char) -> Option<usize> {
+    let trimmed = line.trim_start();
+    let count = trimmed
+        .chars()
+        .take_while(|character| *character == fence_char)
+        .count();
+    (count >= 3).then_some(count)
 }
 
 pub fn memory_thread_get(

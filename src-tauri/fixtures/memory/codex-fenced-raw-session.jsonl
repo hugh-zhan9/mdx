@@ -1,0 +1,3 @@
+{"timestamp":"2026-06-14T00:29:10.000Z","type":"session_meta","payload":{"id":"019ec385-5b76-7211-aa11-91e3d028f80f","timestamp":"2026-06-14T00:29:10.000Z","cwd":"/Users/example/project/mdx","model_provider":"openai"}}
+{"timestamp":"2026-06-14T00:29:11.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Please preserve text with ``` and ## Message fake heading."}]}}
+{"timestamp":"2026-06-14T00:29:12.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Raw source should not close early or inflate ## Message count."}]}}

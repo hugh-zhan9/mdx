@@ -491,9 +491,27 @@ fn codex_message_content(payload: &serde_json::Value) -> String {
 }
 
 fn append_raw_codex_jsonl(body: &mut String, contents: &str) {
-    body.push_str("\n\n## Raw Codex JSONL\n\n```jsonl\n");
+    let fence = codex_raw_jsonl_fence(contents);
+    body.push_str("\n\n## Raw Codex JSONL\n\n");
+    body.push_str(&fence);
+    body.push_str("jsonl\n");
     body.push_str(contents.trim_end());
-    body.push_str("\n```");
+    body.push('\n');
+    body.push_str(&fence);
+}
+
+fn codex_raw_jsonl_fence(contents: &str) -> String {
+    let mut longest_run = 0;
+    let mut current_run = 0;
+    for character in contents.chars() {
+        if character == '`' {
+            current_run += 1;
+            longest_run = longest_run.max(current_run);
+        } else {
+            current_run = 0;
+        }
+    }
+    "`".repeat(3.max(longest_run + 1))
 }
 
 fn parse_cursor_json(contents: &str) -> Result<ParsedCapture, WorkspaceError> {

@@ -947,6 +947,32 @@ fn capture_imports_real_codex_jsonl_and_preserves_raw_source() {
 }
 
 #[test]
+fn capture_imports_codex_jsonl_with_backticks_without_inflating_message_count() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+
+    let result = memory_capture_import(
+        root.path().to_string_lossy().into_owned(),
+        MemoryCaptureImportRequest {
+            source: "codex".to_string(),
+            path: memory_fixture_path("codex-fenced-raw-session.jsonl"),
+            title: None,
+            thread_id: None,
+            distill: false,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.message_count, 2);
+
+    let thread =
+        memory_thread_get(root.path().to_string_lossy().into_owned(), result.thread_id).unwrap();
+    assert!(thread.body.contains("````jsonl"));
+    assert!(thread.body.contains("``` and ## Message fake heading"));
+    assert_eq!(thread.frontmatter.message_count, Some(2));
+}
+
+#[test]
 fn capture_import_reports_distill_unavailable_as_partial_success() {
     let root = tempdir().unwrap();
     let home = tempdir().unwrap();
