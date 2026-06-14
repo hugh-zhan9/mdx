@@ -4,8 +4,9 @@ use std::sync::MutexGuard;
 use tempfile::tempdir;
 
 use crate::llm_wiki::{
-    llm_config_to_public, llm_wiki_digest_sync, llm_wiki_get_config, llm_wiki_get_log,
-    llm_wiki_ingest_mock_output, llm_wiki_ingest_raw_file_sync, llm_wiki_lint, llm_wiki_query_sync,
+    llm_config_get, llm_config_to_public, llm_config_update, llm_wiki_digest_sync,
+    llm_wiki_get_config, llm_wiki_get_log, llm_wiki_ingest_mock_output,
+    llm_wiki_ingest_raw_file_sync, llm_wiki_lint, llm_wiki_query_sync,
     llm_wiki_refresh_graph_sync, llm_wiki_rescan_raw_sync,
     llm_wiki_rescan_raw_sync_with_exclusions, llm_wiki_rescan_raw_sync_with_failures,
     llm_wiki_rescan_raw_sync_with_retry, llm_wiki_search, llm_wiki_update_config,
@@ -34,7 +35,9 @@ use crate::llm_wiki_llm::{
     load_optional_llm_config_from_path, save_llm_config_to_path, LlmChatMessage,
 };
 use crate::llm_wiki_models::WikiContextBundle;
-use crate::llm_wiki_models::{LlmProviderConfig, LlmWikiCache, LlmWikiFailedFile};
+use crate::llm_wiki_models::{
+    LlmProviderConfig, LlmProviderConfigUpdate, LlmWikiCache, LlmWikiFailedFile,
+};
 use crate::llm_wiki_query::{mechanical_lint_report, search_wiki_pages, write_digest_page};
 use crate::models::WorkspaceError;
 
@@ -426,6 +429,24 @@ fn llm_config_public_projection_does_not_expose_api_key() {
     assert!(public.has_api_key);
     assert!(json.get("apiKey").is_none());
     assert!(!json.to_string().contains("secret-key"));
+}
+
+#[test]
+fn llm_config_update_preserves_chat_no_stream_api_mode() {
+    let home = tempdir().unwrap();
+    let _env_guard = LlmConfigEnvGuard::use_home(home.path().canonicalize().unwrap());
+
+    let public = llm_config_update(LlmProviderConfigUpdate {
+        base_url: "https://api.example.com/v1".to_string(),
+        model: "test-model".to_string(),
+        api_key: Some("secret-key".to_string()),
+        preserve_api_key: false,
+        api_mode: "chat-no-stream".to_string(),
+    })
+    .unwrap();
+
+    assert_eq!(public.api_mode, "chatNoStream");
+    assert_eq!(llm_config_get().unwrap().unwrap().api_mode, "chatNoStream");
 }
 
 #[test]
@@ -2805,6 +2826,18 @@ fn ingest_parse_repair_returns_original_parse_error_when_repair_is_invalid() {
     let error =
         parse_file_blocks_with_repair_for_test("---FILE: index.md---\n# Broken\n", |_prompt| {
             Ok("Still invalid prose\n".to_string())
+        })
+        .unwrap_err();
+
+    assert_eq!(error.error_code(), "llm_wiki_parse_failed");
+    assert!(error.to_string().contains("missing end marker: index.md"));
+}
+
+#[test]
+fn ingest_parse_repair_returns_original_parse_error_when_repair_call_fails() {
+    let error =
+        parse_file_blocks_with_repair_for_test("---FILE: index.md---\n# Broken\n", |_prompt| {
+            Err(WorkspaceError::new("llm_timeout", "repair timed out"))
         })
         .unwrap_err();
 

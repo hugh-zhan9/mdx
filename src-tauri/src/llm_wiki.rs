@@ -625,7 +625,13 @@ fn parse_file_blocks_with_optional_repair(
         Ok(blocks) => Ok(blocks),
         Err(first_error) => {
             let repair_prompt = build_file_block_repair_prompt(&first_error, first_output);
-            let repaired_output = repair(repair_prompt)?;
+            let repaired_output = repair(repair_prompt).map_err(|error| {
+                if error.error_code() == "cancelled" {
+                    error
+                } else {
+                    first_error.clone()
+                }
+            })?;
             parse_file_blocks(&repaired_output).map_err(|_| first_error)
         }
     }
@@ -1068,6 +1074,7 @@ pub fn llm_config_to_public(config: LlmProviderConfig) -> PublicLlmProviderConfi
 fn normalize_llm_api_mode(api_mode: &str) -> Result<String, WorkspaceError> {
     match api_mode.trim() {
         "" | "chat" => Ok("chat".to_string()),
+        "chatNoStream" | "chat-no-stream" | "chat_non_stream" => Ok("chatNoStream".to_string()),
         "responses" => Ok("responses".to_string()),
         other => Err(WorkspaceError::new(
             "llm_config_save_failed",
@@ -1078,6 +1085,7 @@ fn normalize_llm_api_mode(api_mode: &str) -> Result<String, WorkspaceError> {
 
 fn normalize_public_llm_api_mode(api_mode: &str) -> String {
     match api_mode.trim() {
+        "chatNoStream" | "chat-no-stream" | "chat_non_stream" => "chatNoStream".to_string(),
         "responses" => "responses".to_string(),
         _ => "chat".to_string(),
     }
