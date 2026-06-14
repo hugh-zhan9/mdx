@@ -599,6 +599,72 @@ fn sqlite_event_idempotency_only_ignores_idempotency_key_conflict() {
     assert_eq!(storage.count_events().unwrap(), 1);
 }
 
+#[test]
+fn sqlite_job_idempotency_only_ignores_idempotency_key_conflict() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::initialize_memory_workspace(root.path()).unwrap();
+
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path())
+            .expect("open sqlite storage");
+    storage.initialize().expect("initialize schema");
+
+    let job = |job_id: &str, idempotency_key: &str| crate::memory_storage::StoredJob {
+        job_id: job_id.to_string(),
+        workspace_id: "workspace-1".to_string(),
+        kind: "memory.distill".to_string(),
+        status: "queued".to_string(),
+        idempotency_key: idempotency_key.to_string(),
+        payload: serde_json::json!({"session_pk":"session-pk-1","range_hash":"range-1"}),
+        attempts: 0,
+        next_run_at: "2026-06-14T10:00:00Z".to_string(),
+        created_at: "2026-06-14T10:00:00Z".to_string(),
+        updated_at: "2026-06-14T10:00:00Z".to_string(),
+        last_error: None,
+    };
+
+    assert!(storage
+        .enqueue_job_idempotent(&job("job-1", "idem-1"))
+        .unwrap());
+    assert!(!storage
+        .enqueue_job_idempotent(&job("job-2", "idem-1"))
+        .unwrap());
+    assert!(storage
+        .enqueue_job_idempotent(&job("job-1", "idem-2"))
+        .is_err());
+}
+
+#[test]
+fn sqlite_job_enqueue_rejects_invalid_rfc3339_timestamps() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::initialize_memory_workspace(root.path()).unwrap();
+
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path())
+            .expect("open sqlite storage");
+    storage.initialize().expect("initialize schema");
+
+    let result = storage.enqueue_job_idempotent(&crate::memory_storage::StoredJob {
+        job_id: "job-invalid-time".to_string(),
+        workspace_id: "workspace-1".to_string(),
+        kind: "memory.distill".to_string(),
+        status: "queued".to_string(),
+        idempotency_key: "idem-invalid-time".to_string(),
+        payload: serde_json::json!({"session_pk":"session-pk-1","range_hash":"range-1"}),
+        attempts: 0,
+        next_run_at: "2026-06-14 10:00:00".to_string(),
+        created_at: "2026-06-14T10:00:00Z".to_string(),
+        updated_at: "2026-06-14T10:00:00Z".to_string(),
+        last_error: None,
+    });
+
+    assert!(result.is_err());
+    assert_eq!(
+        result.err().unwrap().error_code(),
+        "memory_job_timestamp_invalid"
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn sqlite_storage_rejects_symlink_database_path() {
@@ -648,6 +714,335 @@ fn sqlite_session_upsert_preserves_session_timestamps() {
         .unwrap();
     assert_eq!(timestamps.0, "2026-06-14T10:00:00Z");
     assert_eq!(timestamps.1.as_deref(), Some("2026-06-14T10:05:00Z"));
+}
+
+#[test]
+fn sqlite_session_upsert_preserves_known_message_count_when_incoming_unknown() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::initialize_memory_workspace(root.path()).unwrap();
+
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path())
+            .expect("open sqlite storage");
+    storage.initialize().expect("initialize schema");
+    let mut session = crate::memory_storage::StoredAgentSession {
+        session_pk: "session-pk-1".to_string(),
+        workspace_id: "workspace-1".to_string(),
+        agent_source: "codex".to_string(),
+        session_id: "session-1".to_string(),
+        project_key: "project-1".to_string(),
+        cwd: Some(root.path().to_string_lossy().into_owned()),
+        model: Some("gpt-5".to_string()),
+        started_at: "2026-06-14T10:00:00Z".to_string(),
+        ended_at: None,
+        message_count: Some(7),
+        event_count: 3,
+        status: "active".to_string(),
+    };
+    storage.upsert_session(&session).unwrap();
+
+    session.message_count = None;
+    session.event_count = 0;
+    storage.upsert_session(&session).unwrap();
+
+    let stored = storage
+        .get_session_by_agent_id("codex", "session-1")
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.message_count, Some(7));
+    assert_eq!(stored.event_count, 3);
+}
+
+#[test]
+fn sqlite_insert_event_increments_existing_session_count_only_on_insert() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::initialize_memory_workspace(root.path()).unwrap();
+
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path())
+            .expect("open sqlite storage");
+    storage.initialize().expect("initialize schema");
+    storage
+        .upsert_session(&crate::memory_storage::StoredAgentSession {
+            session_pk: "session-pk-1".to_string(),
+            workspace_id: "workspace-1".to_string(),
+            agent_source: "codex".to_string(),
+            session_id: "session-1".to_string(),
+            project_key: "project-1".to_string(),
+            cwd: None,
+            model: None,
+            started_at: "2026-06-14T10:00:00Z".to_string(),
+            ended_at: None,
+            message_count: None,
+            event_count: 0,
+            status: "active".to_string(),
+        })
+        .unwrap();
+    let event = crate::memory_storage::StoredAgentEvent {
+        event_id: "event-1".to_string(),
+        session_pk: "session-pk-1".to_string(),
+        workspace_id: "workspace-1".to_string(),
+        agent_source: "codex".to_string(),
+        event_name: "UserPromptSubmit".to_string(),
+        turn_id: Some("turn-1".to_string()),
+        event_seq: Some(1),
+        idempotency_key: "idem-1".to_string(),
+        raw_payload: serde_json::json!({"prompt":"hello"}),
+        payload_hash: "hash-1".to_string(),
+        created_at: "2026-06-14T10:00:00Z".to_string(),
+    };
+
+    assert!(storage.insert_event_idempotent(&event).unwrap());
+    assert!(!storage.insert_event_idempotent(&event).unwrap());
+
+    let stored = storage
+        .get_session_by_agent_id("codex", "session-1")
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.event_count, 1);
+}
+
+#[test]
+fn agent_event_capture_is_idempotent_and_preserves_unknown_message_count() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::initialize_memory_workspace(root.path()).unwrap();
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path()).unwrap();
+    storage.initialize().unwrap();
+
+    let event = crate::memory_agent_events::AgentHookEvent {
+        agent_source: "codex".to_string(),
+        event_name: "UserPromptSubmit".to_string(),
+        workspace_root: root.path().to_string_lossy().into_owned(),
+        cwd: Some(root.path().to_string_lossy().into_owned()),
+        session_id: "session-1".to_string(),
+        turn_id: Some("turn-1".to_string()),
+        event_seq: Some(1),
+        idempotency_key: "codex:session-1:turn-1:UserPromptSubmit:1".to_string(),
+        raw_payload: serde_json::json!({"prompt":"hello"}),
+        deadline_ms: Some(400),
+    };
+
+    let first = crate::memory_agent_events::capture_agent_event(&mut storage, &event).unwrap();
+    let second = crate::memory_agent_events::capture_agent_event(&mut storage, &event).unwrap();
+
+    assert!(first.inserted);
+    assert!(!second.inserted);
+    assert_eq!(storage.count_events().unwrap(), 1);
+    let session = storage
+        .get_session_by_agent_id("codex", "session-1")
+        .unwrap()
+        .unwrap();
+    assert_eq!(session.message_count, None);
+    assert_eq!(session.event_count, 1);
+}
+
+#[cfg(unix)]
+#[test]
+fn spool_write_rejects_symlink_spool_directory() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::initialize_memory_workspace(root.path()).unwrap();
+    let target = tempfile::tempdir().unwrap();
+    std::os::unix::fs::symlink(target.path(), root.path().join(".mdx/memory-spool")).unwrap();
+
+    let event = crate::memory_agent_events::AgentHookEvent {
+        agent_source: "codex".to_string(),
+        event_name: "UserPromptSubmit".to_string(),
+        workspace_root: root.path().to_string_lossy().into_owned(),
+        cwd: None,
+        session_id: "session-1".to_string(),
+        turn_id: Some("turn-1".to_string()),
+        event_seq: Some(1),
+        idempotency_key: "codex:session-1:turn-1:UserPromptSubmit:1".to_string(),
+        raw_payload: serde_json::json!({"prompt":"hello"}),
+        deadline_ms: None,
+    };
+
+    let result = crate::memory_spool::write_spool_event(root.path(), &event);
+
+    assert!(result.is_err());
+    assert_eq!(result.err().unwrap().error_code(), "spool_dir_invalid");
+}
+
+#[cfg(unix)]
+#[test]
+fn spool_write_and_import_reject_symlink_mdx_parent() {
+    let root = tempfile::tempdir().unwrap();
+    let target = tempfile::tempdir().unwrap();
+    std::os::unix::fs::symlink(target.path(), root.path().join(".mdx")).unwrap();
+
+    let event = crate::memory_agent_events::AgentHookEvent {
+        agent_source: "codex".to_string(),
+        event_name: "UserPromptSubmit".to_string(),
+        workspace_root: root.path().to_string_lossy().into_owned(),
+        cwd: None,
+        session_id: "session-1".to_string(),
+        turn_id: Some("turn-1".to_string()),
+        event_seq: Some(1),
+        idempotency_key: "codex:session-1:turn-1:UserPromptSubmit:1".to_string(),
+        raw_payload: serde_json::json!({"prompt":"hello"}),
+        deadline_ms: None,
+    };
+
+    let write_result = crate::memory_spool::write_spool_event(root.path(), &event);
+    assert!(write_result.is_err());
+    assert_eq!(
+        write_result.err().unwrap().error_code(),
+        "spool_parent_dir_invalid"
+    );
+
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(target.path()).unwrap();
+    storage.initialize().unwrap();
+    let import_result = crate::memory_spool::import_spool(root.path(), &mut storage);
+    assert!(import_result.is_err());
+    assert_eq!(
+        import_result.err().unwrap().error_code(),
+        "spool_dir_invalid"
+    );
+}
+
+#[test]
+fn spool_import_ignores_inflight_temp_files() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::initialize_memory_workspace(root.path()).unwrap();
+    let spool_dir = root.path().join(".mdx/memory-spool");
+    std::fs::create_dir_all(&spool_dir).unwrap();
+    std::fs::write(spool_dir.join(".event.json.123.tmp"), b"{not json").unwrap();
+
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path()).unwrap();
+    storage.initialize().unwrap();
+    let report = crate::memory_spool::import_spool(root.path(), &mut storage).unwrap();
+
+    assert_eq!(report.imported, 0);
+    assert_eq!(report.skipped_duplicates, 0);
+    assert_eq!(report.quarantined, 0);
+    assert!(spool_dir.join(".event.json.123.tmp").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn spool_import_rejects_symlink_quarantine_directory() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::initialize_memory_workspace(root.path()).unwrap();
+    let spool_dir = root.path().join(".mdx/memory-spool");
+    std::fs::create_dir_all(&spool_dir).unwrap();
+    std::fs::write(spool_dir.join("bad.json"), b"{not json").unwrap();
+    let target = tempfile::tempdir().unwrap();
+    std::os::unix::fs::symlink(
+        target.path(),
+        root.path().join(".mdx/memory-spool-quarantine"),
+    )
+    .unwrap();
+
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path()).unwrap();
+    storage.initialize().unwrap();
+    let result = crate::memory_spool::import_spool(root.path(), &mut storage);
+
+    assert!(result.is_err());
+    assert_eq!(
+        result.err().unwrap().error_code(),
+        "spool_quarantine_dir_invalid"
+    );
+}
+
+#[test]
+fn spool_write_and_import_uses_idempotency_key() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::initialize_memory_workspace(root.path()).unwrap();
+
+    let event = crate::memory_agent_events::AgentHookEvent {
+        agent_source: "claude".to_string(),
+        event_name: "Stop".to_string(),
+        workspace_root: root.path().to_string_lossy().into_owned(),
+        cwd: None,
+        session_id: "claude-session".to_string(),
+        turn_id: None,
+        event_seq: None,
+        idempotency_key: "claude:claude-session:Stop:payload".to_string(),
+        raw_payload: serde_json::json!({"transcript_path":"/tmp/thread.jsonl"}),
+        deadline_ms: None,
+    };
+
+    let spool_path = crate::memory_spool::write_spool_event(root.path(), &event).unwrap();
+    assert!(spool_path.is_file());
+
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path()).unwrap();
+    storage.initialize().unwrap();
+    let report = crate::memory_spool::import_spool(root.path(), &mut storage).unwrap();
+
+    assert_eq!(report.imported, 1);
+    assert_eq!(report.skipped_duplicates, 0);
+    assert_eq!(storage.count_events().unwrap(), 1);
+
+    crate::memory_spool::write_spool_event(root.path(), &event).unwrap();
+    let duplicate_report = crate::memory_spool::import_spool(root.path(), &mut storage).unwrap();
+
+    assert_eq!(duplicate_report.imported, 0);
+    assert_eq!(duplicate_report.skipped_duplicates, 1);
+    assert_eq!(storage.count_events().unwrap(), 1);
+}
+
+#[test]
+fn queue_distill_for_session_is_idempotent_and_lists_ready_jobs() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::initialize_memory_workspace(root.path()).unwrap();
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path()).unwrap();
+    storage.initialize().unwrap();
+
+    assert!(crate::memory_queue::enqueue_distill_for_session(
+        &mut storage,
+        "workspace-1",
+        "session-pk-1",
+        "range-hash-1"
+    )
+    .unwrap());
+    assert!(!crate::memory_queue::enqueue_distill_for_session(
+        &mut storage,
+        "workspace-1",
+        "session-pk-1",
+        "range-hash-1"
+    )
+    .unwrap());
+
+    let jobs = storage.list_ready_jobs(10).unwrap();
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].kind, "memory.distill");
+    assert_eq!(jobs[0].status, "queued");
+    assert_eq!(jobs[0].idempotency_key, "distill:session-pk-1:range-hash-1");
+}
+
+#[test]
+fn sqlite_ready_jobs_use_time_comparison_not_string_comparison() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::initialize_memory_workspace(root.path()).unwrap();
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path()).unwrap();
+    storage.initialize().unwrap();
+
+    storage
+        .enqueue_job_idempotent(&crate::memory_storage::StoredJob {
+            job_id: "job-ready".to_string(),
+            workspace_id: "workspace-1".to_string(),
+            kind: "memory.distill".to_string(),
+            status: "queued".to_string(),
+            idempotency_key: "ready-without-fraction".to_string(),
+            payload: serde_json::json!({"session_pk":"session-pk-1","range_hash":"range-1"}),
+            attempts: 0,
+            next_run_at: "2026-06-14T10:00:00Z".to_string(),
+            created_at: "2026-06-14T10:00:00Z".to_string(),
+            updated_at: "2026-06-14T10:00:00Z".to_string(),
+            last_error: None,
+        })
+        .unwrap();
+
+    let jobs = storage.list_ready_jobs(10).unwrap();
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(jobs[0].job_id, "job-ready");
 }
 
 #[test]

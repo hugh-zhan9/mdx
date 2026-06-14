@@ -1,4 +1,6 @@
 use serde_json::Value;
+use time::format_description::well_known::Rfc3339;
+use time::{OffsetDateTime, UtcOffset};
 
 use crate::WorkspaceError;
 
@@ -40,13 +42,100 @@ pub struct StoredAgentEvent {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct StoredJob {
+    pub job_id: String,
+    pub workspace_id: String,
+    pub kind: String,
+    pub status: String,
+    pub idempotency_key: String,
+    pub payload: Value,
+    pub attempts: i64,
+    pub next_run_at: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub last_error: Option<String>,
+}
+
 pub trait MemoryStorage {
     fn initialize(&mut self) -> Result<(), WorkspaceError>;
     fn schema_version(&mut self) -> Result<i64, WorkspaceError>;
     fn table_exists(&mut self, table: &str) -> Result<bool, WorkspaceError>;
     fn upsert_workspace(&mut self, workspace: &StoredWorkspace) -> Result<(), WorkspaceError>;
     fn upsert_session(&mut self, session: &StoredAgentSession) -> Result<(), WorkspaceError>;
+    fn get_session_by_agent_id(
+        &mut self,
+        agent_source: &str,
+        session_id: &str,
+    ) -> Result<Option<StoredAgentSession>, WorkspaceError>;
     fn insert_event_idempotent(&mut self, event: &StoredAgentEvent)
         -> Result<bool, WorkspaceError>;
+    fn enqueue_job_idempotent(&mut self, job: &StoredJob) -> Result<bool, WorkspaceError>;
+    fn list_ready_jobs(&mut self, limit: usize) -> Result<Vec<StoredJob>, WorkspaceError>;
     fn count_events(&mut self) -> Result<i64, WorkspaceError>;
+}
+
+pub(crate) fn validate_job_timestamps(job: &StoredJob) -> Result<(), WorkspaceError> {
+    parse_normalized_utc_rfc3339("next_run_at", &job.next_run_at)?;
+    parse_normalized_utc_rfc3339("created_at", &job.created_at)?;
+    parse_normalized_utc_rfc3339("updated_at", &job.updated_at)?;
+    Ok(())
+}
+
+pub(crate) fn filter_sort_ready_jobs(
+    jobs: Vec<StoredJob>,
+    limit: usize,
+    now: OffsetDateTime,
+) -> Result<Vec<StoredJob>, WorkspaceError> {
+    let mut ready = Vec::new();
+    for job in jobs {
+        validate_job_timestamps(&job)?;
+        let next_run_at = parse_normalized_utc_rfc3339("next_run_at", &job.next_run_at)?;
+        if next_run_at <= now {
+            let created_at = parse_normalized_utc_rfc3339("created_at", &job.created_at)?;
+            ready.push((next_run_at, created_at, job.job_id.clone(), job));
+        }
+    }
+    ready.sort_by(|left, right| {
+        left.0
+            .cmp(&right.0)
+            .then_with(|| left.1.cmp(&right.1))
+            .then_with(|| left.2.cmp(&right.2))
+    });
+    Ok(ready
+        .into_iter()
+        .take(limit)
+        .map(|(_, _, _, job)| job)
+        .collect())
+}
+
+pub(crate) fn parse_normalized_utc_rfc3339(
+    field_name: &str,
+    value: &str,
+) -> Result<OffsetDateTime, WorkspaceError> {
+    let parsed = OffsetDateTime::parse(value, &Rfc3339).map_err(|error| {
+        WorkspaceError::new(
+            "memory_job_timestamp_invalid",
+            format!("memory job {field_name} must be UTC RFC3339: {error}"),
+        )
+    })?;
+    if parsed.offset() != UtcOffset::UTC {
+        return Err(WorkspaceError::new(
+            "memory_job_timestamp_invalid",
+            format!("memory job {field_name} must use UTC offset"),
+        ));
+    }
+    let normalized = parsed.format(&Rfc3339).map_err(|error| {
+        WorkspaceError::new(
+            "memory_job_timestamp_invalid",
+            format!("failed to normalize memory job {field_name}: {error}"),
+        )
+    })?;
+    if normalized != value {
+        return Err(WorkspaceError::new(
+            "memory_job_timestamp_invalid",
+            format!("memory job {field_name} must be normalized UTC RFC3339"),
+        ));
+    }
+    Ok(parsed)
 }

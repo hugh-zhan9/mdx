@@ -30,6 +30,7 @@ mod llm_wiki_raw;
 #[cfg(target_os = "macos")]
 mod macos_launch;
 pub mod memory;
+pub mod memory_agent_events;
 pub mod memory_agent_setup;
 mod memory_bundle;
 mod memory_capture;
@@ -40,8 +41,10 @@ mod memory_fs;
 mod memory_inbox;
 mod memory_models;
 mod memory_promote;
+pub mod memory_queue;
 mod memory_recall;
 pub mod memory_schema;
+pub mod memory_spool;
 pub mod memory_storage;
 pub mod memory_storage_postgres;
 pub mod memory_storage_sqlite;

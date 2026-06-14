@@ -5,7 +5,10 @@ use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
 use crate::memory_schema::SQLITE_DDL;
-use crate::memory_storage::{MemoryStorage, StoredAgentEvent, StoredAgentSession, StoredWorkspace};
+use crate::memory_storage::{
+    validate_job_timestamps, MemoryStorage, StoredAgentEvent, StoredAgentSession, StoredJob,
+    StoredWorkspace,
+};
 use crate::WorkspaceError;
 
 pub struct SqliteMemoryStorage {
@@ -46,11 +49,27 @@ impl SqliteMemoryStorage {
         <Self as MemoryStorage>::upsert_session(self, session)
     }
 
+    pub fn get_session_by_agent_id(
+        &mut self,
+        agent_source: &str,
+        session_id: &str,
+    ) -> Result<Option<StoredAgentSession>, WorkspaceError> {
+        <Self as MemoryStorage>::get_session_by_agent_id(self, agent_source, session_id)
+    }
+
     pub fn insert_event_idempotent(
         &mut self,
         event: &StoredAgentEvent,
     ) -> Result<bool, WorkspaceError> {
         <Self as MemoryStorage>::insert_event_idempotent(self, event)
+    }
+
+    pub fn enqueue_job_idempotent(&mut self, job: &StoredJob) -> Result<bool, WorkspaceError> {
+        <Self as MemoryStorage>::enqueue_job_idempotent(self, job)
+    }
+
+    pub fn list_ready_jobs(&mut self, limit: usize) -> Result<Vec<StoredJob>, WorkspaceError> {
+        <Self as MemoryStorage>::list_ready_jobs(self, limit)
     }
 
     pub fn count_events(&mut self) -> Result<i64, WorkspaceError> {
@@ -180,10 +199,10 @@ impl MemoryStorage for SqliteMemoryStorage {
                     project_key = excluded.project_key,
                     cwd = excluded.cwd,
                     model = excluded.model,
-                    started_at = excluded.started_at,
+                    started_at = agent_sessions.started_at,
                     ended_at = excluded.ended_at,
-                    message_count = excluded.message_count,
-                    event_count = excluded.event_count,
+                    message_count = COALESCE(excluded.message_count, agent_sessions.message_count),
+                    event_count = agent_sessions.event_count,
                     status = excluded.status",
                 params![
                     session.session_pk,
@@ -210,6 +229,41 @@ impl MemoryStorage for SqliteMemoryStorage {
             })
     }
 
+    fn get_session_by_agent_id(
+        &mut self,
+        agent_source: &str,
+        session_id: &str,
+    ) -> Result<Option<StoredAgentSession>, WorkspaceError> {
+        self.conn
+            .query_row(
+                "SELECT
+                    session_pk,
+                    workspace_id,
+                    agent_source,
+                    session_id,
+                    project_key,
+                    cwd,
+                    model,
+                    started_at,
+                    ended_at,
+                    message_count,
+                    event_count,
+                    status
+                FROM agent_sessions
+                WHERE agent_source = ?1 AND session_id = ?2",
+                params![agent_source, session_id],
+                row_to_session,
+            )
+            .optional()
+            .map_err(|error| {
+                sqlite_error(
+                    "memory_session_read_failed",
+                    "failed to read sqlite memory agent session",
+                    error,
+                )
+            })
+    }
+
     fn insert_event_idempotent(
         &mut self,
         event: &StoredAgentEvent,
@@ -220,8 +274,14 @@ impl MemoryStorage for SqliteMemoryStorage {
                 format!("failed to serialize memory event payload: {error}"),
             )
         })?;
-        let rows_changed = self
-            .conn
+        let transaction = self.conn.transaction().map_err(|error| {
+            sqlite_error(
+                "memory_event_insert_failed",
+                "failed to begin sqlite memory event insert transaction",
+                error,
+            )
+        })?;
+        let rows_changed = transaction
             .execute(
                 "INSERT INTO agent_events (
                     event_id,
@@ -259,7 +319,127 @@ impl MemoryStorage for SqliteMemoryStorage {
                     error,
                 )
             })?;
+        if rows_changed > 0 {
+            transaction
+                .execute(
+                    "UPDATE agent_sessions
+                    SET event_count = event_count + 1
+                    WHERE session_pk = ?1",
+                    params![event.session_pk],
+                )
+                .map_err(|error| {
+                    sqlite_error(
+                        "memory_event_session_count_update_failed",
+                        "failed to update sqlite memory session event count",
+                        error,
+                    )
+                })?;
+        }
+        transaction.commit().map_err(|error| {
+            sqlite_error(
+                "memory_event_insert_failed",
+                "failed to commit sqlite memory event insert transaction",
+                error,
+            )
+        })?;
         Ok(rows_changed > 0)
+    }
+
+    fn enqueue_job_idempotent(&mut self, job: &StoredJob) -> Result<bool, WorkspaceError> {
+        validate_job_timestamps(job)?;
+        let payload = serde_json::to_string(&job.payload).map_err(|error| {
+            WorkspaceError::new(
+                "memory_job_payload_serialize_failed",
+                format!("failed to serialize memory job payload: {error}"),
+            )
+        })?;
+        let rows_changed = self
+            .conn
+            .execute(
+                "INSERT INTO jobs (
+                    job_id,
+                    workspace_id,
+                    kind,
+                    status,
+                    idempotency_key,
+                    payload,
+                    attempts,
+                    next_run_at,
+                    created_at,
+                    updated_at,
+                    last_error
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                ON CONFLICT(idempotency_key) DO NOTHING",
+                params![
+                    job.job_id,
+                    job.workspace_id,
+                    job.kind,
+                    job.status,
+                    job.idempotency_key,
+                    payload,
+                    job.attempts,
+                    job.next_run_at,
+                    job.created_at,
+                    job.updated_at,
+                    job.last_error
+                ],
+            )
+            .map_err(|error| {
+                sqlite_error(
+                    "memory_job_enqueue_failed",
+                    "failed to enqueue sqlite memory job",
+                    error,
+                )
+            })?;
+        Ok(rows_changed > 0)
+    }
+
+    fn list_ready_jobs(&mut self, limit: usize) -> Result<Vec<StoredJob>, WorkspaceError> {
+        let now = crate::memory_storage::parse_normalized_utc_rfc3339("now", &now_rfc3339()?)?;
+        let mut statement = self
+            .conn
+            .prepare(
+                "SELECT
+                    job_id,
+                    workspace_id,
+                    kind,
+                    status,
+                    idempotency_key,
+                    payload,
+                    attempts,
+                    next_run_at,
+                    created_at,
+                    updated_at,
+                    last_error
+                FROM jobs
+                WHERE status = 'queued'",
+            )
+            .map_err(|error| {
+                sqlite_error(
+                    "memory_job_list_prepare_failed",
+                    "failed to prepare sqlite ready memory jobs query",
+                    error,
+                )
+            })?;
+        let jobs = statement
+            .query_map([], row_to_job)
+            .map_err(|error| {
+                sqlite_error(
+                    "memory_job_list_failed",
+                    "failed to list sqlite ready memory jobs",
+                    error,
+                )
+            })?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| {
+                sqlite_error(
+                    "memory_job_decode_failed",
+                    "failed to decode sqlite ready memory job",
+                    error,
+                )
+            })?;
+        crate::memory_storage::filter_sort_ready_jobs(jobs, limit, now)
     }
 
     fn count_events(&mut self) -> Result<i64, WorkspaceError> {
@@ -273,6 +453,43 @@ impl MemoryStorage for SqliteMemoryStorage {
                 )
             })
     }
+}
+
+fn row_to_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredAgentSession> {
+    Ok(StoredAgentSession {
+        session_pk: row.get(0)?,
+        workspace_id: row.get(1)?,
+        agent_source: row.get(2)?,
+        session_id: row.get(3)?,
+        project_key: row.get(4)?,
+        cwd: row.get(5)?,
+        model: row.get(6)?,
+        started_at: row.get(7)?,
+        ended_at: row.get(8)?,
+        message_count: row.get(9)?,
+        event_count: row.get(10)?,
+        status: row.get(11)?,
+    })
+}
+
+fn row_to_job(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredJob> {
+    let payload_json: String = row.get(5)?;
+    let payload = serde_json::from_str(&payload_json).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(5, rusqlite::types::Type::Text, Box::new(error))
+    })?;
+    Ok(StoredJob {
+        job_id: row.get(0)?,
+        workspace_id: row.get(1)?,
+        kind: row.get(2)?,
+        status: row.get(3)?,
+        idempotency_key: row.get(4)?,
+        payload,
+        attempts: row.get(6)?,
+        next_run_at: row.get(7)?,
+        created_at: row.get(8)?,
+        updated_at: row.get(9)?,
+        last_error: row.get(10)?,
+    })
 }
 
 fn ensure_workspace_db_dir(root: &Path) -> Result<PathBuf, WorkspaceError> {
