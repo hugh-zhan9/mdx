@@ -465,6 +465,7 @@ memory_status
 memory_recall
 memory_working_get
 memory_add
+memory_inbox_add
 memory_thread_save
 memory_thread_show
 memory_inbox_list
@@ -480,7 +481,7 @@ memory_promote
 2. 需要长期保存时调用 `memory_add`。
 3. 完整对话需要保留时调用 `memory_thread_save`。
 4. 从 thread 提炼长期记忆时调用 `memory_distill`。
-5. 候选需要人工确认时使用 `memory_inbox_list` 和 `memory_inbox_accept`。
+5. 敏感或不确定候选先用 `memory_inbox_add` 创建 review candidate，再用 `memory_inbox_list` 查看并用 `memory_inbox_accept` 接受。
 
 ## 推荐日常流程
 

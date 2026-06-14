@@ -2692,7 +2692,7 @@ mod tests {
             "Ask before saving sensitive or uncertain information."
         ));
         assert!(skill.contents.contains(
-            "Use inbox review candidates when information may be useful but is not ready for durable memory."
+            "When the `memory_inbox_add` MCP tool is available, use it to create inbox review candidates for sensitive or uncertain information"
         ));
         assert!(skill.contents.contains(
             "Do not wait for background capture, thread archival, or pre-compact hooks"
@@ -2717,7 +2717,7 @@ mod tests {
             .contains("Ask before saving sensitive or uncertain information"));
         assert!(claude
             .contents
-            .contains("Use inbox review candidates"));
+            .contains("use the `memory_inbox_add` MCP tool to create inbox review candidates for sensitive or uncertain information"));
         assert!(claude
             .contents
             .contains("Do not wait for background capture, thread archival, or pre-compact hooks"));
@@ -2736,7 +2736,7 @@ mod tests {
             .contains("Ask before saving sensitive or uncertain information"));
         assert!(cursor
             .contents
-            .contains("Use inbox review candidates"));
+            .contains("use the `memory_inbox_add` MCP tool to create inbox review candidates for sensitive or uncertain information"));
         assert!(cursor
             .contents
             .contains("When practical, call `memory_search` before `memory_add` to avoid duplicate memories."));
