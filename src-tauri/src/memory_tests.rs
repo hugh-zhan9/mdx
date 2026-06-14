@@ -400,6 +400,277 @@ fn daemon_dispatch_memory_add_accepts_json_body() {
 }
 
 #[test]
+fn daemon_hook_event_captures_and_returns_recall_context() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    let mut config = default_memory_config();
+    config.agent_backend.capture_enabled = true;
+    config.agents.codex.enabled = true;
+    std::fs::write(
+        root.path().join(".mdx/memory-config.json"),
+        serde_json::to_string_pretty(&config).unwrap(),
+    )
+    .unwrap();
+    memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "Hook recall sentinel".to_string(),
+            body: "Use hook recall sentinel context for submitted prompts through the daemon."
+                .to_string(),
+            tags: vec!["hook".to_string()],
+            source_thread: None,
+            source_message_refs: Vec::new(),
+            importance: None,
+            confidence: None,
+        },
+    )
+    .unwrap();
+
+    let body = serde_json::json!({
+        "agent_source": "codex",
+        "event_name": "UserPromptSubmit",
+        "workspace_root": root.path().to_string_lossy(),
+        "cwd": root.path().to_string_lossy(),
+        "session_id": "session-1",
+        "turn_id": "turn-1",
+        "event_seq": 1,
+        "idempotency_key": "codex:session-1:turn-1:UserPromptSubmit:1",
+        "raw_payload": {
+            "prompt": "Please use hook recall sentinel context."
+        },
+        "deadline_ms": 400
+    })
+    .to_string();
+
+    let response = crate::memory_daemon::dispatch_for_test(
+        root.path().to_string_lossy().into_owned(),
+        "POST",
+        "/hook/events",
+        &body,
+    )
+    .unwrap();
+
+    assert_eq!(response.status, 200);
+    let json: serde_json::Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(json["ok"], true);
+    assert_eq!(json["captured"], true);
+    assert_eq!(json["disabled_reason"], serde_json::Value::Null);
+    assert!(
+        json["additional_context"]
+            .as_str()
+            .unwrap()
+            .contains("Hook recall sentinel"),
+        "{}",
+        response.body
+    );
+    assert!(json["warnings"].as_array().is_some());
+
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path()).unwrap();
+    storage.initialize().unwrap();
+    assert_eq!(storage.count_events().unwrap(), 1);
+}
+
+#[test]
+fn daemon_hook_event_hard_disabled_does_not_spool_or_capture() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    let mut config = default_memory_config();
+    config.memory.enabled = false;
+    std::fs::write(
+        root.path().join(".mdx/memory-config.json"),
+        serde_json::to_string_pretty(&config).unwrap(),
+    )
+    .unwrap();
+    let body = serde_json::json!({
+        "agent_source": "codex",
+        "event_name": "UserPromptSubmit",
+        "workspace_root": root.path().to_string_lossy(),
+        "cwd": root.path().to_string_lossy(),
+        "session_id": "session-1",
+        "turn_id": "turn-1",
+        "event_seq": 1,
+        "idempotency_key": "codex:session-1:turn-1:UserPromptSubmit:1",
+        "raw_payload": {
+            "prompt": "This hook must not be persisted."
+        },
+        "deadline_ms": 400
+    })
+    .to_string();
+
+    let response = crate::memory_daemon::dispatch_for_test(
+        root.path().to_string_lossy().into_owned(),
+        "POST",
+        "/hook/events",
+        &body,
+    )
+    .unwrap();
+
+    assert_eq!(response.status, 200);
+    let json: serde_json::Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(json["ok"], true);
+    assert_eq!(json["captured"], false);
+    assert_eq!(json["disabled_reason"], "memory_disabled");
+    assert_eq!(json["additional_context"], "");
+    assert_eq!(json["warnings"], serde_json::json!(["memory_disabled"]));
+    assert!(!root.path().join(".mdx/memory.sqlite").exists());
+    assert!(!root.path().join(".mdx/memory-spool").exists());
+}
+
+#[test]
+fn daemon_hook_event_recall_injection_disabled_captures_without_context() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    let mut config = default_memory_config();
+    config.agent_backend.capture_enabled = true;
+    config.agent_backend.recall_injection_enabled = false;
+    config.agents.codex.enabled = true;
+    std::fs::write(
+        root.path().join(".mdx/memory-config.json"),
+        serde_json::to_string_pretty(&config).unwrap(),
+    )
+    .unwrap();
+    memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "Disabled recall injection sentinel".to_string(),
+            body: "Disabled recall injection sentinel must not be injected.".to_string(),
+            tags: vec!["hook".to_string()],
+            source_thread: None,
+            source_message_refs: Vec::new(),
+            importance: None,
+            confidence: None,
+        },
+    )
+    .unwrap();
+
+    let body = serde_json::json!({
+        "agent_source": "codex",
+        "event_name": "UserPromptSubmit",
+        "workspace_root": root.path().to_string_lossy(),
+        "cwd": root.path().to_string_lossy(),
+        "session_id": "session-1",
+        "turn_id": "turn-1",
+        "event_seq": 1,
+        "idempotency_key": "codex:session-1:turn-1:UserPromptSubmit:recall-disabled",
+        "raw_payload": {
+            "prompt": "Disabled recall injection sentinel"
+        },
+        "deadline_ms": 400
+    })
+    .to_string();
+
+    let response = crate::memory_daemon::dispatch_for_test(
+        root.path().to_string_lossy().into_owned(),
+        "POST",
+        "/hook/events",
+        &body,
+    )
+    .unwrap();
+
+    assert_eq!(response.status, 200);
+    let json: serde_json::Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(json["ok"], true);
+    assert_eq!(json["captured"], true);
+    assert_eq!(json["disabled_reason"], serde_json::Value::Null);
+    assert_eq!(json["additional_context"], "");
+    assert_eq!(
+        json["warnings"],
+        serde_json::json!(["recall_injection_disabled"])
+    );
+
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path()).unwrap();
+    storage.initialize().unwrap();
+    assert_eq!(storage.count_events().unwrap(), 1);
+}
+
+#[test]
+fn daemon_hook_event_config_error_degrades_to_success_response() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    std::fs::write(root.path().join(".mdx/memory-config.json"), "{not-json").unwrap();
+    let body = serde_json::json!({
+        "agent_source": "codex",
+        "event_name": "UserPromptSubmit",
+        "workspace_root": root.path().to_string_lossy(),
+        "cwd": root.path().to_string_lossy(),
+        "session_id": "session-1",
+        "turn_id": "turn-1",
+        "event_seq": 1,
+        "idempotency_key": "codex:session-1:turn-1:UserPromptSubmit:config-error",
+        "raw_payload": {
+            "prompt": "config errors must not block hooks"
+        },
+        "deadline_ms": 400
+    })
+    .to_string();
+
+    let response = crate::memory_daemon::dispatch_for_test(
+        root.path().to_string_lossy().into_owned(),
+        "POST",
+        "/hook/events",
+        &body,
+    )
+    .unwrap();
+
+    assert_eq!(response.status, 200);
+    let json: serde_json::Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(json["ok"], true);
+    assert_eq!(json["captured"], false);
+    assert_eq!(json["disabled_reason"], serde_json::Value::Null);
+    assert_eq!(json["additional_context"], "");
+    assert_eq!(json["warnings"], serde_json::json!(["json_decode_failed"]));
+    assert!(!root.path().join(".mdx/memory.sqlite").exists());
+}
+
+#[test]
+fn daemon_hook_event_storage_error_degrades_to_success_response() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    let mut config = default_memory_config();
+    config.agent_backend.capture_enabled = true;
+    config.agents.codex.enabled = true;
+    std::fs::write(
+        root.path().join(".mdx/memory-config.json"),
+        serde_json::to_string_pretty(&config).unwrap(),
+    )
+    .unwrap();
+    std::fs::create_dir(root.path().join(".mdx/memory.sqlite")).unwrap();
+    let body = serde_json::json!({
+        "agent_source": "codex",
+        "event_name": "UserPromptSubmit",
+        "workspace_root": root.path().to_string_lossy(),
+        "cwd": root.path().to_string_lossy(),
+        "session_id": "session-1",
+        "turn_id": "turn-1",
+        "event_seq": 1,
+        "idempotency_key": "codex:session-1:turn-1:UserPromptSubmit:storage-error",
+        "raw_payload": {
+            "prompt": "storage errors must not block hooks"
+        },
+        "deadline_ms": 400
+    })
+    .to_string();
+
+    let response = crate::memory_daemon::dispatch_for_test(
+        root.path().to_string_lossy().into_owned(),
+        "POST",
+        "/hook/events",
+        &body,
+    )
+    .unwrap();
+
+    assert_eq!(response.status, 200);
+    let json: serde_json::Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(json["ok"], true);
+    assert_eq!(json["captured"], false);
+    assert_eq!(json["disabled_reason"], serde_json::Value::Null);
+    assert_eq!(json["additional_context"], "");
+    assert_eq!(json["warnings"], serde_json::json!(["memory_db_path_invalid"]));
+}
+
+#[test]
 fn daemon_dispatch_exposes_complete_memory_routes() {
     let root = tempdir().unwrap();
     memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();

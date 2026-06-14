@@ -98,6 +98,38 @@ pub fn memory_recall(
     })
 }
 
+pub(crate) fn render_recall_context(result: &RecallResult) -> String {
+    let mut output = String::new();
+    if let Some(working) = result.working.as_ref() {
+        output.push_str(working);
+        if !output.ends_with('\n') {
+            output.push('\n');
+        }
+    }
+    for item in &result.memories {
+        output.push_str("\n## ");
+        output.push_str(&item.title);
+        output.push('\n');
+        output.push_str(&item.snippet);
+        output.push('\n');
+    }
+    for item in &result.threads {
+        output.push_str("\n## ");
+        output.push_str(&item.title);
+        output.push('\n');
+        output.push_str(&item.path);
+        output.push('\n');
+    }
+    for item in &result.wiki_refs {
+        output.push_str("\n## ");
+        output.push_str(&item.title);
+        output.push('\n');
+        output.push_str(&item.path);
+        output.push('\n');
+    }
+    output.trim().to_string()
+}
+
 fn recall_memories_from_index(
     root: &std::path::Path,
     request: &RecallRequest,
