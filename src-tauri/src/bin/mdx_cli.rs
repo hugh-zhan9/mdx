@@ -2675,6 +2675,69 @@ mod tests {
         )
         .unwrap();
         let summary = mdx_lib::memory_agent_setup::render_agent_setup_summary(&changes, true);
+        let skill = changes
+            .iter()
+            .find(|change| change.path.ends_with(".codey/skills/mdx-memory/SKILL.md"))
+            .expect("codex skill change");
+        assert!(skill
+            .contents
+            .contains("## Agent-Time Memory Extraction"));
+        assert!(skill.contents.contains(
+            "Extract and write durable memories during active conversation turns"
+        ));
+        assert!(skill.contents.contains(
+            "Proactively save clear, durable, low-risk facts, preferences, decisions, project constraints, and reusable lessons with `memory_add` during the active turn."
+        ));
+        assert!(skill.contents.contains(
+            "Ask before saving sensitive or uncertain information."
+        ));
+        assert!(skill.contents.contains(
+            "Use inbox review candidates when information may be useful but is not ready for durable memory."
+        ));
+        assert!(skill.contents.contains(
+            "Do not wait for background capture, thread archival, or pre-compact hooks"
+        ));
+        let claude = changes
+            .iter()
+            .find(|change| change.path.ends_with(".claude/CLAUDE.md"))
+            .expect("claude memory block change");
+        assert!(claude
+            .contents
+            .contains("during active conversation turns"));
+        assert!(claude
+            .contents
+            .contains("clear, durable, low-risk facts"));
+        assert!(claude
+            .contents
+            .contains("Ask before saving sensitive or uncertain information"));
+        assert!(claude
+            .contents
+            .contains("Use inbox review candidates"));
+        assert!(claude
+            .contents
+            .contains("Do not wait for background capture, thread archival, or pre-compact hooks"));
+        let cursor = changes
+            .iter()
+            .find(|change| change.path.ends_with(".cursor/rules/mdx-memory.mdc"))
+            .expect("cursor memory rule change");
+        assert!(cursor
+            .contents
+            .contains("during active conversation turns"));
+        assert!(cursor
+            .contents
+            .contains("clear, durable, low-risk facts"));
+        assert!(cursor
+            .contents
+            .contains("Ask before saving sensitive or uncertain information"));
+        assert!(cursor
+            .contents
+            .contains("Use inbox review candidates"));
+        assert!(cursor
+            .contents
+            .contains("When practical, call `memory_search` before `memory_add` to avoid duplicate memories."));
+        assert!(cursor
+            .contents
+            .contains("Do not wait for background capture, thread archival, or pre-compact hooks"));
         assert!(summary.contains("would_write"));
         assert!(summary.contains(".codey/config.toml"));
         assert!(summary.contains(".claude/hooks/hooks.json"));

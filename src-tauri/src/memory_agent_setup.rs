@@ -605,7 +605,7 @@ CLI fallback:
 
 ## Durable Memory Write Flow
 
-Use `memory_add` for durable atomic memories. Write concise snapshots with enough context to stand alone.
+Use `memory_add` for durable atomic memories during active conversation turns. Proactively save clear, durable, low-risk facts, preferences, decisions, project constraints, and reusable lessons with `memory_add` during the active turn. Write concise snapshots with enough context to stand alone.
 
 Good memory candidates:
 
@@ -620,6 +620,12 @@ CLI fallback:
 ```bash
 {mdx_cli} memory --root "{root_path}" add --title "<title>" --body "<body>" --tag "<tag>"
 ```
+
+## Agent-Time Memory Extraction
+
+Extract and write durable memories during active conversation turns when decisions, stable preferences, project constraints, or reusable lessons become clear. Do not wait for background capture, thread archival, or pre-compact hooks before preserving confirmed information that should survive future sessions.
+
+Use background capture and distillation as a fallback safety net, not as the primary memory workflow. If the user asks to remember something, or the conversation resolves a clear, durable, low-risk fact, call `memory_add` in that turn. Ask before saving sensitive or uncertain information. Use inbox review candidates when information may be useful but is not ready for durable memory.
 
 ## Pre-Compact Memory Capture
 
@@ -658,7 +664,7 @@ CLI fallback:
 }
 
 fn claude_memory_block() -> &'static str {
-    "## MDX Memory\nWhen the user asks to remember, save, recall, search, persist decisions, or load prior context, use the `mdx-memory` skill and the `mdx-memory` MCP server.\n\nUse `memory_working_get` and `memory_recall` for task context. Use `memory_add` only for durable decisions, stable preferences, project constraints, or reusable lessons. Pre-compact hooks capture and accept distilled memory before compression; full thread archival is separate and should only be used when preserving original conversation text matters. Do not store secrets or promote memory into wiki/raw material unless the user explicitly asks."
+    "## MDX Memory\nWhen the user asks to remember, save, recall, search, persist decisions, or load prior context, use the `mdx-memory` skill and the `mdx-memory` MCP server.\n\nUse `memory_working_get` and `memory_recall` for task context. Extract and write durable memories during active conversation turns when clear, durable, low-risk facts, preferences, decisions, project constraints, or reusable lessons become clear. Do not wait for background capture, thread archival, or pre-compact hooks before preserving confirmed information that should survive future sessions. Ask before saving sensitive or uncertain information. Use inbox review candidates when information may be useful but is not ready for durable memory. Pre-compact hooks capture and accept distilled memory before compression; full thread archival is separate and should only be used when preserving original conversation text matters. Do not store secrets or promote memory into wiki/raw material unless the user explicitly asks."
 }
 
 fn cursor_memory_rule() -> String {
@@ -669,7 +675,7 @@ alwaysApply: true
 
 Use the `mdx-memory` skill and the `mdx-memory` MCP server for durable memory.
 
-Read task context with `memory_working_get` and `memory_recall`. Search exact stored memories with `memory_search`. Write only stable preferences, project constraints, durable decisions, and reusable lessons. Pre-compact hooks capture and accept distilled memory before compression; full thread archival is separate and should only be used when preserving original conversation text matters. Do not store secrets.
+Read task context with `memory_working_get` and `memory_recall`. Search exact stored memories with `memory_search`. Extract and write durable memories during active conversation turns when clear, durable, low-risk facts, preferences, decisions, project constraints, or reusable lessons become clear. When practical, call `memory_search` before `memory_add` to avoid duplicate memories. Do not wait for background capture, thread archival, or pre-compact hooks before preserving confirmed information that should survive future sessions. Ask before saving sensitive or uncertain information. Use inbox review candidates when information may be useful but is not ready for durable memory. Pre-compact hooks capture and accept distilled memory before compression; full thread archival is separate and should only be used when preserving original conversation text matters. Do not store secrets.
 "#
     .to_string()
 }
