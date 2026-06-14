@@ -1,6 +1,8 @@
 # Memory Layer Workflow Contracts
 
 > Memory 层与 LLM Wiki 层 **并列**。本文档只描述 Memory 层契约；Wiki 契约见 [llm-wiki.md](./llm-wiki.md)。
+>
+> 使用说明见 [memory-usage.md](../../memory-usage.md)。
 
 ## Layers
 

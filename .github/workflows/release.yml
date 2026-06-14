@@ -50,6 +50,8 @@ jobs:
         run: npm run test
 
       - name: Test Rust
+        env:
+          TAURI_CONFIG: '{"bundle":{"externalBin":[]}}'
         run: cargo test --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }}
 
       - name: Build sidecars
