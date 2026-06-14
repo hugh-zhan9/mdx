@@ -38,6 +38,7 @@ pub mod memory_config;
 pub mod memory_daemon;
 mod memory_distill;
 mod memory_fs;
+pub mod memory_hooks;
 mod memory_inbox;
 mod memory_models;
 mod memory_promote;

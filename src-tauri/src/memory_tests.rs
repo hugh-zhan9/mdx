@@ -837,6 +837,143 @@ fn agent_event_capture_is_idempotent_and_preserves_unknown_message_count() {
     assert_eq!(session.event_count, 1);
 }
 
+#[test]
+fn codex_user_prompt_submit_hook_formats_additional_context() {
+    let output = crate::memory_hooks::format_hook_output(
+        "codex",
+        "UserPromptSubmit",
+        Some("Memory context\n- Keep Memory as agent backend."),
+    )
+    .unwrap();
+
+    let json: serde_json::Value = serde_json::from_str(&output).unwrap();
+    assert_eq!(
+        json["hookSpecificOutput"]["hookEventName"],
+        "UserPromptSubmit"
+    );
+    assert_eq!(
+        json["hookSpecificOutput"]["additionalContext"],
+        "Memory context\n- Keep Memory as agent backend."
+    );
+}
+
+#[test]
+fn disabled_hook_returns_empty_success_output() {
+    let output = crate::memory_hooks::format_hook_output("codex", "Stop", None).unwrap();
+    assert_eq!(output, "");
+}
+
+#[test]
+fn normalizes_codex_user_prompt_submit_payload() {
+    let payload = serde_json::json!({
+        "session_id": "codex-session",
+        "cwd": "/tmp/project",
+        "prompt": "fix memory",
+        "turn_id": "turn-9"
+    });
+
+    let event = crate::memory_hooks::normalize_hook_payload(
+        "codex",
+        "UserPromptSubmit",
+        "/tmp/project",
+        &payload,
+        Some(400),
+    )
+    .unwrap();
+
+    assert_eq!(event.agent_source, "codex");
+    assert_eq!(event.event_name, "UserPromptSubmit");
+    assert_eq!(event.session_id, "codex-session");
+    assert_eq!(event.turn_id.as_deref(), Some("turn-9"));
+    assert!(event
+        .idempotency_key
+        .contains("codex:codex-session:UserPromptSubmit"));
+}
+
+#[test]
+fn normalizes_hook_payload_aliases_and_trims_empty_fields() {
+    let payload = serde_json::json!({
+        "session_id": "   ",
+        "conversationId": " claude-session ",
+        "turnId": " turn-10 ",
+        "workspaceRoot": "  ",
+        "workspace_roots": [" /tmp/alias-project "],
+        "eventSeq": 42
+    });
+
+    let event = crate::memory_hooks::normalize_hook_payload(
+        "claude",
+        "UserPromptSubmit",
+        "/tmp/project",
+        &payload,
+        Some(250),
+    )
+    .unwrap();
+
+    assert_eq!(event.session_id, "claude-session");
+    assert_eq!(event.turn_id.as_deref(), Some("turn-10"));
+    assert_eq!(event.cwd.as_deref(), Some("/tmp/alias-project"));
+    assert_eq!(event.event_seq, Some(42));
+    assert_eq!(event.deadline_ms, Some(250));
+}
+
+#[test]
+fn hook_idempotency_key_is_stable_for_reordered_payload_keys() {
+    let first = serde_json::json!({
+        "session_id": "codex-session",
+        "turn_id": "turn-1",
+        "prompt": "remember this"
+    });
+    let second = serde_json::json!({
+        "prompt": "remember this",
+        "turn_id": "turn-1",
+        "session_id": "codex-session"
+    });
+
+    let first_event = crate::memory_hooks::normalize_hook_payload(
+        "codex",
+        "UserPromptSubmit",
+        "/tmp/project",
+        &first,
+        None,
+    )
+    .unwrap();
+    let second_event = crate::memory_hooks::normalize_hook_payload(
+        "codex",
+        "UserPromptSubmit",
+        "/tmp/project",
+        &second,
+        None,
+    )
+    .unwrap();
+
+    assert_eq!(first_event.idempotency_key, second_event.idempotency_key);
+}
+
+#[test]
+fn unsupported_hook_event_returns_empty_even_with_context() {
+    let output = crate::memory_hooks::format_hook_output(
+        "codex",
+        "Stop",
+        Some("Do not inject this into Stop."),
+    )
+    .unwrap();
+
+    assert_eq!(output, "");
+}
+
+#[test]
+fn claude_supported_hook_outputs_plain_context() {
+    let output = crate::memory_hooks::format_hook_output(
+        "claude",
+        "UserPromptSubmit",
+        Some("Memory context"),
+    )
+    .unwrap();
+
+    assert_eq!(output, "Memory context");
+}
+
 #[cfg(unix)]
 #[test]
 fn spool_write_rejects_symlink_spool_directory() {
