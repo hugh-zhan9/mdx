@@ -2750,6 +2750,30 @@ fn ingest_parse_file_blocks_normalizes_wiki_index_to_root_index() {
 }
 
 #[test]
+fn ingest_parse_file_blocks_accepts_single_outer_markdown_fence() {
+    let blocks = parse_file_blocks(
+        "```markdown\n---FILE: wiki/sources/a.md---\n# A\n---END FILE---\n---FILE: index.md---\n# Index\n---END FILE---\n```\n",
+    )
+    .unwrap();
+
+    assert_eq!(blocks.len(), 2);
+    assert_eq!(blocks[0].path, "wiki/sources/a.md");
+    assert_eq!(blocks[0].content, "# A\n");
+    assert_eq!(blocks[1].path, "index.md");
+}
+
+#[test]
+fn ingest_parse_file_blocks_still_rejects_outer_prose() {
+    let error = parse_file_blocks(
+        "Here are the files:\n```markdown\n---FILE: wiki/sources/a.md---\n# A\n---END FILE---\n```\n",
+    )
+    .unwrap_err();
+
+    assert_eq!(error.error_code(), "llm_wiki_parse_failed");
+    assert!(error.to_string().contains("outside file blocks"));
+}
+
+#[test]
 fn ingest_output_path_guard_allows_only_managed_markdown_outputs() {
     assert!(is_safe_llm_wiki_output_path("wiki/entities/A.md"));
     assert!(is_safe_llm_wiki_output_path("wiki/sources/a-file_1.md"));

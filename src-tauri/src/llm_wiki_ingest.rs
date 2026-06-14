@@ -81,7 +81,23 @@ Existing wiki context:
     )
 }
 
+fn normalize_file_block_output(output: &str) -> &str {
+    let trimmed = output.trim();
+    let Some(after_open) = trimmed
+        .strip_prefix("```markdown\n")
+        .or_else(|| trimmed.strip_prefix("```md\n"))
+        .or_else(|| trimmed.strip_prefix("```\n"))
+    else {
+        return output;
+    };
+    let Some(inner) = after_open.strip_suffix("\n```") else {
+        return output;
+    };
+    inner
+}
+
 pub fn parse_file_blocks(output: &str) -> Result<Vec<LlmWikiFileBlock>, WorkspaceError> {
+    let output = normalize_file_block_output(output);
     let mut blocks = Vec::new();
     let mut seen_paths = BTreeSet::new();
     let mut current_block: Option<OpenFileBlock> = None;
