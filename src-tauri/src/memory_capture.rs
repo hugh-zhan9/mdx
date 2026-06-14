@@ -133,8 +133,7 @@ pub(crate) fn memory_capture_scan(
 
 fn scan_codex_capture_candidates() -> MemoryCaptureScanResult {
     let dirs = codex_session_dirs();
-    let existing_dirs: Vec<std::path::PathBuf> =
-        dirs.into_iter().filter(|path| path.is_dir()).collect();
+    let existing_dirs = existing_unique_codex_session_dirs(dirs);
     if existing_dirs.is_empty() {
         return MemoryCaptureScanResult {
             source: "codex".to_string(),
@@ -149,6 +148,7 @@ fn scan_codex_capture_candidates() -> MemoryCaptureScanResult {
         collect_codex_candidates(&dir, &mut candidates);
     }
 
+    dedupe_codex_candidates_by_path(&mut candidates);
     candidates.sort_by(|left, right| {
         right
             .modified_at
@@ -183,6 +183,24 @@ fn codex_session_dirs() -> Vec<std::path::PathBuf> {
     dirs
 }
 
+fn existing_unique_codex_session_dirs(dirs: Vec<std::path::PathBuf>) -> Vec<std::path::PathBuf> {
+    let mut seen = std::collections::BTreeSet::new();
+    let mut unique_dirs = Vec::new();
+    for dir in dirs {
+        let Ok(canonical_dir) = std::fs::canonicalize(dir) else {
+            continue;
+        };
+        if !canonical_dir.is_dir() {
+            continue;
+        }
+        let key = canonical_dir.to_string_lossy().into_owned();
+        if seen.insert(key) {
+            unique_dirs.push(canonical_dir);
+        }
+    }
+    unique_dirs
+}
+
 fn collect_codex_candidates(dir: &std::path::Path, candidates: &mut Vec<MemoryCaptureCandidate>) {
     let mut stack = vec![dir.to_path_buf()];
     while let Some(current_dir) = stack.pop() {
@@ -207,6 +225,11 @@ fn collect_codex_candidates(dir: &std::path::Path, candidates: &mut Vec<MemoryCa
             candidates.push(build_codex_candidate(path));
         }
     }
+}
+
+fn dedupe_codex_candidates_by_path(candidates: &mut Vec<MemoryCaptureCandidate>) {
+    let mut seen = std::collections::BTreeSet::new();
+    candidates.retain(|candidate| seen.insert(candidate.path.clone()));
 }
 
 fn is_codex_rollout_jsonl(path: &std::path::Path) -> bool {

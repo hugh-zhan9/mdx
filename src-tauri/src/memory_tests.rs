@@ -37,6 +37,13 @@ fn memory_fixture_path(name: &str) -> String {
         .into_owned()
 }
 
+fn canonical_test_path(path: impl AsRef<std::path::Path>) -> String {
+    std::fs::canonicalize(path)
+        .unwrap()
+        .to_string_lossy()
+        .into_owned()
+}
+
 struct MemoryLlmConfigEnvGuard {
     _lock: MutexGuard<'static, ()>,
     home: Option<std::ffi::OsString>,
@@ -164,8 +171,8 @@ fn capture_scan_codex_discovers_jsonl_transcripts_from_configured_dirs() {
     assert_eq!(
         result.paths,
         vec![
-            newer_path.to_string_lossy().into_owned(),
-            older_path.to_string_lossy().into_owned(),
+            canonical_test_path(&newer_path),
+            canonical_test_path(&older_path)
         ]
     );
     assert_eq!(result.paths[0], result.candidates[0].path);
@@ -218,14 +225,43 @@ fn capture_scan_codex_ignores_non_jsonl_and_auth_files() {
     .unwrap();
 
     assert_eq!(result.status, "configured");
-    assert_eq!(
-        result.paths,
-        vec![transcript_path.to_string_lossy().into_owned()]
-    );
+    assert_eq!(result.paths, vec![canonical_test_path(&transcript_path)]);
     assert_eq!(result.candidates.len(), 1);
     assert_eq!(
         result.candidates[0].thread_id.as_deref(),
         Some("codex:keep-session")
+    );
+}
+
+#[test]
+fn capture_scan_codex_dedupes_configured_and_default_dirs() {
+    let root = tempdir().unwrap();
+    let home = tempdir().unwrap();
+    let sessions = home.path().join(".codex/sessions");
+    std::fs::create_dir_all(&sessions).unwrap();
+    let transcript_path = sessions.join("rollout-duplicate-dir.jsonl");
+    std::fs::write(
+        &transcript_path,
+        r#"{"type":"session_meta","payload":{"id":"dedupe-session","timestamp":"2026-06-14T10:00:00Z"}}"#,
+    )
+    .unwrap();
+
+    let _guard = MemoryCodexCaptureEnvGuard::use_home_and_session_dirs(home.path(), &sessions);
+    let result = memory_capture_scan(
+        root.path().to_string_lossy().into_owned(),
+        MemoryCaptureScanRequest {
+            source: "codex".to_string(),
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.status, "configured");
+    assert_eq!(result.paths.len(), 1);
+    assert_eq!(result.candidates.len(), 1);
+    assert_eq!(result.paths[0], canonical_test_path(&transcript_path));
+    assert_eq!(
+        result.candidates[0].thread_id.as_deref(),
+        Some("codex:dedupe-session")
     );
 }
 
