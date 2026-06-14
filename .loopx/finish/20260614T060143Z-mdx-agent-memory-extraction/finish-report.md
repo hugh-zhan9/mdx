@@ -4,8 +4,8 @@
 
 - audit_id: 20260614T060143Z-mdx-agent-memory-extraction
 - slug: mdx-agent-memory-extraction
-- status: audited
-- updated_at: 2026-06-14T06:03:25.257Z
+- status: completed
+- updated_at: 2026-06-14T06:05:45.145Z
 - branch: main
 - base branch: main
 - worktree: /Users/zhangyukun/project/mdx
@@ -101,25 +101,26 @@
 ## Accepted Candidates
 
 - spec-review-change-window: Recorded the Agent-Time Extraction Contract for Memory integrations.
-  - kind: spec
-  - target: docs/loopx/specs/memory.md
   - evidence: change_window.range=f58ba43..HEAD; commit: feat: make agent-time memory extraction explicit; commit: feat: guide mcp memory tools toward agent-time extraction; commit: feat: expose memory inbox add over mcp; commit: fix: document memory inbox add workflow; file: docs/loopx/specs/memory.md
+  - target: docs/loopx/specs/memory.md
 
 ## Rejected Candidates
 
 - memory-local-review-change-window: The durable learning is a stable Memory behavior contract and was promoted to docs/loopx/specs/memory.md; duplicating it as local memory would add low-signal redundancy.
+  - rejection_reason: The durable learning is a stable Memory behavior contract and was promoted to docs/loopx/specs/memory.md; duplicating it as local memory would add low-signal redundancy.
 - memory-shared-review-change-window: The durable learning is stable enough for the repo-tracked Memory spec; no separate shared memory note is needed.
+  - rejection_reason: The durable learning is stable enough for the repo-tracked Memory spec; no separate shared memory note is needed.
 
 ## No Candidates Reason
 
-- null
+- none
 
 ## Choice
 
-- action: null
-- status: null
-- summary: null
-- url: null
+- action: pr
+- status: done
+- summary: Pushed committed agent-time memory extraction work to origin/main without creating a PR.
+- url: git@github.com:hugh-zhan9/mdx.git
 
 ## Choice History
 
@@ -127,4 +128,5 @@
 
 ## Next Steps
 
-- Present finish options and record the user's completion choice with `finish-record`.
+- Agent review the audit evidence and decide whether the finish state can advance.
+- Record the final audit decision once the audit is complete.
