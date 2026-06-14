@@ -225,7 +225,7 @@ fn tool_descriptor(name: &str) -> Value {
             json!([]),
         ),
         "memory_recall" => (
-            "Recall relevant working memory, memories, and thread context.",
+            "Recall relevant working memory, memories, and thread context. Consult this at the start of a conversation/task when prior context may matter.",
             json!({
                 "query": { "type": "string" },
                 "limit": { "type": "integer" },
@@ -246,7 +246,7 @@ fn tool_descriptor(name: &str) -> Value {
             json!([]),
         ),
         "memory_add" => (
-            "Add a durable memory snapshot.",
+            "Add a durable memory snapshot during active conversation turns for clear, durable, low-risk user preferences, facts, or decisions. Search first when duplicate risk exists to avoid duplicates. For sensitive or uncertain candidates, ask the user before saving or route them through the inbox.",
             json!({
                 "title": { "type": "string" },
                 "body": { "type": "string" },
@@ -294,7 +294,7 @@ fn tool_descriptor(name: &str) -> Value {
             json!(["inbox_id"]),
         ),
         "memory_distill" => (
-            "Distill a saved thread into inbox candidates or memories.",
+            "Distill a saved thread into inbox candidates or memories as a thread/background workflow. This is not the only path for memory extraction; use memory_add during active turns when a clear durable memory is ready.",
             json!({
                 "target": { "type": "string" },
                 "accept": { "type": "boolean" },
@@ -303,7 +303,7 @@ fn tool_descriptor(name: &str) -> Value {
             json!(["target", "accept", "force"]),
         ),
         "memory_search" => (
-            "Search durable memory summaries.",
+            "Search durable memory summaries. Use before adding durable memories when duplicate risk exists.",
             json!({
                 "query": { "type": "string" },
                 "limit": { "type": "integer" },
@@ -497,6 +497,50 @@ mod tests {
             .map(|tool| tool["name"].as_str().unwrap())
             .collect();
         assert_eq!(names, TOOLS);
+    }
+
+    #[test]
+    fn tool_descriptions_guide_agent_time_memory_behavior() {
+        let response = handle_request(
+            "/tmp",
+            parse_request(r#"{"jsonrpc":"2.0","id":"tools","method":"tools/list"}"#).unwrap(),
+        );
+
+        assert!(response.error.is_none());
+        let result = response.result.unwrap();
+        let tools = result["tools"].as_array().unwrap();
+
+        let description_for = |tool_name: &str| -> String {
+            tools
+                .iter()
+                .find(|tool| tool["name"] == tool_name)
+                .unwrap_or_else(|| panic!("missing tool descriptor for {tool_name}"))["description"]
+                .as_str()
+                .unwrap()
+                .to_lowercase()
+        };
+
+        let recall = description_for("memory_recall");
+        assert!(recall.contains("start of a conversation/task"));
+        assert!(recall.contains("prior context may matter"));
+
+        let add = description_for("memory_add");
+        assert!(add.contains("during active conversation turns"));
+        assert!(add.contains("clear, durable, low-risk"));
+        assert!(add.contains("search"));
+        assert!(add.contains("avoid duplicates"));
+        assert!(add.contains("sensitive"));
+        assert!(add.contains("uncertain"));
+        assert!(add.contains("inbox"));
+
+        let search = description_for("memory_search");
+        assert!(search.contains("before adding durable memories"));
+        assert!(search.contains("duplicate risk"));
+
+        let distill = description_for("memory_distill");
+        assert!(distill.contains("thread/background"));
+        assert!(distill.contains("not the only path"));
+        assert!(distill.contains("memory extraction"));
     }
 
     #[test]
