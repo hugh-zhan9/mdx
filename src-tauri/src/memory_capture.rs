@@ -122,6 +122,7 @@ pub(crate) fn memory_capture_scan(
         source: source.to_string(),
         status: "capture_scan_not_configured".to_string(),
         paths: Vec::new(),
+        candidates: Vec::new(),
     })
 }
 

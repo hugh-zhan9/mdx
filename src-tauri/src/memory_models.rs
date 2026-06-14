@@ -227,10 +227,24 @@ pub struct MemoryCaptureScanRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+pub struct MemoryCaptureCandidate {
+    pub path: String,
+    pub source: String,
+    pub thread_id: Option<String>,
+    pub title: Option<String>,
+    pub started_at: Option<String>,
+    pub modified_at: Option<String>,
+    pub bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub struct MemoryCaptureScanResult {
     pub source: String,
     pub status: String,
     pub paths: Vec<String>,
+    #[serde(default)]
+    pub candidates: Vec<MemoryCaptureCandidate>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

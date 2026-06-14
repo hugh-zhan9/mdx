@@ -369,6 +369,15 @@ fn serializes_memory_capture_responses_as_snake_case_json() {
             source: "codex".to_string(),
             status: "capture_scan_not_configured".to_string(),
             paths: Vec::new(),
+            candidates: vec![crate::memory::MemoryCaptureCandidate {
+                path: "/tmp/codex.jsonl".to_string(),
+                source: "codex".to_string(),
+                thread_id: Some("codex:abc123".to_string()),
+                title: Some("Codex".to_string()),
+                started_at: Some("2026-06-14T00:00:00Z".to_string()),
+                modified_at: Some("2026-06-14T01:00:00Z".to_string()),
+                bytes: 1234,
+            }],
         }),
         ..crate::cli_protocol::CliResponse::default()
     };
@@ -378,9 +387,11 @@ fn serializes_memory_capture_responses_as_snake_case_json() {
     assert!(json.contains(r#""message_count":2"#));
     assert!(json.contains(r#""distill_status":"failed""#));
     assert!(json.contains(r#""distill_error_code":"distill_unavailable""#));
-    assert!(json.contains(r#""memory_capture_scan":{"source":"codex","status":"capture_scan_not_configured","paths":[]}"#));
+    assert!(json.contains(r#""memory_capture_scan":{"source":"codex","status":"capture_scan_not_configured","paths":[],"candidates":[{"path":"/tmp/codex.jsonl","source":"codex","thread_id":"codex:abc123","title":"Codex","started_at":"2026-06-14T00:00:00Z","modified_at":"2026-06-14T01:00:00Z","bytes":1234}]}"#));
     assert!(!json.contains("messageCount"));
     assert!(!json.contains("distillStatus"));
+    assert!(!json.contains("threadId"));
+    assert!(!json.contains("modifiedAt"));
 }
 
 #[test]
