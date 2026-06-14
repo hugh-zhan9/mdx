@@ -1777,8 +1777,22 @@ fn memory_capture_scan_response_for_root(
                 thread_id: None,
                 distill,
             };
-            if let Err(error) = memory::memory_capture_import(root_path.clone(), request) {
-                return workspace_error(error);
+            let import_result = match memory::memory_capture_import(root_path.clone(), request) {
+                Ok(result) => result,
+                Err(error) => return workspace_error(error),
+            };
+            if import_result.distill_status == "failed" {
+                return CliResponse::error(
+                    import_result
+                        .distill_error_code
+                        .unwrap_or_else(|| "distill_failed".to_string()),
+                    import_result.distill_error_message.unwrap_or_else(|| {
+                        format!(
+                            "distill failed while importing captured thread {}",
+                            import_result.thread_id
+                        )
+                    }),
+                );
             }
         }
     }

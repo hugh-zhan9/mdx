@@ -1128,8 +1128,23 @@ fn memory_capture_scan_response_for_root(
                 thread_id: None,
                 distill,
             };
-            if let Err(error) = memory::memory_capture_import(root_path.clone(), import_request) {
-                return workspace_error_response(error);
+            let import_result =
+                match memory::memory_capture_import(root_path.clone(), import_request) {
+                    Ok(result) => result,
+                    Err(error) => return workspace_error_response(error),
+                };
+            if import_result.distill_status == "failed" {
+                return CliResponse::error(
+                    import_result
+                        .distill_error_code
+                        .unwrap_or_else(|| "distill_failed".to_string()),
+                    import_result.distill_error_message.unwrap_or_else(|| {
+                        format!(
+                            "distill failed while importing captured thread {}",
+                            import_result.thread_id
+                        )
+                    }),
+                );
             }
         }
     }
@@ -2600,6 +2615,41 @@ mod tests {
         assert!(thread
             .body
             .contains("Please preserve this real Codex user text."));
+    }
+
+    #[test]
+    fn memory_capture_scan_headless_reports_distill_failure() {
+        let root = TempDir::new().unwrap();
+        let home = TempDir::new().unwrap();
+        let sessions = TempDir::new().unwrap();
+        memory::memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+        let rollout_path = sessions.path().join("rollout-real-session.jsonl");
+        fs::copy(
+            memory_fixture_path("codex-real-session.jsonl"),
+            &rollout_path,
+        )
+        .unwrap();
+        let _env = CodexCaptureEnvGuard::use_home_and_session_dirs(
+            home.path(),
+            sessions.path().as_os_str(),
+        );
+        let command = CommandLine::Memory {
+            root: Some(root.path().to_string_lossy().into_owned()),
+            command: MemoryCommand::Capture {
+                command: MemoryCaptureCommand::Scan {
+                    source: "codex".to_string(),
+                    import_threads: true,
+                    distill: true,
+                },
+            },
+        };
+
+        let response =
+            execute_memory_headless(&command, root.path().to_string_lossy().into_owned()).unwrap();
+
+        assert!(!response.ok);
+        assert!(response.error_code.is_some());
+        assert!(response.memory_capture_scan.is_none());
     }
 
     #[test]
