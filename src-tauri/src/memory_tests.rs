@@ -4,15 +4,15 @@ use std::thread;
 use tempfile::tempdir;
 
 use crate::memory::{
-    default_memory_config, memory_add, memory_archive, memory_capture_import,
+    default_memory_config, memory_add, memory_archive, memory_capture_import, memory_capture_scan,
     memory_detect_workspace, memory_distill, memory_distill_with_json_for_test, memory_get,
     memory_inbox_accept, memory_inbox_add, memory_inbox_get, memory_inbox_list,
     memory_inbox_reject, memory_initialize_workspace, memory_list, memory_promote, memory_recall,
     memory_repair_workspace, memory_search, memory_thread_get, memory_thread_list,
     memory_thread_save, memory_working_append, memory_working_get, memory_working_set,
     InboxAddRequest, InboxReviewRequest, MemoryAddRequest, MemoryCaptureImportRequest,
-    MemoryDistillRequest, MemoryListFilter, MemoryPromoteRequest, MemoryRepairRequest,
-    RecallRequest, ThreadListFilter, ThreadSaveRequest,
+    MemoryCaptureScanRequest, MemoryDistillRequest, MemoryListFilter, MemoryPromoteRequest,
+    MemoryRepairRequest, RecallRequest, ThreadListFilter, ThreadSaveRequest,
 };
 use crate::memory_fs::{
     append_memory_log_entry, read_workspace_file, recover_old_malformed_memory_lock_dir_for_test,
@@ -74,6 +74,159 @@ impl Drop for MemoryLlmConfigEnvGuard {
             std::env::remove_var("USERPROFILE");
         }
     }
+}
+
+struct MemoryCodexCaptureEnvGuard {
+    _lock: MutexGuard<'static, ()>,
+    home: Option<std::ffi::OsString>,
+    userprofile: Option<std::ffi::OsString>,
+    codex_session_dirs: Option<std::ffi::OsString>,
+}
+
+impl MemoryCodexCaptureEnvGuard {
+    fn use_home_and_session_dirs(
+        home_path: impl AsRef<std::path::Path>,
+        session_dirs: impl AsRef<std::ffi::OsStr>,
+    ) -> Self {
+        let lock = crate::llm_wiki_llm::test_llm_config_env_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let home = std::env::var_os("HOME");
+        let userprofile = std::env::var_os("USERPROFILE");
+        let codex_session_dirs = std::env::var_os("MDX_CODEX_SESSION_DIRS");
+        let canonical_home = std::fs::canonicalize(home_path.as_ref()).unwrap();
+        std::env::set_var("HOME", canonical_home);
+        std::env::remove_var("USERPROFILE");
+        std::env::set_var("MDX_CODEX_SESSION_DIRS", session_dirs);
+        Self {
+            _lock: lock,
+            home,
+            userprofile,
+            codex_session_dirs,
+        }
+    }
+}
+
+impl Drop for MemoryCodexCaptureEnvGuard {
+    fn drop(&mut self) {
+        if let Some(value) = self.home.take() {
+            std::env::set_var("HOME", value);
+        } else {
+            std::env::remove_var("HOME");
+        }
+        if let Some(value) = self.userprofile.take() {
+            std::env::set_var("USERPROFILE", value);
+        } else {
+            std::env::remove_var("USERPROFILE");
+        }
+        if let Some(value) = self.codex_session_dirs.take() {
+            std::env::set_var("MDX_CODEX_SESSION_DIRS", value);
+        } else {
+            std::env::remove_var("MDX_CODEX_SESSION_DIRS");
+        }
+    }
+}
+
+#[test]
+fn capture_scan_codex_discovers_jsonl_transcripts_from_configured_dirs() {
+    let root = tempdir().unwrap();
+    let home = tempdir().unwrap();
+    let sessions = tempdir().unwrap();
+    let nested = sessions.path().join("zz/2026/06/14");
+    std::fs::create_dir_all(&nested).unwrap();
+    let older_path = sessions.path().join("rollout-2026-06-13.jsonl");
+    let newer_path = nested.join("rollout-2026-06-14.jsonl");
+    std::fs::write(
+        &older_path,
+        r#"{"type":"session_meta","payload":{"id":"older-session-id","timestamp":"2026-06-13T10:00:00Z"}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        &newer_path,
+        r#"{"type":"session_meta","payload":{"id":"newer-session-id","timestamp":"2026-06-14T10:00:00Z"}}"#,
+    )
+    .unwrap();
+
+    let _guard =
+        MemoryCodexCaptureEnvGuard::use_home_and_session_dirs(home.path(), sessions.path());
+    let result = memory_capture_scan(
+        root.path().to_string_lossy().into_owned(),
+        MemoryCaptureScanRequest {
+            source: "codex".to_string(),
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.source, "codex");
+    assert_eq!(result.status, "configured");
+    assert_eq!(result.paths.len(), 2);
+    assert_eq!(result.candidates.len(), 2);
+    assert_eq!(
+        result.paths,
+        vec![
+            newer_path.to_string_lossy().into_owned(),
+            older_path.to_string_lossy().into_owned(),
+        ]
+    );
+    assert_eq!(result.paths[0], result.candidates[0].path);
+    assert_eq!(result.candidates[0].source, "codex");
+    assert_eq!(
+        result.candidates[0].thread_id.as_deref(),
+        Some("codex:newer-session-id")
+    );
+    assert_eq!(
+        result.candidates[0].title.as_deref(),
+        Some("Codex session newer-se")
+    );
+    assert_eq!(
+        result.candidates[0].started_at.as_deref(),
+        Some("2026-06-14T10:00:00Z")
+    );
+    assert!(result.candidates[0].modified_at.is_some());
+    assert!(result.candidates[0].bytes > 0);
+}
+
+#[test]
+fn capture_scan_codex_ignores_non_jsonl_and_auth_files() {
+    let root = tempdir().unwrap();
+    let home = tempdir().unwrap();
+    let sessions = tempdir().unwrap();
+    let transcript_path = sessions.path().join("rollout-keep.jsonl");
+    let ignored_paths = [
+        sessions.path().join("auth.jsonl"),
+        sessions.path().join("rollout-ignore.json"),
+        sessions.path().join("config.json"),
+        sessions.path().join("not-rollout.jsonl"),
+    ];
+    std::fs::write(
+        &transcript_path,
+        r#"{"type":"session_meta","payload":{"id":"keep-session","timestamp":"2026-06-14T10:00:00Z"}}"#,
+    )
+    .unwrap();
+    for path in ignored_paths {
+        std::fs::write(path, "{}").unwrap();
+    }
+
+    let _guard =
+        MemoryCodexCaptureEnvGuard::use_home_and_session_dirs(home.path(), sessions.path());
+    let result = memory_capture_scan(
+        root.path().to_string_lossy().into_owned(),
+        MemoryCaptureScanRequest {
+            source: "codex".to_string(),
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.status, "configured");
+    assert_eq!(
+        result.paths,
+        vec![transcript_path.to_string_lossy().into_owned()]
+    );
+    assert_eq!(result.candidates.len(), 1);
+    assert_eq!(
+        result.candidates[0].thread_id.as_deref(),
+        Some("codex:keep-session")
+    );
 }
 
 #[test]

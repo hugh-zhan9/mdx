@@ -1,12 +1,13 @@
 use serde::Deserialize;
 
 use crate::memory_models::{
-    MemoryCaptureImportRequest, MemoryCaptureImportResult, MemoryCaptureScanRequest,
-    MemoryCaptureScanResult, MemoryDistillRequest, ThreadSaveRequest,
+    MemoryCaptureCandidate, MemoryCaptureImportRequest, MemoryCaptureImportResult,
+    MemoryCaptureScanRequest, MemoryCaptureScanResult, MemoryDistillRequest, ThreadSaveRequest,
 };
 use crate::models::WorkspaceError;
 
 const VALID_CAPTURE_SOURCES: &[&str] = &["codex", "cursor", "claude-code", "manual"];
+const CODEX_SESSION_DIRS_ENV: &str = "MDX_CODEX_SESSION_DIRS";
 
 #[derive(Debug)]
 struct ParsedCapture {
@@ -118,12 +119,170 @@ pub(crate) fn memory_capture_scan(
     request: MemoryCaptureScanRequest,
 ) -> Result<MemoryCaptureScanResult, WorkspaceError> {
     let source = validate_capture_source(&request.source)?;
+    if source == "codex" {
+        return Ok(scan_codex_capture_candidates());
+    }
+
     Ok(MemoryCaptureScanResult {
         source: source.to_string(),
         status: "capture_scan_not_configured".to_string(),
         paths: Vec::new(),
         candidates: Vec::new(),
     })
+}
+
+fn scan_codex_capture_candidates() -> MemoryCaptureScanResult {
+    let dirs = codex_session_dirs();
+    let existing_dirs: Vec<std::path::PathBuf> =
+        dirs.into_iter().filter(|path| path.is_dir()).collect();
+    if existing_dirs.is_empty() {
+        return MemoryCaptureScanResult {
+            source: "codex".to_string(),
+            status: "capture_scan_not_configured".to_string(),
+            paths: Vec::new(),
+            candidates: Vec::new(),
+        };
+    }
+
+    let mut candidates = Vec::new();
+    for dir in existing_dirs {
+        collect_codex_candidates(&dir, &mut candidates);
+    }
+
+    candidates.sort_by(|left, right| {
+        right
+            .modified_at
+            .cmp(&left.modified_at)
+            .then_with(|| right.path.cmp(&left.path))
+    });
+    let paths = candidates
+        .iter()
+        .map(|candidate| candidate.path.clone())
+        .collect();
+
+    MemoryCaptureScanResult {
+        source: "codex".to_string(),
+        status: "configured".to_string(),
+        paths,
+        candidates,
+    }
+}
+
+fn codex_session_dirs() -> Vec<std::path::PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(configured_dirs) = std::env::var_os(CODEX_SESSION_DIRS_ENV) {
+        dirs.extend(
+            std::env::split_paths(&configured_dirs).filter(|path| !path.as_os_str().is_empty()),
+        );
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = std::path::PathBuf::from(home);
+        dirs.push(home.join(".codex/sessions"));
+        dirs.push(home.join(".codex/archived_sessions"));
+    }
+    dirs
+}
+
+fn collect_codex_candidates(dir: &std::path::Path, candidates: &mut Vec<MemoryCaptureCandidate>) {
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(current_dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(current_dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_symlink() {
+                continue;
+            }
+            let path = entry.path();
+            if file_type.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if !file_type.is_file() || !is_codex_rollout_jsonl(&path) {
+                continue;
+            }
+            candidates.push(build_codex_candidate(path));
+        }
+    }
+}
+
+fn is_codex_rollout_jsonl(path: &std::path::Path) -> bool {
+    let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    path.extension().and_then(|extension| extension.to_str()) == Some("jsonl")
+        && file_name.starts_with("rollout-")
+}
+
+fn build_codex_candidate(path: std::path::PathBuf) -> MemoryCaptureCandidate {
+    let metadata = std::fs::metadata(&path).ok();
+    let bytes = metadata.as_ref().map_or(0, std::fs::Metadata::len);
+    let modified_at = metadata
+        .and_then(|metadata| metadata.modified().ok())
+        .and_then(system_time_to_rfc3339);
+    let session_meta = read_codex_session_meta(&path);
+
+    MemoryCaptureCandidate {
+        path: path.to_string_lossy().into_owned(),
+        source: "codex".to_string(),
+        thread_id: session_meta
+            .id
+            .as_ref()
+            .map(|id| format!("codex:{}", id.trim())),
+        title: session_meta.id.as_ref().map(|id| {
+            let preview: String = id.chars().take(8).collect();
+            format!("Codex session {preview}")
+        }),
+        started_at: session_meta.timestamp,
+        modified_at,
+        bytes,
+    }
+}
+
+#[derive(Default)]
+struct CodexSessionMeta {
+    id: Option<String>,
+    timestamp: Option<String>,
+}
+
+fn read_codex_session_meta(path: &std::path::Path) -> CodexSessionMeta {
+    use std::io::BufRead;
+
+    let Ok(file) = std::fs::File::open(path) else {
+        return CodexSessionMeta::default();
+    };
+    let reader = std::io::BufReader::new(file);
+    for line in reader.lines().take(20).flatten() {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) else {
+            continue;
+        };
+        if value.get("type").and_then(serde_json::Value::as_str) != Some("session_meta") {
+            continue;
+        }
+        let payload = value.get("payload").unwrap_or(&serde_json::Value::Null);
+        return CodexSessionMeta {
+            id: payload
+                .get("id")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+                .filter(|id| !id.trim().is_empty()),
+            timestamp: payload
+                .get("timestamp")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+                .filter(|timestamp| !timestamp.trim().is_empty()),
+        };
+    }
+    CodexSessionMeta::default()
+}
+
+fn system_time_to_rfc3339(time: std::time::SystemTime) -> Option<String> {
+    let time = time::OffsetDateTime::from(time);
+    time.format(&time::format_description::well_known::Rfc3339)
+        .ok()
 }
 
 fn validate_capture_source(source: &str) -> Result<&'static str, WorkspaceError> {
