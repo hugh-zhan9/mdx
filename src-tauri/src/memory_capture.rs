@@ -356,6 +356,34 @@ fn parse_capture(source: &str, contents: &str) -> Result<ParsedCapture, Workspac
 }
 
 fn parse_codex_jsonl(contents: &str) -> Result<ParsedCapture, WorkspaceError> {
+    let values = parse_codex_jsonl_values(contents)?;
+    if values
+        .iter()
+        .all(|value| value.get("role").is_some() && value.get("timestamp").is_some())
+    {
+        return parse_simple_codex_jsonl(contents);
+    }
+    parse_real_codex_jsonl(contents, &values)
+}
+
+fn parse_codex_jsonl_values(contents: &str) -> Result<Vec<serde_json::Value>, WorkspaceError> {
+    let mut values = Vec::new();
+    for (index, line) in contents.lines().enumerate() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let value: serde_json::Value = serde_json::from_str(line).map_err(|error| {
+            WorkspaceError::new(
+                "capture_parse_failed",
+                format!("failed to parse Codex JSONL line {}: {error}", index + 1),
+            )
+        })?;
+        values.push(value);
+    }
+    Ok(values)
+}
+
+fn parse_simple_codex_jsonl(contents: &str) -> Result<ParsedCapture, WorkspaceError> {
     let mut messages = Vec::new();
     for (index, line) in contents.lines().enumerate() {
         if line.trim().is_empty() {
@@ -369,7 +397,103 @@ fn parse_codex_jsonl(contents: &str) -> Result<ParsedCapture, WorkspaceError> {
         })?;
         messages.push(message);
     }
-    parsed_messages(None, None, messages)
+    let mut parsed = parsed_messages(None, None, messages)?;
+    append_raw_codex_jsonl(&mut parsed.body, contents);
+    Ok(parsed)
+}
+
+fn parse_real_codex_jsonl(
+    contents: &str,
+    values: &[serde_json::Value],
+) -> Result<ParsedCapture, WorkspaceError> {
+    let mut session_id = None;
+    let mut session_timestamp = None;
+    let mut messages = Vec::new();
+
+    for value in values {
+        let event_type = value.get("type").and_then(serde_json::Value::as_str);
+        let payload = value.get("payload").unwrap_or(&serde_json::Value::Null);
+
+        if event_type == Some("session_meta") {
+            session_id = payload
+                .get("id")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+                .filter(|id| !id.trim().is_empty())
+                .or(session_id);
+            session_timestamp = payload
+                .get("timestamp")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+                .filter(|timestamp| !timestamp.trim().is_empty())
+                .or(session_timestamp);
+            continue;
+        }
+
+        if event_type != Some("response_item")
+            || payload.get("type").and_then(serde_json::Value::as_str) != Some("message")
+        {
+            continue;
+        }
+
+        let role = payload
+            .get("role")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let timestamp = value
+            .get("timestamp")
+            .and_then(serde_json::Value::as_str)
+            .or_else(|| payload.get("timestamp").and_then(serde_json::Value::as_str))
+            .or(session_timestamp.as_deref())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let content = codex_message_content(payload).trim().to_string();
+
+        messages.push(TranscriptMessage {
+            role,
+            timestamp,
+            content,
+        });
+    }
+
+    let source_thread_id = session_id.as_ref().map(|id| format!("codex:{}", id.trim()));
+    let title = session_id.as_ref().map(|id| {
+        let preview: String = id.chars().take(8).collect();
+        format!("Codex session {preview}")
+    });
+    let started_at = session_timestamp.clone();
+    let mut parsed = parsed_messages(source_thread_id, title, messages)?;
+    if started_at.is_some() {
+        parsed.started_at = started_at;
+    }
+    append_raw_codex_jsonl(&mut parsed.body, contents);
+    Ok(parsed)
+}
+
+fn codex_message_content(payload: &serde_json::Value) -> String {
+    let Some(content) = payload.get("content") else {
+        return String::new();
+    };
+    if let Some(text) = content.as_str() {
+        return text.to_string();
+    }
+    let Some(items) = content.as_array() else {
+        return String::new();
+    };
+    items
+        .iter()
+        .filter_map(|item| item.get("text").and_then(serde_json::Value::as_str))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn append_raw_codex_jsonl(body: &mut String, contents: &str) {
+    body.push_str("\n\n## Raw Codex JSONL\n\n```jsonl\n");
+    body.push_str(contents.trim_end());
+    body.push_str("\n```");
 }
 
 fn parse_cursor_json(contents: &str) -> Result<ParsedCapture, WorkspaceError> {

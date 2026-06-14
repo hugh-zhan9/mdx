@@ -900,6 +900,53 @@ fn capture_imports_codex_jsonl_as_thread() {
 }
 
 #[test]
+fn capture_imports_real_codex_jsonl_and_preserves_raw_source() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+
+    let result = memory_capture_import(
+        root.path().to_string_lossy().into_owned(),
+        MemoryCaptureImportRequest {
+            source: "codex".to_string(),
+            path: memory_fixture_path("codex-real-session.jsonl"),
+            title: None,
+            thread_id: None,
+            distill: false,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        result.thread_id,
+        "codex:019ec385-5b76-7211-aa11-91e3d028f79f"
+    );
+    assert_eq!(result.title, "Codex session 019ec385");
+    assert_eq!(result.message_count, 2);
+
+    let thread =
+        memory_thread_get(root.path().to_string_lossy().into_owned(), result.thread_id).unwrap();
+    assert!(thread
+        .body
+        .contains("## Message 1 — user — 2026-06-14T00:28:11.000Z"));
+    assert!(thread
+        .body
+        .contains("Please preserve this real Codex user text."));
+    assert!(thread
+        .body
+        .contains("## Message 2 — assistant — 2026-06-14T00:28:12.000Z"));
+    assert!(thread
+        .body
+        .contains("I will preserve the complete raw Codex JSONL source."));
+    assert!(thread.body.contains("## Raw Codex JSONL"));
+    assert!(thread.body.contains(
+        r#""type":"session_meta","payload":{"id":"019ec385-5b76-7211-aa11-91e3d028f79f""#
+    ));
+    assert!(thread
+        .body
+        .contains(r#""type":"event_msg","payload":{"message":"session configured""#));
+}
+
+#[test]
 fn capture_import_reports_distill_unavailable_as_partial_success() {
     let root = tempdir().unwrap();
     let home = tempdir().unwrap();

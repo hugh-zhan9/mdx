@@ -1,0 +1,4 @@
+{"timestamp":"2026-06-14T00:28:10.000Z","type":"session_meta","payload":{"id":"019ec385-5b76-7211-aa11-91e3d028f79f","timestamp":"2026-06-14T00:28:10.000Z","cwd":"/Users/example/project/mdx","model_provider":"openai"}}
+{"timestamp":"2026-06-14T00:28:10.500Z","type":"event_msg","payload":{"message":"session configured","severity":"info"}}
+{"timestamp":"2026-06-14T00:28:11.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Please preserve this real Codex user text."}]}}
+{"timestamp":"2026-06-14T00:28:12.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"I will preserve the complete raw Codex JSONL source."}]}}
