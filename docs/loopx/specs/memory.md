@@ -166,6 +166,16 @@ confidence: float
 - When `include_threads: true`, return matching thread summaries by title, thread id, or path. Thread body text is not injected into recall output by default.
 - Optional vector rerank may be enabled by config, but Markdown remains the source of truth.
 
+## Agent-Time Extraction Contract
+
+- Agent integrations must treat Memory extraction as part of the active conversation turn, not only as a background distill or thread-archival workflow.
+- At the start of a conversation or task, agents should call `memory_recall` when prior context may affect the answer or implementation.
+- During the turn, agents may call `memory_add` for clear, durable, low-risk user preferences, facts, decisions, project constraints, or reusable lessons.
+- Agents should call `memory_search` before `memory_add` when duplicate risk exists.
+- Sensitive, private, uncertain, speculative, or low-confidence candidates must not be written directly as durable memories. Agents should ask the user first or call `memory_inbox_add` to create a review candidate.
+- Inbox review is explicit: `memory_inbox_add` creates a candidate, `memory_inbox_list` reviews candidates, and `memory_inbox_accept` promotes a reviewed candidate to durable memory.
+- `memory_distill` remains a thread/background workflow and fallback safety net. It is not the only valid Memory extraction path.
+
 ## Inbox Contract
 
 - Path: `memory/inbox/{yyyy-mm-dd}-{slug}[-n].md`
