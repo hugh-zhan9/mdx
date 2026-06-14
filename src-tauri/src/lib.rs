@@ -81,7 +81,11 @@ fn memory_agent_setup(
     request: memory_agent_setup::MemoryAgentSetupRequest,
 ) -> Result<memory_agent_setup::MemoryAgentSetupResult, WorkspaceError> {
     memory_agent_setup::memory_agent_setup(root_path, request).map_err(|error| {
-        WorkspaceError::from_io("memory_agent_setup_failed", "failed to configure agents", &error)
+        WorkspaceError::from_io(
+            "memory_agent_setup_failed",
+            "failed to configure agents",
+            &error,
+        )
     })
 }
 
@@ -122,12 +126,28 @@ fn memory_working_append(
     memory::memory_working_append(root_path, section, text)
 }
 
+async fn run_blocking_memory_task<T>(
+    task: impl FnOnce() -> Result<T, WorkspaceError> + Send + 'static,
+) -> Result<T, WorkspaceError>
+where
+    T: Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(task)
+        .await
+        .map_err(|error| {
+            WorkspaceError::new(
+                "task_failed",
+                format!("background memory task failed: {error}"),
+            )
+        })?
+}
+
 #[tauri::command]
-fn memory_recall(
+async fn memory_recall(
     root_path: String,
     request: memory::RecallRequest,
 ) -> Result<memory::RecallResult, WorkspaceError> {
-    memory::memory_recall(root_path, request)
+    run_blocking_memory_task(move || memory::memory_recall(root_path, request)).await
 }
 
 #[tauri::command]
@@ -179,19 +199,19 @@ fn memory_thread_save(
 }
 
 #[tauri::command]
-fn memory_thread_list(
+async fn memory_thread_list(
     root_path: String,
     filter: memory::ThreadListFilter,
 ) -> Result<Vec<memory::ThreadListItem>, WorkspaceError> {
-    memory::memory_thread_list(root_path, filter)
+    run_blocking_memory_task(move || memory::memory_thread_list(root_path, filter)).await
 }
 
 #[tauri::command]
-fn memory_thread_get(
+async fn memory_thread_get(
     root_path: String,
     target: String,
 ) -> Result<memory::MemoryThreadRecord, WorkspaceError> {
-    memory::memory_thread_get(root_path, target)
+    run_blocking_memory_task(move || memory::memory_thread_get(root_path, target)).await
 }
 
 #[tauri::command]

@@ -4,8 +4,8 @@ use crate::memory_fs::{
     thread_index_entry, validate_thread_source, write_thread_index, write_workspace_file,
 };
 use crate::memory_models::{
-    MemoryThreadFrontmatter, MemoryThreadRecord, ThreadListFilter, ThreadListItem,
-    ThreadSaveRequest, ThreadSaveResult,
+    MemoryThreadFrontmatter, MemoryThreadRecord, ThreadIndexEntry, ThreadListFilter,
+    ThreadListItem, ThreadSaveRequest, ThreadSaveResult,
 };
 use crate::models::WorkspaceError;
 
@@ -86,7 +86,7 @@ pub fn memory_thread_save(
     };
     index.threads.insert(
         thread_id.clone(),
-        thread_index_entry(path.clone(), content_hash.clone())?,
+        thread_index_entry(path.clone(), content_hash.clone(), &frontmatter)?,
     );
     write_thread_index(root, &index)?;
     crate::memory_fs::append_memory_log_entry(
@@ -165,36 +165,25 @@ pub fn memory_thread_list(
 
     let index = read_thread_index(root)?;
     let mut items = Vec::new();
-    for entry in index.threads.values() {
-        let markdown = crate::memory_fs::read_workspace_file(root, &entry.path)?;
-        let (frontmatter, _) = parse_markdown_frontmatter::<MemoryThreadFrontmatter>(&markdown)?;
+    for (thread_id, entry) in &index.threads {
+        let item = thread_list_item_from_index(thread_id, entry);
         if filter
             .source
             .as_deref()
-            .is_some_and(|source| frontmatter.source != source)
+            .is_some_and(|source| item.source != source)
         {
             continue;
         }
         if filter.since.as_deref().is_some_and(|since| {
-            frontmatter
-                .started_at
+            item.started_at
                 .as_deref()
-                .or(frontmatter.ended_at.as_deref())
+                .or(item.ended_at.as_deref())
                 .map(|timestamp| timestamp < since)
                 .unwrap_or(true)
         }) {
             continue;
         }
-        items.push(ThreadListItem {
-            path: entry.path.clone(),
-            thread_id: frontmatter.thread_id,
-            source: frontmatter.source,
-            title: frontmatter.title,
-            started_at: frontmatter.started_at,
-            ended_at: frontmatter.ended_at,
-            message_count: frontmatter.message_count,
-            archived: frontmatter.archived,
-        });
+        items.push(item);
     }
     items.sort_by(|left, right| {
         right
@@ -203,6 +192,81 @@ pub fn memory_thread_list(
             .then_with(|| left.path.cmp(&right.path))
     });
     Ok(items)
+}
+
+fn thread_list_item_from_index(thread_id: &str, entry: &ThreadIndexEntry) -> ThreadListItem {
+    let resolved_thread_id = entry
+        .thread_id
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(thread_id)
+        .to_string();
+    let source = entry
+        .source
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| fallback_thread_source(&resolved_thread_id, &entry.path));
+    let title = entry
+        .title
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| fallback_thread_title(&resolved_thread_id, &entry.path));
+
+    ThreadListItem {
+        path: entry.path.clone(),
+        thread_id: resolved_thread_id,
+        source,
+        title,
+        started_at: entry
+            .started_at
+            .clone()
+            .or_else(|| fallback_thread_date(&entry.path)),
+        ended_at: entry.ended_at.clone(),
+        message_count: entry.message_count,
+        archived: entry.archived.unwrap_or(false),
+    }
+}
+
+fn fallback_thread_source(thread_id: &str, path: &str) -> String {
+    thread_id
+        .split_once(':')
+        .map(|(source, _)| source.to_string())
+        .or_else(|| {
+            path.strip_prefix("memory/threads/")
+                .and_then(|relative| relative.split('/').next())
+                .filter(|source| !source.is_empty())
+                .map(ToOwned::to_owned)
+        })
+        .unwrap_or_default()
+}
+
+fn fallback_thread_title(thread_id: &str, path: &str) -> String {
+    std::path::Path::new(path)
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .map(|name| {
+            name.trim_start_matches(|character: char| {
+                character.is_ascii_digit() || character == '-'
+            })
+        })
+        .filter(|title| !title.is_empty())
+        .map(|title| title.replace('-', " "))
+        .unwrap_or_else(|| thread_id.to_string())
+}
+
+fn fallback_thread_date(path: &str) -> Option<String> {
+    let file_name = std::path::Path::new(path).file_name()?.to_str()?;
+    let date = file_name.get(0..10)?;
+    (date.len() == 10
+        && date.as_bytes()[4] == b'-'
+        && date.as_bytes()[7] == b'-'
+        && date
+            .bytes()
+            .enumerate()
+            .all(|(index, byte)| index == 4 || index == 7 || byte.is_ascii_digit()))
+    .then(|| date.to_string())
 }
 
 pub(crate) fn rebuild_thread_index(
@@ -217,8 +281,8 @@ pub(crate) fn rebuild_thread_index(
         let (frontmatter, _) = parse_markdown_frontmatter::<MemoryThreadFrontmatter>(&markdown)?;
         validate_thread_source(&frontmatter.source)?;
         index.threads.insert(
-            frontmatter.thread_id,
-            thread_index_entry(relative, frontmatter.content_hash)?,
+            frontmatter.thread_id.clone(),
+            thread_index_entry(relative, frontmatter.content_hash.clone(), &frontmatter)?,
         );
     }
     let count = index.threads.len();

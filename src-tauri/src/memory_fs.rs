@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use sha2::{Digest, Sha256};
 
-use crate::memory_models::{MemoryConfig, ThreadIndex, ThreadIndexEntry};
+use crate::memory_models::{MemoryConfig, MemoryThreadFrontmatter, ThreadIndex, ThreadIndexEntry};
 use crate::models::WorkspaceError;
 
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -766,11 +766,19 @@ pub(crate) fn write_thread_index(root: &Path, index: &ThreadIndex) -> Result<(),
 pub(crate) fn thread_index_entry(
     path: String,
     content_hash: String,
+    frontmatter: &MemoryThreadFrontmatter,
 ) -> Result<ThreadIndexEntry, WorkspaceError> {
     Ok(ThreadIndexEntry {
         path,
         content_hash,
         updated_at: now_utc_rfc3339()?,
+        thread_id: Some(frontmatter.thread_id.clone()),
+        source: Some(frontmatter.source.clone()),
+        title: Some(frontmatter.title.clone()),
+        started_at: frontmatter.started_at.clone(),
+        ended_at: frontmatter.ended_at.clone(),
+        message_count: frontmatter.message_count,
+        archived: Some(frontmatter.archived),
     })
 }
 

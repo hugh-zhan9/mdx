@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::sync::{Arc, MutexGuard};
 use std::thread;
 
@@ -1885,6 +1886,120 @@ fn thread_list_filters_by_source() {
 
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].source, "manual");
+}
+
+#[test]
+fn thread_list_does_not_decode_thread_body() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    let saved = memory_thread_save(
+        root.path().to_string_lossy().into_owned(),
+        ThreadSaveRequest {
+            source: "manual".to_string(),
+            thread_id: Some("manual:frontmatter-only".to_string()),
+            title: "Frontmatter only".to_string(),
+            body: sample_thread_body(),
+            started_at: Some("2026-06-12T09:00:00Z".to_string()),
+            ended_at: None,
+            model: None,
+            workspace_root: None,
+            tags: Vec::new(),
+        },
+    )
+    .unwrap();
+
+    let mut file = std::fs::OpenOptions::new()
+        .append(true)
+        .open(root.path().join(saved.path))
+        .unwrap();
+    file.write_all(b"\n\xff\xfe\xfd").unwrap();
+
+    let items = memory_thread_list(
+        root.path().to_string_lossy().into_owned(),
+        ThreadListFilter {
+            source: None,
+            since: None,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].thread_id, "manual:frontmatter-only");
+    assert_eq!(items[0].title, "Frontmatter only");
+}
+
+#[test]
+fn thread_list_uses_index_without_opening_thread_files() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    let saved = memory_thread_save(
+        root.path().to_string_lossy().into_owned(),
+        ThreadSaveRequest {
+            source: "manual".to_string(),
+            thread_id: Some("manual:index-only".to_string()),
+            title: "Index only".to_string(),
+            body: sample_thread_body(),
+            started_at: Some("2026-06-12T09:00:00Z".to_string()),
+            ended_at: Some("2026-06-12T09:05:00Z".to_string()),
+            model: Some("gpt-5".to_string()),
+            workspace_root: None,
+            tags: Vec::new(),
+        },
+    )
+    .unwrap();
+    std::fs::remove_file(root.path().join(saved.path)).unwrap();
+
+    let items = memory_thread_list(
+        root.path().to_string_lossy().into_owned(),
+        ThreadListFilter {
+            source: None,
+            since: None,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].thread_id, "manual:index-only");
+    assert_eq!(items[0].source, "manual");
+    assert_eq!(items[0].title, "Index only");
+    assert_eq!(items[0].started_at.as_deref(), Some("2026-06-12T09:00:00Z"),);
+    assert_eq!(items[0].message_count, Some(2));
+}
+
+#[test]
+fn thread_list_supports_legacy_index_without_opening_thread_files() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    write_workspace_file(
+        root.path(),
+        ".mdx/thread-index.json",
+        br#"{
+  "version": 1,
+  "threads": {
+    "codex:legacy": {
+      "path": "memory/threads/codex/2026-06-12-codex-legacy.md",
+      "content_hash": "sha256:legacy",
+      "updated_at": "2026-06-12T09:00:00Z"
+    }
+  }
+}
+"#,
+    )
+    .unwrap();
+
+    let items = memory_thread_list(
+        root.path().to_string_lossy().into_owned(),
+        ThreadListFilter {
+            source: Some("codex".to_string()),
+            since: Some("2026-06-11T00:00:00Z".to_string()),
+        },
+    )
+    .unwrap();
+
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].thread_id, "codex:legacy");
+    assert_eq!(items[0].source, "codex");
+    assert_eq!(items[0].started_at.as_deref(), Some("2026-06-12"));
 }
 
 #[test]
