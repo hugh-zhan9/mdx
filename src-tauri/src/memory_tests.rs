@@ -514,6 +514,143 @@ fn memory_default_config_uses_sqlite_and_agent_backend_defaults() {
 }
 
 #[test]
+fn sqlite_storage_initializes_schema_version_and_core_tables() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::initialize_memory_workspace(root.path()).unwrap();
+
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path())
+            .expect("open sqlite storage");
+    storage.initialize().expect("initialize schema");
+
+    assert_eq!(
+        storage.schema_version().unwrap(),
+        crate::memory_schema::MEMORY_SCHEMA_VERSION
+    );
+    for table in [
+        "workspaces",
+        "agent_integrations",
+        "agent_sessions",
+        "agent_events",
+        "threads",
+        "memories",
+        "inbox_candidates",
+        "provenance_links",
+        "jobs",
+        "job_attempts",
+        "hook_logs",
+        "projection_records",
+        "feature_flags",
+    ] {
+        assert!(
+            storage.table_exists(table).unwrap(),
+            "missing table {table}"
+        );
+    }
+}
+
+#[test]
+#[ignore]
+fn memory_postgres_storage_initializes_schema_version() {
+    let url = std::env::var("MDX_MEMORY_POSTGRES_TEST_URL")
+        .expect("MDX_MEMORY_POSTGRES_TEST_URL is required for this ignored test");
+    let mut storage = crate::memory_storage_postgres::PostgresMemoryStorage::connect(&url)
+        .expect("connect postgres storage");
+    storage.initialize().expect("initialize postgres schema");
+    assert_eq!(
+        storage.schema_version().unwrap(),
+        crate::memory_schema::MEMORY_SCHEMA_VERSION
+    );
+}
+
+#[test]
+fn sqlite_event_idempotency_only_ignores_idempotency_key_conflict() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::initialize_memory_workspace(root.path()).unwrap();
+
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path())
+            .expect("open sqlite storage");
+    storage.initialize().expect("initialize schema");
+
+    let event = |event_id: &str, idempotency_key: &str| crate::memory_storage::StoredAgentEvent {
+        event_id: event_id.to_string(),
+        session_pk: "session-pk-1".to_string(),
+        workspace_id: "workspace-1".to_string(),
+        agent_source: "codex".to_string(),
+        event_name: "UserPromptSubmit".to_string(),
+        turn_id: Some("turn-1".to_string()),
+        event_seq: Some(1),
+        idempotency_key: idempotency_key.to_string(),
+        raw_payload: serde_json::json!({"prompt":"hello"}),
+        payload_hash: "hash-1".to_string(),
+        created_at: "2026-06-14T10:00:00Z".to_string(),
+    };
+
+    assert!(storage
+        .insert_event_idempotent(&event("event-1", "idem-1"))
+        .unwrap());
+    assert!(!storage
+        .insert_event_idempotent(&event("event-2", "idem-1"))
+        .unwrap());
+    assert!(storage
+        .insert_event_idempotent(&event("event-1", "idem-2"))
+        .is_err());
+    assert_eq!(storage.count_events().unwrap(), 1);
+}
+
+#[cfg(unix)]
+#[test]
+fn sqlite_storage_rejects_symlink_database_path() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::initialize_memory_workspace(root.path()).unwrap();
+
+    std::os::unix::fs::symlink(
+        root.path().join("target.sqlite"),
+        root.path().join(".mdx/memory.sqlite"),
+    )
+    .unwrap();
+
+    let result = crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path());
+    assert!(result.is_err());
+    assert_eq!(result.err().unwrap().error_code(), "memory_db_path_invalid");
+}
+
+#[test]
+fn sqlite_session_upsert_preserves_session_timestamps() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::initialize_memory_workspace(root.path()).unwrap();
+
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path())
+            .expect("open sqlite storage");
+    storage.initialize().expect("initialize schema");
+    storage
+        .upsert_session(&crate::memory_storage::StoredAgentSession {
+            session_pk: "session-pk-1".to_string(),
+            workspace_id: "workspace-1".to_string(),
+            agent_source: "codex".to_string(),
+            session_id: "session-1".to_string(),
+            project_key: "project-1".to_string(),
+            cwd: Some(root.path().to_string_lossy().into_owned()),
+            model: Some("gpt-5".to_string()),
+            started_at: "2026-06-14T10:00:00Z".to_string(),
+            ended_at: Some("2026-06-14T10:05:00Z".to_string()),
+            message_count: Some(2),
+            event_count: 1,
+            status: "ended".to_string(),
+        })
+        .unwrap();
+
+    let timestamps = storage
+        .session_timestamps_for_test("codex", "session-1")
+        .unwrap()
+        .unwrap();
+    assert_eq!(timestamps.0, "2026-06-14T10:00:00Z");
+    assert_eq!(timestamps.1.as_deref(), Some("2026-06-14T10:05:00Z"));
+}
+
+#[test]
 fn partial_memory_config_deserialization_uses_nested_defaults() {
     let config: crate::memory_models::MemoryConfig = serde_json::from_str(
         r#"{
