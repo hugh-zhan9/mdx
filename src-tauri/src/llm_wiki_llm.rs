@@ -218,7 +218,9 @@ fn call_chat_completion_core(
 
     match api_mode {
         LlmApiMode::Chat => call_chat_completion_streaming_with_fallback(&client, config, messages),
-        LlmApiMode::Responses => call_non_streaming_completion(&client, config, api_mode, messages),
+        LlmApiMode::ChatNoStream | LlmApiMode::Responses => {
+            call_non_streaming_completion(&client, config, api_mode, messages)
+        }
     }
 }
 
@@ -288,10 +290,7 @@ fn call_chat_completion_streaming_with_fallback(
     match stream_result {
         Ok(response) => match read_chat_completion_stream(response) {
             Ok(content) => Ok(content),
-            Err(error)
-                if !error.received_content
-                    && should_retry_chat_non_stream_fallback(&error.error) =>
-            {
+            Err(error) if should_retry_chat_non_stream_fallback(&error.error) => {
                 call_non_streaming_after_stream_failure(client, config, messages, error.error)
             }
             Err(error) => Err(error.error),
@@ -304,9 +303,7 @@ fn call_chat_completion_streaming_with_fallback(
 }
 
 fn should_retry_chat_non_stream_fallback(error: &WorkspaceError) -> bool {
-    !matches!(error.error_code(), "cancelled" | "llm_timeout")
-        && !error.to_string().contains("timed out")
-        && !error.to_string().contains("operation timed out")
+    error.error_code() != "cancelled"
 }
 
 fn call_non_streaming_after_stream_failure(
@@ -782,7 +779,6 @@ fn read_chat_completion_stream(reader: impl Read) -> Result<String, ChatStreamRe
                 "llm chat completion stream ended before [DONE]; received partial stream content before failure; stream preview: {}",
                 response_preview(&preview)
             ),
-            true,
         ));
     }
 
@@ -939,7 +935,6 @@ struct OpenAiChatStreamDelta {
 #[derive(Debug)]
 struct ChatStreamReadError {
     error: WorkspaceError,
-    received_content: bool,
 }
 
 impl ChatStreamReadError {
@@ -952,13 +947,12 @@ impl ChatStreamReadError {
         } else {
             message
         };
-        Self::with_code("llm_failed", message, received_content)
+        Self::with_code("llm_failed", message)
     }
 
-    fn with_code(code: impl Into<String>, message: String, received_content: bool) -> Self {
+    fn with_code(code: impl Into<String>, message: String) -> Self {
         Self {
             error: WorkspaceError::new(code, message),
-            received_content,
         }
     }
 }
@@ -984,6 +978,7 @@ struct OpenAiResponsesContent {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LlmApiMode {
     Chat,
+    ChatNoStream,
     Responses,
 }
 
@@ -991,6 +986,7 @@ impl LlmApiMode {
     fn from_config(value: &str) -> Result<Self, WorkspaceError> {
         match value.trim() {
             "" | "chat" => Ok(Self::Chat),
+            "chatNoStream" | "chat-no-stream" | "chat_non_stream" => Ok(Self::ChatNoStream),
             "responses" => Ok(Self::Responses),
             other => Err(WorkspaceError::new(
                 "llm_failed",
@@ -1001,28 +997,28 @@ impl LlmApiMode {
 
     fn url(self, base_url: &str) -> Result<String, WorkspaceError> {
         match self {
-            Self::Chat => chat_completions_url(base_url),
+            Self::Chat | Self::ChatNoStream => chat_completions_url(base_url),
             Self::Responses => responses_url(base_url),
         }
     }
 
     fn build_request(self, model: &str, messages: Vec<LlmChatMessage>) -> serde_json::Value {
         match self {
-            Self::Chat => build_openai_chat_request(model, messages),
+            Self::Chat | Self::ChatNoStream => build_openai_chat_request(model, messages),
             Self::Responses => build_openai_responses_request(model, messages),
         }
     }
 
     fn extract_content(self, bytes: &[u8]) -> Result<String, WorkspaceError> {
         match self {
-            Self::Chat => extract_chat_completion_content(bytes),
+            Self::Chat | Self::ChatNoStream => extract_chat_completion_content(bytes),
             Self::Responses => extract_responses_content(bytes),
         }
     }
 
     fn label(self) -> &'static str {
         match self {
-            Self::Chat => "chat completion",
+            Self::Chat | Self::ChatNoStream => "chat completion",
             Self::Responses => "responses",
         }
     }
@@ -1151,13 +1147,46 @@ mod tests {
     }
 
     #[test]
-    fn chat_stream_timeout_does_not_retry_non_stream_fallback() {
-        assert!(!should_retry_chat_non_stream_fallback(
-            &WorkspaceError::new("llm_timeout", "stream timed out")
-        ));
+    fn llm_api_mode_accepts_non_stream_chat_aliases() {
+        assert_eq!(
+            LlmApiMode::from_config("chatNoStream").unwrap(),
+            LlmApiMode::ChatNoStream
+        );
+        assert_eq!(
+            LlmApiMode::from_config("chat-no-stream").unwrap(),
+            LlmApiMode::ChatNoStream
+        );
+        assert_eq!(
+            LlmApiMode::from_config("chat_non_stream").unwrap(),
+            LlmApiMode::ChatNoStream
+        );
+    }
+
+    #[test]
+    fn chat_stream_cancelled_does_not_retry_non_stream_fallback() {
+        assert!(!should_retry_chat_non_stream_fallback(&WorkspaceError::new(
+            "cancelled",
+            "operation cancelled"
+        )));
         assert!(should_retry_chat_non_stream_fallback(&WorkspaceError::new(
             "llm_failed",
             "stream not supported"
+        )));
+    }
+
+    #[test]
+    fn chat_stream_timeout_and_partial_stream_can_retry_non_stream_fallback() {
+        assert!(should_retry_chat_non_stream_fallback(&WorkspaceError::new(
+            "llm_timeout",
+            "stream timed out"
+        )));
+        assert!(should_retry_chat_non_stream_fallback(&WorkspaceError::new(
+            "llm_partial_stream",
+            "stream ended before [DONE]"
+        )));
+        assert!(!should_retry_chat_non_stream_fallback(&WorkspaceError::new(
+            "cancelled",
+            "operation cancelled"
         )));
     }
 
