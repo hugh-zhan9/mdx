@@ -227,7 +227,7 @@ MDX_CODEX_SESSION_DIRS="/path/to/sessions:/path/to/archived" \
   mdx-cli memory --root /path/to/workspace capture scan --source codex --import
 ```
 
-`capture scan --source codex --import` 会把发现的 `rollout-*.jsonl` 保存到 `memory/threads/codex/`。保存的 thread 同时包含可读的 `## Message N` 段落和 `## Raw Codex JSONL` 原始 JSONL 块，因此可以保留完整 Codex 会话原文。加 `--distill` 时会在导入后尝试蒸馏；如果蒸馏失败，命令会返回失败，不会把 distill failure 静默当作成功。
+`capture scan --source codex --import` 会把发现的 `rollout-*.jsonl` 保存到 `memory/threads/codex/`。保存的 thread 按原始会话展示，包含 `## Conversation` 和 `## Raw Codex JSONL` 两部分，因此可以保留完整 Codex 会话原文。加 `--distill` 时会在导入后尝试蒸馏；如果蒸馏失败，命令会返回失败，不会把 distill failure 静默当作成功。
 
 ## Agent 集成配置
 
@@ -444,6 +444,17 @@ mdx-cli memory --root /path/to/other-workspace import \
 ```
 
 默认策略是 `skip`，已有文件会跳过。
+
+## Agent-time Memory extraction
+
+Memory 提取发生在 Agent 正常对话 turn 中：Agent 通过 MCP 工具和已安装的 skill/rule 判断何时 recall、search、add 或送审候选。它不是必须常驻的后台服务，也不要求每次压缩前都自动写入长期记忆。
+
+安全使用原则：
+
+- 先用 `memory_recall`。当既有决策、用户偏好、项目约定或历史上下文可能影响当前回答时，应在 turn 早期检索。
+- 避免重复写入。准备调用 `memory_add` 前，如果标题、主题或事实可能已经存在，先用 `memory_search` 查重。
+- 主动保存低风险事实。对用户明确表达、长期有用、非敏感且置信度高的偏好、约定和项目事实，可以在当前 turn 直接写入 durable memory。
+- 谨慎处理敏感或不确定内容。涉及隐私、凭证、医疗财务等敏感信息，或只是推测、临时状态、低置信度总结时，应使用 `memory_inbox_add` 创建 inbox review candidate；需要用户判断时先询问。
 
 ## MCP 可用工具
 
