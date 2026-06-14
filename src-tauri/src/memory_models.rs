@@ -13,6 +13,28 @@ pub struct MemoryWorkspaceStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+pub struct MemoryIntegrationStatus {
+    pub agent_source: String,
+    pub installed: bool,
+    pub enabled: bool,
+    pub authorized: bool,
+    pub hook_version: Option<String>,
+    pub last_event_at: Option<String>,
+    pub last_error: Option<String>,
+    pub doctor_status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryDoctorReport {
+    pub ok: bool,
+    pub statuses: Vec<MemoryIntegrationStatus>,
+    pub errors: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub struct InitializeMemoryResult {
     pub created_paths: Vec<String>,
     pub preserved_paths: Vec<String>,

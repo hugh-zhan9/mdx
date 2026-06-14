@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::memory_models::{MemoryDoctorReport, MemoryIntegrationStatus};
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct MemoryAgentSetupRequest {
     pub codex: bool,
@@ -25,6 +27,16 @@ pub struct MemoryAgentSetupResult {
     pub dry_run: bool,
     pub changed_paths: Vec<String>,
     pub summary: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MemoryAgentCommandRequest {
+    #[serde(default)]
+    pub agent: Option<String>,
+    #[serde(default)]
+    pub dry_run: bool,
+    #[serde(default)]
+    pub keep_data: bool,
 }
 
 pub fn memory_agent_setup(
@@ -53,6 +65,138 @@ pub fn memory_agent_setup(
             .collect(),
         summary: render_agent_setup_summary(&changes, request.dry_run),
     })
+}
+
+pub fn memory_agent_install(
+    root_path: String,
+    request: MemoryAgentCommandRequest,
+) -> io::Result<MemoryAgentSetupResult> {
+    memory_agent_setup(
+        root_path,
+        setup_request_for_agent(request.agent.as_deref(), request.dry_run)?,
+    )
+}
+
+pub fn memory_agent_repair(
+    root_path: String,
+    request: MemoryAgentCommandRequest,
+) -> io::Result<MemoryAgentSetupResult> {
+    memory_agent_setup(
+        root_path,
+        setup_request_for_agent(request.agent.as_deref(), request.dry_run)?,
+    )
+}
+
+pub fn memory_agent_uninstall(
+    _root_path: String,
+    request: MemoryAgentCommandRequest,
+) -> io::Result<MemoryAgentSetupResult> {
+    let agent = normalize_agent_selector(request.agent.as_deref())?
+        .unwrap_or("all")
+        .to_string();
+    let action = if request.dry_run {
+        "would_uninstall"
+    } else {
+        "uninstall_unavailable"
+    };
+    let data_note = if request.keep_data {
+        "keeping memory data"
+    } else {
+        "memory data removal is not implemented in this adapter"
+    };
+    Ok(MemoryAgentSetupResult {
+        dry_run: request.dry_run,
+        changed_paths: Vec::new(),
+        summary: format!("memory agent uninstall {action}: {agent}; {data_note}"),
+    })
+}
+
+pub fn memory_agent_status(
+    _root_path: String,
+    agent: Option<String>,
+) -> io::Result<Vec<MemoryIntegrationStatus>> {
+    Ok(agent_sources(agent.as_deref())?
+        .into_iter()
+        .map(|agent_source| MemoryIntegrationStatus {
+            agent_source,
+            installed: false,
+            enabled: false,
+            authorized: false,
+            hook_version: None,
+            last_event_at: None,
+            last_error: None,
+            doctor_status: "unknown".to_string(),
+        })
+        .collect())
+}
+
+pub fn memory_agent_doctor(
+    root_path: String,
+    agent: Option<String>,
+) -> io::Result<MemoryDoctorReport> {
+    let statuses = memory_agent_status(root_path, agent)?;
+    Ok(MemoryDoctorReport {
+        ok: statuses.iter().all(|status| status.doctor_status == "ok"),
+        statuses,
+        errors: Vec::new(),
+        warnings: vec![
+            "agent installer doctor is not fully implemented; returning conservative status"
+                .to_string(),
+        ],
+    })
+}
+
+fn setup_request_for_agent(
+    agent: Option<&str>,
+    dry_run: bool,
+) -> io::Result<MemoryAgentSetupRequest> {
+    let normalized = normalize_agent_selector(agent)?;
+    let codex = matches!(normalized, Some("codex"));
+    let claude = matches!(normalized, Some("claude"));
+    let cursor = matches!(normalized, Some("cursor"));
+    Ok(MemoryAgentSetupRequest {
+        codex,
+        claude,
+        cursor,
+        hooks: true,
+        dry_run,
+        mdx_cli: None,
+        mdx_mcp: None,
+    })
+}
+
+fn agent_sources(agent: Option<&str>) -> io::Result<Vec<String>> {
+    Ok(match normalize_agent_selector(agent)? {
+        Some("codex") => vec!["codex".to_string()],
+        Some("claude") => vec!["claude".to_string()],
+        Some("cursor") => vec!["cursor".to_string()],
+        Some("all") | None => vec![
+            "codex".to_string(),
+            "claude".to_string(),
+            "cursor".to_string(),
+        ],
+        Some(_) => unreachable!("normalize_agent_selector returned an unsupported agent"),
+    })
+}
+
+fn normalize_agent_selector(agent: Option<&str>) -> io::Result<Option<&'static str>> {
+    match agent.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(agent) if agent.eq_ignore_ascii_case("codex") => Ok(Some("codex")),
+        Some(agent) if agent.eq_ignore_ascii_case("claude") => Ok(Some("claude")),
+        Some(agent)
+            if agent.eq_ignore_ascii_case("claude-code")
+                || agent.eq_ignore_ascii_case("claude_code") =>
+        {
+            Ok(Some("claude"))
+        }
+        Some(agent) if agent.eq_ignore_ascii_case("cursor") => Ok(Some("cursor")),
+        Some(agent) if agent.eq_ignore_ascii_case("all") => Ok(Some("all")),
+        Some(agent) => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("invalid memory agent '{agent}'; expected codex, claude, cursor, or all"),
+        )),
+        None => Ok(None),
+    }
 }
 
 pub struct AgentSetupTargets {

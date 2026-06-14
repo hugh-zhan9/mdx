@@ -119,9 +119,54 @@ enum LlmWikiCommand {
 
 #[derive(Debug, Clone, PartialEq, Subcommand)]
 enum MemoryCommand {
+    Daemon {
+        #[arg(long, default_value_t = 14243)]
+        port: u16,
+        #[arg(long)]
+        api_key: Option<String>,
+    },
+    Hook {
+        agent: String,
+        event: String,
+        #[arg(long)]
+        deadline_ms: Option<u64>,
+    },
+    Install {
+        #[arg(long)]
+        agent: Option<String>,
+        #[arg(long)]
+        dry_run: bool,
+    },
     Status {
         #[arg(long)]
         json: bool,
+        #[arg(long)]
+        agent: Option<String>,
+    },
+    Doctor {
+        #[arg(long)]
+        agent: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    #[command(name = "repair-agent")]
+    RepairAgent {
+        #[arg(long)]
+        agent: Option<String>,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    Uninstall {
+        #[arg(long)]
+        agent: Option<String>,
+        #[arg(long)]
+        keep_data: bool,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    Migrate {
+        #[command(subcommand)]
+        command: MemoryMigrateCommand,
     },
     Init,
     Repair {
@@ -249,6 +294,20 @@ enum MemoryCommand {
 enum MemoryIndexCommand {
     Status,
     Rebuild,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
+enum MemoryMigrateCommand {
+    Storage {
+        #[arg(long = "to")]
+        to: String,
+        #[arg(long)]
+        target: Option<String>,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        resume: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
@@ -386,6 +445,23 @@ fn main() -> ExitCode {
     }
 }
 
+#[cfg(test)]
+#[derive(Debug)]
+#[allow(dead_code)]
+pub(crate) struct ParsedCommandForTest(CommandLine);
+
+#[cfg(test)]
+#[allow(dead_code)]
+pub(crate) fn parse_command_for_test<I, T>(args: I) -> io::Result<ParsedCommandForTest>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<std::ffi::OsString> + Clone,
+{
+    Cli::try_parse_from(args)
+        .map(|cli| ParsedCommandForTest(cli.command))
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error.to_string()))
+}
+
 fn run() -> io::Result<(CommandLine, CliResponse)> {
     let cli = Cli::parse();
     let command = cli.command;
@@ -396,6 +472,21 @@ fn run() -> io::Result<(CommandLine, CliResponse)> {
     } = &command
     {
         serve_memory_daemon(workspace, *port, api_key.as_deref())?;
+        return Ok((
+            command,
+            CliResponse {
+                ok: true,
+                ..CliResponse::default()
+            },
+        ));
+    }
+
+    if let CommandLine::Memory {
+        root: Some(root),
+        command: MemoryCommand::Daemon { port, api_key },
+    } = &command
+    {
+        serve_memory_daemon(root, *port, api_key.as_deref())?;
         return Ok((
             command,
             CliResponse {
@@ -484,6 +575,12 @@ fn request_from_command(command: &CommandLine) -> io::Result<CliRequest> {
 
 fn request_from_memory_command(command: &MemoryCommand) -> io::Result<CliRequest> {
     Ok(match command {
+        MemoryCommand::Status { agent: Some(_), .. } => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "memory status --agent requires --root <workspace>",
+            ));
+        }
         MemoryCommand::Status { .. } => CliRequest::MemoryStatus,
         MemoryCommand::Init => CliRequest::MemoryInit,
         MemoryCommand::Repair { rebuild_index } => CliRequest::MemoryRepair {
@@ -679,10 +776,17 @@ fn request_from_memory_command(command: &MemoryCommand) -> io::Result<CliRequest
                 distill: *distill,
             },
         },
-        MemoryCommand::Agent { .. } => {
+        MemoryCommand::Daemon { .. }
+        | MemoryCommand::Hook { .. }
+        | MemoryCommand::Install { .. }
+        | MemoryCommand::Doctor { .. }
+        | MemoryCommand::RepairAgent { .. }
+        | MemoryCommand::Uninstall { .. }
+        | MemoryCommand::Migrate { .. }
+        | MemoryCommand::Agent { .. } => {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "memory agent setup requires --root <workspace>",
+                "this memory command requires --root <workspace>",
             ));
         }
     })
@@ -705,12 +809,63 @@ fn execute_memory_headless(command: &CommandLine, root_path: String) -> io::Resu
         ));
     };
 
+    if let MemoryCommand::Daemon { port, api_key } = command {
+        serve_memory_daemon(&root_path, *port, api_key.as_deref())?;
+        return Ok(CliResponse {
+            ok: true,
+            root_path: Some(root_path),
+            ..CliResponse::default()
+        });
+    }
+
+    if let MemoryCommand::Hook {
+        agent,
+        event,
+        deadline_ms,
+    } = command
+    {
+        return execute_memory_hook_headless(root_path, agent, event, *deadline_ms);
+    }
+
     if let MemoryCommand::Index { command } = command {
         return Ok(execute_memory_index_headless(command, root_path));
     }
 
     if let MemoryCommand::Agent { command } = command {
         return execute_memory_agent_headless(command, root_path);
+    }
+
+    match command {
+        MemoryCommand::Install { agent, dry_run } => {
+            return execute_memory_agent_install_headless(root_path, agent.clone(), *dry_run);
+        }
+        MemoryCommand::Status {
+            agent: Some(agent), ..
+        } => {
+            return execute_memory_agent_status_headless(root_path, Some(agent.clone()));
+        }
+        MemoryCommand::Doctor { agent, .. } => {
+            return execute_memory_agent_doctor_headless(root_path, agent.clone());
+        }
+        MemoryCommand::RepairAgent { agent, dry_run } => {
+            return execute_memory_agent_repair_headless(root_path, agent.clone(), *dry_run);
+        }
+        MemoryCommand::Uninstall {
+            agent,
+            keep_data,
+            dry_run,
+        } => {
+            return execute_memory_agent_uninstall_headless(
+                root_path,
+                agent.clone(),
+                *keep_data,
+                *dry_run,
+            );
+        }
+        MemoryCommand::Migrate { command } => {
+            return execute_memory_migrate_headless(command, root_path);
+        }
+        _ => {}
     }
 
     if let MemoryCommand::Export {
@@ -1201,6 +1356,185 @@ fn execute_memory_agent_headless(
     }
 }
 
+fn execute_memory_hook_headless(
+    root_path: String,
+    agent: &str,
+    event_name: &str,
+    deadline_ms: Option<u64>,
+) -> io::Result<CliResponse> {
+    let mut input = String::new();
+    io::stdin().read_to_string(&mut input)?;
+    let payload = serde_json::from_str::<serde_json::Value>(&input).map_err(|error| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("invalid hook JSON: {error}"),
+        )
+    })?;
+    let event = mdx_lib::memory_hooks::normalize_hook_payload(
+        agent,
+        event_name,
+        &root_path,
+        &payload,
+        deadline_ms,
+    )
+    .map_err(workspace_error_to_io)?;
+    let request = memory::MemoryHookEventRequest {
+        agent_source: event.agent_source,
+        event_name: event.event_name,
+        workspace_root: event.workspace_root,
+        cwd: event.cwd,
+        session_id: event.session_id,
+        turn_id: event.turn_id,
+        event_seq: event.event_seq,
+        idempotency_key: event.idempotency_key,
+        raw_payload: event.raw_payload,
+        deadline_ms: event.deadline_ms,
+    };
+    let body = serde_json::to_string(&request).map_err(|error| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("failed to encode hook event: {error}"),
+        )
+    })?;
+    let daemon_response = memory_daemon::dispatch(root_path.clone(), "POST", "/hook/events", &body)
+        .map_err(workspace_error_to_io)?;
+    if !(200..300).contains(&daemon_response.status) {
+        return Err(io::Error::new(io::ErrorKind::Other, daemon_response.body));
+    }
+    let response = serde_json::from_str::<memory::MemoryHookEventResponse>(&daemon_response.body)
+        .map_err(|error| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("invalid hook daemon response: {error}"),
+        )
+    })?;
+    let output = mdx_lib::memory_hooks::format_hook_output(
+        &request.agent_source,
+        &request.event_name,
+        Some(&response.additional_context),
+    )
+    .map_err(workspace_error_to_io)?;
+
+    Ok(CliResponse {
+        ok: true,
+        root_path: Some(root_path),
+        content: Some(output),
+        ..CliResponse::default()
+    })
+}
+
+fn execute_memory_agent_install_headless(
+    root_path: String,
+    agent: Option<String>,
+    dry_run: bool,
+) -> io::Result<CliResponse> {
+    let result = mdx_lib::memory_agent_setup::memory_agent_install(
+        root_path.clone(),
+        mdx_lib::memory_agent_setup::MemoryAgentCommandRequest {
+            agent,
+            dry_run,
+            keep_data: false,
+        },
+    )?;
+    Ok(CliResponse {
+        ok: true,
+        root_path: Some(root_path),
+        content: Some(result.summary),
+        ..CliResponse::default()
+    })
+}
+
+fn execute_memory_agent_repair_headless(
+    root_path: String,
+    agent: Option<String>,
+    dry_run: bool,
+) -> io::Result<CliResponse> {
+    let result = mdx_lib::memory_agent_setup::memory_agent_repair(
+        root_path.clone(),
+        mdx_lib::memory_agent_setup::MemoryAgentCommandRequest {
+            agent,
+            dry_run,
+            keep_data: false,
+        },
+    )?;
+    Ok(CliResponse {
+        ok: true,
+        root_path: Some(root_path),
+        content: Some(result.summary),
+        ..CliResponse::default()
+    })
+}
+
+fn execute_memory_agent_uninstall_headless(
+    root_path: String,
+    agent: Option<String>,
+    keep_data: bool,
+    dry_run: bool,
+) -> io::Result<CliResponse> {
+    let result = mdx_lib::memory_agent_setup::memory_agent_uninstall(
+        root_path.clone(),
+        mdx_lib::memory_agent_setup::MemoryAgentCommandRequest {
+            agent,
+            dry_run,
+            keep_data,
+        },
+    )?;
+    Ok(CliResponse {
+        ok: true,
+        root_path: Some(root_path),
+        content: Some(result.summary),
+        ..CliResponse::default()
+    })
+}
+
+fn execute_memory_agent_status_headless(
+    root_path: String,
+    agent: Option<String>,
+) -> io::Result<CliResponse> {
+    let statuses = mdx_lib::memory_agent_setup::memory_agent_status(root_path.clone(), agent)?;
+    Ok(CliResponse {
+        ok: true,
+        root_path: Some(root_path),
+        memory_integrations: Some(statuses),
+        ..CliResponse::default()
+    })
+}
+
+fn execute_memory_agent_doctor_headless(
+    root_path: String,
+    agent: Option<String>,
+) -> io::Result<CliResponse> {
+    let report = mdx_lib::memory_agent_setup::memory_agent_doctor(root_path.clone(), agent)?;
+    Ok(CliResponse {
+        ok: true,
+        root_path: Some(root_path),
+        memory_doctor: Some(report),
+        ..CliResponse::default()
+    })
+}
+
+fn execute_memory_migrate_headless(
+    command: &MemoryMigrateCommand,
+    root_path: String,
+) -> io::Result<CliResponse> {
+    match command {
+        MemoryMigrateCommand::Storage {
+            to,
+            target,
+            dry_run,
+            resume,
+        } => Ok(CliResponse {
+            ok: true,
+            root_path: Some(root_path),
+            content: Some(format!(
+                "memory storage migration planned: to={to} target={} dry_run={dry_run} resume={resume}",
+                target.as_deref().unwrap_or("default")
+            )),
+            ..CliResponse::default()
+        }),
+    }
+}
+
 fn execute_memory_index_headless(command: &MemoryIndexCommand, root_path: String) -> CliResponse {
     match command {
         MemoryIndexCommand::Status => match memory::memory_index_status(root_path.clone()) {
@@ -1505,6 +1839,13 @@ fn response_from_io_error(error: &io::Error) -> CliResponse {
     CliResponse::error(code, message)
 }
 
+fn workspace_error_to_io(error: mdx_lib::WorkspaceError) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::Other,
+        format!("{}: {}", error.error_code(), error),
+    )
+}
+
 fn print_response(command: CommandLine, response: CliResponse) -> ExitCode {
     if !response.ok {
         let json = serde_json::to_string(&response)
@@ -1524,7 +1865,8 @@ fn print_response(command: CommandLine, response: CliResponse) -> ExitCode {
                 } | MemoryCommand::Show { .. }
                     | MemoryCommand::Thread {
                         command: MemoryThreadCommand::Show { .. },
-                    },
+                    }
+                    | MemoryCommand::Hook { .. },
                 ..
             }
             | CommandLine::LlmWiki {
@@ -1576,6 +1918,10 @@ fn success_output(command: &CommandLine, response: &CliResponse) -> String {
             .as_ref()
             .map(render_memory_distill)
             .unwrap_or_default(),
+        CommandLine::Memory {
+            command: MemoryCommand::Hook { .. },
+            ..
+        } => response.content.clone().unwrap_or_default(),
         _ => serde_json::to_string(response).unwrap_or_else(|_| "{\"ok\":true}".into()),
     }
 }
@@ -2392,13 +2738,28 @@ mod tests {
         let root = TempDir::new().unwrap();
         let command = CommandLine::Memory {
             root: Some(root.path().to_string_lossy().into_owned()),
-            command: MemoryCommand::Status { json: false },
+            command: MemoryCommand::Status {
+                json: false,
+                agent: None,
+            },
         };
 
         assert_eq!(
             memory_root_override(&command).unwrap(),
             Some(root.path().to_string_lossy().into_owned())
         );
+    }
+
+    #[test]
+    fn memory_status_agent_without_root_is_invalid_input() {
+        let parsed =
+            Cli::try_parse_from(["mdx-cli", "memory", "status", "--agent", "codex"]).unwrap();
+        let error = request_from_command(&parsed.command).unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        assert!(error
+            .to_string()
+            .contains("memory status --agent requires --root <workspace>"));
     }
 
     #[test]
@@ -2679,39 +3040,31 @@ mod tests {
             .iter()
             .find(|change| change.path.ends_with(".codey/skills/mdx-memory/SKILL.md"))
             .expect("codex skill change");
+        assert!(skill.contents.contains("## Agent-Time Memory Extraction"));
         assert!(skill
             .contents
-            .contains("## Agent-Time Memory Extraction"));
-        assert!(skill.contents.contains(
-            "Extract and write durable memories during active conversation turns"
-        ));
+            .contains("Extract and write durable memories during active conversation turns"));
         assert!(skill.contents.contains(
             "Proactively save clear, durable, low-risk facts, preferences, decisions, project constraints, and reusable lessons with `memory_add` during the active turn."
         ));
-        assert!(skill.contents.contains(
-            "Ask before saving sensitive or uncertain information."
-        ));
+        assert!(skill
+            .contents
+            .contains("Ask before saving sensitive or uncertain information."));
         assert!(skill.contents.contains(
             "When the `memory_inbox_add` MCP tool is available, use it to create inbox review candidates for sensitive or uncertain information"
         ));
-        assert!(skill.contents.contains(
-            "Do not wait for background capture, thread archival, or pre-compact hooks"
-        ));
+        assert!(skill
+            .contents
+            .contains("Do not wait for background capture, thread archival, or pre-compact hooks"));
         assert!(skill.contents.contains("## Conversation"));
         assert!(skill.contents.contains("## Raw Codex JSONL"));
-        assert!(!skill
-            .contents
-            .contains("readable `## Message N` sections"));
+        assert!(!skill.contents.contains("readable `## Message N` sections"));
         let claude = changes
             .iter()
             .find(|change| change.path.ends_with(".claude/CLAUDE.md"))
             .expect("claude memory block change");
-        assert!(claude
-            .contents
-            .contains("during active conversation turns"));
-        assert!(claude
-            .contents
-            .contains("clear, durable, low-risk facts"));
+        assert!(claude.contents.contains("during active conversation turns"));
+        assert!(claude.contents.contains("clear, durable, low-risk facts"));
         assert!(claude
             .contents
             .contains("Ask before saving sensitive or uncertain information"));
@@ -2725,21 +3078,17 @@ mod tests {
             .iter()
             .find(|change| change.path.ends_with(".cursor/rules/mdx-memory.mdc"))
             .expect("cursor memory rule change");
-        assert!(cursor
-            .contents
-            .contains("during active conversation turns"));
-        assert!(cursor
-            .contents
-            .contains("clear, durable, low-risk facts"));
+        assert!(cursor.contents.contains("during active conversation turns"));
+        assert!(cursor.contents.contains("clear, durable, low-risk facts"));
         assert!(cursor
             .contents
             .contains("Ask before saving sensitive or uncertain information"));
         assert!(cursor
             .contents
             .contains("use the `memory_inbox_add` MCP tool to create inbox review candidates for sensitive or uncertain information"));
-        assert!(cursor
-            .contents
-            .contains("When practical, call `memory_search` before `memory_add` to avoid duplicate memories."));
+        assert!(cursor.contents.contains(
+            "When practical, call `memory_search` before `memory_add` to avoid duplicate memories."
+        ));
         assert!(cursor
             .contents
             .contains("Do not wait for background capture, thread archival, or pre-compact hooks"));
@@ -2748,6 +3097,55 @@ mod tests {
         assert!(summary.contains(".claude/hooks/hooks.json"));
         assert!(summary.contains(".cursor/hooks.json"));
         assert!(!home.path().join(".codey/config.toml").exists());
+    }
+
+    #[test]
+    fn memory_agent_commands_reject_invalid_agent_names() {
+        fn request() -> mdx_lib::memory_agent_setup::MemoryAgentCommandRequest {
+            mdx_lib::memory_agent_setup::MemoryAgentCommandRequest {
+                agent: Some("unknown".to_string()),
+                dry_run: true,
+                keep_data: false,
+            }
+        }
+
+        let root = TempDir::new().unwrap();
+        let root_path = root.path().to_string_lossy().into_owned();
+        let home = TempDir::new().unwrap();
+        let _env = CodexCaptureEnvGuard::use_home_and_session_dirs(home.path(), "");
+        let install_error =
+            mdx_lib::memory_agent_setup::memory_agent_install(root_path.clone(), request())
+                .unwrap_err();
+        let repair_error =
+            mdx_lib::memory_agent_setup::memory_agent_repair(root_path.clone(), request())
+                .unwrap_err();
+        let uninstall_error =
+            mdx_lib::memory_agent_setup::memory_agent_uninstall(root_path.clone(), request())
+                .unwrap_err();
+        let status_error = mdx_lib::memory_agent_setup::memory_agent_status(
+            root_path.clone(),
+            Some("unknown".to_string()),
+        )
+        .unwrap_err();
+        let doctor_error = mdx_lib::memory_agent_setup::memory_agent_doctor(
+            root_path,
+            Some("unknown".to_string()),
+        )
+        .unwrap_err();
+
+        for error in [
+            install_error,
+            repair_error,
+            uninstall_error,
+            status_error,
+            doctor_error,
+        ] {
+            assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+            assert!(error.to_string().contains("invalid memory agent 'unknown'"));
+        }
+        assert!(!home.path().join(".codey/config.toml").exists());
+        assert!(!home.path().join(".claude/CLAUDE.md").exists());
+        assert!(!home.path().join(".cursor/rules/mdx-memory.mdc").exists());
     }
 
     #[test]

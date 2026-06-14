@@ -11,14 +11,15 @@ pub use crate::memory_models::{
     InboxReviewResult, InitializeMemoryResult, MemoryAddRequest, MemoryCaptureCandidate,
     MemoryCaptureConfig, MemoryCaptureImportRequest, MemoryCaptureImportResult,
     MemoryCaptureScanRequest, MemoryCaptureScanResult, MemoryConfig, MemoryDistillConfig,
-    MemoryDistillRequest, MemoryDistillResult, MemoryEmbeddingConfig, MemoryExportRequest,
-    MemoryExportResult, MemoryFrontmatter, MemoryHookEventRequest, MemoryHookEventResponse,
-    MemoryImportRequest, MemoryImportResult, MemoryIndexSearchItem, MemoryIndexSearchRequest,
-    MemoryIndexSearchResult, MemoryIndexStatus, MemoryListFilter, MemoryPromoteRequest,
-    MemoryPromoteResult, MemoryRecallConfig, MemoryRecord, MemoryRepairRequest, MemoryRepairResult,
-    MemorySummary, MemoryThreadFrontmatter, MemoryThreadRecord, MemoryWorkspaceStatus,
-    RecallMemoryItem, RecallRequest, RecallResult, ThreadIndex, ThreadIndexEntry, ThreadListFilter,
-    ThreadListItem, ThreadSaveRequest, ThreadSaveResult,
+    MemoryDistillRequest, MemoryDistillResult, MemoryDoctorReport, MemoryEmbeddingConfig,
+    MemoryExportRequest, MemoryExportResult, MemoryFrontmatter, MemoryHookEventRequest,
+    MemoryHookEventResponse, MemoryImportRequest, MemoryImportResult, MemoryIndexSearchItem,
+    MemoryIndexSearchRequest, MemoryIndexSearchResult, MemoryIndexStatus, MemoryIntegrationStatus,
+    MemoryListFilter, MemoryPromoteRequest, MemoryPromoteResult, MemoryRecallConfig, MemoryRecord,
+    MemoryRepairRequest, MemoryRepairResult, MemorySummary, MemoryThreadFrontmatter,
+    MemoryThreadRecord, MemoryWorkspaceStatus, RecallMemoryItem, RecallRequest, RecallResult,
+    ThreadIndex, ThreadIndexEntry, ThreadListFilter, ThreadListItem, ThreadSaveRequest,
+    ThreadSaveResult,
 };
 use crate::models::WorkspaceError;
 use crate::path_guard::canonicalize_workspace_root;

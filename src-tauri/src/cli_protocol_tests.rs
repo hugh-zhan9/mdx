@@ -4,6 +4,14 @@ use crate::cli_protocol::{
 };
 use crate::memory::MemoryWorkspaceStatus;
 
+mod mdx_cli_for_tests {
+    #![allow(dead_code)]
+
+    use crate as mdx_lib;
+
+    include!("bin/mdx_cli.rs");
+}
+
 #[test]
 fn parses_open_and_save_commands() {
     let open: CliRequest = serde_json::from_str(r#"{"cmd":"open","path":"/tmp/ws/a.md"}"#).unwrap();
@@ -57,6 +65,49 @@ fn parses_llm_wiki_query_and_search_commands() {
 fn parses_llm_wiki_status_request() {
     let request: CliRequest = serde_json::from_str(r#"{"cmd":"llm-wiki-status"}"#).unwrap();
     assert_eq!(request, CliRequest::LlmWikiStatus);
+}
+
+#[test]
+fn parses_memory_hook_command_without_desktop_socket() {
+    let command = mdx_cli_for_tests::parse_command_for_test([
+        "mdx-cli",
+        "memory",
+        "--root",
+        "/tmp/ws",
+        "hook",
+        "codex",
+        "UserPromptSubmit",
+        "--deadline-ms",
+        "400",
+    ])
+    .unwrap();
+
+    let debug = format!("{command:?}");
+    assert!(debug.contains("Hook"));
+    assert!(debug.contains("codex"));
+    assert!(debug.contains("UserPromptSubmit"));
+}
+
+#[test]
+fn parses_memory_migrate_storage_dry_run() {
+    let command = mdx_cli_for_tests::parse_command_for_test([
+        "mdx-cli",
+        "memory",
+        "--root",
+        "/tmp/ws",
+        "migrate",
+        "storage",
+        "--to",
+        "postgres",
+        "--dry-run",
+    ])
+    .unwrap();
+
+    let debug = format!("{command:?}");
+    assert!(debug.contains("Migrate"));
+    assert!(debug.contains("Storage"));
+    assert!(debug.contains("postgres"));
+    assert!(debug.contains("dry_run: true"));
 }
 
 #[test]

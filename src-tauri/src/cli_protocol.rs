@@ -340,6 +340,10 @@ pub struct CliResponse {
     pub memory_capture_import: Option<crate::memory::MemoryCaptureImportResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memory_capture_scan: Option<crate::memory::MemoryCaptureScanResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_integrations: Option<Vec<crate::memory::MemoryIntegrationStatus>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_doctor: Option<crate::memory::MemoryDoctorReport>,
 }
 
 impl CliResponse {
