@@ -497,6 +497,117 @@ fn memory_initialize_writes_expected_default_config() {
 }
 
 #[test]
+fn memory_default_config_uses_sqlite_and_agent_backend_defaults() {
+    let config = crate::memory::default_memory_config();
+
+    assert_eq!(config.version, 2);
+    assert!(config.memory.enabled);
+    assert_eq!(config.storage.backend, "sqlite");
+    assert!(config.projection.enabled);
+    assert!(!config.agent_backend.capture_enabled);
+    assert!(config.agent_backend.recall_injection_enabled);
+    assert!(config.agent_backend.distill_enabled);
+    assert!(!config.agent_backend.auto_accept);
+    assert!(config.agents.codex.enabled == false);
+    assert!(config.agents.claude.enabled == false);
+    assert!(config.agents.cursor.enabled == false);
+}
+
+#[test]
+fn partial_memory_config_deserialization_uses_nested_defaults() {
+    let config: crate::memory_models::MemoryConfig = serde_json::from_str(
+        r#"{
+  "version": 2,
+  "agent_backend": { "capture_enabled": true },
+  "agents": { "claude": { "enabled": true } },
+  "provider": { "model": "gpt-4.1-mini" }
+}
+"#,
+    )
+    .unwrap();
+
+    assert!(config.agent_backend.capture_enabled);
+    assert!(config.agent_backend.enabled);
+    assert!(config.agent_backend.recall_injection_enabled);
+    assert!(config.agent_backend.distill_enabled);
+    assert!(!config.agent_backend.auto_accept);
+    assert_eq!(config.agent_backend.context_byte_budget, 4096);
+    assert!(config.agents.claude.enabled);
+    assert!(!config.agents.claude.paused);
+    assert!(!config.agents.codex.enabled);
+    assert!(!config.agents.cursor.enabled);
+    assert_eq!(config.provider.mode, "reuse_llm");
+    assert_eq!(config.provider.model.as_deref(), Some("gpt-4.1-mini"));
+
+    let config: crate::memory_models::MemoryConfig = serde_json::from_str(
+        r#"{
+  "version": 2,
+  "recall": { "embeddings": {} }
+}
+"#,
+    )
+    .unwrap();
+
+    assert!(!config.recall.embeddings.enabled);
+}
+
+#[test]
+fn hard_disabled_capture_disables_db_spool_queue_and_projection() {
+    let mut config = crate::memory::default_memory_config();
+    config.agent_backend.capture_enabled = false;
+
+    let resolved = crate::memory_config::resolve_memory_feature(
+        &config,
+        crate::memory_config::MemoryFeature::Capture,
+        Some("codex"),
+    );
+
+    assert!(!resolved.enabled);
+    assert_eq!(resolved.reason.as_deref(), Some("capture_disabled"));
+    assert!(!resolved.allow_db_write);
+    assert!(!resolved.allow_spool_write);
+    assert!(!resolved.allow_enqueue);
+    assert!(!resolved.allow_projection);
+}
+
+#[test]
+fn claude_code_source_uses_claude_agent_shutdown() {
+    let mut config = crate::memory::default_memory_config();
+    config.agent_backend.capture_enabled = true;
+
+    let resolved = crate::memory_config::resolve_memory_feature(
+        &config,
+        crate::memory_config::MemoryFeature::Capture,
+        Some("claude-code"),
+    );
+
+    assert!(!resolved.enabled);
+    assert_eq!(resolved.reason.as_deref(), Some("claude_disabled"));
+}
+
+#[test]
+fn recall_injection_disabled_allows_capture_without_enqueue() {
+    let mut config = crate::memory::default_memory_config();
+    config.agent_backend.recall_injection_enabled = false;
+
+    let resolved = crate::memory_config::resolve_memory_feature(
+        &config,
+        crate::memory_config::MemoryFeature::RecallInjection,
+        None,
+    );
+
+    assert!(!resolved.enabled);
+    assert_eq!(
+        resolved.reason.as_deref(),
+        Some("recall_injection_disabled")
+    );
+    assert!(resolved.allow_db_write);
+    assert!(resolved.allow_spool_write);
+    assert!(!resolved.allow_enqueue);
+    assert!(resolved.allow_projection);
+}
+
+#[test]
 fn memory_export_writes_manifest_and_import_dry_run_reports_records() {
     let root = tempdir().unwrap();
     let target = tempdir().unwrap();

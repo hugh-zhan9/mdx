@@ -33,6 +33,7 @@ pub mod memory;
 pub mod memory_agent_setup;
 mod memory_bundle;
 mod memory_capture;
+pub mod memory_config;
 pub mod memory_daemon;
 mod memory_distill;
 mod memory_fs;

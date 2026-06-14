@@ -83,16 +83,178 @@ pub struct MemoryImportResult {
 #[serde(rename_all = "snake_case")]
 pub struct MemoryConfig {
     pub version: u32,
+    #[serde(default)]
+    pub memory: MemoryMasterConfig,
+    #[serde(default)]
     pub recall: MemoryRecallConfig,
+    #[serde(default)]
     pub distill: MemoryDistillConfig,
+    #[serde(default)]
     pub capture: MemoryCaptureConfig,
+    #[serde(default)]
+    pub storage: MemoryStorageConfig,
+    #[serde(default)]
+    pub projection: MemoryProjectionConfig,
+    #[serde(default)]
+    pub agent_backend: MemoryAgentBackendConfig,
+    #[serde(default)]
+    pub agents: MemoryAgentsConfig,
+    #[serde(default)]
+    pub provider: MemoryProviderConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryMasterConfig {
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+}
+
+impl Default for MemoryMasterConfig {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryStorageConfig {
+    #[serde(default = "default_storage_backend")]
+    pub backend: String,
+    #[serde(default)]
+    pub sqlite_path: Option<String>,
+    #[serde(default)]
+    pub postgres_url_ref: Option<String>,
+}
+
+impl Default for MemoryStorageConfig {
+    fn default() -> Self {
+        Self {
+            backend: default_storage_backend(),
+            sqlite_path: None,
+            postgres_url_ref: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryProjectionConfig {
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+}
+
+impl Default for MemoryProjectionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_enabled(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryAgentBackendConfig {
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub capture_enabled: bool,
+    #[serde(default = "default_enabled")]
+    pub recall_injection_enabled: bool,
+    #[serde(default = "default_enabled")]
+    pub distill_enabled: bool,
+    #[serde(default)]
+    pub auto_accept: bool,
+    #[serde(default = "default_agent_context_byte_budget")]
+    pub context_byte_budget: usize,
+}
+
+impl Default for MemoryAgentBackendConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_enabled(),
+            capture_enabled: false,
+            recall_injection_enabled: default_enabled(),
+            distill_enabled: default_enabled(),
+            auto_accept: false,
+            context_byte_budget: default_agent_context_byte_budget(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryAgentsConfig {
+    #[serde(default)]
+    pub codex: MemoryAgentConfig,
+    #[serde(default)]
+    pub claude: MemoryAgentConfig,
+    #[serde(default)]
+    pub cursor: MemoryAgentConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryAgentConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub paused: bool,
+}
+
+impl Default for MemoryAgentConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            paused: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryProviderConfig {
+    #[serde(default = "default_provider_mode")]
+    pub mode: String,
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+}
+
+impl Default for MemoryProviderConfig {
+    fn default() -> Self {
+        Self {
+            mode: default_provider_mode(),
+            provider: None,
+            model: None,
+        }
+    }
+}
+
+fn default_enabled() -> bool {
+    true
+}
+
+fn default_storage_backend() -> String {
+    "sqlite".to_string()
+}
+
+fn default_agent_context_byte_budget() -> usize {
+    4096
+}
+
+fn default_provider_mode() -> String {
+    "reuse_llm".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub struct MemoryRecallConfig {
+    #[serde(default = "default_recall_limit")]
     #[serde(alias = "defaultLimit")]
     pub default_limit: usize,
+    #[serde(default = "default_recall_context_byte_budget")]
     #[serde(alias = "contextByteBudget")]
     pub context_byte_budget: usize,
     #[serde(default = "default_half_life_days")]
@@ -102,9 +264,29 @@ pub struct MemoryRecallConfig {
     pub embeddings: MemoryEmbeddingConfig,
 }
 
+impl Default for MemoryRecallConfig {
+    fn default() -> Self {
+        Self {
+            default_limit: default_recall_limit(),
+            context_byte_budget: default_recall_context_byte_budget(),
+            half_life_days: default_half_life_days(),
+            embeddings: MemoryEmbeddingConfig::default(),
+        }
+    }
+}
+
+fn default_recall_limit() -> usize {
+    10
+}
+
+fn default_recall_context_byte_budget() -> usize {
+    65_536
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub struct MemoryEmbeddingConfig {
+    #[serde(default)]
     pub enabled: bool,
 }
 
@@ -115,9 +297,12 @@ fn default_half_life_days() -> u32 {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub struct MemoryDistillConfig {
+    #[serde(default)]
     pub enabled: bool,
+    #[serde(default = "default_distill_min_messages")]
     #[serde(alias = "minMessages")]
     pub min_messages: usize,
+    #[serde(default = "default_distill_skip_patterns")]
     #[serde(alias = "skipPatterns")]
     pub skip_patterns: Vec<String>,
     #[serde(default)]
@@ -129,6 +314,26 @@ pub struct MemoryDistillConfig {
         deserialize_with = "confidence_threshold_format::deserialize"
     )]
     pub confidence_threshold: u8,
+}
+
+impl Default for MemoryDistillConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            min_messages: default_distill_min_messages(),
+            skip_patterns: default_distill_skip_patterns(),
+            auto_accept: false,
+            confidence_threshold: default_confidence_threshold(),
+        }
+    }
+}
+
+fn default_distill_min_messages() -> usize {
+    4
+}
+
+fn default_distill_skip_patterns() -> Vec<String> {
+    vec!["^Running terminal command".to_string()]
 }
 
 fn default_confidence_threshold() -> u8 {
@@ -190,8 +395,19 @@ mod confidence_threshold_format {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub struct MemoryCaptureConfig {
+    #[serde(default)]
     pub enabled: bool,
+    #[serde(default)]
     pub sources: Vec<String>,
+}
+
+impl Default for MemoryCaptureConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            sources: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

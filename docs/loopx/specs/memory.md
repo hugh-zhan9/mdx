@@ -22,7 +22,7 @@
 2. `llm-wiki query` **不得** 默认读取 `memory/threads/` 全文。
 3. `memory recall` **不得** 默认读取 `wiki/` 全文；需要深度/wiki 知识时调用方显式调用 `llm-wiki query`。
 4. Thread → Wiki 只能通过 `memory promote`（复制到 `raw/promoted/` 后可选 ingest）。
-5. Markdown 文件是 source of truth；`.mdx/search.sqlite` 是可选投影。
+5. In agent-backend mode, the runtime database is the source of truth; Markdown under `memory/**` is an async readable projection and import/export compatibility layer.
 
 ## Thread Contract
 
@@ -164,7 +164,7 @@ confidence: float
 - Do **not** scan thread bodies.
 - Use `.mdx/search.sqlite` as a rebuildable projection when available; fallback scan must return a degraded warning instead of failing recall.
 - When `include_threads: true`, return matching thread summaries by title, thread id, or path. Thread body text is not injected into recall output by default.
-- Optional vector rerank may be enabled by config, but Markdown remains the source of truth.
+- Optional vector rerank may be enabled by config, using the configured runtime source of truth.
 
 ## Agent-Time Extraction Contract
 
@@ -189,8 +189,10 @@ confidence: float
 - Rebuild command: `mdx-cli memory index rebuild`.
 - Status command: `mdx-cli memory index status`.
 - SQLite path: `.mdx/search.sqlite`.
-- Rebuild scans Markdown sources and can restore a missing or dirty projection.
-- Recall/search must not treat SQLite as the source of truth.
+- In agent-backend mode, the runtime database is the source of truth; Markdown under `memory/**` is an async readable projection and import/export compatibility layer.
+- Existing Markdown-first workspaces must be imported into the runtime database before DB-first writes begin.
+- If DB records and Markdown projection disagree, repair/rebuild uses DB records as canonical and reports projection conflicts.
+- Rebuild scans canonical sources and can restore a missing or dirty projection.
 - If a Markdown source write succeeds but SQLite projection sync fails, persist an out-of-band dirty marker outside SQLite.
 - Recall/search/status must treat a dirty marker or non-clean index status as degraded even when `.mdx/search.sqlite` is readable, and recall must fallback to Markdown with `index_degraded=true`.
 - A successful index rebuild clears the dirty marker.
@@ -251,7 +253,24 @@ Path: `.mdx/memory-config.json`
 
 ```json
 {
-  "version": 1,
+  "version": 2,
+  "memory": { "enabled": true },
+  "storage": { "backend": "sqlite" },
+  "projection": { "enabled": true },
+  "agent_backend": {
+    "enabled": true,
+    "capture_enabled": false,
+    "recall_injection_enabled": true,
+    "distill_enabled": true,
+    "auto_accept": false,
+    "context_byte_budget": 4096
+  },
+  "agents": {
+    "codex": { "enabled": false, "paused": false },
+    "claude": { "enabled": false, "paused": false },
+    "cursor": { "enabled": false, "paused": false }
+  },
+  "provider": { "mode": "reuse_llm" },
   "recall": {
     "default_limit": 10,
     "context_byte_budget": 65536,
@@ -271,7 +290,7 @@ Path: `.mdx/memory-config.json`
 
 `memory recall` reads `.mdx/memory-config.json` for omitted `limit`, omitted `byte_budget`, and recency `half_life_days`.
 
-Config fields use snake_case in JSON. `confidence_threshold` is serialized as an integer percentage (`85` means 0.85).
+Config fields use snake_case in JSON. Missing nested V2 fields use defaults. `confidence_threshold` is serialized as an integer percentage (`85` means 0.85).
 
 ## CLI Commands
 

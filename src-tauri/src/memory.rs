@@ -288,7 +288,8 @@ pub(crate) fn repair_memory_workspace(
 
 pub(crate) fn default_memory_config() -> MemoryConfig {
     MemoryConfig {
-        version: 1,
+        version: 2,
+        memory: Default::default(),
         recall: MemoryRecallConfig {
             default_limit: 10,
             context_byte_budget: 65_536,
@@ -306,6 +307,11 @@ pub(crate) fn default_memory_config() -> MemoryConfig {
             enabled: false,
             sources: Vec::new(),
         },
+        storage: Default::default(),
+        projection: Default::default(),
+        agent_backend: Default::default(),
+        agents: Default::default(),
+        provider: Default::default(),
     }
 }
 
