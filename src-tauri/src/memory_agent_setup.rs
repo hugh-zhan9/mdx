@@ -639,7 +639,7 @@ Codex currently relies on explicit MCP/CLI calls for pre-compact capture unless 
 
 Use full thread archival only when preserving the original conversation matters. A thread is the raw/original conversation record, not the default memory summary.
 
-For Codex local sessions, prefer `memory capture scan --source codex --import`. It discovers `rollout-*.jsonl` transcripts from `MDX_CODEX_SESSION_DIRS`, `~/.codex/sessions`, and `~/.codex/archived_sessions`, then saves them under `memory/threads/codex/`. Imported Codex threads include readable `## Message N` sections plus a complete `## Raw Codex JSONL` block.
+For Codex local sessions, prefer `memory capture scan --source codex --import`. It discovers `rollout-*.jsonl` transcripts from `MDX_CODEX_SESSION_DIRS`, `~/.codex/sessions`, and `~/.codex/archived_sessions`, then saves them under `memory/threads/codex/`. Imported Codex threads preserve the original conversation under `## Conversation` plus a complete `## Raw Codex JSONL` block.
 
 Use `memory_thread_save` when you already have a transcript file or manually assembled original conversation. Use `memory_thread_get` or `memory_thread_show` when the user asks to inspect the original thread. Use `memory_distill` after saving or importing a thread when the user wants reusable long-term memories extracted. Use `memory_promote` only when the user explicitly asks to promote memory into wiki/raw material.
 

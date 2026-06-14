@@ -2697,6 +2697,11 @@ mod tests {
         assert!(skill.contents.contains(
             "Do not wait for background capture, thread archival, or pre-compact hooks"
         ));
+        assert!(skill.contents.contains("## Conversation"));
+        assert!(skill.contents.contains("## Raw Codex JSONL"));
+        assert!(!skill
+            .contents
+            .contains("readable `## Message N` sections"));
         let claude = changes
             .iter()
             .find(|change| change.path.ends_with(".claude/CLAUDE.md"))
