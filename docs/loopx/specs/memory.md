@@ -196,9 +196,14 @@ confidence: float
 
 ## Capture Contract
 
-- Commands: `memory capture scan --source <source>` and `memory capture import --source <source> --file <path> [--distill]`.
+- Commands: `memory capture scan --source <source> [--import] [--distill]` and `memory capture import --source <source> --file <path> [--distill]`.
 - Supported capture sources are `codex`, `cursor`, `claude-code`, and `manual`.
 - Import writes a thread snapshot first. If optional distill fails, the saved thread remains visible and the result reports partial distill failure.
+- Codex scan discovers local `rollout-*.jsonl` transcripts under `MDX_CODEX_SESSION_DIRS`, `~/.codex/sessions`, and `~/.codex/archived_sessions`.
+- Codex scan returns both legacy `paths` and structured `candidates`. Candidate paths are importable external file paths, not workspace-relative paths.
+- `memory capture scan --source codex --import` imports every discovered transcript as a thread snapshot. With `--distill`, distill failure must make the scan/import command fail instead of silently returning scan success.
+- Codex thread imports must preserve readable `## Message N` sections and the complete original source under `## Raw Codex JSONL`.
+- Codex scan/import is explicit thread archival over local transcript files. It is not a Codex pre-compact hook and must not be documented as automatic compression-time capture.
 
 ## HTTP And MCP Contract
 

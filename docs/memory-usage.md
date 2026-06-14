@@ -206,6 +206,29 @@ mdx-cli memory --root /path/to/workspace thread list --source codex
 mdx-cli memory --root /path/to/workspace thread show codex:memory-design-001
 ```
 
+Codex 本地会话可以从 Codex session JSONL 自动发现并归档：
+
+```bash
+mdx-cli memory --root /path/to/workspace capture scan --source codex
+mdx-cli memory --root /path/to/workspace capture scan --source codex --import
+```
+
+默认扫描目录：
+
+```text
+~/.codex/sessions
+~/.codex/archived_sessions
+```
+
+需要覆盖或追加扫描目录时，设置 `MDX_CODEX_SESSION_DIRS`。该变量使用系统 path-list 分隔符，例如 macOS/Linux 上用 `:`：
+
+```bash
+MDX_CODEX_SESSION_DIRS="/path/to/sessions:/path/to/archived" \
+  mdx-cli memory --root /path/to/workspace capture scan --source codex --import
+```
+
+`capture scan --source codex --import` 会把发现的 `rollout-*.jsonl` 保存到 `memory/threads/codex/`。保存的 thread 同时包含可读的 `## Message N` 段落和 `## Raw Codex JSONL` 原始 JSONL 块，因此可以保留完整 Codex 会话原文。加 `--distill` 时会在导入后尝试蒸馏；如果蒸馏失败，命令会返回失败，不会把 distill failure 静默当作成功。
+
 ## Agent 集成配置
 
 Memory 可以为 Codex/Claude/Cursor 配置 MCP、skill/rule，以及 Claude/Cursor 的 pre-compact hook：
@@ -244,9 +267,9 @@ mdx-cli memory --root /path/to/workspace agent setup --all \
 - Claude：安装 `mdx-memory` skill，追加 `~/.claude/CLAUDE.md` 提示，配置 `PreCompact` hook。
 - Cursor：写入 `~/.cursor/mcp.json`、`~/.cursor/rules/mdx-memory.mdc`、`mdx-memory` skill，并配置 `preCompact` hook。
 
-Pre-compact hook 的语义是“压缩前自动沉淀 memory”：当 hook 输入包含 `transcript_path` 时，会先 `capture import --distill`，再对同一 thread 执行 `distill --accept`，让结果进入 active memory。实现上会保存 source thread 作为溯源材料，但这不是“自动 thread 归档”入口。显式保存完整原文仍使用 `memory thread save`。
+Pre-compact hook 的语义是“压缩前自动沉淀 memory”：当 hook 输入包含 `transcript_path` 时，会先 `capture import --distill`，再对同一 thread 执行 `distill --accept`，让结果进入 active memory。实现上会保存 source thread 作为溯源材料，但这不是“自动 thread 归档”入口。显式保存完整原文使用 `memory thread save`，Codex 本地 session 使用 `capture scan --source codex --import`。
 
-Codex 当前没有已验证的 pre-compact transcript hook，因此 `agent setup --codex` 只配置 MCP 和 skill；Codex 的压缩前 capture 仍需通过 MCP/CLI 显式触发，直到 Codex 暴露可靠的 transcript hook。
+Codex 当前没有已验证的 pre-compact transcript hook，因此 `agent setup --codex` 只配置 MCP 和 skill；Codex 的压缩前 capture 仍需通过 MCP/CLI 显式触发，直到 Codex 暴露可靠的 transcript hook。Codex thread 原文归档不依赖 pre-compact hook，它通过扫描本地 Codex session JSONL 完成。
 
 ## Distill 蒸馏
 
@@ -345,6 +368,7 @@ mdx-cli memory --root /path/to/workspace distill \
 
 ```bash
 mdx-cli memory --root /path/to/workspace capture scan --source codex
+mdx-cli memory --root /path/to/workspace capture scan --source codex --import
 ```
 
 ## Promote 到 LLM Wiki

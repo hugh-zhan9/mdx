@@ -631,11 +631,17 @@ Codex currently relies on explicit MCP/CLI calls for pre-compact capture unless 
 
 ## Full Thread Archival
 
-Use `memory_thread_save` only when preserving the full original conversation matters. A thread is the raw/original conversation record, not the default memory summary. Use `memory_thread_get` or `memory_thread_show` when the user asks to inspect the original thread. Use `memory_distill` after saving a thread when the user wants reusable long-term memories extracted. Use `memory_promote` only when the user explicitly asks to promote memory into wiki/raw material.
+Use full thread archival only when preserving the original conversation matters. A thread is the raw/original conversation record, not the default memory summary.
+
+For Codex local sessions, prefer `memory capture scan --source codex --import`. It discovers `rollout-*.jsonl` transcripts from `MDX_CODEX_SESSION_DIRS`, `~/.codex/sessions`, and `~/.codex/archived_sessions`, then saves them under `memory/threads/codex/`. Imported Codex threads include readable `## Message N` sections plus a complete `## Raw Codex JSONL` block.
+
+Use `memory_thread_save` when you already have a transcript file or manually assembled original conversation. Use `memory_thread_get` or `memory_thread_show` when the user asks to inspect the original thread. Use `memory_distill` after saving or importing a thread when the user wants reusable long-term memories extracted. Use `memory_promote` only when the user explicitly asks to promote memory into wiki/raw material.
 
 CLI fallback:
 
 ```bash
+{mdx_cli} memory --root "{root_path}" capture scan --source codex
+{mdx_cli} memory --root "{root_path}" capture scan --source codex --import
 {mdx_cli} memory --root "{root_path}" thread save --source codex --title "<title>" --file <path>
 {mdx_cli} memory --root "{root_path}" thread show "<source:thread-id>"
 {mdx_cli} memory --root "{root_path}" distill --thread "<source:thread-id>" --accept
