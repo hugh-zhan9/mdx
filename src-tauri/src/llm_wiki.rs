@@ -428,6 +428,14 @@ pub fn llm_wiki_ingest_mock_output(
     write_ingest_outputs(&root, &raw_relative_path, &hash, &model, &blocks)
 }
 
+#[cfg(test)]
+pub(crate) fn parse_file_blocks_with_repair_for_test(
+    first_output: &str,
+    repair: impl FnOnce(String) -> Result<String, WorkspaceError>,
+) -> Result<Vec<crate::llm_wiki_ingest::LlmWikiFileBlock>, WorkspaceError> {
+    parse_file_blocks_with_optional_repair(first_output, repair)
+}
+
 #[tauri::command]
 pub async fn llm_wiki_ingest_raw_file(
     root_path: String,
@@ -553,7 +561,16 @@ pub(crate) fn llm_wiki_ingest_raw_file_sync_with_operation(
         }
     };
     set_operation_stage(operation_id.as_deref(), "writing_pages")?;
-    let blocks = match parse_file_blocks(&llm_output) {
+    let blocks = match parse_file_blocks_with_optional_repair(&llm_output, |repair_prompt| {
+        call_chat_completion_for_operation(
+            &config,
+            vec![
+                system_message("You repair malformed LLM Wiki file-block output."),
+                user_message(repair_prompt),
+            ],
+            operation_id.as_deref(),
+        )
+    }) {
         Ok(blocks) => blocks,
         Err(error) => {
             let _ = append_log_entry(
@@ -577,6 +594,41 @@ pub(crate) fn llm_wiki_ingest_raw_file_sync_with_operation(
     set_operation_stage(operation_id.as_deref(), "completed")?;
     finish_operation(operation_id.as_deref());
     Ok(())
+}
+
+fn build_file_block_repair_prompt(error: &WorkspaceError, output: &str) -> String {
+    format!(
+        r#"The previous LLM Wiki generation failed to parse.
+
+Parser error:
+{error}
+
+Return only valid LLM Wiki file blocks. Do not include explanations, markdown fences, or prose outside file blocks.
+
+Valid format:
+---FILE: wiki/sources/ascii-slug.md---
+# Title
+Markdown content
+---END FILE---
+
+Invalid output to repair:
+{output}
+"#
+    )
+}
+
+fn parse_file_blocks_with_optional_repair(
+    first_output: &str,
+    repair: impl FnOnce(String) -> Result<String, WorkspaceError>,
+) -> Result<Vec<crate::llm_wiki_ingest::LlmWikiFileBlock>, WorkspaceError> {
+    match parse_file_blocks(first_output) {
+        Ok(blocks) => Ok(blocks),
+        Err(first_error) => {
+            let repair_prompt = build_file_block_repair_prompt(&first_error, first_output);
+            let repaired_output = repair(repair_prompt)?;
+            parse_file_blocks(&repaired_output).map_err(|_| first_error)
+        }
+    }
 }
 
 struct RawProgressSnapshot {

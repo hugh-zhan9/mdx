@@ -9,7 +9,7 @@ use crate::llm_wiki::{
     llm_wiki_refresh_graph_sync, llm_wiki_rescan_raw_sync,
     llm_wiki_rescan_raw_sync_with_exclusions, llm_wiki_rescan_raw_sync_with_failures,
     llm_wiki_rescan_raw_sync_with_retry, llm_wiki_search, llm_wiki_update_config,
-    related_context_or_log_failure,
+    parse_file_blocks_with_repair_for_test, related_context_or_log_failure,
 };
 use crate::llm_wiki_context::{
     build_wiki_context_with_selector_output, parse_page_selection, validate_wiki_page_path,
@@ -2771,6 +2771,33 @@ fn ingest_parse_file_blocks_still_rejects_outer_prose() {
 
     assert_eq!(error.error_code(), "llm_wiki_parse_failed");
     assert!(error.to_string().contains("outside file blocks"));
+}
+
+#[test]
+fn ingest_parse_repair_recovers_missing_end_marker_once() {
+    let blocks =
+        parse_file_blocks_with_repair_for_test("---FILE: index.md---\n# Broken\n", |prompt| {
+            assert!(prompt.contains("llm wiki file block is missing end marker: index.md"));
+            assert!(prompt.contains("---FILE: index.md---"));
+            Ok("---FILE: index.md---\n# Fixed\n---END FILE---\n".to_string())
+        })
+        .unwrap();
+
+    assert_eq!(blocks.len(), 1);
+    assert_eq!(blocks[0].path, "index.md");
+    assert_eq!(blocks[0].content, "# Fixed\n");
+}
+
+#[test]
+fn ingest_parse_repair_returns_original_parse_error_when_repair_is_invalid() {
+    let error =
+        parse_file_blocks_with_repair_for_test("---FILE: index.md---\n# Broken\n", |_prompt| {
+            Ok("Still invalid prose\n".to_string())
+        })
+        .unwrap_err();
+
+    assert_eq!(error.error_code(), "llm_wiki_parse_failed");
+    assert!(error.to_string().contains("missing end marker: index.md"));
 }
 
 #[test]
