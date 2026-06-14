@@ -576,6 +576,18 @@ fn ingest_prompts_generation_requires_file_blocks_and_sources_paths() {
 }
 
 #[test]
+fn ingest_generation_prompt_rejects_markdown_wrappers_and_requires_end_markers() {
+    let prompt = build_ingest_generation_prompt("{}", "# Existing");
+
+    assert!(prompt.contains("Do not wrap the output in ```markdown or any other code fence."));
+    assert!(prompt
+        .contains("Every ---FILE: marker must have a matching exact ---END FILE--- marker."));
+    assert!(
+        prompt.contains("Before answering, verify the final non-whitespace line is ---END FILE---.")
+    );
+}
+
+#[test]
 fn ingest_generation_prompt_includes_related_existing_wiki_context() {
     let analysis = r#"{"source_summary":"new source","entities":["Karpathy"],"concepts":["LLM Wiki"],"suggested_source_slug":"note"}"#;
     let existing_context = "# Purpose\nBuild wiki\n\n# Index\n- [[concepts/llm-wiki|LLM Wiki]]\n\n---PAGE: wiki/concepts/llm-wiki.md---\n# LLM Wiki\nExisting page.\n";

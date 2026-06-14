@@ -71,6 +71,9 @@ Rules:
 - Include source provenance for factual claims.
 - If the source conflicts with existing wiki context, record the disagreement instead of erasing either side.
 - Do not write any text outside file blocks.
+- Do not wrap the output in ```markdown or any other code fence.
+- Every ---FILE: marker must have a matching exact ---END FILE--- marker.
+- Before answering, verify the final non-whitespace line is ---END FILE---.
 
 Analysis JSON:
 {analysis_json}
