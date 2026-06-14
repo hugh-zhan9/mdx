@@ -1,9 +1,9 @@
 use std::io::{self, BufRead, Write};
 
 use mdx_lib::memory::{
-    memory_add, memory_detect_workspace, memory_distill, memory_inbox_accept, memory_inbox_list,
-    memory_promote, memory_recall, memory_search, memory_thread_get, memory_thread_save,
-    memory_working_get,
+    memory_add, memory_detect_workspace, memory_distill, memory_inbox_accept, memory_inbox_add,
+    memory_inbox_list, memory_promote, memory_recall, memory_search, memory_thread_get,
+    memory_thread_save, memory_working_get, InboxAddRequest,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -16,6 +16,7 @@ const TOOLS: &[&str] = &[
     "memory_thread_save",
     "memory_thread_show",
     "memory_inbox_list",
+    "memory_inbox_add",
     "memory_inbox_accept",
     "memory_distill",
     "memory_search",
@@ -66,6 +67,34 @@ struct ThreadShowArguments {
 struct InboxListArguments {
     #[serde(default)]
     include_reviewed: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct InboxAddArguments {
+    title: String,
+    body: String,
+    source_thread: Option<String>,
+    #[serde(default)]
+    source_message_refs: Vec<String>,
+    importance: Option<f64>,
+    confidence: Option<f64>,
+    tags: Vec<String>,
+    distill_run_id: Option<String>,
+}
+
+impl From<InboxAddArguments> for InboxAddRequest {
+    fn from(arguments: InboxAddArguments) -> Self {
+        Self {
+            title: arguments.title,
+            body: arguments.body,
+            source_thread: arguments.source_thread,
+            source_message_refs: arguments.source_message_refs,
+            importance: arguments.importance,
+            confidence: arguments.confidence,
+            tags: arguments.tags,
+            distill_run_id: arguments.distill_run_id,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -283,6 +312,20 @@ fn tool_descriptor(name: &str) -> Value {
             json!({ "include_reviewed": { "type": "boolean" } }),
             json!([]),
         ),
+        "memory_inbox_add" => (
+            "Add a memory inbox candidate for sensitive, private, or uncertain memory candidates that should be reviewed before becoming durable memory.",
+            json!({
+                "title": { "type": "string" },
+                "body": { "type": "string" },
+                "source_thread": { "type": "string" },
+                "source_message_refs": { "type": "array", "items": { "type": "string" } },
+                "importance": { "type": "number" },
+                "confidence": { "type": "number" },
+                "tags": { "type": "array", "items": { "type": "string" } },
+                "distill_run_id": { "type": "string" }
+            }),
+            json!(["title", "body", "tags"]),
+        ),
         "memory_inbox_accept" => (
             "Accept a memory inbox candidate into durable memories.",
             json!({
@@ -370,6 +413,10 @@ fn dispatch_tool_call(workspace: &str, params: Value) -> Result<Value, ProtocolE
                 workspace.to_string(),
                 arguments.include_reviewed,
             ))
+        }
+        "memory_inbox_add" => {
+            let request: InboxAddArguments = parse_arguments(arguments)?;
+            memory_result(memory_inbox_add(workspace.to_string(), request.into()))
         }
         "memory_inbox_accept" => {
             let request = parse_arguments(arguments)?;
@@ -500,6 +547,33 @@ mod tests {
     }
 
     #[test]
+    fn tools_list_response_contains_memory_inbox_add() {
+        let response = handle_request(
+            "/tmp",
+            parse_request(r#"{"jsonrpc":"2.0","id":"tools","method":"tools/list"}"#).unwrap(),
+        );
+
+        assert!(response.error.is_none());
+        let tools = response.result.unwrap()["tools"]
+            .as_array()
+            .unwrap()
+            .clone();
+        let descriptor = tools
+            .iter()
+            .find(|tool| tool["name"].as_str() == Some("memory_inbox_add"))
+            .expect("missing memory_inbox_add descriptor");
+
+        assert!(descriptor["description"]
+            .as_str()
+            .unwrap()
+            .contains("Add a memory inbox candidate"));
+        assert_eq!(
+            descriptor["inputSchema"]["required"],
+            json!(["title", "body", "tags"])
+        );
+    }
+
+    #[test]
     fn tool_descriptions_guide_agent_time_memory_behavior() {
         let response = handle_request(
             "/tmp",
@@ -609,6 +683,30 @@ mod tests {
         assert_eq!(
             response.result.unwrap(),
             "# Working Memory\n\n## Focus\n- MCP startup\n"
+        );
+    }
+
+    #[test]
+    fn dispatches_memory_inbox_add_tool_call() {
+        let root = tempfile::tempdir().unwrap();
+        mdx_lib::memory::memory_initialize_workspace(root.path().to_string_lossy().into_owned())
+            .unwrap();
+        let request = parse_request(
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"memory_inbox_add","arguments":{"title":"Review inbox capture","body":"Inbox candidates can be reviewed before becoming durable memory.","tags":["workflow"]}}}"#,
+        )
+        .unwrap();
+
+        let response = handle_request(root.path().to_str().unwrap(), request);
+
+        assert!(response.error.is_none());
+        let result = response.result.unwrap();
+        assert_eq!(result["frontmatter"]["title"], "Review inbox capture");
+        assert_eq!(result["frontmatter"]["status"], "pending");
+        assert_eq!(result["frontmatter"]["source_message_refs"], json!([]));
+        assert_eq!(result["frontmatter"]["tags"], json!(["workflow"]));
+        assert_eq!(
+            result["body"],
+            "Inbox candidates can be reviewed before becoming durable memory.\n"
         );
     }
 
