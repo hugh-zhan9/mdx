@@ -12,7 +12,7 @@ const targetTriple =
   process.env.CARGO_BUILD_TARGET ||
   `${process.arch === "arm64" ? "aarch64" : "x86_64"}-apple-darwin`;
 const profile =
-  process.env.TAURI_SIDEcar_PROFILE ||
+  process.env.TAURI_SIDECAR_PROFILE ||
   (process.env.NODE_ENV === "development" ? "debug" : "release");
 
 const explicitTarget = Boolean(
