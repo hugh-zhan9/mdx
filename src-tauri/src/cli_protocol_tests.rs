@@ -351,6 +351,7 @@ fn serializes_memory_distill_response_as_snake_case_json() {
 
 #[test]
 fn serializes_memory_capture_responses_as_snake_case_json() {
+    let capture_path = "/Users/example/.codex/sessions/2026/06/14/rollout-a.jsonl";
     let response = crate::cli_protocol::CliResponse {
         ok: true,
         memory_capture_import: Some(crate::memory::MemoryCaptureImportResult {
@@ -367,10 +368,10 @@ fn serializes_memory_capture_responses_as_snake_case_json() {
         }),
         memory_capture_scan: Some(crate::memory::MemoryCaptureScanResult {
             source: "codex".to_string(),
-            status: "capture_scan_not_configured".to_string(),
-            paths: Vec::new(),
+            status: "configured".to_string(),
+            paths: vec![capture_path.to_string()],
             candidates: vec![crate::memory::MemoryCaptureCandidate {
-                path: "/tmp/codex.jsonl".to_string(),
+                path: capture_path.to_string(),
                 source: "codex".to_string(),
                 thread_id: Some("codex:abc123".to_string()),
                 title: Some("Codex".to_string()),
@@ -387,7 +388,17 @@ fn serializes_memory_capture_responses_as_snake_case_json() {
     assert!(json.contains(r#""message_count":2"#));
     assert!(json.contains(r#""distill_status":"failed""#));
     assert!(json.contains(r#""distill_error_code":"distill_unavailable""#));
-    assert!(json.contains(r#""memory_capture_scan":{"source":"codex","status":"capture_scan_not_configured","paths":[],"candidates":[{"path":"/tmp/codex.jsonl","source":"codex","thread_id":"codex:abc123","title":"Codex","started_at":"2026-06-14T00:00:00Z","modified_at":"2026-06-14T01:00:00Z","bytes":1234}]}"#));
+    let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let scan = &value["memory_capture_scan"];
+    assert_eq!(scan["source"], "codex");
+    assert_eq!(scan["status"], "configured");
+    assert_eq!(scan["paths"][0], capture_path);
+    assert_eq!(scan["candidates"][0]["path"], capture_path);
+    assert_eq!(scan["candidates"][0]["thread_id"], "codex:abc123");
+    assert_eq!(
+        scan["candidates"][0]["modified_at"],
+        "2026-06-14T01:00:00Z"
+    );
     assert!(!json.contains("messageCount"));
     assert!(!json.contains("distillStatus"));
     assert!(!json.contains("threadId"));
