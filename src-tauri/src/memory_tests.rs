@@ -4789,3 +4789,149 @@ fn inbox_reject_marks_candidate_rejected_and_list_hides_reviewed_by_default() {
         .iter()
         .any(|record| record.frontmatter.status == "rejected"));
 }
+
+#[test]
+fn agent_setup_updates_only_mdx_managed_blocks() {
+    let root = tempdir().unwrap();
+    let home = tempdir().unwrap();
+    let claude_dir = home.path().join(".claude");
+    std::fs::create_dir_all(&claude_dir).unwrap();
+    std::fs::write(
+        claude_dir.join("CLAUDE.md"),
+        format!(
+            "User intro\n\n{}\nold generated mdx block\n{}\n\nUser footer\n",
+            crate::memory_agent_setup::MDX_MEMORY_BLOCK_BEGIN,
+            crate::memory_agent_setup::MDX_MEMORY_BLOCK_END
+        ),
+    )
+    .unwrap();
+    let paths = crate::memory_agent_setup::AgentSetupPaths {
+        home: home.path().to_path_buf(),
+        mdx_cli: "mdx-cli".to_string(),
+        mdx_mcp: "mdx-mcp".to_string(),
+        hook_script: home.path().join(".mdx-memory-precompact-hook.mjs"),
+    };
+    let targets = crate::memory_agent_setup::AgentSetupTargets {
+        codex: false,
+        claude: true,
+        cursor: false,
+        hooks: true,
+    };
+
+    let changes = crate::memory_agent_setup::plan_memory_agent_setup(
+        &root.path().to_string_lossy(),
+        &targets,
+        &paths,
+    )
+    .unwrap();
+
+    let claude = changes
+        .iter()
+        .find(|change| change.path.ends_with(".claude/CLAUDE.md"))
+        .expect("claude markdown change");
+    assert!(claude.contents.contains("User intro"));
+    assert!(claude.contents.contains("User footer"));
+    assert!(!claude.contents.contains("old generated mdx block"));
+    assert!(claude
+        .contents
+        .contains(crate::memory_agent_setup::MDX_MEMORY_BLOCK_BEGIN));
+    assert!(claude.contents.contains("mdx-cli memory --root"));
+    assert!(claude
+        .contents
+        .contains(root.path().to_string_lossy().as_ref()));
+    assert!(claude.contents.contains("hook claude PreCompact"));
+}
+
+#[test]
+fn agent_setup_uninstall_removes_owned_skill_file() {
+    let home = tempdir().unwrap();
+    let skill_path = home.path().join(".claude/skills/mdx-memory/SKILL.md");
+    std::fs::create_dir_all(skill_path.parent().unwrap()).unwrap();
+    std::fs::write(&skill_path, "name: mdx-memory\n").unwrap();
+    let paths = crate::memory_agent_setup::AgentSetupPaths {
+        home: home.path().to_path_buf(),
+        mdx_cli: "mdx-cli".to_string(),
+        mdx_mcp: "mdx-mcp".to_string(),
+        hook_script: home.path().join(".mdx-memory-precompact-hook.mjs"),
+    };
+
+    let changes =
+        crate::memory_agent_setup::plan_memory_agent_uninstall(Some("claude"), &paths).unwrap();
+    let skill = changes
+        .iter()
+        .find(|change| change.path == skill_path)
+        .expect("claude skill remove change");
+    assert_eq!(
+        skill.action,
+        crate::memory_agent_setup::AgentSetupChangeAction::RemoveFile
+    );
+
+    crate::memory_agent_setup::apply_agent_setup_changes(&changes).unwrap();
+    assert!(!skill_path.exists());
+}
+
+#[test]
+fn agent_setup_claude_hook_uses_command_string() {
+    let root = tempdir().unwrap();
+    let home = tempdir().unwrap();
+    let paths = crate::memory_agent_setup::AgentSetupPaths {
+        home: home.path().to_path_buf(),
+        mdx_cli: "/tmp/mdx cli".to_string(),
+        mdx_mcp: "mdx-mcp".to_string(),
+        hook_script: home.path().join(".mdx-memory-precompact-hook.mjs"),
+    };
+    let targets = crate::memory_agent_setup::AgentSetupTargets {
+        codex: false,
+        claude: true,
+        cursor: false,
+        hooks: true,
+    };
+
+    let changes = crate::memory_agent_setup::plan_memory_agent_setup(
+        &root.path().to_string_lossy(),
+        &targets,
+        &paths,
+    )
+    .unwrap();
+    let hooks = changes
+        .iter()
+        .find(|change| change.path.ends_with(".claude/hooks/hooks.json"))
+        .expect("claude hooks change");
+    let json: serde_json::Value = serde_json::from_str(&hooks.contents).unwrap();
+    let hook = &json["hooks"]["PreCompact"][0]["hooks"][0];
+    let command = hook["command"].as_str().expect("command string");
+    assert!(command.contains("memory --root"));
+    assert!(command.contains(root.path().to_string_lossy().as_ref()));
+    assert!(command.contains("hook claude PreCompact"));
+    assert!(hook.get("args").is_none());
+}
+
+#[test]
+fn doctor_reports_codex_claude_cursor_statuses() {
+    let root = tempdir().unwrap();
+    let home = tempdir().unwrap();
+
+    let report = crate::memory_agent_setup::memory_agent_doctor_for_home(
+        &root.path().to_string_lossy(),
+        home.path(),
+    )
+    .unwrap();
+
+    assert!(!report.ok);
+    let agents = report
+        .statuses
+        .iter()
+        .map(|status| status.agent_source.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(agents, vec!["codex", "claude", "cursor"]);
+    for status in &report.statuses {
+        assert!(!status.installed);
+        assert!(!status.enabled);
+        assert!(!status.authorized);
+        assert_eq!(status.doctor_status, "not_installed_or_configured");
+    }
+    for agent in ["codex", "claude", "cursor"] {
+        assert!(report.warnings.iter().any(|warning| warning.contains(agent)
+            && warning.contains("not installed or not configured")));
+    }
+}

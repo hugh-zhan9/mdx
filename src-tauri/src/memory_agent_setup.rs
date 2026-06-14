@@ -7,6 +7,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::memory_models::{MemoryDoctorReport, MemoryIntegrationStatus};
 
+pub const MDX_MEMORY_HOOK_VERSION: &str = "1";
+pub const MDX_MEMORY_BLOCK_BEGIN: &str = "<!-- BEGIN MDX MEMORY v1 -->";
+pub const MDX_MEMORY_BLOCK_END: &str = "<!-- END MDX MEMORY -->";
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct MemoryAgentSetupRequest {
     pub codex: bool,
@@ -81,52 +85,63 @@ pub fn memory_agent_repair(
     root_path: String,
     request: MemoryAgentCommandRequest,
 ) -> io::Result<MemoryAgentSetupResult> {
-    memory_agent_setup(
-        root_path,
-        setup_request_for_agent(request.agent.as_deref(), request.dry_run)?,
-    )
+    let paths = AgentSetupPaths::resolve(None, None)?;
+    let changes = plan_memory_agent_repair(&root_path, request.agent.as_deref(), &paths)?;
+
+    if !request.dry_run {
+        apply_agent_setup_changes(&changes)?;
+    }
+
+    Ok(MemoryAgentSetupResult {
+        dry_run: request.dry_run,
+        changed_paths: changes
+            .iter()
+            .map(|change| change.path.to_string_lossy().into_owned())
+            .collect(),
+        summary: render_agent_setup_summary(&changes, request.dry_run),
+    })
 }
 
 pub fn memory_agent_uninstall(
     _root_path: String,
     request: MemoryAgentCommandRequest,
 ) -> io::Result<MemoryAgentSetupResult> {
-    let agent = normalize_agent_selector(request.agent.as_deref())?
-        .unwrap_or("all")
-        .to_string();
-    let action = if request.dry_run {
-        "would_uninstall"
-    } else {
-        "uninstall_unavailable"
-    };
+    let paths = AgentSetupPaths::resolve(None, None)?;
+    let changes = plan_memory_agent_uninstall(request.agent.as_deref(), &paths)?;
+
+    if !request.dry_run {
+        apply_agent_setup_changes(&changes)?;
+    }
+
     let data_note = if request.keep_data {
         "keeping memory data"
     } else {
-        "memory data removal is not implemented in this adapter"
+        "memory data preserved; installer uninstall only removes agent integration files"
     };
     Ok(MemoryAgentSetupResult {
         dry_run: request.dry_run,
-        changed_paths: Vec::new(),
-        summary: format!("memory agent uninstall {action}: {agent}; {data_note}"),
+        changed_paths: changes
+            .iter()
+            .map(|change| change.path.to_string_lossy().into_owned())
+            .collect(),
+        summary: format!(
+            "{}\n{data_note}",
+            render_agent_setup_summary(&changes, request.dry_run)
+        ),
     })
 }
 
 pub fn memory_agent_status(
-    _root_path: String,
+    root_path: String,
     agent: Option<String>,
 ) -> io::Result<Vec<MemoryIntegrationStatus>> {
-    Ok(agent_sources(agent.as_deref())?
+    let home = home_dir()?;
+    let report = memory_agent_doctor_for_home(&root_path, &home)?;
+    let selected = agent_sources(agent.as_deref())?;
+    Ok(report
+        .statuses
         .into_iter()
-        .map(|agent_source| MemoryIntegrationStatus {
-            agent_source,
-            installed: false,
-            enabled: false,
-            authorized: false,
-            hook_version: None,
-            last_event_at: None,
-            last_error: None,
-            doctor_status: "unknown".to_string(),
-        })
+        .filter(|status| selected.iter().any(|agent| agent == &status.agent_source))
         .collect())
 }
 
@@ -134,16 +149,24 @@ pub fn memory_agent_doctor(
     root_path: String,
     agent: Option<String>,
 ) -> io::Result<MemoryDoctorReport> {
-    let statuses = memory_agent_status(root_path, agent)?;
-    Ok(MemoryDoctorReport {
-        ok: statuses.iter().all(|status| status.doctor_status == "ok"),
-        statuses,
-        errors: Vec::new(),
-        warnings: vec![
-            "agent installer doctor is not fully implemented; returning conservative status"
-                .to_string(),
-        ],
-    })
+    let home = home_dir()?;
+    let mut report = memory_agent_doctor_for_home(&root_path, &home)?;
+    let selected = agent_sources(agent.as_deref())?;
+    report
+        .statuses
+        .retain(|status| selected.iter().any(|agent| agent == &status.agent_source));
+    report.errors.retain(|error| {
+        selected
+            .iter()
+            .any(|agent| error.to_lowercase().contains(agent))
+    });
+    report.warnings.retain(|warning| {
+        selected
+            .iter()
+            .any(|agent| warning.to_lowercase().contains(agent))
+    });
+    report.ok = report.statuses.iter().all(status_ok) && report.errors.is_empty();
+    Ok(report)
 }
 
 fn setup_request_for_agent(
@@ -175,6 +198,36 @@ fn agent_sources(agent: Option<&str>) -> io::Result<Vec<String>> {
             "claude".to_string(),
             "cursor".to_string(),
         ],
+        Some(_) => unreachable!("normalize_agent_selector returned an unsupported agent"),
+    })
+}
+
+fn targets_for_agent(agent: Option<&str>, hooks: bool) -> io::Result<AgentSetupTargets> {
+    Ok(match normalize_agent_selector(agent)? {
+        Some("codex") => AgentSetupTargets {
+            codex: true,
+            claude: false,
+            cursor: false,
+            hooks,
+        },
+        Some("claude") => AgentSetupTargets {
+            codex: false,
+            claude: true,
+            cursor: false,
+            hooks,
+        },
+        Some("cursor") => AgentSetupTargets {
+            codex: false,
+            claude: false,
+            cursor: true,
+            hooks,
+        },
+        Some("all") | None => AgentSetupTargets {
+            codex: true,
+            claude: true,
+            cursor: true,
+            hooks,
+        },
         Some(_) => unreachable!("normalize_agent_selector returned an unsupported agent"),
     })
 }
@@ -264,6 +317,13 @@ pub struct AgentSetupChange {
     pub path: PathBuf,
     pub contents: String,
     pub executable: bool,
+    pub action: AgentSetupChangeAction,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AgentSetupChangeAction {
+    Write,
+    RemoveFile,
 }
 
 pub fn plan_memory_agent_setup(
@@ -278,6 +338,7 @@ pub fn plan_memory_agent_setup(
             path: paths.hook_script.clone(),
             contents: precompact_hook_script(&paths.mdx_cli, root_path),
             executable: true,
+            action: AgentSetupChangeAction::Write,
         });
     }
 
@@ -290,6 +351,7 @@ pub fn plan_memory_agent_setup(
                 path: skill_root,
                 contents: mdx_memory_skill(root_path, &paths.mdx_cli),
                 executable: false,
+                action: AgentSetupChangeAction::Write,
             });
         }
         changes.push(AgentSetupChange {
@@ -300,6 +362,7 @@ pub fn plan_memory_agent_setup(
                 root_path,
             )?,
             executable: false,
+            action: AgentSetupChangeAction::Write,
         });
     }
 
@@ -308,23 +371,27 @@ pub fn plan_memory_agent_setup(
             path: paths.home.join(".claude/skills/mdx-memory/SKILL.md"),
             contents: mdx_memory_skill(root_path, &paths.mdx_cli),
             executable: false,
+            action: AgentSetupChangeAction::Write,
         });
         changes.push(AgentSetupChange {
             path: paths.home.join(".claude/CLAUDE.md"),
             contents: update_agent_markdown_block(
                 &paths.home.join(".claude/CLAUDE.md"),
-                claude_memory_block(),
+                &claude_memory_block(root_path, &paths.mdx_cli),
             )?,
             executable: false,
+            action: AgentSetupChangeAction::Write,
         });
         if targets.hooks {
             changes.push(AgentSetupChange {
                 path: paths.home.join(".claude/hooks/hooks.json"),
                 contents: update_claude_hooks(
                     &paths.home.join(".claude/hooks/hooks.json"),
-                    &paths.hook_script,
+                    &paths.mdx_cli,
+                    root_path,
                 )?,
                 executable: false,
+                action: AgentSetupChangeAction::Write,
             });
         }
     }
@@ -334,6 +401,7 @@ pub fn plan_memory_agent_setup(
             path: paths.home.join(".cursor/skills/mdx-memory/SKILL.md"),
             contents: mdx_memory_skill(root_path, &paths.mdx_cli),
             executable: false,
+            action: AgentSetupChangeAction::Write,
         });
         changes.push(AgentSetupChange {
             path: paths.home.join(".cursor/mcp.json"),
@@ -343,20 +411,24 @@ pub fn plan_memory_agent_setup(
                 root_path,
             )?,
             executable: false,
+            action: AgentSetupChangeAction::Write,
         });
         changes.push(AgentSetupChange {
             path: paths.home.join(".cursor/rules/mdx-memory.mdc"),
-            contents: cursor_memory_rule(),
+            contents: cursor_memory_rule(root_path, &paths.mdx_cli),
             executable: false,
+            action: AgentSetupChangeAction::Write,
         });
         if targets.hooks {
             changes.push(AgentSetupChange {
                 path: paths.home.join(".cursor/hooks.json"),
                 contents: update_cursor_hooks(
                     &paths.home.join(".cursor/hooks.json"),
-                    &paths.hook_script,
+                    &paths.mdx_cli,
+                    root_path,
                 )?,
                 executable: false,
+                action: AgentSetupChangeAction::Write,
             });
         }
     }
@@ -364,32 +436,278 @@ pub fn plan_memory_agent_setup(
     Ok(changes)
 }
 
+pub fn plan_memory_agent_repair(
+    root_path: &str,
+    agent: Option<&str>,
+    paths: &AgentSetupPaths,
+) -> io::Result<Vec<AgentSetupChange>> {
+    let targets = targets_for_agent(agent, true)?;
+    plan_memory_agent_setup(root_path, &targets, paths)
+}
+
+pub fn plan_memory_agent_uninstall(
+    agent: Option<&str>,
+    paths: &AgentSetupPaths,
+) -> io::Result<Vec<AgentSetupChange>> {
+    let selected = agent_sources(agent)?;
+    let mut changes = Vec::new();
+
+    if selected.iter().any(|agent| agent == "codex") {
+        for path in [
+            paths.home.join(".codey/skills/mdx-memory/SKILL.md"),
+            paths.home.join(".agents/skills/mdx-memory/SKILL.md"),
+        ] {
+            push_remove_file_contents_if_exists(&mut changes, path)?;
+        }
+        push_if_changed(
+            &mut changes,
+            paths.home.join(".codey/config.toml"),
+            |path| remove_codex_config(path),
+        )?;
+    }
+
+    if selected.iter().any(|agent| agent == "claude") {
+        push_remove_file_contents_if_exists(
+            &mut changes,
+            paths.home.join(".claude/skills/mdx-memory/SKILL.md"),
+        )?;
+        push_if_changed(
+            &mut changes,
+            paths.home.join(".claude/CLAUDE.md"),
+            remove_agent_markdown_block,
+        )?;
+        push_if_changed(
+            &mut changes,
+            paths.home.join(".claude/hooks/hooks.json"),
+            remove_claude_hooks,
+        )?;
+    }
+
+    if selected.iter().any(|agent| agent == "cursor") {
+        push_remove_file_contents_if_exists(
+            &mut changes,
+            paths.home.join(".cursor/skills/mdx-memory/SKILL.md"),
+        )?;
+        push_remove_file_contents_if_exists(
+            &mut changes,
+            paths.home.join(".cursor/rules/mdx-memory.mdc"),
+        )?;
+        push_if_changed(
+            &mut changes,
+            paths.home.join(".cursor/mcp.json"),
+            remove_cursor_mcp,
+        )?;
+        push_if_changed(
+            &mut changes,
+            paths.home.join(".cursor/hooks.json"),
+            remove_cursor_hooks,
+        )?;
+    }
+
+    Ok(changes)
+}
+
 pub fn apply_agent_setup_changes(changes: &[AgentSetupChange]) -> io::Result<()> {
     for change in changes {
-        if let Some(parent) = change.path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::write(&change.path, &change.contents)?;
-        if change.executable {
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let mut permissions = fs::metadata(&change.path)?.permissions();
-                permissions.set_mode(0o755);
-                fs::set_permissions(&change.path, permissions)?;
+        match change.action {
+            AgentSetupChangeAction::Write => {
+                if let Some(parent) = change.path.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::write(&change.path, &change.contents)?;
+                if change.executable {
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        let mut permissions = fs::metadata(&change.path)?.permissions();
+                        permissions.set_mode(0o755);
+                        fs::set_permissions(&change.path, permissions)?;
+                    }
+                }
             }
+            AgentSetupChangeAction::RemoveFile => match fs::remove_file(&change.path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error),
+            },
         }
     }
     Ok(())
+}
+
+pub fn memory_agent_doctor_for_home(
+    root_path: &str,
+    home: &Path,
+) -> io::Result<MemoryDoctorReport> {
+    let mut errors = Vec::new();
+    let mut warnings = Vec::new();
+    let statuses = vec![
+        inspect_codex_status(root_path, home, &mut errors, &mut warnings),
+        inspect_claude_status(root_path, home, &mut errors, &mut warnings),
+        inspect_cursor_status(root_path, home, &mut errors, &mut warnings),
+    ];
+    let ok = errors.is_empty() && statuses.iter().all(status_ok);
+    Ok(MemoryDoctorReport {
+        ok,
+        statuses,
+        errors,
+        warnings,
+    })
+}
+
+fn status_ok(status: &MemoryIntegrationStatus) -> bool {
+    status.installed && status.enabled && status.authorized && status.doctor_status == "ok"
 }
 
 pub fn render_agent_setup_summary(changes: &[AgentSetupChange], dry_run: bool) -> String {
     let action = if dry_run { "would_write" } else { "wrote" };
     let mut lines = vec![format!("memory agent setup {action}:")];
     for change in changes {
-        lines.push(format!("- {}", change.path.display()));
+        let action = match (dry_run, change.action) {
+            (true, AgentSetupChangeAction::Write) => "would_write",
+            (false, AgentSetupChangeAction::Write) => "wrote",
+            (true, AgentSetupChangeAction::RemoveFile) => "would_remove",
+            (false, AgentSetupChangeAction::RemoveFile) => "removed",
+        };
+        lines.push(format!("- {action} {}", change.path.display()));
     }
     lines.join("\n")
+}
+
+fn inspect_codex_status(
+    root_path: &str,
+    home: &Path,
+    errors: &mut Vec<String>,
+    warnings: &mut Vec<String>,
+) -> MemoryIntegrationStatus {
+    let config = read_status_file(&home.join(".codey/config.toml"), "codex", errors);
+    let agents_skill = read_status_file(
+        &home.join(".agents/skills/mdx-memory/SKILL.md"),
+        "codex",
+        errors,
+    );
+    let codey_skill = read_status_file(
+        &home.join(".codey/skills/mdx-memory/SKILL.md"),
+        "codex",
+        errors,
+    );
+    let config_ok = config.as_deref().is_some_and(|contents| {
+        contents.contains("[mcp_servers.mdx-memory]") && contents.contains(root_path)
+    });
+    let skill_ok = agents_skill
+        .as_deref()
+        .or(codey_skill.as_deref())
+        .is_some_and(|contents| contents.contains("name: mdx-memory"));
+    build_status("codex", config_ok && skill_ok, None, warnings)
+}
+
+fn inspect_claude_status(
+    root_path: &str,
+    home: &Path,
+    errors: &mut Vec<String>,
+    warnings: &mut Vec<String>,
+) -> MemoryIntegrationStatus {
+    let claude_md = read_status_file(&home.join(".claude/CLAUDE.md"), "claude", errors);
+    let hooks = read_status_file(&home.join(".claude/hooks/hooks.json"), "claude", errors);
+    let skill = read_status_file(
+        &home.join(".claude/skills/mdx-memory/SKILL.md"),
+        "claude",
+        errors,
+    );
+    let block_ok = claude_md
+        .as_deref()
+        .is_some_and(|contents| contents.contains(MDX_MEMORY_BLOCK_BEGIN));
+    let skill_ok = skill
+        .as_deref()
+        .is_some_and(|contents| contents.contains("name: mdx-memory"));
+    let hook_ok = hooks.as_deref().is_some_and(|contents| {
+        contents.contains("\"mdx-memory\"")
+            && contents.contains("\"hook\"")
+            && contents.contains("\"claude\"")
+            && contents.contains(root_path)
+    });
+    build_status(
+        "claude",
+        block_ok && skill_ok && hook_ok,
+        hook_ok.then(|| MDX_MEMORY_HOOK_VERSION.to_string()),
+        warnings,
+    )
+}
+
+fn inspect_cursor_status(
+    root_path: &str,
+    home: &Path,
+    errors: &mut Vec<String>,
+    warnings: &mut Vec<String>,
+) -> MemoryIntegrationStatus {
+    let mcp = read_status_file(&home.join(".cursor/mcp.json"), "cursor", errors);
+    let hooks = read_status_file(&home.join(".cursor/hooks.json"), "cursor", errors);
+    let rule = read_status_file(&home.join(".cursor/rules/mdx-memory.mdc"), "cursor", errors);
+    let skill = read_status_file(
+        &home.join(".cursor/skills/mdx-memory/SKILL.md"),
+        "cursor",
+        errors,
+    );
+    let mcp_ok = mcp.as_deref().is_some_and(|contents| {
+        contents.contains("\"mdx-memory\"") && contents.contains(root_path)
+    });
+    let hook_ok = hooks.as_deref().is_some_and(|contents| {
+        contents.contains("\"mdx-memory\"")
+            && contents.contains("\"hook\"")
+            && contents.contains("\"cursor\"")
+            && contents.contains(root_path)
+    });
+    let rule_ok = rule
+        .as_deref()
+        .is_some_and(|contents| contents.contains("MDX Memory"));
+    let skill_ok = skill
+        .as_deref()
+        .is_some_and(|contents| contents.contains("name: mdx-memory"));
+    build_status(
+        "cursor",
+        mcp_ok && hook_ok && rule_ok && skill_ok,
+        hook_ok.then(|| MDX_MEMORY_HOOK_VERSION.to_string()),
+        warnings,
+    )
+}
+
+fn read_status_file(path: &Path, agent: &str, errors: &mut Vec<String>) -> Option<String> {
+    match fs::read_to_string(path) {
+        Ok(contents) => Some(contents),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+        Err(error) => {
+            errors.push(format!(
+                "{agent} installer-managed file unreadable: {}: {error}",
+                path.display()
+            ));
+            None
+        }
+    }
+}
+
+fn build_status(
+    agent_source: &str,
+    installed: bool,
+    hook_version: Option<String>,
+    warnings: &mut Vec<String>,
+) -> MemoryIntegrationStatus {
+    if !installed {
+        warnings.push(format!("{agent_source} not installed or not configured"));
+    }
+    MemoryIntegrationStatus {
+        agent_source: agent_source.to_string(),
+        installed,
+        enabled: installed,
+        authorized: installed,
+        hook_version,
+        last_event_at: None,
+        last_error: None,
+        doctor_status: if installed {
+            "ok".to_string()
+        } else {
+            "not_installed_or_configured".to_string()
+        },
+    }
 }
 
 fn home_dir() -> io::Result<PathBuf> {
@@ -424,6 +742,14 @@ fn update_codex_config(path: &Path, mdx_mcp: &str, root_path: &str) -> io::Resul
     Ok(output)
 }
 
+fn remove_codex_config(path: &Path) -> io::Result<String> {
+    let existing = read_optional_file(path)?;
+    if !existing.contains("[mcp_servers.mdx-memory]") {
+        return Ok(existing);
+    }
+    Ok(remove_toml_table(&existing, "[mcp_servers.mdx-memory]"))
+}
+
 fn remove_toml_table(contents: &str, table_header: &str) -> String {
     let mut output = Vec::new();
     let mut skipping = false;
@@ -452,7 +778,11 @@ fn update_cursor_mcp(path: &Path, mdx_mcp: &str, root_path: &str) -> io::Result<
     if !value.is_object() {
         value = serde_json::json!({});
     }
-    if value.get("mcpServers").and_then(|item| item.as_object()).is_none() {
+    if value
+        .get("mcpServers")
+        .and_then(|item| item.as_object())
+        .is_none()
+    {
         value["mcpServers"] = serde_json::json!({});
     }
     value["mcpServers"]["mdx-memory"] = serde_json::json!({
@@ -462,28 +792,84 @@ fn update_cursor_mcp(path: &Path, mdx_mcp: &str, root_path: &str) -> io::Result<
     pretty_json(&value)
 }
 
-fn update_cursor_hooks(path: &Path, hook_script: &Path) -> io::Result<String> {
+fn remove_cursor_mcp(path: &Path) -> io::Result<String> {
+    let existing = read_optional_file(path)?;
+    if !existing.contains("\"mdx-memory\"") {
+        return Ok(existing);
+    }
+    let mut value = read_optional_json(path)?;
+    if let Some(servers) = value
+        .get_mut("mcpServers")
+        .and_then(|item| item.as_object_mut())
+    {
+        servers.remove("mdx-memory");
+    }
+    pretty_json(&value)
+}
+
+fn update_cursor_hooks(path: &Path, mdx_cli: &str, root_path: &str) -> io::Result<String> {
     let mut value = read_optional_json(path)?;
     if !value.is_object() {
         value = serde_json::json!({});
     }
-    value["version"] = value.get("version").cloned().unwrap_or(serde_json::json!(1));
-    if value.get("hooks").and_then(|item| item.as_object()).is_none() {
+    value["version"] = value
+        .get("version")
+        .cloned()
+        .unwrap_or(serde_json::json!(1));
+    if value
+        .get("hooks")
+        .and_then(|item| item.as_object())
+        .is_none()
+    {
         value["hooks"] = serde_json::json!({});
     }
-    value["hooks"]["preCompact"] = serde_json::json!([{
-        "command": format!("node {} cursor", hook_script.display()),
+    if value["hooks"]
+        .get("preCompact")
+        .and_then(|item| item.as_array())
+        .is_none()
+    {
+        value["hooks"]["preCompact"] = serde_json::json!([]);
+    }
+    let precompact = value["hooks"]["preCompact"].as_array_mut().unwrap();
+    precompact.retain(|entry| !is_mdx_memory_json_entry(entry));
+    precompact.push(serde_json::json!({
+        "id": "mdx-memory",
+        "name": "mdx-memory",
+        "version": MDX_MEMORY_HOOK_VERSION,
+        "command": mdx_cli,
+        "args": ["memory", "--root", root_path, "hook", "cursor", "preCompact"],
         "timeout": 60
-    }]);
+    }));
     pretty_json(&value)
 }
 
-fn update_claude_hooks(path: &Path, hook_script: &Path) -> io::Result<String> {
+fn remove_cursor_hooks(path: &Path) -> io::Result<String> {
+    let existing = read_optional_file(path)?;
+    if !existing.contains("mdx-memory") && !existing.contains("mdx-memory-precompact-hook") {
+        return Ok(existing);
+    }
+    let mut value = read_optional_json(path)?;
+    if let Some(hooks) = value.get_mut("hooks").and_then(|item| item.as_object_mut()) {
+        if let Some(precompact) = hooks
+            .get_mut("preCompact")
+            .and_then(|item| item.as_array_mut())
+        {
+            precompact.retain(|entry| !is_mdx_memory_json_entry(entry));
+        }
+    }
+    pretty_json(&value)
+}
+
+fn update_claude_hooks(path: &Path, mdx_cli: &str, root_path: &str) -> io::Result<String> {
     let mut value = read_optional_json(path)?;
     if !value.is_object() {
         value = serde_json::json!({ "hooks": {} });
     }
-    if value.get("hooks").and_then(|item| item.as_object()).is_none() {
+    if value
+        .get("hooks")
+        .and_then(|item| item.as_object())
+        .is_none()
+    {
         value["hooks"] = serde_json::json!({});
     }
     if value["hooks"]
@@ -494,24 +880,105 @@ fn update_claude_hooks(path: &Path, hook_script: &Path) -> io::Result<String> {
         value["hooks"]["PreCompact"] = serde_json::json!([]);
     }
     let precompact = value["hooks"]["PreCompact"].as_array_mut().unwrap();
-    precompact.retain(|entry| {
-        entry
-            .get("id")
-            .and_then(|id| id.as_str())
-            != Some("mdx-memory:precompact-capture")
-    });
+    precompact.retain(|entry| !is_mdx_memory_json_entry(entry));
+    let command = format!(
+        "{} memory --root {} hook claude PreCompact",
+        shell_quote(mdx_cli),
+        shell_quote(root_path)
+    );
     precompact.push(serde_json::json!({
         "matcher": "*",
         "hooks": [{
             "type": "command",
-            "command": format!("node {} claude-code", hook_script.display()),
+            "command": command,
             "async": true,
             "timeout": 60
         }],
         "description": "Capture and accept MDX Memory before context compaction when transcript_path is available",
-        "id": "mdx-memory:precompact-capture"
+        "id": "mdx-memory",
+        "name": "mdx-memory",
+        "version": MDX_MEMORY_HOOK_VERSION
     }));
     pretty_json(&value)
+}
+
+fn shell_quote(value: &str) -> String {
+    if value.is_empty() {
+        return "''".to_string();
+    }
+    if value
+        .bytes()
+        .all(|byte| matches!(byte, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_' | b'-' | b'.' | b'/' | b':' | b'+' | b'='))
+    {
+        return value.to_string();
+    }
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn remove_claude_hooks(path: &Path) -> io::Result<String> {
+    let existing = read_optional_file(path)?;
+    if !existing.contains("mdx-memory") && !existing.contains("mdx-memory-precompact-hook") {
+        return Ok(existing);
+    }
+    let mut value = read_optional_json(path)?;
+    if let Some(hooks) = value.get_mut("hooks").and_then(|item| item.as_object_mut()) {
+        if let Some(precompact) = hooks
+            .get_mut("PreCompact")
+            .and_then(|item| item.as_array_mut())
+        {
+            precompact.retain(|entry| !is_mdx_memory_json_entry(entry));
+        }
+    }
+    pretty_json(&value)
+}
+
+fn is_mdx_memory_json_entry(entry: &serde_json::Value) -> bool {
+    entry
+        .get("id")
+        .and_then(|id| id.as_str())
+        .is_some_and(|id| id == "mdx-memory" || id.starts_with("mdx-memory:"))
+        || entry.get("name").and_then(|name| name.as_str()) == Some("mdx-memory")
+        || entry
+            .get("command")
+            .and_then(|command| command.as_str())
+            .is_some_and(|command| command.contains("mdx-memory-precompact-hook"))
+        || entry.to_string().contains("mdx-memory-precompact-hook")
+}
+
+fn push_remove_file_contents_if_exists(
+    changes: &mut Vec<AgentSetupChange>,
+    path: PathBuf,
+) -> io::Result<()> {
+    if path.exists() {
+        changes.push(AgentSetupChange {
+            path,
+            contents: String::new(),
+            executable: false,
+            action: AgentSetupChangeAction::RemoveFile,
+        });
+    }
+    Ok(())
+}
+
+fn push_if_changed(
+    changes: &mut Vec<AgentSetupChange>,
+    path: PathBuf,
+    update: impl FnOnce(&Path) -> io::Result<String>,
+) -> io::Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+    let existing = read_optional_file(&path)?;
+    let contents = update(&path)?;
+    if contents != existing {
+        changes.push(AgentSetupChange {
+            path,
+            contents,
+            executable: false,
+            action: AgentSetupChangeAction::Write,
+        });
+    }
+    Ok(())
 }
 
 fn read_optional_file(path: &Path) -> io::Result<String> {
@@ -543,16 +1010,41 @@ fn pretty_json(value: &serde_json::Value) -> io::Result<String> {
 
 fn update_agent_markdown_block(path: &Path, block: &str) -> io::Result<String> {
     let existing = read_optional_file(path)?;
-    if existing.contains("## MDX Memory") {
-        return Ok(existing);
-    }
-    let mut output = existing.trim_end().to_string();
+    let mut output = remove_managed_markdown_block(&existing)
+        .trim_end()
+        .to_string();
     if !output.is_empty() {
         output.push_str("\n\n");
     }
+    output.push_str(MDX_MEMORY_BLOCK_BEGIN);
+    output.push('\n');
     output.push_str(block);
     output.push('\n');
+    output.push_str(MDX_MEMORY_BLOCK_END);
+    output.push('\n');
     Ok(output)
+}
+
+fn remove_agent_markdown_block(path: &Path) -> io::Result<String> {
+    read_optional_file(path).map(|existing| remove_managed_markdown_block(&existing))
+}
+
+fn remove_managed_markdown_block(contents: &str) -> String {
+    let Some(begin) = contents.find(MDX_MEMORY_BLOCK_BEGIN) else {
+        return contents.to_string();
+    };
+    let Some(relative_end) = contents[begin..].find(MDX_MEMORY_BLOCK_END) else {
+        return contents.to_string();
+    };
+    let end = begin + relative_end + MDX_MEMORY_BLOCK_END.len();
+    let mut output = String::new();
+    output.push_str(contents[..begin].trim_end());
+    let tail = contents[end..].trim_start_matches(['\r', '\n']);
+    if !output.is_empty() && !tail.is_empty() {
+        output.push_str("\n\n");
+    }
+    output.push_str(tail);
+    output
 }
 
 fn precompact_hook_script(mdx_cli: &str, root_path: &str) -> String {
@@ -807,19 +1299,22 @@ CLI fallback:
     )
 }
 
-fn claude_memory_block() -> &'static str {
-    "## MDX Memory\nWhen the user asks to remember, save, recall, search, persist decisions, or load prior context, use the `mdx-memory` skill and the `mdx-memory` MCP server.\n\nUse `memory_working_get` and `memory_recall` for task context. Extract and write durable memories during active conversation turns when clear, durable, low-risk facts, preferences, decisions, project constraints, or reusable lessons become clear. Do not wait for background capture, thread archival, or pre-compact hooks before preserving confirmed information that should survive future sessions. Ask before saving sensitive or uncertain information. When available, use the `memory_inbox_add` MCP tool to create inbox review candidates for sensitive or uncertain information that may be useful but is not ready for durable memory. Pre-compact hooks capture and accept distilled memory before compression; full thread archival is separate and should only be used when preserving original conversation text matters. Do not store secrets or promote memory into wiki/raw material unless the user explicitly asks."
+fn claude_memory_block(root_path: &str, mdx_cli: &str) -> String {
+    format!(
+        "## MDX Memory\nWhen the user asks to remember, save, recall, search, persist decisions, or load prior context, use the `mdx-memory` skill and the `mdx-memory` MCP server.\n\nUse `memory_working_get` and `memory_recall` for task context. Extract and write durable memories during active conversation turns when clear, durable, low-risk facts, preferences, decisions, project constraints, or reusable lessons become clear. Do not wait for background capture, thread archival, or pre-compact hooks before preserving confirmed information that should survive future sessions. Ask before saving sensitive or uncertain information. When available, use the `memory_inbox_add` MCP tool to create inbox review candidates for sensitive or uncertain information that may be useful but is not ready for durable memory. Pre-compact hooks capture and accept distilled memory before compression; the installed Claude hook command is `{mdx_cli} memory --root \"{root_path}\" hook claude PreCompact`. Full thread archival is separate and should only be used when preserving original conversation text matters. Do not store secrets or promote memory into wiki/raw material unless the user explicitly asks."
+    )
 }
 
-fn cursor_memory_rule() -> String {
-    r#"---
+fn cursor_memory_rule(root_path: &str, mdx_cli: &str) -> String {
+    format!(
+        r#"---
 description: Use MDX Memory when remembering, saving, recalling, searching prior context, persisting decisions, or summarizing durable lessons.
 alwaysApply: true
 ---
 
 Use the `mdx-memory` skill and the `mdx-memory` MCP server for durable memory.
 
-Read task context with `memory_working_get` and `memory_recall`. Search exact stored memories with `memory_search`. Extract and write durable memories during active conversation turns when clear, durable, low-risk facts, preferences, decisions, project constraints, or reusable lessons become clear. When practical, call `memory_search` before `memory_add` to avoid duplicate memories. Do not wait for background capture, thread archival, or pre-compact hooks before preserving confirmed information that should survive future sessions. Ask before saving sensitive or uncertain information. When available, use the `memory_inbox_add` MCP tool to create inbox review candidates for sensitive or uncertain information that may be useful but is not ready for durable memory. Pre-compact hooks capture and accept distilled memory before compression; full thread archival is separate and should only be used when preserving original conversation text matters. Do not store secrets.
+Read task context with `memory_working_get` and `memory_recall`. Search exact stored memories with `memory_search`. Extract and write durable memories during active conversation turns when clear, durable, low-risk facts, preferences, decisions, project constraints, or reusable lessons become clear. When practical, call `memory_search` before `memory_add` to avoid duplicate memories. Do not wait for background capture, thread archival, or pre-compact hooks before preserving confirmed information that should survive future sessions. Ask before saving sensitive or uncertain information. When available, use the `memory_inbox_add` MCP tool to create inbox review candidates for sensitive or uncertain information that may be useful but is not ready for durable memory. Pre-compact hooks capture and accept distilled memory before compression; the installed Cursor hook command is `{mdx_cli} memory --root "{root_path}" hook cursor preCompact`. Full thread archival is separate and should only be used when preserving original conversation text matters. Do not store secrets.
 "#
-    .to_string()
+    )
 }
