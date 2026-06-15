@@ -7,7 +7,8 @@ use time::OffsetDateTime;
 use crate::memory_schema::SQLITE_DDL;
 use crate::memory_storage::{
     validate_job_timestamps, workspace_scope_for_root, MemoryStorage, MemoryStorageScope,
-    StoredAgentEvent, StoredAgentSession, StoredJob, StoredWorkspace,
+    StoredAgentEvent, StoredAgentSession, StoredInboxWrite, StoredJob, StoredMemoryWrite,
+    StoredProvenanceLink, StoredWorkspace,
 };
 use crate::WorkspaceError;
 
@@ -81,6 +82,24 @@ impl SqliteMemoryStorage {
         <Self as MemoryStorage>::count_events(self)
     }
 
+    pub fn insert_memory(&mut self, memory: &StoredMemoryWrite) -> Result<bool, WorkspaceError> {
+        <Self as MemoryStorage>::insert_memory(self, memory)
+    }
+
+    pub fn insert_inbox_candidate(
+        &mut self,
+        inbox: &StoredInboxWrite,
+    ) -> Result<bool, WorkspaceError> {
+        <Self as MemoryStorage>::insert_inbox_candidate(self, inbox)
+    }
+
+    pub fn insert_provenance_link(
+        &mut self,
+        link: &StoredProvenanceLink,
+    ) -> Result<bool, WorkspaceError> {
+        <Self as MemoryStorage>::insert_provenance_link(self, link)
+    }
+
     pub fn count_active_memories(&mut self) -> Result<i64, WorkspaceError> {
         self.conn
             .query_row(
@@ -97,6 +116,39 @@ impl SqliteMemoryStorage {
                 sqlite_error(
                     "memory_recall_memory_count_failed",
                     "failed to count sqlite recall memory records",
+                    error,
+                )
+            })
+    }
+
+    #[cfg(test)]
+    pub fn count_memories_for_test(&mut self) -> Result<i64, WorkspaceError> {
+        self.conn
+            .query_row("SELECT COUNT(*) FROM memories", [], |row| row.get(0))
+            .map_err(|error| {
+                sqlite_error(
+                    "memory_count_failed",
+                    "failed to count sqlite memory records",
+                    error,
+                )
+            })
+    }
+
+    #[cfg(test)]
+    pub fn count_provenance_links_for_test(
+        &mut self,
+        source_thread_id: &str,
+    ) -> Result<i64, WorkspaceError> {
+        self.conn
+            .query_row(
+                "SELECT COUNT(*) FROM provenance_links WHERE source_thread_id = ?1",
+                params![source_thread_id],
+                |row| row.get(0),
+            )
+            .map_err(|error| {
+                sqlite_error(
+                    "memory_provenance_count_failed",
+                    "failed to count sqlite provenance links",
                     error,
                 )
             })
@@ -493,6 +545,143 @@ impl MemoryStorage for SqliteMemoryStorage {
                 sqlite_error(
                     "memory_event_count_failed",
                     "failed to count sqlite memory events",
+                    error,
+                )
+            })
+    }
+
+    fn insert_memory(&mut self, memory: &StoredMemoryWrite) -> Result<bool, WorkspaceError> {
+        let tags = serde_json::to_string(&memory.tags).map_err(|error| {
+            WorkspaceError::new(
+                "memory_tags_serialize_failed",
+                format!("failed to serialize memory tags: {error}"),
+            )
+        })?;
+        self.conn
+            .execute(
+                "INSERT INTO memories (
+                    memory_id,
+                    workspace_id,
+                    project_key,
+                    title,
+                    body,
+                    status,
+                    tags,
+                    importance,
+                    confidence,
+                    created_at,
+                    updated_at,
+                    archived_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, 'active', ?6, ?7, ?8, ?9, ?9, NULL)
+                ON CONFLICT(memory_id) DO NOTHING",
+                params![
+                    memory.memory_id,
+                    memory.workspace_id,
+                    memory.project_key,
+                    memory.title,
+                    memory.body,
+                    tags,
+                    memory.importance,
+                    memory.confidence,
+                    memory.created_at
+                ],
+            )
+            .map(|rows_changed| rows_changed > 0)
+            .map_err(|error| {
+                sqlite_error(
+                    "memory_insert_failed",
+                    "failed to insert sqlite memory record",
+                    error,
+                )
+            })
+    }
+
+    fn insert_inbox_candidate(&mut self, inbox: &StoredInboxWrite) -> Result<bool, WorkspaceError> {
+        let tags = serde_json::to_string(&inbox.tags).map_err(|error| {
+            WorkspaceError::new(
+                "memory_inbox_tags_serialize_failed",
+                format!("failed to serialize inbox tags: {error}"),
+            )
+        })?;
+        self.conn
+            .execute(
+                "INSERT INTO inbox_candidates (
+                    inbox_id,
+                    workspace_id,
+                    project_key,
+                    title,
+                    body,
+                    status,
+                    tags,
+                    confidence,
+                    risk_level,
+                    accepted_memory_id,
+                    created_at,
+                    reviewed_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, 'pending', ?6, ?7, ?8, NULL, ?9, NULL)
+                ON CONFLICT(inbox_id) DO NOTHING",
+                params![
+                    inbox.inbox_id,
+                    inbox.workspace_id,
+                    inbox.project_key,
+                    inbox.title,
+                    inbox.body,
+                    tags,
+                    inbox.confidence,
+                    inbox.risk_level,
+                    inbox.created_at
+                ],
+            )
+            .map(|rows_changed| rows_changed > 0)
+            .map_err(|error| {
+                sqlite_error(
+                    "memory_inbox_insert_failed",
+                    "failed to insert sqlite inbox candidate",
+                    error,
+                )
+            })
+    }
+
+    fn insert_provenance_link(
+        &mut self,
+        link: &StoredProvenanceLink,
+    ) -> Result<bool, WorkspaceError> {
+        self.conn
+            .execute(
+                "INSERT INTO provenance_links (
+                    link_id,
+                    workspace_id,
+                    target_type,
+                    target_id,
+                    source_event_id,
+                    source_thread_id,
+                    provider,
+                    model,
+                    prompt_version,
+                    created_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                ON CONFLICT(link_id) DO NOTHING",
+                params![
+                    link.link_id,
+                    link.workspace_id,
+                    link.target_type,
+                    link.target_id,
+                    link.source_event_id,
+                    link.source_thread_id,
+                    link.provider,
+                    link.model,
+                    link.prompt_version,
+                    link.created_at
+                ],
+            )
+            .map(|rows_changed| rows_changed > 0)
+            .map_err(|error| {
+                sqlite_error(
+                    "memory_provenance_insert_failed",
+                    "failed to insert sqlite provenance link",
                     error,
                 )
             })

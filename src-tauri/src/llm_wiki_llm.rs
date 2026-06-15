@@ -404,10 +404,14 @@ pub fn default_llm_config_path() -> Result<PathBuf, WorkspaceError> {
     Ok(PathBuf::from(home).join(".mdx").join("llm-config.json"))
 }
 
-#[cfg(test)]
-pub(crate) fn test_llm_config_env_lock() -> &'static std::sync::Mutex<()> {
+pub fn llm_config_env_lock() -> &'static std::sync::Mutex<()> {
     static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
     LOCK.get_or_init(|| std::sync::Mutex::new(()))
+}
+
+#[cfg(test)]
+pub(crate) fn test_llm_config_env_lock() -> &'static std::sync::Mutex<()> {
+    llm_config_env_lock()
 }
 
 fn ensure_config_parent_dir(path: &Path) -> Result<(), WorkspaceError> {

@@ -45,6 +45,165 @@ fn canonical_test_path(path: impl AsRef<std::path::Path>) -> String {
         .into_owned()
 }
 
+#[test]
+fn distill_safety_rejects_secrets_and_routes_sensitive_to_inbox() {
+    let secret = crate::memory_distill_worker::classify_distill_candidate(
+        "API token sk-1234567890abcdef must be remembered",
+        0.99,
+    );
+    assert_eq!(secret.action, "drop");
+    assert_eq!(secret.reason, "secret_detected");
+
+    let sensitive = crate::memory_distill_worker::classify_distill_candidate(
+        "The user's customer Acme has a private billing issue",
+        0.91,
+    );
+    assert_eq!(sensitive.action, "inbox");
+    assert_eq!(sensitive.reason, "sensitive_content");
+
+    let stable = crate::memory_distill_worker::classify_distill_candidate(
+        "MDX Memory must remain an external agent backend for Codex Claude Cursor.",
+        0.93,
+    );
+    assert_eq!(stable.action, "auto_accept");
+}
+
+#[test]
+fn distill_worker_writes_auto_accept_memory_with_provenance() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::initialize_memory_workspace(root.path()).unwrap();
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path()).unwrap();
+    storage.initialize().unwrap();
+
+    let provider = crate::memory_provider::MockMemoryProvider::new(serde_json::json!({
+        "candidates": [
+            {
+                "title": "Memory positioning",
+                "body": "MDX Memory is an external agent backend for Codex, Claude, and Cursor.",
+                "confidence": 0.94,
+                "tags": ["memory", "architecture"]
+            }
+        ]
+    }));
+
+    let result = crate::memory_distill_worker::run_distill_job_for_test(
+        &mut storage,
+        &provider,
+        "workspace:test",
+        "codex:session-1",
+    )
+    .unwrap();
+
+    assert_eq!(result.created_memories, 1);
+    assert_eq!(result.created_inbox, 0);
+    assert_eq!(storage.count_memories_for_test().unwrap(), 1);
+    assert_eq!(
+        storage
+            .count_provenance_links_for_test("codex:session-1")
+            .unwrap(),
+        1
+    );
+
+    let repeated = crate::memory_distill_worker::run_distill_job_for_test(
+        &mut storage,
+        &provider,
+        "workspace:test",
+        "codex:session-1",
+    )
+    .unwrap();
+    assert_eq!(repeated.created_memories, 0);
+    assert_eq!(repeated.created_inbox, 0);
+    assert_eq!(storage.count_memories_for_test().unwrap(), 1);
+    assert_eq!(
+        storage
+            .count_provenance_links_for_test("codex:session-1")
+            .unwrap(),
+        1
+    );
+}
+
+#[test]
+fn distill_worker_idempotency_does_not_depend_on_candidate_order() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::initialize_memory_workspace(root.path()).unwrap();
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path()).unwrap();
+    storage.initialize().unwrap();
+
+    let first_provider = crate::memory_provider::MockMemoryProvider::new(serde_json::json!({
+        "candidates": [
+            {
+                "title": "Memory positioning",
+                "body": "MDX Memory is an external agent backend for Codex, Claude, and Cursor.",
+                "confidence": 0.94,
+                "tags": ["memory"]
+            },
+            {
+                "title": "Hook automation",
+                "body": "MDX Memory capture should be triggered automatically by agent hooks.",
+                "confidence": 0.93,
+                "tags": ["hooks"]
+            }
+        ]
+    }));
+    let repeated_provider = crate::memory_provider::MockMemoryProvider::new(serde_json::json!({
+        "candidates": [
+            {
+                "title": "Hook automation",
+                "body": "MDX Memory capture should be triggered automatically by agent hooks.",
+                "confidence": 0.93,
+                "tags": ["hooks"]
+            },
+            {
+                "title": "Memory positioning",
+                "body": "MDX Memory is an external agent backend for Codex, Claude, and Cursor.",
+                "confidence": 0.94,
+                "tags": ["memory"]
+            }
+        ]
+    }));
+
+    let first = crate::memory_distill_worker::run_distill_job_for_test(
+        &mut storage,
+        &first_provider,
+        "workspace:test",
+        "codex:session-order",
+    )
+    .unwrap();
+    let repeated = crate::memory_distill_worker::run_distill_job_for_test(
+        &mut storage,
+        &repeated_provider,
+        "workspace:test",
+        "codex:session-order",
+    )
+    .unwrap();
+
+    assert_eq!(first.created_memories, 2);
+    assert_eq!(repeated.created_memories, 0);
+    assert_eq!(storage.count_memories_for_test().unwrap(), 2);
+    assert_eq!(
+        storage
+            .count_provenance_links_for_test("codex:session-order")
+            .unwrap(),
+        2
+    );
+}
+
+#[test]
+fn memory_provider_propagates_llm_config_path_conflicts() {
+    let root = tempdir().unwrap();
+    let config_path = root.path().join("llm-config.json");
+    std::fs::create_dir(&config_path).unwrap();
+
+    let error = match crate::memory_provider::ReusedLlmProvider::from_config_path(&config_path) {
+        Ok(_) => panic!("expected config path conflict"),
+        Err(error) => error,
+    };
+
+    assert_eq!(error.error_code(), "path_type_conflict");
+}
+
 struct MemoryLlmConfigEnvGuard {
     _lock: MutexGuard<'static, ()>,
     home: Option<std::ffi::OsString>,

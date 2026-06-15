@@ -66,6 +66,46 @@ pub struct StoredJob {
     pub last_error: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct StoredMemoryWrite {
+    pub memory_id: String,
+    pub workspace_id: String,
+    pub project_key: String,
+    pub title: String,
+    pub body: String,
+    pub tags: Vec<String>,
+    pub importance: Option<f64>,
+    pub confidence: Option<f64>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StoredInboxWrite {
+    pub inbox_id: String,
+    pub workspace_id: String,
+    pub project_key: String,
+    pub title: String,
+    pub body: String,
+    pub tags: Vec<String>,
+    pub confidence: Option<f64>,
+    pub risk_level: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredProvenanceLink {
+    pub link_id: String,
+    pub workspace_id: String,
+    pub target_type: String,
+    pub target_id: String,
+    pub source_event_id: Option<String>,
+    pub source_thread_id: Option<String>,
+    pub provider: Option<String>,
+    pub model: Option<String>,
+    pub prompt_version: String,
+    pub created_at: String,
+}
+
 pub trait MemoryStorage {
     fn initialize(&mut self) -> Result<(), WorkspaceError>;
     fn schema_version(&mut self) -> Result<i64, WorkspaceError>;
@@ -82,6 +122,11 @@ pub trait MemoryStorage {
     fn enqueue_job_idempotent(&mut self, job: &StoredJob) -> Result<bool, WorkspaceError>;
     fn list_ready_jobs(&mut self, limit: usize) -> Result<Vec<StoredJob>, WorkspaceError>;
     fn count_events(&mut self) -> Result<i64, WorkspaceError>;
+    fn insert_memory(&mut self, memory: &StoredMemoryWrite) -> Result<bool, WorkspaceError>;
+    fn insert_inbox_candidate(&mut self, inbox: &StoredInboxWrite)
+        -> Result<bool, WorkspaceError>;
+    fn insert_provenance_link(&mut self, link: &StoredProvenanceLink)
+        -> Result<bool, WorkspaceError>;
     fn search_memories(
         &mut self,
         query: &str,

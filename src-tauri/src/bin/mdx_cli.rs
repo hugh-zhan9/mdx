@@ -2092,10 +2092,8 @@ mod tests {
     use super::*;
     use mdx_lib::cli_protocol::{CliResponse, CliWikiSearchResult};
     use std::ffi::OsString;
-    use std::sync::{Mutex, MutexGuard};
+    use std::sync::MutexGuard;
     use tempfile::TempDir;
-
-    static CODEX_CAPTURE_ENV_LOCK: Mutex<()> = Mutex::new(());
 
     struct CodexCaptureEnvGuard {
         _lock: MutexGuard<'static, ()>,
@@ -2109,7 +2107,7 @@ mod tests {
             home_path: impl AsRef<std::path::Path>,
             session_dirs: impl AsRef<std::ffi::OsStr>,
         ) -> Self {
-            let lock = CODEX_CAPTURE_ENV_LOCK
+            let lock = mdx_lib::llm_wiki_llm::llm_config_env_lock()
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             let home = std::env::var_os("HOME");

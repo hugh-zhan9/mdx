@@ -1,6 +1,7 @@
 use crate::memory_models::{
     DistillCandidate, MemoryDistillRequest, MemoryDistillResult, MemoryRecord,
 };
+use crate::memory_provider::{MemoryProvider, MemoryProviderMessage, ReusedLlmProvider};
 use crate::models::WorkspaceError;
 
 const DISTILL_SYSTEM_PROMPT: &str = r#"You distill AI conversation transcripts into durable memory candidates.
@@ -51,19 +52,22 @@ pub(crate) fn memory_distill(
 ) -> Result<MemoryDistillResult, WorkspaceError> {
     let root = root.as_ref();
     let thread = crate::memory_thread::memory_thread_get(root, request.target.clone())?;
-    let config_path = crate::llm_wiki_llm::default_llm_config_path()?;
-    let Some(config) = crate::llm_wiki_llm::load_optional_llm_config_from_path(config_path)? else {
+    let Some(provider) = ReusedLlmProvider::from_default_config()? else {
         return Err(WorkspaceError::new(
             "distill_unavailable",
             "memory distill requires a configured local provider",
         ));
     };
 
-    let output = crate::llm_wiki_llm::call_chat_completion(
-        &config,
-        build_distill_messages(&thread.frontmatter.title, &thread.body),
-    )?;
-    memory_distill_with_json(root, request, &extract_json_array(&output)?)
+    let output = provider.complete_json(&build_distill_messages(
+        &thread.frontmatter.title,
+        &thread.body,
+    ))?;
+    memory_distill_with_json(
+        root,
+        request,
+        &extract_json_array(&provider_value_text(output))?,
+    )
 }
 
 #[cfg(test)]
@@ -77,7 +81,7 @@ pub(crate) fn parse_distill_candidates_for_test(
 pub(crate) fn build_distill_messages_for_test(
     title: &str,
     body: &str,
-) -> Vec<crate::llm_wiki_llm::LlmChatMessage> {
+) -> Vec<MemoryProviderMessage> {
     build_distill_messages(title, body)
 }
 
@@ -283,13 +287,13 @@ fn distill_run_id(source_thread: &str, content_hash: &str) -> String {
     )
 }
 
-fn build_distill_messages(title: &str, body: &str) -> Vec<crate::llm_wiki_llm::LlmChatMessage> {
+fn build_distill_messages(title: &str, body: &str) -> Vec<MemoryProviderMessage> {
     vec![
-        crate::llm_wiki_llm::LlmChatMessage {
+        MemoryProviderMessage {
             role: "system".to_string(),
             content: DISTILL_SYSTEM_PROMPT.to_string(),
         },
-        crate::llm_wiki_llm::LlmChatMessage {
+        MemoryProviderMessage {
             role: "user".to_string(),
             content: format!(
                 "Thread title: {}\n\nTranscript:\n{}",
@@ -336,4 +340,11 @@ fn extract_json_array(output: &str) -> Result<String, WorkspaceError> {
         ));
     }
     Ok(trimmed[start..=end].to_string())
+}
+
+fn provider_value_text(output: serde_json::Value) -> String {
+    match output {
+        serde_json::Value::String(text) => text,
+        value => value.to_string(),
+    }
 }
