@@ -6,18 +6,20 @@ use time::OffsetDateTime;
 
 use crate::memory_schema::SQLITE_DDL;
 use crate::memory_storage::{
-    validate_job_timestamps, MemoryStorage, StoredAgentEvent, StoredAgentSession, StoredJob,
-    StoredWorkspace,
+    validate_job_timestamps, workspace_scope_for_root, MemoryStorage, MemoryStorageScope,
+    StoredAgentEvent, StoredAgentSession, StoredJob, StoredWorkspace,
 };
 use crate::WorkspaceError;
 
 pub struct SqliteMemoryStorage {
     conn: rusqlite::Connection,
+    scope: MemoryStorageScope,
 }
 
 impl SqliteMemoryStorage {
     pub fn open_workspace(root: impl AsRef<Path>) -> Result<Self, WorkspaceError> {
-        let db_dir = ensure_workspace_db_dir(root.as_ref())?;
+        let root = root.as_ref();
+        let db_dir = ensure_workspace_db_dir(root)?;
         let db_path = db_dir.join("memory.sqlite");
         ensure_database_path_is_regular_file_or_missing(&db_path)?;
         let conn = rusqlite::Connection::open(db_path).map_err(|error| {
@@ -26,7 +28,10 @@ impl SqliteMemoryStorage {
                 format!("failed to open memory sqlite database: {error}"),
             )
         })?;
-        Ok(Self { conn })
+        Ok(Self {
+            conn,
+            scope: workspace_scope_for_root(root),
+        })
     }
 
     pub fn initialize(&mut self) -> Result<(), WorkspaceError> {
@@ -74,6 +79,45 @@ impl SqliteMemoryStorage {
 
     pub fn count_events(&mut self) -> Result<i64, WorkspaceError> {
         <Self as MemoryStorage>::count_events(self)
+    }
+
+    pub fn count_active_memories(&mut self) -> Result<i64, WorkspaceError> {
+        self.conn
+            .query_row(
+                "SELECT COUNT(*)
+                FROM memories
+                WHERE workspace_id = ?1
+                    AND project_key = ?2
+                    AND status = 'active'
+                    AND archived_at IS NULL",
+                params![self.scope.workspace_id, self.scope.project_key],
+                |row| row.get(0),
+            )
+            .map_err(|error| {
+                sqlite_error(
+                    "memory_recall_memory_count_failed",
+                    "failed to count sqlite recall memory records",
+                    error,
+                )
+            })
+    }
+
+    pub fn count_threads(&mut self) -> Result<i64, WorkspaceError> {
+        self.conn
+            .query_row(
+                "SELECT COUNT(*)
+                FROM threads
+                WHERE workspace_id = ?1",
+                params![self.scope.workspace_id],
+                |row| row.get(0),
+            )
+            .map_err(|error| {
+                sqlite_error(
+                    "memory_recall_thread_count_failed",
+                    "failed to count sqlite recall thread records",
+                    error,
+                )
+            })
     }
 
     #[cfg(test)]
@@ -453,6 +497,182 @@ impl MemoryStorage for SqliteMemoryStorage {
                 )
             })
     }
+
+    fn search_memories(
+        &mut self,
+        query: &str,
+        limit: usize,
+        tag: Option<&str>,
+        since: Option<&str>,
+    ) -> Result<Vec<crate::memory::RecallMemoryItem>, WorkspaceError> {
+        if limit == 0 || query.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+        let pattern = like_pattern(query);
+        let mut statement = self
+            .conn
+            .prepare(
+                "SELECT
+                    memory_id,
+                    title,
+                    body,
+                    tags,
+                    COALESCE(importance, 0.5) AS importance
+                FROM memories
+                WHERE workspace_id = ?1
+                    AND project_key = ?2
+                    AND status = 'active'
+                    AND archived_at IS NULL
+                    AND (
+                        title COLLATE NOCASE LIKE ?3 ESCAPE '\\'
+                        OR body COLLATE NOCASE LIKE ?3 ESCAPE '\\'
+                        OR tags COLLATE NOCASE LIKE ?3 ESCAPE '\\'
+                    )
+                    AND (?4 IS NULL OR created_at >= ?4 OR updated_at >= ?4)
+                    AND (?5 IS NULL OR tags LIKE ?5 ESCAPE '\\')
+                ORDER BY importance DESC, updated_at DESC
+                LIMIT ?6",
+            )
+            .map_err(|error| {
+                sqlite_error(
+                    "memory_search_prepare_failed",
+                    "failed to prepare sqlite memory search query",
+                    error,
+                )
+            })?;
+        let rows = statement
+            .query_map(
+                params![
+                    self.scope.workspace_id,
+                    self.scope.project_key,
+                    pattern,
+                    since,
+                    tag_pattern(tag)?,
+                    sql_limit(limit)
+                ],
+                |row| -> rusqlite::Result<(String, String, String, Vec<String>, f64)> {
+                    let tags_json: String = row.get(3)?;
+                    let tags =
+                        serde_json::from_str::<Vec<String>>(&tags_json).map_err(|error| {
+                            rusqlite::Error::FromSqlConversionFailure(
+                                3,
+                                rusqlite::types::Type::Text,
+                                Box::new(error),
+                            )
+                        })?;
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?, tags, row.get(4)?))
+                },
+            )
+            .map_err(|error| {
+                sqlite_error(
+                    "memory_search_failed",
+                    "failed to search sqlite memories",
+                    error,
+                )
+            })?;
+        let mut items = Vec::new();
+        for row in rows {
+            let (memory_id, title, body, tags, importance) = row.map_err(|error| {
+                sqlite_error(
+                    "memory_search_decode_failed",
+                    "failed to decode sqlite memory search result",
+                    error,
+                )
+            })?;
+            if tag.is_some_and(|tag| !tags.iter().any(|item| item == tag)) {
+                continue;
+            }
+            items.push(crate::memory::RecallMemoryItem {
+                path: format!("memory/memories/{memory_id}.md"),
+                memory_id,
+                title,
+                snippet: snippet_for_body(&body, 240),
+                score: importance,
+                importance,
+            });
+            if items.len() >= limit {
+                break;
+            }
+        }
+        Ok(items)
+    }
+
+    fn search_thread_summaries(
+        &mut self,
+        query: &str,
+        limit: usize,
+        since: Option<&str>,
+    ) -> Result<Vec<crate::memory::MemorySummary>, WorkspaceError> {
+        if limit == 0 || query.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+        let pattern = like_pattern(query);
+        let exact_thread_id = query.trim();
+        let mut statement = self
+            .conn
+            .prepare(
+                "SELECT
+                    thread_id,
+                    title,
+                    agent_source,
+                    created_at
+                FROM threads
+                WHERE workspace_id = ?1
+                    AND (
+                        title COLLATE NOCASE LIKE ?2 ESCAPE '\\'
+                        OR thread_id COLLATE NOCASE LIKE ?2 ESCAPE '\\'
+                        OR agent_source COLLATE NOCASE LIKE ?2 ESCAPE '\\'
+                    )
+                    AND (?4 IS NULL OR created_at >= ?4 OR updated_at >= ?4)
+                ORDER BY CASE WHEN thread_id = ?3 THEN 0 ELSE 1 END, updated_at DESC
+                LIMIT ?5",
+            )
+            .map_err(|error| {
+                sqlite_error(
+                    "memory_thread_search_prepare_failed",
+                    "failed to prepare sqlite thread summary search query",
+                    error,
+                )
+            })?;
+        let summaries = statement
+            .query_map(
+                params![
+                    self.scope.workspace_id,
+                    pattern,
+                    exact_thread_id,
+                    since,
+                    sql_limit(limit)
+                ],
+                |row| {
+                    let thread_id: String = row.get(0)?;
+                    let agent_source: String = row.get(2)?;
+                    Ok(crate::memory::MemorySummary {
+                        path: format!("memory/threads/{agent_source}/{thread_id}.md"),
+                        memory_id: thread_id,
+                        title: row.get(1)?,
+                        status: "active".to_string(),
+                        created_at: row.get(3)?,
+                        tags: Vec::new(),
+                    })
+                },
+            )
+            .map_err(|error| {
+                sqlite_error(
+                    "memory_thread_search_failed",
+                    "failed to search sqlite thread summaries",
+                    error,
+                )
+            })?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| {
+                sqlite_error(
+                    "memory_thread_search_decode_failed",
+                    "failed to decode sqlite thread summary search result",
+                    error,
+                )
+            })?;
+        Ok(summaries)
+    }
 }
 
 fn row_to_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredAgentSession> {
@@ -553,6 +773,54 @@ fn now_rfc3339() -> Result<String, WorkspaceError> {
             format!("failed to format memory storage timestamp: {error}"),
         )
     })
+}
+
+fn like_pattern(query: &str) -> String {
+    let mut pattern = String::from("%");
+    for character in query.trim().chars() {
+        if matches!(character, '%' | '_' | '\\') {
+            pattern.push('\\');
+        }
+        pattern.push(character);
+    }
+    pattern.push('%');
+    pattern
+}
+
+fn tag_pattern(tag: Option<&str>) -> Result<Option<String>, WorkspaceError> {
+    tag.map(|tag| {
+        serde_json::to_string(tag).map(|value| {
+            let mut pattern = String::from("%");
+            for character in value.chars() {
+                if matches!(character, '%' | '_' | '\\') {
+                    pattern.push('\\');
+                }
+                pattern.push(character);
+            }
+            pattern.push('%');
+            pattern
+        })
+    })
+    .transpose()
+    .map_err(|error| {
+        WorkspaceError::new(
+            "memory_tag_filter_serialize_failed",
+            format!("failed to serialize memory tag filter: {error}"),
+        )
+    })
+}
+
+fn sql_limit(limit: usize) -> i64 {
+    let capped = limit.saturating_mul(8).max(limit).min(i64::MAX as usize);
+    capped as i64
+}
+
+fn snippet_for_body(body: &str, max_chars: usize) -> String {
+    let mut snippet = body.chars().take(max_chars).collect::<String>();
+    if body.chars().count() > max_chars {
+        snippet.push_str("...");
+    }
+    snippet
 }
 
 fn sqlite_error(

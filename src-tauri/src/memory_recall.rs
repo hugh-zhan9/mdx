@@ -52,6 +52,45 @@ pub fn memory_recall(
     let byte_budget = request
         .byte_budget
         .unwrap_or(config.recall.context_byte_budget);
+    let force_markdown_fallback = match config.storage.backend.as_str() {
+        "postgres" => {
+            let url = postgres_url_from_config(config.storage.postgres_url_ref.as_deref())?;
+            let mut storage = crate::memory_storage_postgres::PostgresMemoryStorage::connect(&url)?;
+            storage.scope_to_workspace(root);
+            storage.initialize()?;
+            if db_recall_should_fallback_to_markdown(
+                root,
+                &request,
+                storage.count_active_memories()?,
+                storage.count_threads()?,
+            )? {
+                Some("memory db recall store incomplete; used markdown fallback")
+            } else {
+                return recall_from_db_storage(root, &mut storage, request, limit, byte_budget);
+            }
+        }
+        "sqlite" if root.join(".mdx/memory.sqlite").is_file() => {
+            let mut storage =
+                crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root)?;
+            storage.initialize()?;
+            if !db_recall_should_fallback_to_markdown(
+                root,
+                &request,
+                storage.count_active_memories()?,
+                storage.count_threads()?,
+            )? {
+                return recall_from_db_storage(root, &mut storage, request, limit, byte_budget);
+            }
+            Some("memory db recall store incomplete; used markdown fallback")
+        }
+        "sqlite" => Some("memory sqlite database missing; used markdown fallback"),
+        backend => {
+            return Err(WorkspaceError::new(
+                "memory_storage_backend_unsupported",
+                format!("unsupported memory storage backend: {backend}"),
+            ));
+        }
+    };
 
     let working = if request.include_working {
         Some(crate::memory_working::memory_working_get(root)?)
@@ -61,7 +100,11 @@ pub fn memory_recall(
 
     let mut warnings = Vec::new();
     let mut index_degraded = false;
-    let items = if crate::search_index::is_degraded(root)? {
+    let items = if let Some(reason) = force_markdown_fallback {
+        index_degraded = true;
+        warnings.push(reason.to_string());
+        recall_memories_from_markdown(root, &request, limit, config.recall.half_life_days)?
+    } else if crate::search_index::is_degraded(root)? {
         index_degraded = true;
         warnings.push("search index degraded; used markdown fallback".to_string());
         recall_memories_from_markdown(root, &request, limit, config.recall.half_life_days)?
@@ -128,6 +171,100 @@ pub(crate) fn render_recall_context(result: &RecallResult) -> String {
         output.push('\n');
     }
     output.trim().to_string()
+}
+
+fn db_recall_should_fallback_to_markdown(
+    root: &std::path::Path,
+    request: &RecallRequest,
+    db_memory_count: i64,
+    db_thread_count: i64,
+) -> Result<bool, WorkspaceError> {
+    if markdown_memory_count(root)? > db_memory_count {
+        return Ok(true);
+    }
+    let needs_threads = request.include_threads || !request.thread_ids.is_empty();
+    if needs_threads && markdown_thread_count(root)? > db_thread_count {
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+fn markdown_memory_count(root: &std::path::Path) -> Result<i64, WorkspaceError> {
+    let memories = crate::memory_store::memory_list(
+        root,
+        MemoryListFilter {
+            tag: None,
+            since: None,
+            include_archived: false,
+        },
+    )?;
+    Ok(memories.len() as i64)
+}
+
+fn markdown_thread_count(root: &std::path::Path) -> Result<i64, WorkspaceError> {
+    let threads = crate::memory_thread::memory_thread_list(
+        root,
+        ThreadListFilter {
+            source: None,
+            since: None,
+        },
+    )?;
+    Ok(threads.len() as i64)
+}
+
+fn recall_from_db_storage(
+    root: &std::path::Path,
+    storage: &mut dyn crate::memory_storage::MemoryStorage,
+    request: RecallRequest,
+    limit: usize,
+    byte_budget: usize,
+) -> Result<RecallResult, WorkspaceError> {
+    let working = if request.include_working {
+        Some(crate::memory_working::memory_working_get(root)?)
+    } else {
+        None
+    };
+    let wiki_refs = recall_wiki_refs(root, &request, limit)?;
+    let mut db_request = request.clone();
+    db_request.limit = Some(limit);
+    db_request.byte_budget = Some(usize::MAX);
+    let db_result = crate::memory_recall_engine::recall_from_storage(storage, db_request)?;
+    let (memories, threads, wiki_refs, truncated, byte_count) = apply_byte_budget(
+        working.as_ref(),
+        db_result.memories,
+        db_result.threads,
+        wiki_refs,
+        byte_budget,
+    );
+
+    Ok(RecallResult {
+        working,
+        memories,
+        threads,
+        wiki_refs,
+        truncated: truncated || db_result.truncated,
+        byte_count,
+        index_degraded: false,
+        warnings: db_result.warnings,
+    })
+}
+
+fn postgres_url_from_config(url_ref: Option<&str>) -> Result<String, WorkspaceError> {
+    let Some(url_ref) = url_ref.filter(|value| !value.trim().is_empty()) else {
+        return Err(WorkspaceError::new(
+            "memory_postgres_url_missing",
+            "memory postgres storage requires storage.postgres_url_ref",
+        ));
+    };
+    if url_ref.contains("://") {
+        return Ok(url_ref.to_string());
+    }
+    std::env::var(url_ref).map_err(|error| {
+        WorkspaceError::new(
+            "memory_postgres_url_missing",
+            format!("failed to read postgres URL from {url_ref}: {error}"),
+        )
+    })
 }
 
 fn recall_memories_from_index(

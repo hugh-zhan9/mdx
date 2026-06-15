@@ -1,4 +1,7 @@
+use std::path::Path;
+
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use time::format_description::well_known::Rfc3339;
 use time::{OffsetDateTime, UtcOffset};
 
@@ -8,6 +11,12 @@ use crate::WorkspaceError;
 pub struct StoredWorkspace {
     pub workspace_id: String,
     pub workspace_root: String,
+    pub project_key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemoryStorageScope {
+    pub workspace_id: String,
     pub project_key: String,
 }
 
@@ -73,6 +82,31 @@ pub trait MemoryStorage {
     fn enqueue_job_idempotent(&mut self, job: &StoredJob) -> Result<bool, WorkspaceError>;
     fn list_ready_jobs(&mut self, limit: usize) -> Result<Vec<StoredJob>, WorkspaceError>;
     fn count_events(&mut self) -> Result<i64, WorkspaceError>;
+    fn search_memories(
+        &mut self,
+        query: &str,
+        limit: usize,
+        tag: Option<&str>,
+        since: Option<&str>,
+    ) -> Result<Vec<crate::memory::RecallMemoryItem>, WorkspaceError>;
+    fn search_thread_summaries(
+        &mut self,
+        query: &str,
+        limit: usize,
+        since: Option<&str>,
+    ) -> Result<Vec<crate::memory::MemorySummary>, WorkspaceError>;
+}
+
+pub fn workspace_scope_for_root(root: impl AsRef<Path>) -> MemoryStorageScope {
+    let workspace_root = std::fs::canonicalize(root.as_ref())
+        .unwrap_or_else(|_| root.as_ref().to_path_buf())
+        .to_string_lossy()
+        .into_owned();
+    let workspace_id = format!("workspace:{}", sha256_hex(workspace_root.as_bytes()));
+    MemoryStorageScope {
+        workspace_id: workspace_id.clone(),
+        project_key: workspace_id,
+    }
 }
 
 pub(crate) fn validate_job_timestamps(job: &StoredJob) -> Result<(), WorkspaceError> {
@@ -80,6 +114,11 @@ pub(crate) fn validate_job_timestamps(job: &StoredJob) -> Result<(), WorkspaceEr
     parse_normalized_utc_rfc3339("created_at", &job.created_at)?;
     parse_normalized_utc_rfc3339("updated_at", &job.updated_at)?;
     Ok(())
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    format!("{digest:x}")
 }
 
 pub(crate) fn filter_sort_ready_jobs(

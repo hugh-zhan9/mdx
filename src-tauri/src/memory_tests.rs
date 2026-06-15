@@ -2279,7 +2279,11 @@ fn recall_finds_memory_added_after_index_rebuild() {
 
     assert_eq!(result.memories.len(), 1);
     assert_eq!(result.memories[0].title, "Needle after index");
-    assert!(!result.index_degraded);
+    assert!(result.index_degraded);
+    assert!(result
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("sqlite database missing")));
 }
 
 #[test]
@@ -3466,6 +3470,708 @@ fn recall_includes_working_memory_and_respects_byte_budget() {
 }
 
 #[test]
+fn db_recall_respects_byte_budget_and_never_reads_thread_body_by_default() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path()).unwrap();
+    storage.initialize().unwrap();
+    let now = "2026-06-12T09:00:00Z";
+    let scope = crate::memory_storage::workspace_scope_for_root(root.path());
+    let conn = rusqlite::Connection::open(root.path().join(".mdx/memory.sqlite")).unwrap();
+    conn.execute(
+        "INSERT INTO memories (
+            memory_id,
+            workspace_id,
+            project_key,
+            title,
+            body,
+            status,
+            tags,
+            importance,
+            confidence,
+            created_at,
+            updated_at,
+            archived_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, 'active', ?6, ?7, ?8, ?9, ?9, NULL)",
+        rusqlite::params![
+            "memory-backend",
+            &scope.workspace_id,
+            &scope.project_key,
+            "Memory backend",
+            "Memory backend uses sqlite storage for recall snippets.",
+            r#"["backend"]"#,
+            0.8_f64,
+            0.9_f64,
+            now
+        ],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO threads (
+            thread_id,
+            workspace_id,
+            agent_source,
+            session_pk,
+            title,
+            body,
+            content_hash,
+            message_count,
+            distilled,
+            promoted_to_wiki,
+            created_at,
+            updated_at
+        )
+        VALUES (?1, ?2, 'manual', NULL, ?3, ?4, 'hash-1', 1, 0, 0, ?5, ?5)",
+        rusqlite::params![
+            "thread-1",
+            &scope.workspace_id,
+            "Unrelated thread",
+            "full thread body must not appear",
+            now
+        ],
+    )
+    .unwrap();
+
+    let result = crate::memory_recall_engine::recall_from_storage(
+        &mut storage,
+        RecallRequest {
+            query: "Memory backend".to_string(),
+            limit: Some(5),
+            byte_budget: Some(80),
+            include_working: false,
+            include_threads: false,
+            thread_ids: Vec::new(),
+            include_wiki_refs: false,
+            include_wiki_snippets: false,
+            tag: None,
+            since: None,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.memories.len(), 1);
+    assert!(result.byte_count <= 80);
+    assert!(result.threads.is_empty());
+    assert!(!format!("{result:?}").contains("full thread body must not appear"));
+}
+
+#[test]
+fn db_recall_explicit_thread_ids_are_not_lost_to_fuzzy_limit() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path()).unwrap();
+    storage.initialize().unwrap();
+    let scope = crate::memory_storage::workspace_scope_for_root(root.path());
+    let conn = rusqlite::Connection::open(root.path().join(".mdx/memory.sqlite")).unwrap();
+    conn.execute(
+        "INSERT INTO threads (
+            thread_id,
+            workspace_id,
+            agent_source,
+            session_pk,
+            title,
+            body,
+            content_hash,
+            message_count,
+            distilled,
+            promoted_to_wiki,
+            created_at,
+            updated_at
+        )
+        VALUES (?1, ?2, 'manual', NULL, ?3, ?4, ?5, 1, 0, 0, ?6, ?7)",
+        rusqlite::params![
+            "thread-auth",
+            &scope.workspace_id,
+            "Auth exact thread",
+            "explicit thread body must not appear",
+            "hash-exact",
+            "2026-06-12T09:00:00Z",
+            "2026-06-12T09:00:00Z",
+        ],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO threads (
+            thread_id,
+            workspace_id,
+            agent_source,
+            session_pk,
+            title,
+            body,
+            content_hash,
+            message_count,
+            distilled,
+            promoted_to_wiki,
+            created_at,
+            updated_at
+        )
+        VALUES (?1, ?2, 'manual', NULL, ?3, ?4, ?5, 1, 0, 0, ?6, ?7)",
+        rusqlite::params![
+            "thread-auth-extra",
+            &scope.workspace_id,
+            "Auth fuzzy thread",
+            "fuzzy thread body must not appear",
+            "hash-fuzzy",
+            "2026-06-12T09:00:00Z",
+            "2026-06-12T10:00:00Z",
+        ],
+    )
+    .unwrap();
+
+    let result = crate::memory_recall_engine::recall_from_storage(
+        &mut storage,
+        RecallRequest {
+            query: "missing".to_string(),
+            limit: Some(1),
+            byte_budget: Some(65_536),
+            include_working: false,
+            include_threads: false,
+            thread_ids: vec!["thread-auth".to_string()],
+            include_wiki_refs: false,
+            include_wiki_snippets: false,
+            tag: None,
+            since: None,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.threads.len(), 1);
+    assert_eq!(result.threads[0].memory_id, "thread-auth");
+    assert!(!format!("{result:?}").contains("explicit thread body must not appear"));
+    assert!(!format!("{result:?}").contains("fuzzy thread body must not appear"));
+}
+
+#[test]
+fn db_recall_scopes_memories_to_workspace_and_matches_tags() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path()).unwrap();
+    storage.initialize().unwrap();
+    let scope = crate::memory_storage::workspace_scope_for_root(root.path());
+    let conn = rusqlite::Connection::open(root.path().join(".mdx/memory.sqlite")).unwrap();
+    for (memory_id, workspace_id, project_key, title, body, tags, importance) in [
+        (
+            "memory-current",
+            scope.workspace_id.as_str(),
+            scope.project_key.as_str(),
+            "Current scoped memory",
+            "This body does not include the query token.",
+            r#"["architecture"]"#,
+            0.5_f64,
+        ),
+        (
+            "memory-foreign",
+            "workspace:foreign",
+            "workspace:foreign",
+            "Foreign architecture memory",
+            "Architecture content from another workspace must not leak.",
+            r#"["architecture"]"#,
+            1.0_f64,
+        ),
+    ] {
+        conn.execute(
+            "INSERT INTO memories (
+                memory_id,
+                workspace_id,
+                project_key,
+                title,
+                body,
+                status,
+                tags,
+                importance,
+                confidence,
+                created_at,
+                updated_at,
+                archived_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, 'active', ?6, ?7, 0.9, ?8, ?8, NULL)",
+            rusqlite::params![
+                memory_id,
+                workspace_id,
+                project_key,
+                title,
+                body,
+                tags,
+                importance,
+                "2026-06-12T09:00:00Z"
+            ],
+        )
+        .unwrap();
+    }
+
+    let result = crate::memory_recall_engine::recall_from_storage(
+        &mut storage,
+        RecallRequest {
+            query: "architecture".to_string(),
+            limit: Some(5),
+            byte_budget: Some(65_536),
+            include_working: false,
+            include_threads: false,
+            thread_ids: Vec::new(),
+            include_wiki_refs: false,
+            include_wiki_snippets: false,
+            tag: None,
+            since: None,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.memories.len(), 1);
+    assert_eq!(result.memories[0].memory_id, "memory-current");
+    assert!(!format!("{result:?}").contains("Foreign architecture memory"));
+}
+
+#[test]
+fn db_recall_applies_exact_tag_filter_before_row_limit() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path()).unwrap();
+    storage.initialize().unwrap();
+    let scope = crate::memory_storage::workspace_scope_for_root(root.path());
+    let conn = rusqlite::Connection::open(root.path().join(".mdx/memory.sqlite")).unwrap();
+    for index in 0..24 {
+        conn.execute(
+            "INSERT INTO memories (
+                memory_id,
+                workspace_id,
+                project_key,
+                title,
+                body,
+                status,
+                tags,
+                importance,
+                confidence,
+                created_at,
+                updated_at,
+                archived_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, 'active', ?6, 1.0, 0.9, ?7, ?7, NULL)",
+            rusqlite::params![
+                format!("memory-decoy-{index}"),
+                &scope.workspace_id,
+                &scope.project_key,
+                format!("Needle decoy {index}"),
+                "Needle decoy body with the query token.",
+                r#"["decoy"]"#,
+                "2026-06-12T09:00:00Z"
+            ],
+        )
+        .unwrap();
+    }
+    conn.execute(
+        "INSERT INTO memories (
+            memory_id,
+            workspace_id,
+            project_key,
+            title,
+            body,
+            status,
+            tags,
+            importance,
+            confidence,
+            created_at,
+            updated_at,
+            archived_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, 'active', ?6, 0.1, 0.9, ?7, ?7, NULL)",
+        rusqlite::params![
+            "memory-target-tag",
+            &scope.workspace_id,
+            &scope.project_key,
+            "Needle target",
+            "Needle target body with the query token.",
+            r#"["target"]"#,
+            "2026-06-12T09:00:00Z"
+        ],
+    )
+    .unwrap();
+
+    let result = crate::memory_recall_engine::recall_from_storage(
+        &mut storage,
+        RecallRequest {
+            query: "needle".to_string(),
+            limit: Some(1),
+            byte_budget: Some(65_536),
+            include_working: false,
+            include_threads: false,
+            thread_ids: Vec::new(),
+            include_wiki_refs: false,
+            include_wiki_snippets: false,
+            tag: Some("target".to_string()),
+            since: None,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.memories.len(), 1);
+    assert_eq!(result.memories[0].memory_id, "memory-target-tag");
+}
+
+#[test]
+fn db_recall_include_threads_respects_since_filter() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path()).unwrap();
+    storage.initialize().unwrap();
+    let scope = crate::memory_storage::workspace_scope_for_root(root.path());
+    let conn = rusqlite::Connection::open(root.path().join(".mdx/memory.sqlite")).unwrap();
+    conn.execute(
+        "INSERT INTO threads (
+            thread_id,
+            workspace_id,
+            agent_source,
+            session_pk,
+            title,
+            body,
+            content_hash,
+            message_count,
+            distilled,
+            promoted_to_wiki,
+            created_at,
+            updated_at
+        )
+        VALUES (?1, ?2, 'manual', NULL, ?3, ?4, 'hash-old', 1, 0, 0, ?5, ?5)",
+        rusqlite::params![
+            "thread-old",
+            &scope.workspace_id,
+            "Auth thread before cutoff",
+            "old thread body must not appear",
+            "2026-06-01T09:00:00Z",
+        ],
+    )
+    .unwrap();
+
+    let result = crate::memory_recall_engine::recall_from_storage(
+        &mut storage,
+        RecallRequest {
+            query: "auth".to_string(),
+            limit: Some(5),
+            byte_budget: Some(65_536),
+            include_working: false,
+            include_threads: true,
+            thread_ids: Vec::new(),
+            include_wiki_refs: false,
+            include_wiki_snippets: false,
+            tag: None,
+            since: Some("2026-06-10T00:00:00Z".to_string()),
+        },
+    )
+    .unwrap();
+
+    assert!(result.threads.is_empty());
+    assert!(!format!("{result:?}").contains("old thread body must not appear"));
+}
+
+#[test]
+fn recall_uses_markdown_fallback_when_db_has_threads_but_no_memories() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "Thread-only DB fallback sentinel".to_string(),
+            body: "Markdown memory must still be recalled while DB memories are unmigrated."
+                .to_string(),
+            tags: vec!["fallback".to_string()],
+            source_thread: None,
+            source_message_refs: Vec::new(),
+            importance: Some(0.8),
+            confidence: Some(0.9),
+        },
+    )
+    .unwrap();
+
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path()).unwrap();
+    storage.initialize().unwrap();
+    let scope = crate::memory_storage::workspace_scope_for_root(root.path());
+    let conn = rusqlite::Connection::open(root.path().join(".mdx/memory.sqlite")).unwrap();
+    conn.execute(
+        "INSERT INTO threads (
+            thread_id,
+            workspace_id,
+            agent_source,
+            session_pk,
+            title,
+            body,
+            content_hash,
+            message_count,
+            distilled,
+            promoted_to_wiki,
+            created_at,
+            updated_at
+        )
+        VALUES (?1, ?2, 'manual', NULL, ?3, ?4, 'hash-thread-only', 1, 0, 0, ?5, ?5)",
+        rusqlite::params![
+            "thread-only-db",
+            &scope.workspace_id,
+            "Thread-only DB row",
+            "thread-only db body must not appear",
+            "2026-06-12T09:00:00Z",
+        ],
+    )
+    .unwrap();
+
+    let result = memory_recall(
+        root.path().to_string_lossy().into_owned(),
+        RecallRequest {
+            query: "fallback sentinel".to_string(),
+            limit: Some(5),
+            byte_budget: Some(65_536),
+            include_working: false,
+            include_threads: false,
+            thread_ids: Vec::new(),
+            include_wiki_refs: false,
+            include_wiki_snippets: false,
+            tag: None,
+            since: None,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.memories.len(), 1);
+    assert_eq!(result.memories[0].title, "Thread-only DB fallback sentinel");
+    assert!(result.index_degraded);
+    assert!(result
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("markdown fallback")));
+}
+
+#[test]
+fn recall_uses_markdown_fallback_when_db_memories_are_partially_migrated() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "Migrated markdown memory".to_string(),
+            body: "This memory is represented by the DB row.".to_string(),
+            tags: vec!["migration".to_string()],
+            source_thread: None,
+            source_message_refs: Vec::new(),
+            importance: Some(0.8),
+            confidence: Some(0.9),
+        },
+    )
+    .unwrap();
+    memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "Unmigrated markdown memory".to_string(),
+            body: "partial-only markdown memory must still be recalled.".to_string(),
+            tags: vec!["migration".to_string()],
+            source_thread: None,
+            source_message_refs: Vec::new(),
+            importance: Some(0.7),
+            confidence: Some(0.9),
+        },
+    )
+    .unwrap();
+
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path()).unwrap();
+    storage.initialize().unwrap();
+    let scope = crate::memory_storage::workspace_scope_for_root(root.path());
+    let conn = rusqlite::Connection::open(root.path().join(".mdx/memory.sqlite")).unwrap();
+    conn.execute(
+        "INSERT INTO memories (
+            memory_id,
+            workspace_id,
+            project_key,
+            title,
+            body,
+            status,
+            tags,
+            importance,
+            confidence,
+            created_at,
+            updated_at,
+            archived_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, 'active', ?6, 0.8, 0.9, ?7, ?7, NULL)",
+        rusqlite::params![
+            "memory-migrated",
+            &scope.workspace_id,
+            &scope.project_key,
+            "Migrated markdown memory",
+            "This memory is represented by the DB row.",
+            r#"["migration"]"#,
+            "2026-06-12T09:00:00Z"
+        ],
+    )
+    .unwrap();
+
+    let result = memory_recall(
+        root.path().to_string_lossy().into_owned(),
+        RecallRequest {
+            query: "partial-only".to_string(),
+            limit: Some(5),
+            byte_budget: Some(65_536),
+            include_working: false,
+            include_threads: false,
+            thread_ids: Vec::new(),
+            include_wiki_refs: false,
+            include_wiki_snippets: false,
+            tag: None,
+            since: None,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.memories.len(), 1);
+    assert_eq!(result.memories[0].title, "Unmigrated markdown memory");
+    assert!(result.index_degraded);
+}
+
+#[test]
+fn recall_uses_markdown_fallback_when_sqlite_db_missing_even_with_clean_index() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_add(
+        root.path().to_string_lossy().into_owned(),
+        MemoryAddRequest {
+            title: "Missing sqlite fallback sentinel".to_string(),
+            body: "A clean search index must not hide a missing memory sqlite database."
+                .to_string(),
+            tags: vec!["fallback".to_string()],
+            source_thread: None,
+            source_message_refs: Vec::new(),
+            importance: Some(0.8),
+            confidence: Some(0.9),
+        },
+    )
+    .unwrap();
+    crate::memory::memory_index_rebuild(root.path().to_string_lossy().into_owned()).unwrap();
+    assert!(root.path().join(".mdx/search.sqlite").is_file());
+    assert!(!root.path().join(".mdx/memory.sqlite").exists());
+
+    let result = memory_recall(
+        root.path().to_string_lossy().into_owned(),
+        RecallRequest {
+            query: "fallback sentinel".to_string(),
+            limit: Some(5),
+            byte_budget: Some(65_536),
+            include_working: false,
+            include_threads: false,
+            thread_ids: Vec::new(),
+            include_wiki_refs: false,
+            include_wiki_snippets: false,
+            tag: None,
+            since: None,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.memories.len(), 1);
+    assert_eq!(result.memories[0].title, "Missing sqlite fallback sentinel");
+    assert!(result.index_degraded);
+    assert!(result
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("sqlite database missing")));
+}
+
+#[test]
+fn db_recall_facade_budgets_once_with_working_memory() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    memory_working_set(
+        root.path().to_string_lossy().into_owned(),
+        "# Working Memory\n\n## Focus\n- Keep enough active context in working memory.\n"
+            .to_string(),
+    )
+    .unwrap();
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path()).unwrap();
+    storage.initialize().unwrap();
+    let scope = crate::memory_storage::workspace_scope_for_root(root.path());
+    let conn = rusqlite::Connection::open(root.path().join(".mdx/memory.sqlite")).unwrap();
+    conn.execute(
+        "INSERT INTO memories (
+            memory_id,
+            workspace_id,
+            project_key,
+            title,
+            body,
+            status,
+            tags,
+            importance,
+            confidence,
+            created_at,
+            updated_at,
+            archived_at
+        )
+        VALUES (?1, ?2, ?3, ?4, ?5, 'active', ?6, 1.0, 0.9, ?7, ?7, NULL)",
+        rusqlite::params![
+            "memory-large",
+            &scope.workspace_id,
+            &scope.project_key,
+            "Budget large memory",
+            "Budget large memory snippet ".repeat(20),
+            r#"["budget"]"#,
+            "2026-06-12T09:00:00Z"
+        ],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO threads (
+            thread_id,
+            workspace_id,
+            agent_source,
+            session_pk,
+            title,
+            body,
+            content_hash,
+            message_count,
+            distilled,
+            promoted_to_wiki,
+            created_at,
+            updated_at
+        )
+        VALUES (?1, ?2, 'manual', NULL, ?3, ?4, 'hash-budget', 1, 0, 0, ?5, ?5)",
+        rusqlite::params![
+            "budget-thread",
+            &scope.workspace_id,
+            "Tiny",
+            "budget thread body must not appear",
+            "2026-06-12T09:00:00Z",
+        ],
+    )
+    .unwrap();
+
+    let result = memory_recall(
+        root.path().to_string_lossy().into_owned(),
+        RecallRequest {
+            query: "budget".to_string(),
+            limit: Some(5),
+            byte_budget: Some(180),
+            include_working: true,
+            include_threads: true,
+            thread_ids: Vec::new(),
+            include_wiki_refs: false,
+            include_wiki_snippets: false,
+            tag: None,
+            since: None,
+        },
+    )
+    .unwrap();
+
+    assert!(result.memories.is_empty());
+    assert_eq!(result.threads.len(), 1);
+    assert_eq!(result.threads[0].memory_id, "budget-thread");
+    assert!(result.truncated);
+    assert!(result.byte_count <= 180);
+    assert!(!format!("{result:?}").contains("budget thread body must not appear"));
+}
+
+#[test]
 fn recall_request_serde_defaults_include_working_to_true() {
     let request: RecallRequest = serde_json::from_str(
         r#"{
@@ -3818,7 +4524,11 @@ fn recall_limit_zero_returns_no_memories_with_available_index() {
     .unwrap();
 
     assert!(result.memories.is_empty());
-    assert!(!result.index_degraded);
+    assert!(result.index_degraded);
+    assert!(result
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("sqlite database missing")));
 }
 
 #[test]

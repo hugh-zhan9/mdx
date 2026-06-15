@@ -44,6 +44,7 @@ mod memory_models;
 mod memory_promote;
 pub mod memory_queue;
 mod memory_recall;
+pub mod memory_recall_engine;
 pub mod memory_schema;
 pub mod memory_spool;
 pub mod memory_storage;

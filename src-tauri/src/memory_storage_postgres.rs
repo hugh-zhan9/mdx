@@ -4,13 +4,14 @@ use time::OffsetDateTime;
 
 use crate::memory_schema::POSTGRES_DDL;
 use crate::memory_storage::{
-    validate_job_timestamps, MemoryStorage, StoredAgentEvent, StoredAgentSession, StoredJob,
-    StoredWorkspace,
+    validate_job_timestamps, workspace_scope_for_root, MemoryStorage, MemoryStorageScope,
+    StoredAgentEvent, StoredAgentSession, StoredJob, StoredWorkspace,
 };
 use crate::WorkspaceError;
 
 pub struct PostgresMemoryStorage {
     client: Client,
+    scope: Option<MemoryStorageScope>,
 }
 
 impl PostgresMemoryStorage {
@@ -22,7 +23,14 @@ impl PostgresMemoryStorage {
                 error,
             )
         })?;
-        Ok(Self { client })
+        Ok(Self {
+            client,
+            scope: None,
+        })
+    }
+
+    pub fn scope_to_workspace(&mut self, root: impl AsRef<std::path::Path>) {
+        self.scope = Some(workspace_scope_for_root(root));
     }
 
     pub fn initialize(&mut self) -> Result<(), WorkspaceError> {
@@ -70,6 +78,56 @@ impl PostgresMemoryStorage {
 
     pub fn count_events(&mut self) -> Result<i64, WorkspaceError> {
         <Self as MemoryStorage>::count_events(self)
+    }
+
+    pub fn count_active_memories(&mut self) -> Result<i64, WorkspaceError> {
+        let scope = self.required_scope()?.clone();
+        self.client
+            .query_one(
+                "SELECT COUNT(*)
+                FROM memories
+                WHERE workspace_id = $1
+                    AND project_key = $2
+                    AND status = 'active'
+                    AND archived_at IS NULL",
+                &[&scope.workspace_id, &scope.project_key],
+            )
+            .map(|row| row.get(0))
+            .map_err(|error| {
+                postgres_error(
+                    "memory_postgres_recall_memory_count_failed",
+                    "failed to count postgres recall memory records",
+                    error,
+                )
+            })
+    }
+
+    pub fn count_threads(&mut self) -> Result<i64, WorkspaceError> {
+        let scope = self.required_scope()?.clone();
+        self.client
+            .query_one(
+                "SELECT COUNT(*)
+                FROM threads
+                WHERE workspace_id = $1",
+                &[&scope.workspace_id],
+            )
+            .map(|row| row.get(0))
+            .map_err(|error| {
+                postgres_error(
+                    "memory_postgres_recall_thread_count_failed",
+                    "failed to count postgres recall thread records",
+                    error,
+                )
+            })
+    }
+
+    fn required_scope(&self) -> Result<&MemoryStorageScope, WorkspaceError> {
+        self.scope.as_ref().ok_or_else(|| {
+            WorkspaceError::new(
+                "memory_storage_scope_missing",
+                "memory postgres recall requires a workspace scope",
+            )
+        })
     }
 }
 
@@ -404,6 +462,145 @@ impl MemoryStorage for PostgresMemoryStorage {
                 )
             })
     }
+
+    fn search_memories(
+        &mut self,
+        query: &str,
+        limit: usize,
+        tag: Option<&str>,
+        since: Option<&str>,
+    ) -> Result<Vec<crate::memory::RecallMemoryItem>, WorkspaceError> {
+        if limit == 0 || query.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+        let scope = self.required_scope()?.clone();
+        let pattern = like_pattern(query);
+        let tag_filter = tag.map(ToString::to_string);
+        let rows = self
+            .client
+            .query(
+                "SELECT
+                    memory_id,
+                    title,
+                    body,
+                    tags,
+                    COALESCE(importance, 0.5) AS importance
+                FROM memories
+                WHERE workspace_id = $1
+                    AND project_key = $2
+                    AND status = 'active'
+                    AND archived_at IS NULL
+                    AND (
+                        title ILIKE $3 ESCAPE '\\'
+                        OR body ILIKE $3 ESCAPE '\\'
+                        OR tags::text ILIKE $3 ESCAPE '\\'
+                    )
+                    AND ($4::text IS NULL OR created_at >= $4 OR updated_at >= $4)
+                    AND ($5::text IS NULL OR tags ? $5)
+                ORDER BY importance DESC, updated_at DESC
+                LIMIT $6",
+                &[
+                    &scope.workspace_id,
+                    &scope.project_key,
+                    &pattern,
+                    &since,
+                    &tag_filter,
+                    &sql_limit(limit),
+                ],
+            )
+            .map_err(|error| {
+                postgres_error(
+                    "memory_postgres_search_failed",
+                    "failed to search postgres memories",
+                    error,
+                )
+            })?;
+        let mut items = Vec::new();
+        for row in rows {
+            let memory_id: String = row.get(0);
+            let title: String = row.get(1);
+            let body: String = row.get(2);
+            let tags = postgres_tags(&row.get(3));
+            if tag.is_some_and(|tag| !tags.iter().any(|item| item == tag)) {
+                continue;
+            }
+            let importance: f64 = row.get(4);
+            items.push(crate::memory::RecallMemoryItem {
+                path: format!("memory/memories/{memory_id}.md"),
+                memory_id,
+                title,
+                snippet: snippet_for_body(&body, 240),
+                score: importance,
+                importance,
+            });
+            if items.len() >= limit {
+                break;
+            }
+        }
+        Ok(items)
+    }
+
+    fn search_thread_summaries(
+        &mut self,
+        query: &str,
+        limit: usize,
+        since: Option<&str>,
+    ) -> Result<Vec<crate::memory::MemorySummary>, WorkspaceError> {
+        if limit == 0 || query.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+        let scope = self.required_scope()?.clone();
+        let pattern = like_pattern(query);
+        let exact_thread_id = query.trim().to_string();
+        self.client
+            .query(
+                "SELECT
+                    thread_id,
+                    title,
+                    agent_source,
+                    created_at
+                FROM threads
+                WHERE workspace_id = $1
+                    AND (
+                        title ILIKE $2 ESCAPE '\\'
+                        OR thread_id ILIKE $2 ESCAPE '\\'
+                        OR agent_source ILIKE $2 ESCAPE '\\'
+                    )
+                    AND ($4::text IS NULL OR created_at >= $4 OR updated_at >= $4)
+                ORDER BY CASE WHEN thread_id = $3 THEN 0 ELSE 1 END, updated_at DESC
+                LIMIT $5",
+                &[
+                    &scope.workspace_id,
+                    &pattern,
+                    &exact_thread_id,
+                    &since,
+                    &sql_limit(limit),
+                ],
+            )
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|row| {
+                        let thread_id: String = row.get(0);
+                        let agent_source: String = row.get(2);
+                        crate::memory::MemorySummary {
+                            path: format!("memory/threads/{agent_source}/{thread_id}.md"),
+                            memory_id: thread_id,
+                            title: row.get(1),
+                            status: "active".to_string(),
+                            created_at: row.get(3),
+                            tags: Vec::new(),
+                        }
+                    })
+                    .collect()
+            })
+            .map_err(|error| {
+                postgres_error(
+                    "memory_postgres_thread_search_failed",
+                    "failed to search postgres thread summaries",
+                    error,
+                )
+            })
+    }
 }
 
 fn postgres_row_to_session(row: &postgres::Row) -> StoredAgentSession {
@@ -446,6 +643,43 @@ fn now_rfc3339() -> Result<String, WorkspaceError> {
             format!("failed to format memory storage timestamp: {error}"),
         )
     })
+}
+
+fn like_pattern(query: &str) -> String {
+    let mut pattern = String::from("%");
+    for character in query.trim().chars() {
+        if matches!(character, '%' | '_' | '\\') {
+            pattern.push('\\');
+        }
+        pattern.push(character);
+    }
+    pattern.push('%');
+    pattern
+}
+
+fn sql_limit(limit: usize) -> i64 {
+    let capped = limit.saturating_mul(8).max(limit).min(i64::MAX as usize);
+    capped as i64
+}
+
+fn postgres_tags(value: &serde_json::Value) -> Vec<String> {
+    value
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str().map(ToString::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn snippet_for_body(body: &str, max_chars: usize) -> String {
+    let mut snippet = body.chars().take(max_chars).collect::<String>();
+    if body.chars().count() > max_chars {
+        snippet.push_str("...");
+    }
+    snippet
 }
 
 fn postgres_error(
