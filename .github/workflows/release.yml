@@ -15,18 +15,10 @@ permissions:
 
 jobs:
   build-macos:
-    name: macOS ${{ matrix.arch }}
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: arm64
-            runner: macos-14
-            target: aarch64-apple-darwin
-          - arch: x64
-            runner: macos-13
-            target: x86_64-apple-darwin
+    name: macOS arm64
+    runs-on: macos-14
+    env:
+      TARGET: aarch64-apple-darwin
 
     steps:
       - name: Checkout
@@ -41,7 +33,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ env.TARGET }}
 
       - name: Install frontend dependencies
         run: npm ci
@@ -52,26 +44,26 @@ jobs:
       - name: Test Rust
         env:
           TAURI_CONFIG: '{"bundle":{"externalBin":[]}}'
-        run: cargo test --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }}
+        run: cargo test --manifest-path src-tauri/Cargo.toml --target ${{ env.TARGET }}
 
       - name: Build sidecars
         env:
-          TAURI_TARGET_TRIPLE: ${{ matrix.target }}
+          TAURI_TARGET_TRIPLE: ${{ env.TARGET }}
         run: npm run build:sidecars
 
       - name: Build app
         env:
-          TAURI_TARGET_TRIPLE: ${{ matrix.target }}
-        run: npx tauri build --target ${{ matrix.target }}
+          TAURI_TARGET_TRIPLE: ${{ env.TARGET }}
+        run: npx tauri build --target ${{ env.TARGET }}
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: mdx-macos-${{ matrix.arch }}
+          name: mdx-macos-arm64
           path: |
-            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
-            src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz
-            src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.app.tar.gz.sig
+            src-tauri/target/${{ env.TARGET }}/release/bundle/dmg/*.dmg
+            src-tauri/target/${{ env.TARGET }}/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/${{ env.TARGET }}/release/bundle/macos/*.app.tar.gz.sig
           if-no-files-found: warn
 
       - name: Upload release assets
@@ -81,4 +73,4 @@ jobs:
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
-            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+            src-tauri/target/${{ env.TARGET }}/release/bundle/dmg/*.dmg
