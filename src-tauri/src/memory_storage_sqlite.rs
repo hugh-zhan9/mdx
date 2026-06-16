@@ -7,8 +7,8 @@ use time::OffsetDateTime;
 use crate::memory_schema::SQLITE_DDL;
 use crate::memory_storage::{
     validate_job_timestamps, workspace_scope_for_root, MemoryStorage, MemoryStorageScope,
-    StoredAgentEvent, StoredAgentSession, StoredInboxWrite, StoredJob, StoredMemoryWrite,
-    StoredProvenanceLink, StoredWorkspace,
+    ProjectionMemory, StoredAgentEvent, StoredAgentSession, StoredInboxWrite, StoredJob,
+    StoredMemoryWrite, StoredProvenanceLink, StoredWorkspace,
 };
 use crate::WorkspaceError;
 
@@ -100,6 +100,12 @@ impl SqliteMemoryStorage {
         <Self as MemoryStorage>::insert_provenance_link(self, link)
     }
 
+    pub fn list_active_memories_for_projection(
+        &mut self,
+    ) -> Result<Vec<ProjectionMemory>, WorkspaceError> {
+        <Self as MemoryStorage>::list_active_memories_for_projection(self)
+    }
+
     pub fn count_active_memories(&mut self) -> Result<i64, WorkspaceError> {
         self.conn
             .query_row(
@@ -132,6 +138,33 @@ impl SqliteMemoryStorage {
                     error,
                 )
             })
+    }
+
+    #[cfg(test)]
+    pub fn insert_memory_for_test(
+        &mut self,
+        memory_id: &str,
+        _workspace_id: &str,
+        _project_key: &str,
+        title: &str,
+        body: &str,
+        tags: &[&str],
+        confidence: f64,
+    ) -> Result<bool, WorkspaceError> {
+        <Self as MemoryStorage>::insert_memory(
+            self,
+            &StoredMemoryWrite {
+                memory_id: memory_id.to_string(),
+                workspace_id: self.scope.workspace_id.clone(),
+                project_key: self.scope.project_key.clone(),
+                title: title.to_string(),
+                body: body.to_string(),
+                tags: tags.iter().map(|tag| (*tag).to_string()).collect(),
+                importance: None,
+                confidence: Some(confidence),
+                created_at: now_rfc3339()?,
+            },
+        )
     }
 
     #[cfg(test)]
@@ -685,6 +718,78 @@ impl MemoryStorage for SqliteMemoryStorage {
                     error,
                 )
             })
+    }
+
+    fn list_active_memories_for_projection(
+        &mut self,
+    ) -> Result<Vec<ProjectionMemory>, WorkspaceError> {
+        let mut statement = self
+            .conn
+            .prepare(
+                "SELECT
+                    memory_id,
+                    title,
+                    body,
+                    tags,
+                    importance,
+                    confidence,
+                    created_at,
+                    updated_at
+                FROM memories
+                WHERE workspace_id = ?1
+                    AND project_key = ?2
+                    AND status = 'active'
+                    AND archived_at IS NULL
+                ORDER BY title ASC, memory_id ASC",
+            )
+            .map_err(|error| {
+                sqlite_error(
+                    "memory_projection_list_prepare_failed",
+                    "failed to prepare sqlite memory projection query",
+                    error,
+                )
+            })?;
+        let memories = statement
+            .query_map(
+                params![self.scope.workspace_id, self.scope.project_key],
+                |row| {
+                    let tags_json: String = row.get(3)?;
+                    let tags =
+                        serde_json::from_str::<Vec<String>>(&tags_json).map_err(|error| {
+                            rusqlite::Error::FromSqlConversionFailure(
+                                3,
+                                rusqlite::types::Type::Text,
+                                Box::new(error),
+                            )
+                        })?;
+                    Ok(ProjectionMemory {
+                        memory_id: row.get(0)?,
+                        title: row.get(1)?,
+                        body: row.get(2)?,
+                        tags,
+                        importance: row.get(4)?,
+                        confidence: row.get(5)?,
+                        created_at: row.get(6)?,
+                        updated_at: row.get(7)?,
+                    })
+                },
+            )
+            .map_err(|error| {
+                sqlite_error(
+                    "memory_projection_list_failed",
+                    "failed to list sqlite memory projection records",
+                    error,
+                )
+            })?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| {
+                sqlite_error(
+                    "memory_projection_decode_failed",
+                    "failed to decode sqlite memory projection record",
+                    error,
+                )
+            })?;
+        Ok(memories)
     }
 
     fn search_memories(

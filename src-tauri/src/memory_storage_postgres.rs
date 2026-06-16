@@ -5,8 +5,8 @@ use time::OffsetDateTime;
 use crate::memory_schema::POSTGRES_DDL;
 use crate::memory_storage::{
     validate_job_timestamps, workspace_scope_for_root, MemoryStorage, MemoryStorageScope,
-    StoredAgentEvent, StoredAgentSession, StoredInboxWrite, StoredJob, StoredMemoryWrite,
-    StoredProvenanceLink, StoredWorkspace,
+    ProjectionMemory, StoredAgentEvent, StoredAgentSession, StoredInboxWrite, StoredJob,
+    StoredMemoryWrite, StoredProvenanceLink, StoredWorkspace,
 };
 use crate::WorkspaceError;
 
@@ -97,6 +97,12 @@ impl PostgresMemoryStorage {
         link: &StoredProvenanceLink,
     ) -> Result<bool, WorkspaceError> {
         <Self as MemoryStorage>::insert_provenance_link(self, link)
+    }
+
+    pub fn list_active_memories_for_projection(
+        &mut self,
+    ) -> Result<Vec<ProjectionMemory>, WorkspaceError> {
+        <Self as MemoryStorage>::list_active_memories_for_projection(self)
     }
 
     pub fn count_active_memories(&mut self) -> Result<i64, WorkspaceError> {
@@ -616,6 +622,52 @@ impl MemoryStorage for PostgresMemoryStorage {
                 postgres_error(
                     "memory_postgres_provenance_insert_failed",
                     "failed to insert postgres provenance link",
+                    error,
+                )
+            })
+    }
+
+    fn list_active_memories_for_projection(
+        &mut self,
+    ) -> Result<Vec<ProjectionMemory>, WorkspaceError> {
+        let scope = self.required_scope()?.clone();
+        self.client
+            .query(
+                "SELECT
+                    memory_id,
+                    title,
+                    body,
+                    tags,
+                    importance,
+                    confidence,
+                    created_at,
+                    updated_at
+                FROM memories
+                WHERE workspace_id = $1
+                    AND project_key = $2
+                    AND status = 'active'
+                    AND archived_at IS NULL
+                ORDER BY title ASC, memory_id ASC",
+                &[&scope.workspace_id, &scope.project_key],
+            )
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|row| ProjectionMemory {
+                        memory_id: row.get(0),
+                        title: row.get(1),
+                        body: row.get(2),
+                        tags: postgres_tags(&row.get(3)),
+                        importance: row.get(4),
+                        confidence: row.get(5),
+                        created_at: row.get(6),
+                        updated_at: row.get(7),
+                    })
+                    .collect()
+            })
+            .map_err(|error| {
+                postgres_error(
+                    "memory_postgres_projection_list_failed",
+                    "failed to list postgres memory projection records",
                     error,
                 )
             })

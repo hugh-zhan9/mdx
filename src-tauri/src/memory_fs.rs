@@ -581,7 +581,7 @@ fn write_workspace_file_new(
     Ok(NewFileWrite::Created)
 }
 
-fn write_workspace_file_if_missing(
+pub(crate) fn write_workspace_file_if_missing(
     root: &Path,
     relative_path: &str,
     contents: &[u8],

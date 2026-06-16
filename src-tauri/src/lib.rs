@@ -42,6 +42,7 @@ mod memory_fs;
 pub mod memory_hooks;
 mod memory_inbox;
 mod memory_models;
+pub mod memory_projection;
 mod memory_promote;
 pub mod memory_provider;
 pub mod memory_queue;

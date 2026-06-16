@@ -21,6 +21,7 @@ pub use crate::memory_models::{
     ThreadIndex, ThreadIndexEntry, ThreadListFilter, ThreadListItem, ThreadSaveRequest,
     ThreadSaveResult,
 };
+pub use crate::memory_projection::ProjectionReport;
 use crate::models::WorkspaceError;
 use crate::path_guard::canonicalize_workspace_root;
 

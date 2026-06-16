@@ -69,6 +69,145 @@ fn distill_safety_rejects_secrets_and_routes_sensitive_to_inbox() {
 }
 
 #[test]
+fn projection_rebuild_writes_memory_markdown_with_stable_frontmatter() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::initialize_memory_workspace(root.path()).unwrap();
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path()).unwrap();
+    storage.initialize().unwrap();
+    storage
+        .insert_memory_for_test(
+            "memory-projection-1",
+            "workspace:test",
+            "workspace:test",
+            "Agent backend",
+            "Memory is external to Codex Claude Cursor.",
+            &["architecture"],
+            0.95,
+        )
+        .unwrap();
+
+    let report = crate::memory_projection::rebuild_projection(root.path(), &mut storage).unwrap();
+
+    assert_eq!(report.written, 1);
+    let markdown =
+        std::fs::read_to_string(root.path().join("memory/memories/agent-backend.md")).unwrap();
+    assert!(markdown.contains("memory_id: memory-projection-1"));
+    assert!(markdown.contains("kind: memory"));
+    assert!(markdown.contains("Memory is external to Codex Claude Cursor."));
+    let (frontmatter, body) =
+        crate::memory_fs::parse_markdown_frontmatter::<crate::memory::MemoryFrontmatter>(&markdown)
+            .unwrap();
+    assert_eq!(frontmatter.memory_id, "memory-projection-1");
+    assert_eq!(frontmatter.tags, vec!["architecture"]);
+    assert_eq!(frontmatter.confidence, Some(0.95));
+    assert_eq!(body.trim(), "Memory is external to Codex Claude Cursor.");
+}
+
+#[test]
+fn projection_rebuild_reports_conflict_without_overwriting_existing_markdown() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::initialize_memory_workspace(root.path()).unwrap();
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path()).unwrap();
+    storage.initialize().unwrap();
+    storage
+        .insert_memory_for_test(
+            "memory-conflict-1",
+            "workspace:test",
+            "workspace:test",
+            "Agent backend",
+            "New DB memory body.",
+            &["architecture"],
+            0.95,
+        )
+        .unwrap();
+    let path = root.path().join("memory/memories/agent-backend.md");
+    std::fs::write(&path, "existing projection\n").unwrap();
+
+    let report = crate::memory_projection::rebuild_projection(root.path(), &mut storage).unwrap();
+
+    assert_eq!(report.written, 0);
+    assert_eq!(report.conflicts, 1);
+    assert_eq!(
+        std::fs::read_to_string(path).unwrap(),
+        "existing projection\n"
+    );
+}
+
+#[test]
+fn projection_rebuild_slugifies_non_ascii_as_dash() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::initialize_memory_workspace(root.path()).unwrap();
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path()).unwrap();
+    storage.initialize().unwrap();
+    storage
+        .insert_memory_for_test(
+            "memory-slug-1",
+            "workspace:test",
+            "workspace:test",
+            "Ägent backend",
+            "Slug rules are stable.",
+            &["architecture"],
+            0.95,
+        )
+        .unwrap();
+
+    let report = crate::memory_projection::rebuild_projection(root.path(), &mut storage).unwrap();
+
+    assert_eq!(report.written, 1);
+    assert!(root
+        .path()
+        .join("memory/memories/gent-backend.md")
+        .is_file());
+}
+
+#[test]
+fn projection_rebuild_disambiguates_duplicate_title_slugs() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::initialize_memory_workspace(root.path()).unwrap();
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path()).unwrap();
+    storage.initialize().unwrap();
+    storage
+        .insert_memory_for_test(
+            "memory-duplicate-1",
+            "workspace:test",
+            "workspace:test",
+            "Agent backend",
+            "First memory body.",
+            &["architecture"],
+            0.95,
+        )
+        .unwrap();
+    storage
+        .insert_memory_for_test(
+            "memory-duplicate-2",
+            "workspace:test",
+            "workspace:test",
+            "Agent backend",
+            "Second memory body.",
+            &["architecture"],
+            0.96,
+        )
+        .unwrap();
+
+    let report = crate::memory_projection::rebuild_projection(root.path(), &mut storage).unwrap();
+
+    assert_eq!(report.written, 2);
+    assert_eq!(report.conflicts, 0);
+    assert!(root
+        .path()
+        .join("memory/memories/agent-backend.md")
+        .is_file());
+    assert!(root
+        .path()
+        .join("memory/memories/agent-backend-memory-duplicate-2.md")
+        .is_file());
+}
+
+#[test]
 fn distill_worker_writes_auto_accept_memory_with_provenance() {
     let root = tempfile::tempdir().unwrap();
     crate::memory::initialize_memory_workspace(root.path()).unwrap();
