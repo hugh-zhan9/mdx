@@ -2945,6 +2945,23 @@ fn workspace_lock_recovers_stale_lock_directory() {
 }
 
 #[test]
+fn workspace_lock_recovers_orphaned_owner_pid() {
+    let root = tempdir().unwrap();
+    memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    write_memory_lock_owner(
+        root.path(),
+        "token=orphan-owner\npid=999999\ncreated_at_unix=4102444800\n",
+    );
+
+    let recovered = try_acquire_memory_lock(root.path()).unwrap();
+
+    let owner = std::fs::read_to_string(root.path().join(".mdx/memory.lock/owner")).unwrap();
+    assert!(!owner.contains("token=orphan-owner"));
+    drop(recovered);
+    assert!(!root.path().join(".mdx/memory.lock").exists());
+}
+
+#[test]
 fn workspace_lock_fresh_missing_owner_directory_returns_busy() {
     let root = tempdir().unwrap();
     memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
@@ -3318,6 +3335,19 @@ fn memory_read_and_write_reject_paths_outside_workspace() {
     assert!(format!("{write_parent_error}").starts_with("invalid_memory_workspace_path:"));
     assert!(format!("{read_absolute_error}").starts_with("invalid_memory_workspace_path:"));
     assert!(format!("{write_absolute_error}").starts_with("invalid_memory_workspace_path:"));
+}
+
+#[test]
+fn memory_read_failure_includes_relative_path() {
+    let root = tempdir().unwrap();
+    std::fs::create_dir_all(root.path().join("memory")).unwrap();
+    std::fs::write(root.path().join("memory/bad.md"), [0xff]).unwrap();
+
+    let error = read_workspace_file(root.path(), "memory/bad.md").unwrap_err();
+    let message = format!("{error}");
+
+    assert!(message.contains("failed to read memory workspace file"));
+    assert!(message.contains("memory/bad.md"));
 }
 
 #[test]

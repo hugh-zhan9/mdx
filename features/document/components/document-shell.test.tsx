@@ -12,6 +12,10 @@ import type { FrontendFileWatchEvent } from "@/features/file-watch/lib/types";
 const readDocumentFile = vi.fn();
 const draftGet = vi.fn();
 const draftDelete = vi.fn();
+const close = vi.fn(async () => {});
+const destroy = vi.fn(async () => {});
+const listen = vi.fn(async () => () => {});
+const onCloseRequested = vi.fn(async () => () => {});
 const fileWatchOptions: {
   current: { onEvent: (event: FrontendFileWatchEvent) => void } | null;
 } = { current: null };
@@ -37,9 +41,10 @@ vi.mock("@/common/lib/tauri", () => ({
   tauriDialog: async () => ({}),
   tauriWindow: async () => ({
     getCurrentWindow: () => ({
-      close: vi.fn(async () => {}),
-      listen: vi.fn(async () => () => {}),
-      onCloseRequested: vi.fn(async () => () => {}),
+      close,
+      destroy,
+      listen,
+      onCloseRequested,
     }),
   }),
 }));
@@ -94,6 +99,8 @@ describe("DocumentShell draft recovery", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     fileWatchOptions.current = null;
+    listen.mockResolvedValue(() => {});
+    onCloseRequested.mockResolvedValue(() => {});
     Object.defineProperty(window, "__TAURI_INTERNALS__", {
       configurable: true,
       value: {},
@@ -158,6 +165,26 @@ describe("DocumentShell draft recovery", () => {
     expect(host.textContent).toContain("磁盘版本");
     expect(host.textContent).toContain("草稿");
     expect(host.textContent).toContain("# Crash draft");
+  });
+
+  it("destroys clean document windows explicitly on close request", async () => {
+    readDocumentFile.mockResolvedValueOnce(
+      documentFile("# Disk", "fingerprint-disk"),
+    );
+    draftGet.mockResolvedValueOnce(null);
+
+    await renderDocumentShell(root);
+    const closeHandler = onCloseRequested.mock.calls[0]?.[0];
+    const preventDefault = vi.fn();
+
+    await act(async () => {
+      closeHandler?.({ preventDefault });
+      await flushPromises();
+    });
+
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(destroy).toHaveBeenCalledOnce();
+    expect(close).not.toHaveBeenCalled();
   });
 
   function getButton(label: string) {

@@ -1168,10 +1168,9 @@ mod tests {
 
     #[test]
     fn chat_stream_cancelled_does_not_retry_non_stream_fallback() {
-        assert!(!should_retry_chat_non_stream_fallback(&WorkspaceError::new(
-            "cancelled",
-            "operation cancelled"
-        )));
+        assert!(!should_retry_chat_non_stream_fallback(
+            &WorkspaceError::new("cancelled", "operation cancelled")
+        ));
         assert!(should_retry_chat_non_stream_fallback(&WorkspaceError::new(
             "llm_failed",
             "stream not supported"
@@ -1188,10 +1187,9 @@ mod tests {
             "llm_partial_stream",
             "stream ended before [DONE]"
         )));
-        assert!(!should_retry_chat_non_stream_fallback(&WorkspaceError::new(
-            "cancelled",
-            "operation cancelled"
-        )));
+        assert!(!should_retry_chat_non_stream_fallback(
+            &WorkspaceError::new("cancelled", "operation cancelled")
+        ));
     }
 
     #[test]

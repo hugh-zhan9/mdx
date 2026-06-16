@@ -112,7 +112,7 @@ fn recover_stale_memory_lock_dir(
 ) -> Result<StaleLockRecovery, WorkspaceError> {
     let lock_file = match read_memory_lock_owner(lock_path) {
         LockOwnerRead::Parsed(lock_file) => {
-            if !memory_lock_is_stale(&lock_file, now_unix) {
+            if !memory_lock_is_recoverable(&lock_file, now_unix) {
                 return Ok(StaleLockRecovery::Busy);
             }
             Some(lock_file)
@@ -180,8 +180,24 @@ fn read_memory_lock_owner(lock_path: &Path) -> LockOwnerRead {
     }
 }
 
-fn memory_lock_is_stale(lock_file: &MemoryLockFile, now_unix: u64) -> bool {
+fn memory_lock_is_recoverable(lock_file: &MemoryLockFile, now_unix: u64) -> bool {
     now_unix.saturating_sub(lock_file.created_at_unix) >= LOCK_STALE_AFTER_SECONDS
+        || !process_is_running(lock_file.pid)
+}
+
+#[cfg(unix)]
+fn process_is_running(pid: u32) -> bool {
+    let result = unsafe { libc::kill(pid as libc::pid_t, 0) };
+    if result == 0 {
+        return true;
+    }
+
+    std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+}
+
+#[cfg(not(unix))]
+fn process_is_running(_pid: u32) -> bool {
+    true
 }
 
 fn memory_lock_dir_is_stale(lock_path: &Path, now_unix: u64) -> bool {
@@ -244,6 +260,7 @@ fn restore_or_clean_stale_lock_dir(
 #[derive(Debug)]
 struct MemoryLockFile {
     token: String,
+    pid: u32,
     created_at_unix: u64,
 }
 
@@ -268,6 +285,7 @@ fn parse_memory_lock_file(contents: &str) -> Result<MemoryLockFile, ()> {
 
     Ok(MemoryLockFile {
         token: token.ok_or(())?,
+        pid: pid.ok_or(())?,
         created_at_unix: created_at_unix.ok_or(())?,
     })
 }
@@ -424,10 +442,14 @@ pub(crate) fn read_workspace_file(
     validate_workspace_relative_path(relative_path)?;
     ensure_existing_parent_directories(root, relative_path)?;
     ensure_file_target(root, relative_path)?;
-    fs::read_to_string(root.join(relative_path)).map_err(|error| {
+    let path = root.join(relative_path);
+    fs::read_to_string(&path).map_err(|error| {
         WorkspaceError::from_io(
             "read_failed",
-            "failed to read memory workspace file",
+            format!(
+                "failed to read memory workspace file {relative_path} ({})",
+                path.display()
+            ),
             &error,
         )
     })

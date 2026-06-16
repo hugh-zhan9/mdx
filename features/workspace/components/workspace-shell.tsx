@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  Brain,
+  FileText,
   FolderOpen,
   PanelLeftClose,
   PanelLeftOpen,
@@ -174,6 +176,9 @@ export function WorkspaceShell({
   const [leftPanelMode, setLeftPanelMode] = useState<"tree" | "search">(
     "tree",
   );
+  const [workspaceView, setWorkspaceView] = useState<"editor" | "memory">(
+    "editor",
+  );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [rightPanelTab, setRightPanelTab] =
     useState<RightPanelTabId>("outline");
@@ -257,6 +262,7 @@ export function WorkspaceShell({
     externalDeletedPrompt?.tabId === activeTabId
       ? externalDeletedPrompt
       : null;
+  const isMemoryView = workspaceView === "memory";
 
   useEffect(() => {
     externalConflictRef.current = externalConflict;
@@ -267,6 +273,7 @@ export function WorkspaceShell({
   }, [externalDeletedPrompt]);
 
   useEffect(() => {
+    setWorkspaceView("editor");
     externalPathVersionsRef.current = {};
     setInitialEditorLoadSettled(false);
     setPostponedOrphanDraftIds(new Set());
@@ -1930,9 +1937,9 @@ export function WorkspaceShell({
   }, []);
   const panelLayout = calculateWorkspacePanelLayout({
     containerWidth: workspaceBodyWidth,
-    leftCollapsed: leftPanel.isCollapsed,
+    leftCollapsed: isMemoryView || leftPanel.isCollapsed,
     leftWidth: leftPanel.width,
-    rightCollapsed: rightPanel.isCollapsed,
+    rightCollapsed: isMemoryView || rightPanel.isCollapsed,
     rightWidth: rightPanel.width,
   });
   const gridTemplateColumns = [
@@ -1952,6 +1959,7 @@ export function WorkspaceShell({
             icon={
               leftPanel.isCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />
             }
+            disabled={isMemoryView}
           />
         </div>
 
@@ -1968,6 +1976,23 @@ export function WorkspaceShell({
             <FolderOpen aria-hidden="true" />
             打开文件夹
           </TextControlButton>
+          <TextControlButton
+            onClick={() =>
+              setWorkspaceView((current) =>
+                current === "memory" ? "editor" : "memory",
+              )
+            }
+            className={
+              isMemoryView ? "bg-base-300 text-base-content" : undefined
+            }
+          >
+            {isMemoryView ? (
+              <FileText aria-hidden="true" />
+            ) : (
+              <Brain aria-hidden="true" />
+            )}
+            {isMemoryView ? "返回编辑器" : "记忆"}
+          </TextControlButton>
           <SettingsButton
             open={settingsOpen}
             onOpenChange={setSettingsOpen}
@@ -1982,6 +2007,7 @@ export function WorkspaceShell({
               rightPanel.isCollapsed ? <PanelRightOpen /> : <PanelRightClose />
             }
             onClick={rightPanel.toggleCollapsed}
+            disabled={isMemoryView}
           />
         </div>
       </header>
@@ -2024,6 +2050,12 @@ export function WorkspaceShell({
           className="flex min-h-0 min-w-0 flex-col bg-base-100"
           style={{ gridColumn: 2 }}
         >
+          {isMemoryView ? (
+            <div className="min-h-0 flex-1 overflow-hidden bg-base-100">
+              <MemoryPanel rootPath={workspace.rootPath} />
+            </div>
+          ) : (
+            <>
           <TabStrip
             tabs={tabs}
             activeTabId={workspace.activeTabId}
@@ -2206,19 +2238,21 @@ export function WorkspaceShell({
             onPendingCliCommandHandled={handlePendingCliCommandHandled}
             onSelectionChange={handleSelectionChange}
           />
+            </>
+          )}
         </main>
 
         <div
           className="relative min-h-0 overflow-hidden"
           style={{ gridColumn: 3 }}
         >
-          {rightPanel.isCollapsed ? null : (
+          {isMemoryView || rightPanel.isCollapsed ? null : (
             <aside className="h-full min-h-0 overflow-hidden border-l border-base-300 bg-base-100">
               <div className="flex h-full min-h-0 flex-col">
                 <div
                   role="tablist"
                   aria-label="Right panel"
-                  className="grid grid-cols-3 gap-1 border-b border-base-300 bg-base-200 p-1"
+                  className="grid grid-cols-2 gap-1 border-b border-base-300 bg-base-200 p-1"
                 >
                   {RIGHT_PANEL_TABS.map((tab) => (
                     <button
@@ -2251,9 +2285,7 @@ export function WorkspaceShell({
                       llmWiki={llmWiki}
                       onConfigureLlm={() => setSettingsOpen(true)}
                     />
-                  ) : (
-                    <MemoryPanel rootPath={workspace.rootPath} />
-                  )}
+                  ) : null}
                 </div>
               </div>
               <div

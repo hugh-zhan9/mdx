@@ -229,12 +229,11 @@ fn hook_event(root: String, body: &str) -> Result<DaemonResponse, WorkspaceError
         deadline_ms: request.deadline_ms,
     };
 
-    let mut storage = match crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(
-        root_path,
-    ) {
-        Ok(storage) => storage,
-        Err(error) => return hook_degraded_response(error),
-    };
+    let mut storage =
+        match crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root_path) {
+            Ok(storage) => storage,
+            Err(error) => return hook_degraded_response(error),
+        };
     if let Err(error) = storage.initialize() {
         return hook_degraded_response(error);
     }

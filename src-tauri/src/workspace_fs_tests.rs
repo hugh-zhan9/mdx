@@ -1,7 +1,7 @@
 use tempfile::tempdir;
 
-use crate::models::FileTreeNode;
 use crate::document::document_fingerprint;
+use crate::models::FileTreeNode;
 use crate::workspace_fs::{
     create_markdown_file, open_path_with_default_application_impl, read_markdown_file,
     read_preview_binary_file, read_preview_text_file, scan_workspace_sync,

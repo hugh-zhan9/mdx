@@ -800,6 +800,17 @@ fn is_workspace_path_dirty(
     dirty_paths.contains(std::path::Path::new(&real_path))
 }
 
+#[tauri::command]
+fn workspace_close_diagnostic(window: tauri::Window, stage: String, details: serde_json::Value) {
+    log::info!(
+        target: "mdx::workspace_close",
+        "frontend stage={} label={} details={}",
+        stage,
+        window.label(),
+        details,
+    );
+}
+
 fn startup_open_routing_state() -> StartupOpenRoutingState {
     let mut startup_routing = StartupOpenRoutingState::default();
     #[cfg(target_os = "macos")]
@@ -822,13 +833,20 @@ pub fn run() {
         .manage(Mutex::new(DirtyWorkspacePaths::default()))
         .manage(Mutex::new(startup_open_routing_state()))
         .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
+            app.handle().plugin(
+                tauri_plugin_log::Builder::default()
+                    .level(log::LevelFilter::Info)
+                    .max_file_size(1_000_000)
+                    .build(),
+            )?;
+            log::info!(
+                target: "mdx::lifecycle",
+                "logger initialized app_log_dir={}",
+                app.path()
+                    .app_log_dir()
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_else(|error| format!("unavailable: {error}")),
+            );
             app.handle().plugin(tauri_plugin_dialog::init())?;
             cli_server::start(app.handle().clone());
 
@@ -935,6 +953,7 @@ pub fn run() {
             get_window_session,
             update_workspace_dirty_paths,
             is_workspace_path_dirty,
+            workspace_close_diagnostic,
             llm_wiki::llm_wiki_detect_workspace,
             llm_wiki::llm_wiki_initialize_workspace,
             llm_wiki::llm_wiki_rescan_raw,
@@ -1006,6 +1025,7 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app, event| match event {
             RunEvent::Ready => {
+                log::info!(target: "mdx::lifecycle", "run event ready");
                 #[cfg(target_os = "macos")]
                 {
                     remember_ready_for_startup_routing(app);
@@ -1025,6 +1045,11 @@ pub fn run() {
             }
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             RunEvent::Opened { urls } => {
+                log::info!(
+                    target: "mdx::lifecycle",
+                    "run event opened url_count={}",
+                    urls.len(),
+                );
                 let opened_supported_document = open_supported_document_urls(app, &urls);
                 #[cfg(target_os = "macos")]
                 if opened_supported_document {
@@ -1033,7 +1058,35 @@ pub fn run() {
             }
             #[cfg(target_os = "macos")]
             RunEvent::Reopen { .. } => {
+                log::info!(
+                    target: "mdx::lifecycle",
+                    "run event reopen window_count={}",
+                    app.webview_windows().len(),
+                );
                 focus_or_create_initial_workspace_window(app);
+            }
+            RunEvent::ExitRequested { code, .. } => {
+                log::info!(
+                    target: "mdx::lifecycle",
+                    "run event exit-requested code={code:?} window_count={}",
+                    app.webview_windows().len(),
+                );
+            }
+            RunEvent::Exit => {
+                log::info!(target: "mdx::lifecycle", "run event exit");
+            }
+            RunEvent::WindowEvent {
+                label,
+                event: WindowEvent::CloseRequested { .. },
+                ..
+            } => {
+                log::info!(
+                    target: "mdx::window",
+                    "window close-requested label={} role={:?} window_count={}",
+                    label,
+                    window_role_for_label(app, &label),
+                    app.webview_windows().len(),
+                );
             }
             RunEvent::WindowEvent {
                 label,
@@ -1047,11 +1100,18 @@ pub fn run() {
                 event: WindowEvent::Destroyed,
                 ..
             } => {
+                let role = window_role_for_label(app, &label);
+                log::info!(
+                    target: "mdx::window",
+                    "window destroyed label={} role={:?} window_count_before_cleanup={}",
+                    label,
+                    role,
+                    app.webview_windows().len(),
+                );
                 let was_workspace = {
                     let state = app.state::<Mutex<WindowSessionRegistry>>();
                     let mut registry = state.lock().unwrap();
-                    let was_workspace =
-                        registry.role_for_label(&label) == Some(WindowRole::Workspace);
+                    let was_workspace = role == Some(WindowRole::Workspace);
                     registry.remove_label(&label);
                     was_workspace
                 };
@@ -1066,6 +1126,12 @@ pub fn run() {
                     file_watch::stop_watches_for_window_label(&mut file_watch_state, &label);
                 }
                 update_menu_state_for_focused_window(app);
+                log::info!(
+                    target: "mdx::window",
+                    "window destroyed cleanup-complete label={} window_count={}",
+                    label,
+                    app.webview_windows().len(),
+                );
             }
             _ => {}
         });

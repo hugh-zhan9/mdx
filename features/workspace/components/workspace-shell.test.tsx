@@ -47,7 +47,7 @@ vi.mock("@/features/llm-wiki", () => ({
 }));
 
 vi.mock("@/features/memory", () => ({
-  MemoryPanel: () => null,
+  MemoryPanel: () => <div data-testid="memory-page">记忆页面</div>,
   useMemoryWorkspace: () => ({
     status: null,
     viewState: null,
@@ -120,12 +120,13 @@ vi.mock("./tab-strip", () => ({
   TabStrip: () => <div data-testid="tabs" />,
 }));
 
-describe("WorkspaceShell draft recovery", () => {
+describe("WorkspaceShell", () => {
   let host: HTMLDivElement;
   let root: ReturnType<typeof createRoot>;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    draftGet.mockResolvedValue({ draft: null, fileExists: false });
     draftListForWorkspace.mockResolvedValue({ drafts: [] });
     draftCleanupExpired.mockResolvedValue({ deleted: 0 });
     Object.defineProperty(window, "__TAURI_INTERNALS__", {
@@ -198,6 +199,53 @@ describe("WorkspaceShell draft recovery", () => {
     expect(host.textContent).toContain("磁盘版本");
     expect(host.textContent).toContain("草稿");
     expect(host.textContent).toContain("# Crash draft");
+  });
+
+  it("opens memory as a standalone workspace view", async () => {
+    let workspace = workspaceReducer(createWorkspaceState("/tmp/ws"), {
+      type: "tab/opened",
+      tab: {
+        tabId: "tab-1",
+        path: "/tmp/ws/note.md",
+        title: "note.md",
+        dirty: false,
+        needsRenameOnFirstSave: false,
+        markdown: "# Note",
+      },
+    });
+    const dispatch = (action: WorkspaceAction) => {
+      workspace = workspaceReducer(workspace, action);
+    };
+
+    await act(async () => {
+      root.render(
+        <WorkspaceShell
+          workspace={workspace}
+          dispatch={dispatch}
+          onChooseWorkspace={vi.fn()}
+          canChooseWorkspace={true}
+          preferences={preferences}
+          onPreferencesChange={vi.fn()}
+          onActionsChange={vi.fn()}
+        />,
+      );
+      await flushPromises();
+    });
+
+    expect(host.querySelector("[data-testid='editor']")).not.toBeNull();
+    expect(host.querySelector("[data-testid='memory-page']")).toBeNull();
+    expect(host.textContent).toContain("目录");
+    expect(host.textContent).toContain("LLM Wiki");
+
+    await act(async () => {
+      getButton("记忆").click();
+      await flushPromises();
+    });
+
+    expect(host.querySelector("[data-testid='editor']")).toBeNull();
+    expect(host.querySelector("[data-testid='memory-page']")).not.toBeNull();
+    expect(host.textContent).toContain("返回编辑器");
+    expect(host.textContent).not.toContain("LLM Wiki");
   });
 
   function getButton(label: string) {

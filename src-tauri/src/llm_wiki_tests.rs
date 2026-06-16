@@ -6,11 +6,10 @@ use tempfile::tempdir;
 use crate::llm_wiki::{
     llm_config_get, llm_config_to_public, llm_config_update, llm_wiki_digest_sync,
     llm_wiki_get_config, llm_wiki_get_log, llm_wiki_ingest_mock_output,
-    llm_wiki_ingest_raw_file_sync, llm_wiki_lint, llm_wiki_query_sync,
-    llm_wiki_refresh_graph_sync, llm_wiki_rescan_raw_sync,
-    llm_wiki_rescan_raw_sync_with_exclusions, llm_wiki_rescan_raw_sync_with_failures,
-    llm_wiki_rescan_raw_sync_with_retry, llm_wiki_search, llm_wiki_update_config,
-    parse_file_blocks_with_repair_for_test, related_context_or_log_failure,
+    llm_wiki_ingest_raw_file_sync, llm_wiki_lint, llm_wiki_query_sync, llm_wiki_refresh_graph_sync,
+    llm_wiki_rescan_raw_sync, llm_wiki_rescan_raw_sync_with_exclusions,
+    llm_wiki_rescan_raw_sync_with_failures, llm_wiki_rescan_raw_sync_with_retry, llm_wiki_search,
+    llm_wiki_update_config, parse_file_blocks_with_repair_for_test, related_context_or_log_failure,
 };
 use crate::llm_wiki_context::{
     build_wiki_context_with_selector_output, parse_page_selection, validate_wiki_page_path,
@@ -601,11 +600,11 @@ fn ingest_generation_prompt_rejects_markdown_wrappers_and_requires_end_markers()
     let prompt = build_ingest_generation_prompt("{}", "# Existing");
 
     assert!(prompt.contains("Do not wrap the output in ```markdown or any other code fence."));
-    assert!(prompt
-        .contains("Every ---FILE: marker must have a matching exact ---END FILE--- marker."));
     assert!(
-        prompt.contains("Before answering, verify the final non-whitespace line is ---END FILE---.")
+        prompt.contains("Every ---FILE: marker must have a matching exact ---END FILE--- marker.")
     );
+    assert!(prompt
+        .contains("Before answering, verify the final non-whitespace line is ---END FILE---."));
 }
 
 #[test]

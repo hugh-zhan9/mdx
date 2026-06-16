@@ -16,9 +16,13 @@ const close = vi.fn(async () => {});
 const confirm = vi.fn(async () => true);
 const destroy = vi.fn(async () => {});
 const draftDelete = vi.fn(async () => {});
+const invoke = vi.fn(async () => {});
 const useWorkspaceBootstrap = vi.fn();
 
 vi.mock("@/common/lib/tauri", () => ({
+  tauriCore: async () => ({
+    invoke,
+  }),
   tauriWindow: async () => ({
     getCurrentWindow: () => ({
       close,
@@ -96,7 +100,7 @@ describe("WorkspaceApp window close", () => {
     Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
   });
 
-  it("lets Tauri close clean workspace windows without cancelling the close request", async () => {
+  it("destroys clean workspace windows explicitly", async () => {
     await act(async () => {
       root.render(<WorkspaceApp />);
       await flushPromises();
@@ -109,9 +113,15 @@ describe("WorkspaceApp window close", () => {
       await flushPromises();
     });
 
-    expect(preventDefault).not.toHaveBeenCalled();
+    expect(preventDefault).toHaveBeenCalledOnce();
     expect(close).not.toHaveBeenCalled();
-    expect(destroy).not.toHaveBeenCalled();
+    expect(destroy).toHaveBeenCalledOnce();
+    expect(invoke).toHaveBeenCalledWith("workspace_close_diagnostic", {
+      stage: "close-destroy-clean",
+      details: {
+        hasWorkspace: true,
+      },
+    });
   });
 
   it("destroys dirty workspace windows after the user confirms closing", async () => {
@@ -161,6 +171,18 @@ describe("WorkspaceApp window close", () => {
     expect(draftDelete).toHaveBeenCalledWith({ realPath: "/tmp/ws/note.md" });
     expect(destroy).toHaveBeenCalledOnce();
     expect(close).not.toHaveBeenCalled();
+    expect(invoke).toHaveBeenCalledWith("workspace_close_diagnostic", {
+      stage: "close-prevented-dirty",
+      details: {
+        dirtyTabCount: 1,
+      },
+    });
+    expect(invoke).toHaveBeenCalledWith("workspace_close_diagnostic", {
+      stage: "close-destroy-start",
+      details: {
+        dirtyTabCount: 1,
+      },
+    });
   });
 });
 

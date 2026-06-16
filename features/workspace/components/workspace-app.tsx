@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import type { RefObject } from "react";
-import { tauriWindow } from "@/common/lib/tauri";
+import { tauriCore, tauriWindow } from "@/common/lib/tauri";
 import { EmptyState, TextControlButton } from "../../../common/components/ui-controls";
 import { useWorkspaceBootstrap } from "../hooks/use-workspace-bootstrap";
 import { syncCliWorkspaceSnapshot } from "../lib/cli-sync";
@@ -234,17 +234,43 @@ function useWorkspaceCloseGuard(
             const nextUnlisten = await currentWindow.onCloseRequested(
                 (event) => {
                     const workspace = workspaceRef.current;
+                    const dirtyCount = workspace ? dirtyTabCount(workspace) : 0;
+
+                    logWorkspaceCloseDiagnostic("close-requested", {
+                        closing: closingRef.current,
+                        dirtyTabCount: dirtyCount,
+                        hasWorkspace: Boolean(workspace),
+                        tabCount: workspace?.tabOrder.length ?? 0,
+                    });
 
                     if (closingRef.current) {
-                        return;
-                    }
-
-                    if (!workspace || !hasDirtyTabs(workspace)) {
+                        logWorkspaceCloseDiagnostic("close-already-in-progress", {
+                            dirtyTabCount: dirtyCount,
+                        });
+                        event.preventDefault();
                         return;
                     }
 
                     event.preventDefault();
+
+                    if (!workspace || dirtyCount === 0) {
+                        closingRef.current = true;
+                        logWorkspaceCloseDiagnostic("close-destroy-clean", {
+                            hasWorkspace: Boolean(workspace),
+                        });
+                        void closeWorkspaceWindow(currentWindow).catch((error) => {
+                            closingRef.current = false;
+                            logWorkspaceCloseDiagnostic("close-destroy-failed", {
+                                message: formatError(error, "close failed"),
+                            });
+                        });
+                        return;
+                    }
+
                     closingRef.current = true;
+                    logWorkspaceCloseDiagnostic("close-prevented-dirty", {
+                        dirtyTabCount: dirtyCount,
+                    });
 
                     void dialogs.confirm({
                         title: "关闭窗口",
@@ -253,17 +279,29 @@ function useWorkspaceCloseGuard(
                         confirmLabel: "关闭",
                         destructive: true,
                     }).then((confirmed) => {
+                        logWorkspaceCloseDiagnostic("close-confirm-result", {
+                            confirmed,
+                        });
                         if (!confirmed) {
                             closingRef.current = false;
                             return;
                         }
+                        logWorkspaceCloseDiagnostic("close-discard-drafts-start", {
+                            dirtyTabCount: dirtyCount,
+                        });
                         void deleteDiscardedWorkspaceDrafts(
                             workspace,
                             draftDelete,
-                        ).then(() =>
-                            closeWorkspaceWindow(currentWindow),
-                        ).catch((error) => {
+                        ).then(() => {
+                            logWorkspaceCloseDiagnostic("close-destroy-start", {
+                                dirtyTabCount: dirtyCount,
+                            });
+                            return closeWorkspaceWindow(currentWindow);
+                        }).catch((error) => {
                             closingRef.current = false;
+                            logWorkspaceCloseDiagnostic("close-destroy-failed", {
+                                message: formatError(error, "close failed"),
+                            });
                             void dialogs.alert({
                                 title: "关闭窗口",
                                 message: formatError(
@@ -274,6 +312,9 @@ function useWorkspaceCloseGuard(
                         });
                     }).catch((error) => {
                         closingRef.current = false;
+                        logWorkspaceCloseDiagnostic("close-confirm-failed", {
+                            message: formatError(error, "confirm failed"),
+                        });
                         console.warn(
                             "Failed to confirm workspace close.",
                             error,
@@ -339,6 +380,23 @@ async function closeWorkspaceWindow(
     await currentWindow.destroy();
 }
 
+function logWorkspaceCloseDiagnostic(
+    stage: string,
+    details: Record<string, unknown>,
+) {
+    if (!isTauriRuntime()) {
+        return;
+    }
+
+    void tauriCore()
+        .then(({ invoke }) =>
+            invoke("workspace_close_diagnostic", { stage, details }),
+        )
+        .catch((error) => {
+            console.warn("Failed to write workspace close diagnostic.", error);
+        });
+}
+
 function useCliWorkspaceSync(workspace: WorkspaceState | null) {
     useEffect(() => {
         if (!isTauriRuntime() || workspace) {
@@ -361,7 +419,12 @@ function isTauriRuntime() {
 async function noopAsync() {}
 
 function hasDirtyTabs(workspace: WorkspaceState) {
-    return workspace.tabOrder.some((tabId) => isDirtyTab(workspace.tabs[tabId]));
+    return dirtyTabCount(workspace) > 0;
+}
+
+function dirtyTabCount(workspace: WorkspaceState) {
+    return workspace.tabOrder.filter((tabId) => isDirtyTab(workspace.tabs[tabId]))
+        .length;
 }
 
 function isDirtyTab(tab: WorkspaceTab | undefined): tab is WorkspaceTab {

@@ -756,10 +756,15 @@ export function DocumentShell({
         const current = stateRef.current;
 
         if (confirmedCloseRef.current) {
+          event.preventDefault();
           return;
         }
 
         if (!current || canCloseDocumentWithoutPrompt(current)) {
+          event.preventDefault();
+          void closeDocumentWindow().catch((closeError) => {
+            console.warn("Failed to close clean document window.", closeError);
+          });
           return;
         }
 
