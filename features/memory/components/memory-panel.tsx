@@ -1,14 +1,7 @@
 "use client";
 
 import { RefreshCw } from "lucide-react";
-import {
-  type FormEvent,
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   IconButton,
   PanelHeader,
@@ -17,7 +10,11 @@ import {
 import { useMemoryWorkspace } from "../hooks/use-memory-workspace";
 import {
   acceptMemoryInbox,
+  addMemory,
+  appendWorkingMemory,
   archiveMemory,
+  getMemoryBackendStatus,
+  getMemoryIntegrationStatus,
   getMemoryThread,
   getWorkingMemory,
   listMemories,
@@ -25,8 +22,8 @@ import {
   listMemoryThreads,
   promoteMemory,
   rebuildMemoryIndex,
-  recallMemory,
   rejectMemoryInbox,
+  repairMemoryIntegration,
   repairMemoryWorkspace,
   setWorkingMemory,
   setupMemoryAgents,
@@ -35,13 +32,26 @@ import { formatMemoryError } from "../lib/memory-error";
 import type { MemoryPanelTabId } from "../lib/memory-panel-state";
 import type {
   InboxRecord,
+  MemoryBackendStatus,
+  MemoryDoctorReport,
   MemoryIndexStatus,
+  MemoryIntegrationStatus,
   MemoryRepairResult,
   MemorySummary,
   MemoryThreadRecord,
-  RecallResult,
   ThreadListItem,
 } from "../lib/types";
+import { MemoryDiagnosticsTab } from "./memory-diagnostics-tab";
+import { MemoryIntegrationsTab } from "./memory-integrations-tab";
+import { MemoryLongTermTab } from "./memory-long-term-tab";
+import { MemoryOverviewTab } from "./memory-overview-tab";
+import { MemoryPendingTab } from "./memory-pending-tab";
+import { MemorySessionsTab } from "./memory-sessions-tab";
+import {
+  buildWorkingMemoryTitle,
+  MemoryWorkingContextTab,
+  type WorkingQuickSection,
+} from "./memory-working-context-tab";
 
 interface MemoryPanelProps {
   rootPath: string;
@@ -52,13 +62,14 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
   const activeRootPathRef = useRef(rootPath);
   activeRootPathRef.current = rootPath;
   const mountedRef = useRef(false);
-  const recallRequestIdRef = useRef(0);
+  const backendRequestIdRef = useRef(0);
+  const integrationsRequestIdRef = useRef(0);
   const workingRequestIdRef = useRef(0);
   const workingSaveRequestIdRef = useRef(0);
   const memoriesRequestIdRef = useRef(0);
   const inboxRequestIdRef = useRef(0);
   const threadsRequestIdRef = useRef(0);
-  const [activeTab, setActiveTab] = useState<MemoryPanelTabId>("settings");
+  const [activeTab, setActiveTab] = useState<MemoryPanelTabId>("overview");
   const [actionError, setActionError] = useState<string | null>(null);
   const pendingActionsRef = useRef<Map<string, symbol>>(new Map());
   const [pendingActions, setPendingActions] = useState<Set<string>>(
@@ -66,19 +77,29 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
   );
   const effectiveTab =
     memory.tabs.find((tab) => tab.id === activeTab)?.disabled === true
-      ? "settings"
+      ? "overview"
       : activeTab;
-  const initializeDisabled =
-    memory.loading || memory.viewState?.canInitialize === false;
 
-  const [recallQuery, setRecallQuery] = useState("");
-  const [recallResult, setRecallResult] = useState<RecallResult | null>(null);
-  const [recallLoading, setRecallLoading] = useState(false);
+  const [backendStatus, setBackendStatus] =
+    useState<MemoryBackendStatus | null>(null);
+  const [backendLoaded, setBackendLoaded] = useState(false);
+  const [backendLoading, setBackendLoading] = useState(false);
+
+  const [integrations, setIntegrations] = useState<MemoryIntegrationStatus[]>(
+    [],
+  );
+  const [integrationsLoaded, setIntegrationsLoaded] = useState(false);
+  const [integrationsLoading, setIntegrationsLoading] = useState(false);
+  const [diagnosticsReport, setDiagnosticsReport] =
+    useState<MemoryDoctorReport | null>(null);
 
   const [workingText, setWorkingText] = useState("");
   const [workingLoaded, setWorkingLoaded] = useState(false);
   const [workingLoading, setWorkingLoading] = useState(false);
   const [workingSaving, setWorkingSaving] = useState(false);
+  const [workingQuickNote, setWorkingQuickNote] = useState("");
+  const [workingQuickSection, setWorkingQuickSection] =
+    useState<WorkingQuickSection>("Updated");
 
   const [memories, setMemories] = useState<MemorySummary[]>([]);
   const [memoriesLoaded, setMemoriesLoaded] = useState(false);
@@ -100,7 +121,7 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
     null,
   );
   const [indexStatus, setIndexStatus] = useState<MemoryIndexStatus | null>(null);
-  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [agentSetupOptions, setAgentSetupOptions] = useState({
     codex: true,
@@ -118,19 +139,29 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
 
   useEffect(() => {
     activeRootPathRef.current = rootPath;
-    recallRequestIdRef.current += 1;
+    backendRequestIdRef.current += 1;
+    integrationsRequestIdRef.current += 1;
     workingRequestIdRef.current += 1;
     workingSaveRequestIdRef.current += 1;
     memoriesRequestIdRef.current += 1;
     inboxRequestIdRef.current += 1;
     threadsRequestIdRef.current += 1;
+    setActiveTab("overview");
     setActionError(null);
     setStatusMessage(null);
-    setRecallResult(null);
+    setBackendStatus(null);
+    setBackendLoaded(false);
+    setBackendLoading(false);
+    setIntegrations([]);
+    setIntegrationsLoaded(false);
+    setIntegrationsLoading(false);
+    setDiagnosticsReport(null);
     setWorkingText("");
     setWorkingLoaded(false);
     setWorkingLoading(false);
     setWorkingSaving(false);
+    setWorkingQuickNote("");
+    setWorkingQuickSection("Updated");
     setMemories([]);
     setMemoriesLoaded(false);
     setMemoriesLoading(false);
@@ -145,7 +176,7 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
     setThreadLoading(false);
     setRepairResult(null);
     setIndexStatus(null);
-    setSettingsLoading(false);
+    setActionLoading(false);
     setAgentSetupOptions({
       codex: true,
       claude: true,
@@ -208,6 +239,81 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
     },
     [pendingKey, setActionPending],
   );
+
+  const refreshBackend = useCallback(async () => {
+    if (!rootPath) {
+      return;
+    }
+
+    const requestRootPath = rootPath;
+    const requestId = backendRequestIdRef.current + 1;
+    backendRequestIdRef.current = requestId;
+    setBackendLoading(true);
+    setActionError(null);
+    try {
+      const status = await getMemoryBackendStatus(requestRootPath);
+      if (
+        !isCurrentRoot(requestRootPath) ||
+        backendRequestIdRef.current !== requestId
+      ) {
+        return;
+      }
+      setBackendStatus(status);
+      setBackendLoaded(true);
+    } catch (error) {
+      if (
+        isCurrentRoot(requestRootPath) &&
+        backendRequestIdRef.current === requestId
+      ) {
+        setError(error);
+      }
+    } finally {
+      if (
+        isCurrentRoot(requestRootPath) &&
+        backendRequestIdRef.current === requestId
+      ) {
+        setBackendLoading(false);
+      }
+    }
+  }, [isCurrentRoot, rootPath, setError]);
+
+  const refreshIntegrations = useCallback(async () => {
+    if (!rootPath) {
+      return;
+    }
+
+    const requestRootPath = rootPath;
+    const requestId = integrationsRequestIdRef.current + 1;
+    integrationsRequestIdRef.current = requestId;
+    setIntegrationsLoading(true);
+    setActionError(null);
+    try {
+      const statuses = await getMemoryIntegrationStatus(requestRootPath);
+      if (
+        !isCurrentRoot(requestRootPath) ||
+        integrationsRequestIdRef.current !== requestId
+      ) {
+        return;
+      }
+      setIntegrations(statuses);
+      setDiagnosticsReport(reportFromIntegrationStatuses(statuses));
+      setIntegrationsLoaded(true);
+    } catch (error) {
+      if (
+        isCurrentRoot(requestRootPath) &&
+        integrationsRequestIdRef.current === requestId
+      ) {
+        setError(error);
+      }
+    } finally {
+      if (
+        isCurrentRoot(requestRootPath) &&
+        integrationsRequestIdRef.current === requestId
+      ) {
+        setIntegrationsLoading(false);
+      }
+    }
+  }, [isCurrentRoot, rootPath, setError]);
 
   const refreshWorking = useCallback(async () => {
     if (!rootPath || !memory.hasMemory) {
@@ -364,6 +470,39 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
     }
   }, [isCurrentRoot, memory.hasMemory, rootPath, setError]);
 
+  const refreshDiagnostics = useCallback(async () => {
+    await Promise.all([refreshBackend(), refreshIntegrations()]);
+  }, [refreshBackend, refreshIntegrations]);
+
+  useEffect(() => {
+    if (effectiveTab === "overview" && !backendLoaded) {
+      void refreshBackend();
+    }
+  }, [backendLoaded, effectiveTab, refreshBackend]);
+
+  useEffect(() => {
+    if (effectiveTab === "integrations" && !integrationsLoaded) {
+      void refreshIntegrations();
+    }
+  }, [effectiveTab, integrationsLoaded, refreshIntegrations]);
+
+  useEffect(() => {
+    if (effectiveTab === "diagnostics") {
+      if (!backendLoaded) {
+        void refreshBackend();
+      }
+      if (!integrationsLoaded) {
+        void refreshIntegrations();
+      }
+    }
+  }, [
+    backendLoaded,
+    effectiveTab,
+    integrationsLoaded,
+    refreshBackend,
+    refreshIntegrations,
+  ]);
+
   useEffect(() => {
     if (effectiveTab === "working" && !workingLoaded) {
       void refreshWorking();
@@ -371,25 +510,25 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
   }, [effectiveTab, refreshWorking, workingLoaded]);
 
   useEffect(() => {
-    if (effectiveTab === "memories" && !memoriesLoaded) {
+    if (effectiveTab === "longTerm" && !memoriesLoaded) {
       void refreshMemories();
     }
   }, [effectiveTab, memoriesLoaded, refreshMemories]);
 
   useEffect(() => {
-    if (effectiveTab === "inbox" && !inboxLoaded) {
+    if (effectiveTab === "pending" && !inboxLoaded) {
       void refreshInbox();
     }
   }, [effectiveTab, inboxLoaded, refreshInbox]);
 
   useEffect(() => {
-    if (effectiveTab === "threads" && !threadsLoaded) {
+    if (effectiveTab === "sessions" && !threadsLoaded) {
       void refreshThreads();
     }
   }, [effectiveTab, refreshThreads, threadsLoaded]);
 
   useEffect(() => {
-    if (effectiveTab !== "threads" || !selectedThreadId || !rootPath) {
+    if (effectiveTab !== "sessions" || !selectedThreadId || !rootPath) {
       return;
     }
 
@@ -418,54 +557,14 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
     };
   }, [effectiveTab, rootPath, selectedThreadId, setError]);
 
-  const handleRecall = useCallback(
-    async (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      const query = recallQuery.trim();
-      if (!query) {
-        return;
-      }
-
-      const requestRootPath = rootPath;
-      const requestId = recallRequestIdRef.current + 1;
-      recallRequestIdRef.current = requestId;
-      setRecallLoading(true);
-      setActionError(null);
-      try {
-        const result = await recallMemory(requestRootPath, {
-          query,
-          limit: 8,
-          byte_budget: 12000,
-          include_working: true,
-          include_threads: true,
-          include_wiki_refs: false,
-          include_wiki_snippets: false,
-        });
-        if (
-          !isCurrentRoot(requestRootPath) ||
-          recallRequestIdRef.current !== requestId
-        ) {
-          return;
-        }
-        setRecallResult(result);
-      } catch (error) {
-        if (
-          isCurrentRoot(requestRootPath) &&
-          recallRequestIdRef.current === requestId
-        ) {
-          setError(error);
-        }
-      } finally {
-        if (
-          isCurrentRoot(requestRootPath) &&
-          recallRequestIdRef.current === requestId
-        ) {
-          setRecallLoading(false);
-        }
-      }
-    },
-    [isCurrentRoot, recallQuery, rootPath, setError],
-  );
+  const resetLoadedData = useCallback(() => {
+    setBackendLoaded(false);
+    setIntegrationsLoaded(false);
+    setWorkingLoaded(false);
+    setMemoriesLoaded(false);
+    setInboxLoaded(false);
+    setThreadsLoaded(false);
+  }, []);
 
   const handleSaveWorking = useCallback(async () => {
     const requestRootPath = rootPath;
@@ -483,7 +582,7 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
       }
       setWorkingText(savedText);
       setWorkingLoaded(true);
-      setStatusMessage("Working memory saved");
+      setStatusMessage("工作记忆已保存");
     } catch (error) {
       if (
         isCurrentRoot(requestRootPath) &&
@@ -501,6 +600,85 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
     }
   }, [isCurrentRoot, rootPath, setError, workingText]);
 
+  const handleAppendWorking = useCallback(async () => {
+    const text = workingQuickNote.trim();
+    if (!text) {
+      return;
+    }
+
+    const requestRootPath = rootPath;
+    setWorkingSaving(true);
+    setActionError(null);
+    try {
+      const savedText = await appendWorkingMemory(
+        requestRootPath,
+        workingQuickSection,
+        text,
+      );
+      if (!isCurrentRoot(requestRootPath)) {
+        return;
+      }
+      setWorkingText(savedText);
+      setWorkingLoaded(true);
+      setWorkingQuickNote("");
+      setStatusMessage("已记到工作记忆");
+    } catch (error) {
+      if (isCurrentRoot(requestRootPath)) {
+        setError(error);
+      }
+    } finally {
+      if (isCurrentRoot(requestRootPath)) {
+        setWorkingSaving(false);
+      }
+    }
+  }, [
+    isCurrentRoot,
+    rootPath,
+    setError,
+    workingQuickNote,
+    workingQuickSection,
+  ]);
+
+  const handlePromoteWorkingNote = useCallback(async () => {
+    const text = workingQuickNote.trim();
+    if (!text) {
+      return;
+    }
+
+    const requestRootPath = rootPath;
+    setWorkingSaving(true);
+    setActionError(null);
+    try {
+      await addMemory(requestRootPath, {
+        title: buildWorkingMemoryTitle(workingQuickSection, text),
+        body: text,
+        tags: ["working-memory"],
+      });
+      if (!isCurrentRoot(requestRootPath)) {
+        return;
+      }
+      setWorkingQuickNote("");
+      setMemoriesLoaded(false);
+      void refreshBackend();
+      setStatusMessage("已记到长期记忆");
+    } catch (error) {
+      if (isCurrentRoot(requestRootPath)) {
+        setError(error);
+      }
+    } finally {
+      if (isCurrentRoot(requestRootPath)) {
+        setWorkingSaving(false);
+      }
+    }
+  }, [
+    isCurrentRoot,
+    refreshBackend,
+    rootPath,
+    setError,
+    workingQuickNote,
+    workingQuickSection,
+  ]);
+
   const handleArchiveMemory = useCallback(
     async (target: string) => {
       await runExclusiveAction(`archive:${target}`, async () => {
@@ -508,12 +686,13 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
         try {
           await archiveMemory(rootPath, target);
           await refreshMemories();
+          void refreshBackend();
         } catch (error) {
           setError(error);
         }
       });
     },
-    [refreshMemories, rootPath, runExclusiveAction, setError],
+    [refreshBackend, refreshMemories, rootPath, runExclusiveAction, setError],
   );
 
   const handleAcceptInbox = useCallback(
@@ -530,12 +709,13 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
           });
           await refreshInbox();
           setMemoriesLoaded(false);
+          void refreshBackend();
         } catch (error) {
           setError(error);
         }
       });
     },
-    [refreshInbox, rootPath, runExclusiveAction, setError],
+    [refreshBackend, refreshInbox, rootPath, runExclusiveAction, setError],
   );
 
   const handleRejectInbox = useCallback(
@@ -545,12 +725,13 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
         try {
           await rejectMemoryInbox(rootPath, inboxId);
           await refreshInbox();
+          void refreshBackend();
         } catch (error) {
           setError(error);
         }
       });
     },
-    [refreshInbox, rootPath, runExclusiveAction, setError],
+    [refreshBackend, refreshInbox, rootPath, runExclusiveAction, setError],
   );
 
   const handlePromoteThread = useCallback(async () => {
@@ -565,7 +746,7 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
           target: selectedThreadId,
           ingest: true,
         });
-        setStatusMessage(`Promoted ${result.promoted_path}`);
+        setStatusMessage(`已提升到 ${result.promoted_path}`);
         await refreshThreads();
         setMemoriesLoaded(false);
       } catch (error) {
@@ -576,14 +757,12 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
 
   const handleInitialize = useCallback(async () => {
     await memory.initialize();
-    setWorkingLoaded(false);
-    setMemoriesLoaded(false);
-    setInboxLoaded(false);
-    setThreadsLoaded(false);
-  }, [memory]);
+    resetLoadedData();
+    void refreshBackend();
+  }, [memory, refreshBackend, resetLoadedData]);
 
-  const handleRepair = useCallback(async () => {
-    setSettingsLoading(true);
+  const handleRepairWorkspace = useCallback(async () => {
+    setActionLoading(true);
     setActionError(null);
     setRepairResult(null);
     try {
@@ -592,29 +771,33 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
       });
       setRepairResult(result);
       await memory.refresh();
+      resetLoadedData();
+      void refreshBackend();
     } catch (error) {
       setError(error);
     } finally {
-      setSettingsLoading(false);
+      setActionLoading(false);
     }
-  }, [memory, rootPath, setError]);
+  }, [memory, refreshBackend, resetLoadedData, rootPath, setError]);
 
   const handleRebuildIndex = useCallback(async () => {
-    setSettingsLoading(true);
+    setActionLoading(true);
     setActionError(null);
     setIndexStatus(null);
     try {
       setIndexStatus(await rebuildMemoryIndex(rootPath));
       await memory.refresh();
+      setBackendLoaded(false);
+      void refreshBackend();
     } catch (error) {
       setError(error);
     } finally {
-      setSettingsLoading(false);
+      setActionLoading(false);
     }
-  }, [memory, rootPath, setError]);
+  }, [memory, refreshBackend, rootPath, setError]);
 
   const handleSetupAgents = useCallback(async () => {
-    setSettingsLoading(true);
+    setActionLoading(true);
     setActionError(null);
     try {
       const result = await setupMemoryAgents(rootPath, {
@@ -622,33 +805,61 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
         dry_run: false,
       });
       setStatusMessage(
-        `Agent integration configured (${result.changed_paths.length} files)`,
+        `智能体集成已配置（${result.changed_paths.length} 个文件）`,
       );
+      await refreshIntegrations();
+      void refreshBackend();
     } catch (error) {
       setError(error);
     } finally {
-      setSettingsLoading(false);
+      setActionLoading(false);
     }
-  }, [agentSetupOptions, rootPath, setError]);
+  }, [agentSetupOptions, refreshBackend, refreshIntegrations, rootPath, setError]);
+
+  const handleRepairIntegration = useCallback(
+    async (agent: string) => {
+      setActionLoading(true);
+      setActionError(null);
+      try {
+        const report = await repairMemoryIntegration(rootPath, agent);
+        setDiagnosticsReport(report);
+        setStatusMessage(`${formatAgentName(agent)} 集成已修复`);
+        await refreshIntegrations();
+        void refreshBackend();
+      } catch (error) {
+        setError(error);
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [refreshBackend, refreshIntegrations, rootPath, setError],
+  );
 
   return (
-    <section className="min-h-0 border-t border-base-300 bg-base-100">
+    <section className="flex h-full min-h-0 flex-col border-t border-base-300 bg-base-100">
       <PanelHeader
-        title="Memory"
+        title="记忆"
         actions={
           <IconButton
-            label="Refresh memory status"
+            label="刷新记忆状态"
             icon={
-              <RefreshCw className={memory.loading ? "animate-spin" : undefined} />
+              <RefreshCw
+                className={
+                  memory.loading || backendLoading ? "animate-spin" : undefined
+                }
+              />
             }
-            onClick={() => void memory.refresh()}
-            disabled={memory.loading}
+            onClick={() => {
+              void memory.refresh();
+              void refreshBackend();
+            }}
+            disabled={memory.loading || backendLoading}
           />
         }
       />
 
-      <div className="space-y-3 overflow-auto p-3 text-xs">
-        <div className="grid grid-cols-3 gap-1 bg-base-200 p-1">
+      <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3 text-xs">
+        <div className="grid grid-cols-2 gap-1 bg-base-200 p-1 sm:grid-cols-4">
           {memory.tabs.map((tab) => (
             <button
               key={tab.id}
@@ -670,14 +881,14 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
         {memory.error ? (
           <ErrorBlock
             message={memory.error}
-            actionLabel="Retry"
+            actionLabel="重试"
             onAction={memory.refresh}
           />
         ) : null}
         {actionError ? (
           <ErrorBlock
             message={actionError}
-            actionLabel="Dismiss"
+            actionLabel="关闭"
             onAction={() => setActionError(null)}
           />
         ) : null}
@@ -687,43 +898,30 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
           </div>
         ) : null}
 
-        {effectiveTab === "recall" ? (
-          <RecallTab
-            query={recallQuery}
-            result={recallResult}
-            loading={recallLoading}
-            onQueryChange={setRecallQuery}
-            onSubmit={handleRecall}
+        {effectiveTab === "overview" ? (
+          <MemoryOverviewTab
+            status={backendStatus}
+            loading={backendLoading}
+            hasMemory={memory.hasMemory}
+            canInitialize={memory.viewState?.canInitialize ?? false}
+            initializing={memory.loading}
+            onInitialize={handleInitialize}
+            onRefresh={refreshBackend}
           />
-        ) : effectiveTab === "working" ? (
-          <WorkingTab
-            text={workingText}
-            loading={workingLoading}
-            saving={workingSaving}
-            onTextChange={setWorkingText}
-            onRefresh={refreshWorking}
-            onSave={handleSaveWorking}
+        ) : effectiveTab === "integrations" ? (
+          <MemoryIntegrationsTab
+            statuses={integrations}
+            loading={integrationsLoading}
+            actionLoading={actionLoading}
+            agentSetupOptions={agentSetupOptions}
+            onAgentSetupOptionsChange={setAgentSetupOptions}
+            onRefresh={refreshIntegrations}
+            onSetupAgents={handleSetupAgents}
+            onRepair={handleRepairIntegration}
           />
-        ) : effectiveTab === "memories" ? (
-          <MemoriesTab
-            memories={memories}
-            loading={memoriesLoading}
-            onRefresh={refreshMemories}
-            onArchive={handleArchiveMemory}
-            isActionPending={isActionPending}
-          />
-        ) : effectiveTab === "inbox" ? (
-          <InboxTab
-            inbox={inbox}
-            loading={inboxLoading}
-            onRefresh={refreshInbox}
-            onAccept={handleAcceptInbox}
-            onReject={handleRejectInbox}
-            isActionPending={isActionPending}
-          />
-        ) : effectiveTab === "threads" ? (
-          <ThreadsTab
-            threads={threads}
+        ) : effectiveTab === "sessions" ? (
+          <MemorySessionsTab
+            sessions={threads}
             selectedThread={selectedThread}
             selectedThreadId={selectedThreadId}
             loading={threadsLoading}
@@ -733,19 +931,49 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
             onPromote={handlePromoteThread}
             isActionPending={isActionPending}
           />
+        ) : effectiveTab === "longTerm" ? (
+          <MemoryLongTermTab
+            memories={memories}
+            loading={memoriesLoading}
+            onRefresh={refreshMemories}
+            onArchive={handleArchiveMemory}
+            isActionPending={isActionPending}
+          />
+        ) : effectiveTab === "pending" ? (
+          <MemoryPendingTab
+            inbox={inbox}
+            loading={inboxLoading}
+            onRefresh={refreshInbox}
+            onAccept={handleAcceptInbox}
+            onReject={handleRejectInbox}
+            isActionPending={isActionPending}
+          />
+        ) : effectiveTab === "working" ? (
+          <MemoryWorkingContextTab
+            text={workingText}
+            loading={workingLoading}
+            saving={workingSaving}
+            quickNote={workingQuickNote}
+            quickSection={workingQuickSection}
+            onTextChange={setWorkingText}
+            onQuickNoteChange={setWorkingQuickNote}
+            onQuickSectionChange={setWorkingQuickSection}
+            onRefresh={refreshWorking}
+            onSave={handleSaveWorking}
+            onAppend={handleAppendWorking}
+            onPromote={handlePromoteWorkingNote}
+          />
         ) : (
-          <SettingsTab
-            memory={memory}
-            initializeDisabled={initializeDisabled}
-            settingsLoading={settingsLoading}
-            repairResult={repairResult}
+          <MemoryDiagnosticsTab
+            backendStatus={backendStatus}
+            diagnostics={diagnosticsReport}
             indexStatus={indexStatus}
-            onInitialize={handleInitialize}
-            onRepair={handleRepair}
+            repairResult={repairResult}
+            loading={backendLoading || integrationsLoading}
+            actionLoading={actionLoading}
+            onRefresh={refreshDiagnostics}
+            onRepairWorkspace={handleRepairWorkspace}
             onRebuildIndex={handleRebuildIndex}
-            agentSetupOptions={agentSetupOptions}
-            onAgentSetupOptionsChange={setAgentSetupOptions}
-            onSetupAgents={handleSetupAgents}
           />
         )}
       </div>
@@ -775,549 +1003,31 @@ function ErrorBlock({
   );
 }
 
-function RecallTab({
-  query,
-  result,
-  loading,
-  onQueryChange,
-  onSubmit,
-}: {
-  query: string;
-  result: RecallResult | null;
-  loading: boolean;
-  onQueryChange: (query: string) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-}) {
-  return (
-    <div className="space-y-3">
-      <form className="flex min-w-0 gap-2" onSubmit={onSubmit}>
-        <input
-          className="h-8 min-w-0 flex-1 border border-base-300 bg-base-100 px-2 text-xs outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          value={query}
-          onChange={(event) => onQueryChange(event.currentTarget.value)}
-          placeholder="Query memory"
-        />
-        <button
-          type="submit"
-          className="h-8 shrink-0 border border-base-content bg-base-content px-3 text-xs text-base-100 outline-none transition-colors hover:bg-base-content/85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:border-base-content/30 disabled:bg-base-content/30"
-          disabled={loading || query.trim().length === 0}
-        >
-          {loading ? "Recalling" : "Recall"}
-        </button>
-      </form>
-      {result ? (
-        <div className="space-y-3">
-          {result.working ? (
-            <ResultBlock title="Working" body={result.working} />
-          ) : null}
-          <SummaryList title="Memories" items={result.memories} />
-          <SummaryList title="Threads" items={result.threads} />
-          {result.index_degraded || result.warnings.length > 0 ? (
-            <div className="space-y-1 border border-warning/40 bg-warning/5 p-2 text-base-content/75">
-              {result.index_degraded ? <div>Index degraded</div> : null}
-              {result.warnings.map((warning) => (
-                <div key={warning} className="break-words">
-                  {warning}
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function WorkingTab({
-  text,
-  loading,
-  saving,
-  onTextChange,
-  onRefresh,
-  onSave,
-}: {
-  text: string;
-  loading: boolean;
-  saving: boolean;
-  onTextChange: (text: string) => void;
-  onRefresh: () => Promise<void>;
-  onSave: () => Promise<void>;
-}) {
-  return (
-    <div className="space-y-2">
-      <div className="flex justify-end gap-1">
-        <TextControlButton onClick={() => void onRefresh()} disabled={loading}>
-          Refresh
-        </TextControlButton>
-        <TextControlButton onClick={() => void onSave()} disabled={saving}>
-          {saving ? "Saving" : "Save"}
-        </TextControlButton>
-      </div>
-      <textarea
-        className="min-h-72 w-full resize-y border border-base-300 bg-base-100 p-2 font-mono text-xs leading-relaxed outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        value={loading ? "Loading..." : text}
-        disabled={loading}
-        onChange={(event) => onTextChange(event.currentTarget.value)}
-      />
-    </div>
-  );
-}
-
-function MemoriesTab({
-  memories,
-  loading,
-  onRefresh,
-  onArchive,
-  isActionPending,
-}: {
-  memories: MemorySummary[];
-  loading: boolean;
-  onRefresh: () => Promise<void>;
-  onArchive: (target: string) => Promise<void>;
-  isActionPending: (key: string) => boolean;
-}) {
-  return (
-    <ListPanel
-      title="Memories"
-      loading={loading}
-      empty="No memories"
-      onRefresh={onRefresh}
-    >
-      {memories.map((memory) => (
-        <div key={memory.memory_id} className="border-t border-base-300 py-2 first:border-t-0 first:pt-0">
-          <div className="flex min-w-0 items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="truncate font-medium text-base-content" title={memory.title}>
-                {memory.title}
-              </div>
-              <div className="mt-1 truncate text-base-content/60" title={memory.path}>
-                {memory.status} · {memory.path}
-              </div>
-              {memory.tags.length > 0 ? (
-                <div className="mt-1 truncate text-base-content/60">
-                  {memory.tags.join(", ")}
-                </div>
-              ) : null}
-            </div>
-            <TextControlButton
-              disabled={isActionPending(`archive:${memory.memory_id}`)}
-              onClick={() => void onArchive(memory.memory_id)}
-            >
-              {isActionPending(`archive:${memory.memory_id}`)
-                ? "Archiving"
-                : "Archive"}
-            </TextControlButton>
-          </div>
-        </div>
-      ))}
-    </ListPanel>
-  );
-}
-
-function InboxTab({
-  inbox,
-  loading,
-  onRefresh,
-  onAccept,
-  onReject,
-  isActionPending,
-}: {
-  inbox: InboxRecord[];
-  loading: boolean;
-  onRefresh: () => Promise<void>;
-  onAccept: (entry: InboxRecord) => Promise<void>;
-  onReject: (inboxId: string) => Promise<void>;
-  isActionPending: (key: string) => boolean;
-}) {
-  return (
-    <ListPanel title="Inbox" loading={loading} empty="Inbox empty" onRefresh={onRefresh}>
-      {inbox.map((entry) => (
-        <div key={entry.frontmatter.inbox_id} className="border-t border-base-300 py-2 first:border-t-0 first:pt-0">
-          <div className="flex min-w-0 items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="truncate font-medium text-base-content" title={entry.frontmatter.title}>
-                {entry.frontmatter.title}
-              </div>
-              <div className="mt-1 line-clamp-3 whitespace-pre-wrap text-base-content/70">
-                {entry.body}
-              </div>
-            </div>
-            <div className="flex shrink-0 gap-1">
-              {(() => {
-                const inboxPending = isActionPending(
-                  `inbox:${entry.frontmatter.inbox_id}`,
-                );
-                return (
-                  <>
-              <TextControlButton
-                disabled={inboxPending}
-                onClick={() => void onAccept(entry)}
-              >
-                {inboxPending ? "Working" : "Accept"}
-              </TextControlButton>
-              <TextControlButton
-                className="text-error hover:bg-error/10 hover:text-error"
-                disabled={inboxPending}
-                onClick={() => void onReject(entry.frontmatter.inbox_id)}
-              >
-                {inboxPending ? "Working" : "Reject"}
-              </TextControlButton>
-                  </>
-                );
-              })()}
-            </div>
-          </div>
-        </div>
-      ))}
-    </ListPanel>
-  );
-}
-
-function ThreadsTab({
-  threads,
-  selectedThread,
-  selectedThreadId,
-  loading,
-  threadLoading,
-  onRefresh,
-  onSelect,
-  onPromote,
-  isActionPending,
-}: {
-  threads: ThreadListItem[];
-  selectedThread: MemoryThreadRecord | null;
-  selectedThreadId: string | null;
-  loading: boolean;
-  threadLoading: boolean;
-  onRefresh: () => Promise<void>;
-  onSelect: (threadId: string) => void;
-  onPromote: () => Promise<void>;
-  isActionPending: (key: string) => boolean;
-}) {
-  return (
-    <div className="space-y-3">
-      <ListPanel
-        title="Threads"
-        loading={loading}
-        empty="No threads"
-        onRefresh={onRefresh}
-      >
-        {threads.map((thread) => (
-          <button
-            key={thread.thread_id}
-            type="button"
-            className={[
-              "block w-full border-t border-base-300 py-2 text-left outline-none first:border-t-0 first:pt-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-              selectedThreadId === thread.thread_id ? "text-base-content" : "text-base-content/75",
-            ].join(" ")}
-            onClick={() => onSelect(thread.thread_id)}
-          >
-            <div className="truncate font-medium" title={thread.title}>
-              {thread.title}
-            </div>
-            <div className="mt-1 truncate text-base-content/60">
-              {thread.source} · {thread.message_count ?? 0} messages
-            </div>
-          </button>
-        ))}
-      </ListPanel>
-      {selectedThreadId ? (
-        <div className="space-y-2 border border-base-300 bg-base-200/60 p-2">
-          <div className="flex min-w-0 items-center justify-between gap-2">
-            <div className="min-w-0 truncate font-medium text-base-content">
-              {selectedThread?.frontmatter.title ?? selectedThreadId}
-            </div>
-            <TextControlButton
-              onClick={() => void onPromote()}
-              disabled={
-                threadLoading ||
-                Boolean(
-                  selectedThreadId &&
-                    isActionPending(`promote:${selectedThreadId}`),
-                )
-              }
-            >
-              {selectedThreadId && isActionPending(`promote:${selectedThreadId}`)
-                ? "Promoting"
-                : "Promote"}
-            </TextControlButton>
-          </div>
-          <pre className="max-h-72 overflow-auto whitespace-pre-wrap font-sans text-xs leading-relaxed text-base-content/75">
-            {threadLoading ? "Loading..." : (selectedThread?.body ?? "")}
-          </pre>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function SettingsTab({
-  memory,
-  initializeDisabled,
-  settingsLoading,
-  repairResult,
-  indexStatus,
-  onInitialize,
-  onRepair,
-  onRebuildIndex,
-  agentSetupOptions,
-  onAgentSetupOptionsChange,
-  onSetupAgents,
-}: {
-  memory: ReturnType<typeof useMemoryWorkspace>;
-  initializeDisabled: boolean;
-  settingsLoading: boolean;
-  repairResult: MemoryRepairResult | null;
-  indexStatus: MemoryIndexStatus | null;
-  onInitialize: () => Promise<void>;
-  onRepair: () => Promise<void>;
-  onRebuildIndex: () => Promise<void>;
-  agentSetupOptions: {
-    codex: boolean;
-    claude: boolean;
-    cursor: boolean;
-    hooks: boolean;
+function reportFromIntegrationStatuses(
+  statuses: MemoryIntegrationStatus[],
+): MemoryDoctorReport {
+  const errors = statuses
+    .map((status) => status.last_error)
+    .filter((error): error is string => Boolean(error));
+  return {
+    ok:
+      errors.length === 0 &&
+      statuses.every((status) => status.doctor_status === "ok"),
+    statuses,
+    errors,
+    warnings: [],
   };
-  onAgentSetupOptionsChange: (options: {
-    codex: boolean;
-    claude: boolean;
-    cursor: boolean;
-    hooks: boolean;
-  }) => void;
-  onSetupAgents: () => Promise<void>;
-}) {
-  const selectedAgentCount = [
-    agentSetupOptions.codex,
-    agentSetupOptions.claude,
-    agentSetupOptions.cursor,
-  ].filter(Boolean).length;
-  const setupDisabled =
-    settingsLoading || !memory.hasMemory || selectedAgentCount === 0;
-  const setAgentOption = (
-    key: keyof typeof agentSetupOptions,
-    value: boolean,
-  ) => {
-    onAgentSetupOptionsChange({ ...agentSetupOptions, [key]: value });
-  };
-
-  return (
-    <div className="space-y-3">
-      <div className="space-y-1 border border-base-300 bg-base-200/60 p-2 text-base-content/75">
-        <StatusLine
-          label="Status"
-          value={
-            memory.loading && !memory.status
-              ? "Loading"
-              : memory.hasMemory
-                ? "Ready"
-                : "Not initialized"
-          }
-        />
-        {memory.viewState ? (
-          <StatusLine label="Mode" value={memory.viewState.mode} />
-        ) : null}
-        {indexStatus ? (
-          <>
-            <StatusLine label="Index" value={indexStatus.index_status} />
-            <StatusLine
-              label="Documents"
-              value={String(indexStatus.document_count)}
-            />
-          </>
-        ) : null}
-      </div>
-
-      {!memory.hasMemory ? (
-        <button
-          type="button"
-          className="h-8 w-full border border-base-content bg-base-content px-3 text-xs text-base-100 outline-none transition-colors hover:bg-base-content/85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:border-base-content/30 disabled:bg-base-content/30"
-          disabled={initializeDisabled}
-          onClick={() => void onInitialize()}
-        >
-          {memory.loading ? "Initializing" : "Initialize Memory"}
-        </button>
-      ) : (
-        <>
-          <div className="grid grid-cols-2 gap-2">
-            <TextControlButton disabled={settingsLoading} onClick={() => void onRepair()}>
-              {settingsLoading ? "Working" : "Repair"}
-            </TextControlButton>
-            <TextControlButton disabled={settingsLoading} onClick={() => void onRebuildIndex()}>
-              Rebuild Index
-            </TextControlButton>
-          </div>
-
-          <div className="space-y-2 border border-base-300 bg-base-200/60 p-2">
-            <div className="font-medium text-base-content">Agent Integration</div>
-            <div className="grid grid-cols-2 gap-2">
-              <CheckboxControl
-                label="Codex"
-                checked={agentSetupOptions.codex}
-                disabled={settingsLoading}
-                onChange={(checked) => setAgentOption("codex", checked)}
-              />
-              <CheckboxControl
-                label="Claude"
-                checked={agentSetupOptions.claude}
-                disabled={settingsLoading}
-                onChange={(checked) => setAgentOption("claude", checked)}
-              />
-              <CheckboxControl
-                label="Cursor"
-                checked={agentSetupOptions.cursor}
-                disabled={settingsLoading}
-                onChange={(checked) => setAgentOption("cursor", checked)}
-              />
-              <CheckboxControl
-                label="PreCompact hooks"
-                checked={agentSetupOptions.hooks}
-                disabled={settingsLoading}
-                onChange={(checked) => setAgentOption("hooks", checked)}
-              />
-            </div>
-            <TextControlButton
-              className="w-full justify-center"
-              disabled={setupDisabled}
-              onClick={() => void onSetupAgents()}
-            >
-              {settingsLoading ? "Configuring" : "Configure Agents"}
-            </TextControlButton>
-          </div>
-        </>
-      )}
-
-      {repairResult ? (
-        <div className="space-y-1 border border-base-300 bg-base-200/60 p-2 text-base-content/70">
-          <div>Repaired paths: {repairResult.repaired_paths.length}</div>
-          {repairResult.warnings.map((warning) => (
-            <div key={warning} className="break-words">
-              {warning}
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      {memory.viewState && memory.viewState.missingPaths.length > 0 ? (
-        <div className="space-y-1 border border-base-300 bg-base-200/60 p-2 text-base-content/70">
-          {memory.viewState.missingPaths.map((path) => (
-            <div key={path} className="truncate" title={path}>
-              {path}
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
 }
 
-function CheckboxControl({
-  label,
-  checked,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  disabled: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <label className="flex min-w-0 items-center gap-2 text-base-content/75">
-      <input
-        type="checkbox"
-        className="h-4 w-4 accent-primary disabled:cursor-not-allowed"
-        checked={checked}
-        disabled={disabled}
-        onChange={(event) => onChange(event.currentTarget.checked)}
-      />
-      <span className="truncate">{label}</span>
-    </label>
-  );
-}
-
-function ListPanel({
-  title,
-  loading,
-  empty,
-  onRefresh,
-  children,
-}: {
-  title: string;
-  loading: boolean;
-  empty: string;
-  onRefresh: () => Promise<void>;
-  children: ReactNode;
-}) {
-  const hasChildren = Array.isArray(children) ? children.length > 0 : Boolean(children);
-
-  return (
-    <div className="space-y-2 border border-base-300 bg-base-200/60 p-2">
-      <div className="flex min-w-0 items-center justify-between gap-2">
-        <div className="truncate font-medium text-base-content">{title}</div>
-        <TextControlButton onClick={() => void onRefresh()} disabled={loading}>
-          Refresh
-        </TextControlButton>
-      </div>
-      <div className="max-h-72 overflow-auto pr-1">
-        {loading ? (
-          <div className="text-base-content/60">Loading</div>
-        ) : hasChildren ? (
-          children
-        ) : (
-          <div className="text-base-content/60">{empty}</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function StatusLine({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex min-w-0 items-center justify-between gap-2">
-      <span className="shrink-0 text-base-content/60">{label}</span>
-      <span className="min-w-0 truncate text-base-content">{value}</span>
-    </div>
-  );
-}
-
-function ResultBlock({ title, body }: { title: string; body: string }) {
-  return (
-    <div className="space-y-1 border border-base-300 bg-base-200/60 p-2">
-      <div className="font-medium text-base-content">{title}</div>
-      <pre className="max-h-48 overflow-auto whitespace-pre-wrap font-sans text-xs leading-relaxed text-base-content/75">
-        {body}
-      </pre>
-    </div>
-  );
-}
-
-function SummaryList({
-  title,
-  items,
-}: {
-  title: string;
-  items: Array<{ memory_id?: string; thread_id?: string; title: string; path: string }>;
-}) {
-  if (items.length === 0) {
-    return null;
+function formatAgentName(agent: string) {
+  if (agent === "codex") {
+    return "Codex";
   }
-
-  return (
-    <div className="space-y-1 border border-base-300 bg-base-200/60 p-2">
-      <div className="font-medium text-base-content">{title}</div>
-      {items.map((item) => (
-        <div
-          key={item.memory_id ?? item.thread_id ?? item.path}
-          className="border-t border-base-300 py-1 first:border-t-0"
-        >
-          <div className="truncate text-base-content" title={item.title}>
-            {item.title}
-          </div>
-          <div className="truncate text-base-content/60" title={item.path}>
-            {item.path}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
+  if (agent === "claude") {
+    return "Claude";
+  }
+  if (agent === "cursor") {
+    return "Cursor";
+  }
+  return agent;
 }

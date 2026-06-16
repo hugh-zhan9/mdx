@@ -90,6 +90,53 @@ fn memory_repair_workspace(
 }
 
 #[tauri::command]
+fn memory_backend_status(root_path: String) -> Result<memory::MemoryBackendStatus, WorkspaceError> {
+    memory::memory_backend_status(root_path)
+}
+
+#[tauri::command]
+fn memory_integration_status(
+    root_path: String,
+) -> Result<Vec<memory::MemoryIntegrationStatus>, WorkspaceError> {
+    memory_agent_setup::memory_agent_status(root_path, None).map_err(|error| {
+        WorkspaceError::from_io(
+            "memory_integration_status_failed",
+            "failed to inspect memory integrations",
+            &error,
+        )
+    })
+}
+
+#[tauri::command]
+fn memory_integration_repair(
+    root_path: String,
+    agent: String,
+) -> Result<memory::MemoryDoctorReport, WorkspaceError> {
+    memory_agent_setup::memory_agent_repair(
+        root_path.clone(),
+        memory_agent_setup::MemoryAgentCommandRequest {
+            agent: Some(agent.clone()),
+            dry_run: false,
+            keep_data: true,
+        },
+    )
+    .map_err(|error| {
+        WorkspaceError::from_io(
+            "memory_integration_repair_failed",
+            "failed to repair memory integration",
+            &error,
+        )
+    })?;
+    memory_agent_setup::memory_agent_doctor(root_path, Some(agent)).map_err(|error| {
+        WorkspaceError::from_io(
+            "memory_integration_repair_failed",
+            "failed to inspect repaired memory integration",
+            &error,
+        )
+    })
+}
+
+#[tauri::command]
 fn memory_agent_setup(
     root_path: String,
     request: memory_agent_setup::MemoryAgentSetupRequest,
@@ -348,6 +395,9 @@ mod memory_tauri_command_tests {
             "memory_detect_workspace",
             "memory_initialize_workspace",
             "memory_repair_workspace",
+            "memory_backend_status",
+            "memory_integration_status",
+            "memory_integration_repair",
             "memory_agent_setup",
             "memory_export_bundle",
             "memory_import_bundle",
@@ -898,6 +948,9 @@ pub fn run() {
             memory_detect_workspace,
             memory_initialize_workspace,
             memory_repair_workspace,
+            memory_backend_status,
+            memory_integration_status,
+            memory_integration_repair,
             memory_agent_setup,
             memory_export_bundle,
             memory_import_bundle,

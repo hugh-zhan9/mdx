@@ -35,6 +35,52 @@ pub struct MemoryDoctorReport {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+pub struct MemoryBackendStatus {
+    pub ok: bool,
+    pub daemon: MemoryBackendDaemonStatus,
+    pub storage: MemoryBackendStorageStatus,
+    pub queue: MemoryBackendQueueStatus,
+    pub projection: MemoryBackendProjectionStatus,
+    pub today: MemoryBackendTodayStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryBackendDaemonStatus {
+    pub status: String,
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryBackendStorageStatus {
+    pub backend: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryBackendQueueStatus {
+    pub depth: usize,
+    pub oldest_job_age_seconds: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryBackendProjectionStatus {
+    pub status: String,
+    pub dirty_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryBackendTodayStatus {
+    pub captured_events: usize,
+    pub pending_candidates: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub struct InitializeMemoryResult {
     pub created_paths: Vec<String>,
     pub preserved_paths: Vec<String>,

@@ -1,10 +1,11 @@
 export type MemoryPanelTabId =
-  | "recall"
+  | "overview"
+  | "integrations"
+  | "sessions"
+  | "longTerm"
+  | "pending"
   | "working"
-  | "memories"
-  | "inbox"
-  | "threads"
-  | "settings";
+  | "diagnostics";
 
 export interface MemoryPanelTab {
   id: MemoryPanelTabId;
@@ -16,11 +17,12 @@ export function buildMemoryPanelTabs(status: {
   hasMemory: boolean;
 }): MemoryPanelTab[] {
   return [
-    { id: "recall", label: "Recall", disabled: !status.hasMemory },
-    { id: "working", label: "Working", disabled: !status.hasMemory },
-    { id: "memories", label: "Memories", disabled: !status.hasMemory },
-    { id: "inbox", label: "Inbox", disabled: !status.hasMemory },
-    { id: "threads", label: "Threads", disabled: !status.hasMemory },
-    { id: "settings", label: "Settings", disabled: false },
+    { id: "overview", label: "概览", disabled: false },
+    { id: "integrations", label: "Agent 集成", disabled: !status.hasMemory },
+    { id: "sessions", label: "会话", disabled: !status.hasMemory },
+    { id: "longTerm", label: "长期记忆", disabled: !status.hasMemory },
+    { id: "pending", label: "待确认", disabled: !status.hasMemory },
+    { id: "working", label: "工作上下文", disabled: !status.hasMemory },
+    { id: "diagnostics", label: "诊断", disabled: false },
   ];
 }

@@ -38,6 +38,54 @@ export interface MemoryAgentSetupResult {
   summary: string;
 }
 
+export type MemoryBackendHealth =
+  | "running"
+  | "degraded"
+  | "disabled"
+  | "stopped";
+
+export interface MemoryBackendStatus {
+  ok: boolean;
+  daemon: {
+    status: MemoryBackendHealth;
+    last_error: string | null;
+  };
+  storage: {
+    backend: "sqlite" | "postgresql" | string;
+    status: string;
+  };
+  queue: {
+    depth: number;
+    oldest_job_age_seconds: number | null;
+  };
+  projection: {
+    status: string;
+    dirty_count: number;
+  };
+  today: {
+    captured_events: number;
+    pending_candidates: number;
+  };
+}
+
+export interface MemoryIntegrationStatus {
+  agent_source: "codex" | "claude" | "cursor";
+  installed: boolean;
+  enabled: boolean;
+  authorized: boolean;
+  hook_version: string | null;
+  last_event_at: string | null;
+  last_error: string | null;
+  doctor_status: string;
+}
+
+export interface MemoryDoctorReport {
+  ok: boolean;
+  statuses: MemoryIntegrationStatus[];
+  errors: string[];
+  warnings: string[];
+}
+
 export interface MemoryIndexStatus {
   index_status: string;
   document_count: number;
@@ -151,6 +199,12 @@ export interface MemoryRecord {
   path: string;
   frontmatter: MemoryFrontmatter;
   body: string;
+}
+
+export interface MemoryAddRequest {
+  title: string;
+  body: string;
+  tags?: string[] | null;
 }
 
 export interface InboxFrontmatter {

@@ -8,7 +8,9 @@ use crate::memory_fs::{
 };
 pub use crate::memory_models::{
     DistillCandidate, InboxAddRequest, InboxFrontmatter, InboxRecord, InboxReviewRequest,
-    InboxReviewResult, InitializeMemoryResult, MemoryAddRequest, MemoryCaptureCandidate,
+    InboxReviewResult, InitializeMemoryResult, MemoryAddRequest, MemoryBackendDaemonStatus,
+    MemoryBackendProjectionStatus, MemoryBackendQueueStatus, MemoryBackendStatus,
+    MemoryBackendStorageStatus, MemoryBackendTodayStatus, MemoryCaptureCandidate,
     MemoryCaptureConfig, MemoryCaptureImportRequest, MemoryCaptureImportResult,
     MemoryCaptureScanRequest, MemoryCaptureScanResult, MemoryConfig, MemoryDistillConfig,
     MemoryDistillRequest, MemoryDistillResult, MemoryDoctorReport, MemoryEmbeddingConfig,
@@ -99,6 +101,91 @@ pub fn memory_repair_workspace(
     let root = canonicalize_workspace_root(root_path)?;
     let _lock = try_acquire_memory_lock(&root)?;
     repair_memory_workspace(root, request)
+}
+
+pub fn memory_backend_status(root_path: String) -> Result<MemoryBackendStatus, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    let workspace = detect_memory_workspace(&root)?;
+    let config = if workspace.has_memory {
+        crate::memory_fs::read_memory_config(&root)?
+    } else {
+        default_memory_config()
+    };
+
+    let index_status = if workspace.has_memory {
+        Some(crate::search_index::status(&root)?)
+    } else {
+        None
+    };
+    let pending_candidates = if workspace.has_memory {
+        crate::memory_inbox::memory_inbox_list(&root, false)
+            .map(|records| records.len())
+            .unwrap_or(0)
+    } else {
+        0
+    };
+    let storage_status = if workspace.has_memory {
+        "ready"
+    } else {
+        "stopped"
+    };
+    let projection_dirty = index_status
+        .as_ref()
+        .map(|status| status.dirty)
+        .unwrap_or(false);
+    let projection_status = if !config.projection.enabled {
+        "disabled"
+    } else if projection_dirty {
+        "dirty"
+    } else if workspace.has_memory {
+        "ready"
+    } else {
+        "stopped"
+    };
+    let daemon_status = if !workspace.has_memory {
+        "stopped"
+    } else if !config.memory.enabled || !config.agent_backend.enabled {
+        "disabled"
+    } else if projection_dirty {
+        "degraded"
+    } else {
+        "running"
+    };
+
+    Ok(MemoryBackendStatus {
+        ok: workspace.has_memory
+            && config.memory.enabled
+            && config.agent_backend.enabled
+            && !projection_dirty,
+        daemon: MemoryBackendDaemonStatus {
+            status: daemon_status.to_string(),
+            last_error: None,
+        },
+        storage: MemoryBackendStorageStatus {
+            backend: normalize_storage_backend_label(&config.storage.backend),
+            status: storage_status.to_string(),
+        },
+        queue: MemoryBackendQueueStatus {
+            depth: 0,
+            oldest_job_age_seconds: None,
+        },
+        projection: MemoryBackendProjectionStatus {
+            status: projection_status.to_string(),
+            dirty_count: if projection_dirty { 1 } else { 0 },
+        },
+        today: MemoryBackendTodayStatus {
+            captured_events: 0,
+            pending_candidates,
+        },
+    })
+}
+
+fn normalize_storage_backend_label(backend: &str) -> String {
+    match backend {
+        "postgres" | "postgresql" => "postgresql".to_string(),
+        "sqlite" => "sqlite".to_string(),
+        other => other.to_string(),
+    }
 }
 
 pub fn memory_export_bundle(

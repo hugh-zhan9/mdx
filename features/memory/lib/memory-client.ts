@@ -1,12 +1,16 @@
 import { tauriCore } from "@/common/lib/tauri";
 import type {
+  MemoryAddRequest,
   InboxRecord,
   InboxReviewRequest,
   InboxReviewResult,
   InitializeMemoryResult,
   MemoryAgentSetupRequest,
   MemoryAgentSetupResult,
+  MemoryBackendStatus,
+  MemoryDoctorReport,
   MemoryIndexStatus,
+  MemoryIntegrationStatus,
   MemoryListFilter,
   MemoryPromoteRequest,
   MemoryPromoteResult,
@@ -56,6 +60,25 @@ export function setupMemoryAgents(
   return invokeCommand("memory_agent_setup", { rootPath, request });
 }
 
+export function getMemoryBackendStatus(
+  rootPath: string,
+): Promise<MemoryBackendStatus> {
+  return invokeCommand("memory_backend_status", { rootPath });
+}
+
+export function getMemoryIntegrationStatus(
+  rootPath: string,
+): Promise<MemoryIntegrationStatus[]> {
+  return invokeCommand("memory_integration_status", { rootPath });
+}
+
+export function repairMemoryIntegration(
+  rootPath: string,
+  agent: string,
+): Promise<MemoryDoctorReport> {
+  return invokeCommand("memory_integration_repair", { rootPath, agent });
+}
+
 export function rebuildMemoryIndex(rootPath: string): Promise<MemoryIndexStatus> {
   return invokeCommand("memory_index_rebuild", { rootPath });
 }
@@ -69,6 +92,14 @@ export function setWorkingMemory(
   markdown: string,
 ): Promise<string> {
   return invokeCommand("memory_working_set", { rootPath, markdown });
+}
+
+export function appendWorkingMemory(
+  rootPath: string,
+  section: string,
+  text: string,
+): Promise<string> {
+  return invokeCommand("memory_working_append", { rootPath, section, text });
 }
 
 export function recallMemory(
@@ -90,6 +121,13 @@ export function getMemory(
   target: string,
 ): Promise<MemoryRecord> {
   return invokeCommand("memory_get", { rootPath, target });
+}
+
+export function addMemory(
+  rootPath: string,
+  request: MemoryAddRequest,
+): Promise<MemoryRecord> {
+  return invokeCommand("memory_add", { rootPath, request });
 }
 
 export function archiveMemory(
