@@ -117,6 +117,7 @@ export function useEditorFindReplace({
     const [state, setState] = useState<FindReplaceState>(
         createInitialFindReplaceState,
     );
+    const [selectionRevision, setSelectionRevision] = useState(0);
     const visibleTextIndex = useMemo(() => {
         void visibilityRevision;
         if (!editorRoot) {
@@ -205,12 +206,14 @@ export function useEditorFindReplace({
         }
 
         selectMatch(activeMatch);
-    }, [activeMatch, selectMatch, state.isOpen]);
+    }, [activeMatch, selectMatch, selectionRevision, state.isOpen]);
 
     const close = useCallback(() => {
         setState((current) => ({
             ...current,
+            currentMatchIndex: 0,
             isOpen: false,
+            query: "",
         }));
         focusEditor();
     }, [focusEditor]);
@@ -223,6 +226,7 @@ export function useEditorFindReplace({
                 matchCount,
             ),
         }));
+        setSelectionRevision((revision) => revision + 1);
     }, [matchCount]);
 
     const goPrevious = useCallback(() => {
@@ -233,6 +237,7 @@ export function useEditorFindReplace({
                 matchCount,
             ),
         }));
+        setSelectionRevision((revision) => revision + 1);
     }, [matchCount]);
 
     const openFind = useCallback(() => {

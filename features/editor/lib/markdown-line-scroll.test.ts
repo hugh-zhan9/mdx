@@ -52,6 +52,23 @@ describe("markdown line scroll", () => {
         });
     });
 
+    it("scrolls the editor root when a single-line document has no rendered block elements", () => {
+        const root = document.createElement("div");
+        const domd = document.createElement("div");
+        domd.className = "DOMD-Root";
+        domd.textContent = "single line match";
+        domd.scrollIntoView = vi.fn();
+        root.append(domd);
+
+        expect(scrollMarkdownLineIntoView(root, "single line match", 1)).toBe(
+            true,
+        );
+        expect(domd.scrollIntoView).toHaveBeenCalledWith({
+            block: "center",
+            inline: "nearest",
+        });
+    });
+
     it("ignores nested matching descendants when choosing a rendered block", () => {
         const root = document.createElement("div");
         const domd = document.createElement("div");

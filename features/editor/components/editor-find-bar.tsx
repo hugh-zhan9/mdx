@@ -1,6 +1,6 @@
 "use client";
 
-import type { ChangeEvent, KeyboardEvent } from "react";
+import type { ChangeEvent, CompositionEvent, KeyboardEvent } from "react";
 
 export interface EditorFindBarProps {
     caseSensitive: boolean;
@@ -57,6 +57,34 @@ export function EditorFindBar({
         }
     }
 
+    function handleFindChange(event: ChangeEvent<HTMLInputElement>) {
+        if (isComposingChange(event)) {
+            return;
+        }
+
+        onQueryChange(event.target.value);
+    }
+
+    function handleFindCompositionEnd(
+        event: CompositionEvent<HTMLInputElement>,
+    ) {
+        onQueryChange(event.currentTarget.value);
+    }
+
+    function handleReplacementChange(event: ChangeEvent<HTMLInputElement>) {
+        if (isComposingChange(event)) {
+            return;
+        }
+
+        onReplacementChange(event.target.value);
+    }
+
+    function handleReplacementCompositionEnd(
+        event: CompositionEvent<HTMLInputElement>,
+    ) {
+        onReplacementChange(event.currentTarget.value);
+    }
+
     function handleReplacementKeyDown(event: KeyboardEvent<HTMLInputElement>) {
         if (event.key === "Enter") {
             event.preventDefault();
@@ -86,9 +114,8 @@ export function EditorFindBar({
                     autoFocus
                     className="input input-sm input-bordered h-8 min-w-0 flex-1"
                     value={query}
-                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                        onQueryChange(event.target.value)
-                    }
+                    onChange={handleFindChange}
+                    onCompositionEnd={handleFindCompositionEnd}
                     onKeyDown={handleFindKeyDown}
                 />
                 <span className="min-w-12 text-center text-xs tabular-nums text-base-content/60">
@@ -145,9 +172,8 @@ export function EditorFindBar({
                         aria-label="替换为"
                         className="input input-sm input-bordered h-8 min-w-0 flex-1"
                         value={replacement}
-                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                            onReplacementChange(event.target.value)
-                        }
+                        onChange={handleReplacementChange}
+                        onCompositionEnd={handleReplacementCompositionEnd}
                         onKeyDown={handleReplacementKeyDown}
                     />
                     <button
@@ -169,5 +195,11 @@ export function EditorFindBar({
                 </div>
             ) : null}
         </div>
+    );
+}
+
+function isComposingChange(event: ChangeEvent<HTMLInputElement>) {
+    return Boolean(
+        (event.nativeEvent as Event & { isComposing?: boolean }).isComposing,
     );
 }

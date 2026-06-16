@@ -602,7 +602,7 @@ export function DocumentShell({
     confirmedCloseRef.current = true;
     try {
       const { getCurrentWindow } = await tauriWindow();
-      await getCurrentWindow().close();
+      await getCurrentWindow().destroy();
     } catch (closeError) {
       confirmedCloseRef.current = false;
       throw closeError;

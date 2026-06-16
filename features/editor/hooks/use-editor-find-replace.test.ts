@@ -2,7 +2,7 @@
 
 import { act, createElement, useEffect } from "react";
 import { createRoot } from "react-dom/client";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { VisibleTextMatch } from "../lib/visible-text-search";
 import {
     applyFindBarShortcut,
@@ -15,6 +15,10 @@ import {
     replaceAllMatchesFromEnd,
     useEditorFindReplace,
 } from "./use-editor-find-replace";
+import type { FindReplaceState } from "./use-editor-find-replace";
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
+    .IS_REACT_ACT_ENVIRONMENT = true;
 
 describe("editor find replace state", () => {
     it("opens the find bar without expanding replace", () => {
@@ -187,6 +191,101 @@ describe("editor find replace visible text index", () => {
         await act(async () => {});
 
         expect(latestMatchCount).toBe(1);
+
+        act(() => reactRoot.unmount());
+        editorRoot.remove();
+        host.remove();
+    });
+
+    it("reselects the only match when navigating to the next match", async () => {
+        const host = document.createElement("div");
+        const editorRoot = document.createElement("div");
+        document.body.append(host, editorRoot);
+        const reactRoot = createRoot(host);
+        const paragraph = document.createElement("p");
+        paragraph.textContent = "raw";
+        paragraph.scrollIntoView = vi.fn();
+        editorRoot.append(paragraph);
+        let goNext: (() => void) | null = null;
+
+        function Harness() {
+            const findReplace = useEditorFindReplace({
+                editorRoot,
+                focusEditor: () => {},
+                markdown: "raw",
+                replaceSelectedText: () => {},
+            });
+            const { openFind, setQuery } = findReplace.actions;
+            useEffect(() => {
+                openFind();
+                setQuery("raw");
+            }, [openFind, setQuery]);
+            useEffect(() => {
+                goNext = findReplace.actions.goNext;
+            }, [findReplace.actions.goNext]);
+            return null;
+        }
+
+        await act(async () => {
+            reactRoot.render(createElement(Harness));
+        });
+        await act(async () => {});
+
+        expect(paragraph.scrollIntoView).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+            goNext?.();
+        });
+        await act(async () => {});
+
+        expect(paragraph.scrollIntoView).toHaveBeenCalledTimes(2);
+
+        act(() => reactRoot.unmount());
+        editorRoot.remove();
+        host.remove();
+    });
+
+    it("clears the query when closing the find bar", async () => {
+        const host = document.createElement("div");
+        const editorRoot = document.createElement("div");
+        document.body.append(host, editorRoot);
+        const reactRoot = createRoot(host);
+        let latestState: FindReplaceState | null = null;
+        let close: (() => void) | null = null;
+
+        function Harness() {
+            const findReplace = useEditorFindReplace({
+                editorRoot,
+                focusEditor: () => {},
+                markdown: "",
+                replaceSelectedText: () => {},
+            });
+            const { openFind, setQuery } = findReplace.actions;
+            useEffect(() => {
+                openFind();
+                setQuery("raw");
+            }, [openFind, setQuery]);
+            useEffect(() => {
+                latestState = findReplace.state;
+                close = findReplace.actions.close;
+            }, [findReplace.actions.close, findReplace.state]);
+            return null;
+        }
+
+        await act(async () => {
+            reactRoot.render(createElement(Harness));
+        });
+        await act(async () => {});
+
+        expect(latestState?.query).toBe("raw");
+
+        await act(async () => {
+            close?.();
+        });
+        await act(async () => {});
+
+        expect(latestState?.isOpen).toBe(false);
+        expect(latestState?.query).toBe("");
 
         act(() => reactRoot.unmount());
         editorRoot.remove();

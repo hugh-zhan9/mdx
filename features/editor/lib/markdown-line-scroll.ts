@@ -56,6 +56,11 @@ export function scrollMarkdownLineIntoView(
     const renderedBlocks = collectRenderedBlocks(root);
 
     if (renderedBlocks.length === 0) {
+        if (root.textContent?.trim()) {
+            root.scrollIntoView(SCROLL_OPTIONS);
+            return true;
+        }
+
         return false;
     }
 

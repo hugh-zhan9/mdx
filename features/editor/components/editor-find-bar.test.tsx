@@ -143,6 +143,26 @@ describe("EditorFindBar", () => {
         expect(onClose).toHaveBeenCalledOnce();
     });
 
+    it("does not update the find query until IME composition commits", () => {
+        const onQueryChange = vi.fn();
+        const bar = renderBar({ onQueryChange });
+        const findInput = getInputByLabel(bar, "查找");
+
+        findInput.props.onChange({
+            target: { value: "w" },
+            nativeEvent: { isComposing: true },
+        });
+
+        expect(onQueryChange).not.toHaveBeenCalled();
+
+        findInput.props.onCompositionEnd({
+            currentTarget: { value: "我" },
+        });
+
+        expect(onQueryChange).toHaveBeenCalledOnce();
+        expect(onQueryChange).toHaveBeenCalledWith("我");
+    });
+
     it("submits replace current from replacement input when replace is available", () => {
         const onReplaceCurrent = vi.fn();
         const bar = renderBar({

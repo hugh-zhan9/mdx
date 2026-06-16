@@ -239,52 +239,45 @@ function useWorkspaceCloseGuard(
                         return;
                     }
 
-                    event.preventDefault();
-                    closingRef.current = true;
-
-                    if (
-                        workspace &&
-                        hasDirtyTabs(workspace)
-                    ) {
-                        void dialogs.confirm({
-                            title: "关闭窗口",
-                            message:
-                                "当前工作区有未保存更改。关闭窗口会丢弃这些更改，是否继续？",
-                            confirmLabel: "关闭",
-                            destructive: true,
-                        }).then((confirmed) => {
-                            if (!confirmed) {
-                                closingRef.current = false;
-                                return;
-                            }
-                            void deleteDiscardedWorkspaceDrafts(
-                                workspace,
-                                draftDelete,
-                            ).then(() =>
-                                closeWorkspaceWindow(currentWindow),
-                            ).catch((error) => {
-                                closingRef.current = false;
-                                void dialogs.alert({
-                                    title: "关闭窗口",
-                                    message: formatError(
-                                        error,
-                                        "无法清理已丢弃草稿。",
-                                    ),
-                                });
-                            });
-                        }).catch((error) => {
-                            closingRef.current = false;
-                            console.warn(
-                                "Failed to confirm workspace close.",
-                                error,
-                            );
-                        });
+                    if (!workspace || !hasDirtyTabs(workspace)) {
                         return;
                     }
 
-                    void closeWorkspaceWindow(currentWindow).catch((error) => {
+                    event.preventDefault();
+                    closingRef.current = true;
+
+                    void dialogs.confirm({
+                        title: "关闭窗口",
+                        message:
+                            "当前工作区有未保存更改。关闭窗口会丢弃这些更改，是否继续？",
+                        confirmLabel: "关闭",
+                        destructive: true,
+                    }).then((confirmed) => {
+                        if (!confirmed) {
+                            closingRef.current = false;
+                            return;
+                        }
+                        void deleteDiscardedWorkspaceDrafts(
+                            workspace,
+                            draftDelete,
+                        ).then(() =>
+                            closeWorkspaceWindow(currentWindow),
+                        ).catch((error) => {
+                            closingRef.current = false;
+                            void dialogs.alert({
+                                title: "关闭窗口",
+                                message: formatError(
+                                    error,
+                                    "无法清理已丢弃草稿。",
+                                ),
+                            });
+                        });
+                    }).catch((error) => {
                         closingRef.current = false;
-                        console.warn("Failed to close workspace window.", error);
+                        console.warn(
+                            "Failed to confirm workspace close.",
+                            error,
+                        );
                     });
                 },
             );
@@ -341,9 +334,9 @@ function useWorkspaceOpenFolderStartupAction(
 }
 
 async function closeWorkspaceWindow(
-    currentWindow: { close: () => Promise<void> },
+    currentWindow: { destroy: () => Promise<void> },
 ) {
-    await currentWindow.close();
+    await currentWindow.destroy();
 }
 
 function useCliWorkspaceSync(workspace: WorkspaceState | null) {
