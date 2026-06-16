@@ -136,6 +136,147 @@ fn projection_rebuild_reports_conflict_without_overwriting_existing_markdown() {
 }
 
 #[test]
+fn markdown_memory_import_preserves_existing_ids_and_unknown_message_count() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::initialize_memory_workspace(root.path()).unwrap();
+    std::fs::create_dir_all(root.path().join("memory/memories")).unwrap();
+    std::fs::write(
+        root.path().join("memory/memories/decision.md"),
+        "---\nschema_version: 1\nkind: memory\nmemory_id: memory-old-1\ntitle: Old decision\nstatus: active\ncreated_at: 2026-06-14T00:00:00Z\n---\n\nUse DB first.\n",
+    )
+    .unwrap();
+    std::fs::create_dir_all(root.path().join("memory/threads/codex")).unwrap();
+    std::fs::write(
+        root.path().join("memory/threads/codex/old-thread.md"),
+        "---\nschema_version: 1\nkind: thread\nthread_id: codex:old\ntitle: Old thread\ncontent_hash: abc\n---\n\n## Message 1 - user\nhello\n",
+    )
+    .unwrap();
+
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path()).unwrap();
+    storage.initialize().unwrap();
+    let report =
+        crate::memory_storage_migration::import_markdown_memory_to_db(root.path(), &mut storage)
+            .unwrap();
+
+    assert_eq!(report.memories_imported, 1);
+    assert_eq!(report.threads_imported, 1);
+    let thread = storage.get_thread_for_test("codex:old").unwrap().unwrap();
+    assert_eq!(thread.message_count, None);
+}
+
+#[test]
+fn markdown_thread_import_is_idempotent_and_preserves_known_metadata() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::initialize_memory_workspace(root.path()).unwrap();
+    std::fs::create_dir_all(root.path().join("memory/threads/codex")).unwrap();
+    std::fs::write(
+        root.path().join("memory/threads/codex/known-thread.md"),
+        "---\nschema_version: 1\nkind: thread\nthread_id: codex:known\ntitle: Known thread\ncontent_hash: abc\nstarted_at: 2026-06-14T00:00:00Z\nended_at: 2026-06-14T00:01:00Z\n---\n\n## Message 1 - user\nhello\n",
+    )
+    .unwrap();
+
+    let mut storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path()).unwrap();
+    storage.initialize().unwrap();
+    let scope = crate::memory_storage::workspace_scope_for_root(root.path());
+    storage
+        .upsert_thread(&crate::memory_storage::StoredThreadWrite {
+            thread_id: "codex:known".to_string(),
+            workspace_id: scope.workspace_id,
+            agent_source: "codex".to_string(),
+            session_pk: Some("session-known".to_string()),
+            title: "Known thread".to_string(),
+            body: "## Message 1 - user\nhello\n".to_string(),
+            content_hash: "abc".to_string(),
+            message_count: Some(7),
+            distilled: Some(true),
+            promoted_to_wiki: Some(true),
+            created_at: "2026-06-14T00:00:00Z".to_string(),
+            updated_at: "2026-06-14T00:01:00Z".to_string(),
+        })
+        .unwrap();
+
+    let report =
+        crate::memory_storage_migration::import_markdown_memory_to_db(root.path(), &mut storage)
+            .unwrap();
+
+    assert_eq!(report.threads_imported, 0);
+    assert_eq!(report.skipped, 1);
+    let thread = storage.get_thread_for_test("codex:known").unwrap().unwrap();
+    assert_eq!(thread.session_pk.as_deref(), Some("session-known"));
+    assert_eq!(thread.message_count, Some(7));
+    assert_eq!(thread.distilled, Some(true));
+    assert_eq!(thread.promoted_to_wiki, Some(true));
+}
+
+#[test]
+fn storage_migration_dry_run_reports_copy_counts_without_switching_backend() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::initialize_memory_workspace(root.path()).unwrap();
+    let mut sqlite =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path()).unwrap();
+    sqlite.initialize().unwrap();
+    sqlite
+        .insert_memory_for_test(
+            "memory-1",
+            "workspace:test",
+            "workspace:test",
+            "Decision",
+            "Use DB first.",
+            &["db"],
+            0.9,
+        )
+        .unwrap();
+
+    let report = crate::memory_storage_migration::dry_run_storage_migration(
+        root.path(),
+        "sqlite",
+        "postgresql",
+        Some("postgresql://example/mdx"),
+    )
+    .unwrap();
+
+    assert_eq!(report.from, "sqlite");
+    assert_eq!(report.to, "postgresql");
+    assert_eq!(report.records_seen.get("memories"), Some(&1));
+    assert!(!report.config_switched);
+}
+
+#[test]
+fn daemon_storage_migration_dry_run_reports_invalid_request_flags() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::initialize_memory_workspace(root.path()).unwrap();
+    let body = serde_json::json!({
+        "from": "sqlite",
+        "to": "postgresql",
+        "target": "not-a-postgres-url",
+        "dry_run": false,
+        "resume": true
+    })
+    .to_string();
+
+    let response = crate::memory_daemon::dispatch_for_test(
+        root.path().to_string_lossy().into_owned(),
+        "POST",
+        "/storage/migrate/dry-run",
+        &body,
+    )
+    .unwrap();
+
+    assert_eq!(response.status, 200);
+    let json: serde_json::Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(json["ok"], true);
+    assert_eq!(json["result"]["config_switched"], false);
+    let errors = json["result"]["validation_errors"].as_array().unwrap();
+    assert!(errors.iter().any(|value| value == "target_invalid"));
+    assert!(errors.iter().any(|value| value == "dry_run_required"));
+    assert!(errors
+        .iter()
+        .any(|value| value == "resume_not_supported_for_dry_run"));
+}
+
+#[test]
 fn projection_rebuild_slugifies_non_ascii_as_dash() {
     let root = tempfile::tempdir().unwrap();
     crate::memory::initialize_memory_workspace(root.path()).unwrap();

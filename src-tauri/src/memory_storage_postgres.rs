@@ -6,7 +6,7 @@ use crate::memory_schema::POSTGRES_DDL;
 use crate::memory_storage::{
     validate_job_timestamps, workspace_scope_for_root, MemoryStorage, MemoryStorageScope,
     ProjectionMemory, StoredAgentEvent, StoredAgentSession, StoredInboxWrite, StoredJob,
-    StoredMemoryWrite, StoredProvenanceLink, StoredWorkspace,
+    StoredMemoryWrite, StoredProvenanceLink, StoredThreadWrite, StoredWorkspace,
 };
 use crate::WorkspaceError;
 
@@ -83,6 +83,10 @@ impl PostgresMemoryStorage {
 
     pub fn insert_memory(&mut self, memory: &StoredMemoryWrite) -> Result<bool, WorkspaceError> {
         <Self as MemoryStorage>::insert_memory(self, memory)
+    }
+
+    pub fn upsert_thread(&mut self, thread: &StoredThreadWrite) -> Result<bool, WorkspaceError> {
+        <Self as MemoryStorage>::upsert_thread(self, thread)
     }
 
     pub fn insert_inbox_candidate(
@@ -531,6 +535,72 @@ impl MemoryStorage for PostgresMemoryStorage {
                 postgres_error(
                     "memory_postgres_insert_failed",
                     "failed to insert postgres memory record",
+                    error,
+                )
+            })
+    }
+
+    fn upsert_thread(&mut self, thread: &StoredThreadWrite) -> Result<bool, WorkspaceError> {
+        self.client
+            .execute(
+                "INSERT INTO threads (
+                    thread_id,
+                    workspace_id,
+                    agent_source,
+                    session_pk,
+                    title,
+                    body,
+                    content_hash,
+                    message_count,
+                    distilled,
+                    promoted_to_wiki,
+                    created_at,
+                    updated_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9::boolean, FALSE), COALESCE($10::boolean, FALSE), $11, $12)
+                ON CONFLICT(thread_id) DO UPDATE SET
+                    workspace_id = EXCLUDED.workspace_id,
+                    agent_source = EXCLUDED.agent_source,
+                    session_pk = COALESCE($4, threads.session_pk),
+                    title = EXCLUDED.title,
+                    body = EXCLUDED.body,
+                    content_hash = EXCLUDED.content_hash,
+                    message_count = COALESCE($8, threads.message_count),
+                    distilled = CASE WHEN $9::boolean IS NULL THEN threads.distilled ELSE EXCLUDED.distilled END,
+                    promoted_to_wiki = CASE WHEN $10::boolean IS NULL THEN threads.promoted_to_wiki ELSE EXCLUDED.promoted_to_wiki END,
+                    created_at = EXCLUDED.created_at,
+                    updated_at = EXCLUDED.updated_at
+                WHERE threads.workspace_id IS DISTINCT FROM EXCLUDED.workspace_id
+                    OR threads.agent_source IS DISTINCT FROM EXCLUDED.agent_source
+                    OR threads.session_pk IS DISTINCT FROM COALESCE($4, threads.session_pk)
+                    OR threads.title IS DISTINCT FROM EXCLUDED.title
+                    OR threads.body IS DISTINCT FROM EXCLUDED.body
+                    OR threads.content_hash IS DISTINCT FROM EXCLUDED.content_hash
+                    OR threads.message_count IS DISTINCT FROM COALESCE($8, threads.message_count)
+                    OR threads.distilled IS DISTINCT FROM CASE WHEN $9::boolean IS NULL THEN threads.distilled ELSE EXCLUDED.distilled END
+                    OR threads.promoted_to_wiki IS DISTINCT FROM CASE WHEN $10::boolean IS NULL THEN threads.promoted_to_wiki ELSE EXCLUDED.promoted_to_wiki END
+                    OR threads.created_at IS DISTINCT FROM EXCLUDED.created_at
+                    OR threads.updated_at IS DISTINCT FROM EXCLUDED.updated_at",
+                &[
+                    &thread.thread_id,
+                    &thread.workspace_id,
+                    &thread.agent_source,
+                    &thread.session_pk,
+                    &thread.title,
+                    &thread.body,
+                    &thread.content_hash,
+                    &thread.message_count,
+                    &thread.distilled,
+                    &thread.promoted_to_wiki,
+                    &thread.created_at,
+                    &thread.updated_at,
+                ],
+            )
+            .map(|rows_changed| rows_changed > 0)
+            .map_err(|error| {
+                postgres_error(
+                    "memory_postgres_thread_upsert_failed",
+                    "failed to upsert postgres memory thread",
                     error,
                 )
             })

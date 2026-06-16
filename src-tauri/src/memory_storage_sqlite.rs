@@ -8,7 +8,7 @@ use crate::memory_schema::SQLITE_DDL;
 use crate::memory_storage::{
     validate_job_timestamps, workspace_scope_for_root, MemoryStorage, MemoryStorageScope,
     ProjectionMemory, StoredAgentEvent, StoredAgentSession, StoredInboxWrite, StoredJob,
-    StoredMemoryWrite, StoredProvenanceLink, StoredWorkspace,
+    StoredMemoryWrite, StoredProvenanceLink, StoredThreadWrite, StoredWorkspace,
 };
 use crate::WorkspaceError;
 
@@ -84,6 +84,10 @@ impl SqliteMemoryStorage {
 
     pub fn insert_memory(&mut self, memory: &StoredMemoryWrite) -> Result<bool, WorkspaceError> {
         <Self as MemoryStorage>::insert_memory(self, memory)
+    }
+
+    pub fn upsert_thread(&mut self, thread: &StoredThreadWrite) -> Result<bool, WorkspaceError> {
+        <Self as MemoryStorage>::upsert_thread(self, thread)
     }
 
     pub fn insert_inbox_candidate(
@@ -182,6 +186,41 @@ impl SqliteMemoryStorage {
                 sqlite_error(
                     "memory_provenance_count_failed",
                     "failed to count sqlite provenance links",
+                    error,
+                )
+            })
+    }
+
+    #[cfg(test)]
+    pub fn get_thread_for_test(
+        &mut self,
+        thread_id: &str,
+    ) -> Result<Option<StoredThreadWrite>, WorkspaceError> {
+        self.conn
+            .query_row(
+                "SELECT
+                    thread_id,
+                    workspace_id,
+                    agent_source,
+                    session_pk,
+                    title,
+                    body,
+                    content_hash,
+                    message_count,
+                    distilled,
+                    promoted_to_wiki,
+                    created_at,
+                    updated_at
+                FROM threads
+                WHERE thread_id = ?1",
+                params![thread_id],
+                row_to_thread,
+            )
+            .optional()
+            .map_err(|error| {
+                sqlite_error(
+                    "memory_thread_read_failed",
+                    "failed to read sqlite memory thread",
                     error,
                 )
             })
@@ -630,6 +669,72 @@ impl MemoryStorage for SqliteMemoryStorage {
             })
     }
 
+    fn upsert_thread(&mut self, thread: &StoredThreadWrite) -> Result<bool, WorkspaceError> {
+        self.conn
+            .execute(
+                "INSERT INTO threads (
+                    thread_id,
+                    workspace_id,
+                    agent_source,
+                    session_pk,
+                    title,
+                    body,
+                    content_hash,
+                    message_count,
+                    distilled,
+                    promoted_to_wiki,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, COALESCE(?9, 0), COALESCE(?10, 0), ?11, ?12)
+                ON CONFLICT(thread_id) DO UPDATE SET
+                    workspace_id = excluded.workspace_id,
+                    agent_source = excluded.agent_source,
+                    session_pk = COALESCE(?4, threads.session_pk),
+                    title = excluded.title,
+                    body = excluded.body,
+                    content_hash = excluded.content_hash,
+                    message_count = COALESCE(?8, threads.message_count),
+                    distilled = CASE WHEN ?9 IS NULL THEN threads.distilled ELSE excluded.distilled END,
+                    promoted_to_wiki = CASE WHEN ?10 IS NULL THEN threads.promoted_to_wiki ELSE excluded.promoted_to_wiki END,
+                    created_at = excluded.created_at,
+                    updated_at = excluded.updated_at
+                WHERE threads.workspace_id IS NOT excluded.workspace_id
+                    OR threads.agent_source IS NOT excluded.agent_source
+                    OR threads.session_pk IS NOT COALESCE(?4, threads.session_pk)
+                    OR threads.title IS NOT excluded.title
+                    OR threads.body IS NOT excluded.body
+                    OR threads.content_hash IS NOT excluded.content_hash
+                    OR threads.message_count IS NOT COALESCE(?8, threads.message_count)
+                    OR threads.distilled IS NOT CASE WHEN ?9 IS NULL THEN threads.distilled ELSE excluded.distilled END
+                    OR threads.promoted_to_wiki IS NOT CASE WHEN ?10 IS NULL THEN threads.promoted_to_wiki ELSE excluded.promoted_to_wiki END
+                    OR threads.created_at IS NOT excluded.created_at
+                    OR threads.updated_at IS NOT excluded.updated_at",
+                params![
+                    thread.thread_id,
+                    thread.workspace_id,
+                    thread.agent_source,
+                    thread.session_pk,
+                    thread.title,
+                    thread.body,
+                    thread.content_hash,
+                    thread.message_count,
+                    option_bool_to_i64(thread.distilled),
+                    option_bool_to_i64(thread.promoted_to_wiki),
+                    thread.created_at,
+                    thread.updated_at
+                ],
+            )
+            .map(|rows_changed| rows_changed > 0)
+            .map_err(|error| {
+                sqlite_error(
+                    "memory_thread_upsert_failed",
+                    "failed to upsert sqlite memory thread",
+                    error,
+                )
+            })
+    }
+
     fn insert_inbox_candidate(&mut self, inbox: &StoredInboxWrite) -> Result<bool, WorkspaceError> {
         let tags = serde_json::to_string(&inbox.tags).map_err(|error| {
             WorkspaceError::new(
@@ -1004,6 +1109,30 @@ fn row_to_job(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredJob> {
         updated_at: row.get(9)?,
         last_error: row.get(10)?,
     })
+}
+
+#[cfg(test)]
+fn row_to_thread(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredThreadWrite> {
+    let distilled: i64 = row.get(8)?;
+    let promoted_to_wiki: i64 = row.get(9)?;
+    Ok(StoredThreadWrite {
+        thread_id: row.get(0)?,
+        workspace_id: row.get(1)?,
+        agent_source: row.get(2)?,
+        session_pk: row.get(3)?,
+        title: row.get(4)?,
+        body: row.get(5)?,
+        content_hash: row.get(6)?,
+        message_count: row.get(7)?,
+        distilled: Some(distilled != 0),
+        promoted_to_wiki: Some(promoted_to_wiki != 0),
+        created_at: row.get(10)?,
+        updated_at: row.get(11)?,
+    })
+}
+
+fn option_bool_to_i64(value: Option<bool>) -> Option<i64> {
+    value.map(|value| if value { 1 } else { 0 })
 }
 
 fn ensure_workspace_db_dir(root: &Path) -> Result<PathBuf, WorkspaceError> {

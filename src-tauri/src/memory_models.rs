@@ -103,6 +103,41 @@ pub struct MemoryImportResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+pub struct MemoryStorageMigrationReport {
+    pub migration_id: String,
+    pub from: String,
+    pub to: String,
+    pub dry_run: bool,
+    pub records_seen: BTreeMap<String, usize>,
+    pub records_copied: BTreeMap<String, usize>,
+    pub records_skipped: BTreeMap<String, usize>,
+    pub validation_errors: Vec<String>,
+    pub backup_path: Option<String>,
+    pub config_switched: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryMarkdownImportReport {
+    pub memories_imported: usize,
+    pub inbox_imported: usize,
+    pub threads_imported: usize,
+    pub skipped: usize,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryStorageMigrateRequest {
+    pub from: String,
+    pub to: String,
+    pub target: Option<String>,
+    pub dry_run: bool,
+    pub resume: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub struct MemoryConfig {
     pub version: u32,
     #[serde(default)]

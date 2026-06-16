@@ -51,6 +51,7 @@ pub mod memory_recall_engine;
 pub mod memory_schema;
 pub mod memory_spool;
 pub mod memory_storage;
+pub mod memory_storage_migration;
 pub mod memory_storage_postgres;
 pub mod memory_storage_sqlite;
 mod memory_store;

@@ -80,6 +80,22 @@ pub struct StoredMemoryWrite {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct StoredThreadWrite {
+    pub thread_id: String,
+    pub workspace_id: String,
+    pub agent_source: String,
+    pub session_pk: Option<String>,
+    pub title: String,
+    pub body: String,
+    pub content_hash: String,
+    pub message_count: Option<i64>,
+    pub distilled: Option<bool>,
+    pub promoted_to_wiki: Option<bool>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ProjectionMemory {
     pub memory_id: String,
     pub title: String,
@@ -135,6 +151,7 @@ pub trait MemoryStorage {
     fn list_ready_jobs(&mut self, limit: usize) -> Result<Vec<StoredJob>, WorkspaceError>;
     fn count_events(&mut self) -> Result<i64, WorkspaceError>;
     fn insert_memory(&mut self, memory: &StoredMemoryWrite) -> Result<bool, WorkspaceError>;
+    fn upsert_thread(&mut self, thread: &StoredThreadWrite) -> Result<bool, WorkspaceError>;
     fn insert_inbox_candidate(&mut self, inbox: &StoredInboxWrite) -> Result<bool, WorkspaceError>;
     fn insert_provenance_link(
         &mut self,

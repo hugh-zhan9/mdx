@@ -107,6 +107,12 @@ pub fn dispatch(
         ("POST", "/memory/import") => post_json(body, |request: MemoryImportRequest| {
             crate::memory::memory_import_bundle(root, request)
         }),
+        ("POST", "/storage/migrate/dry-run") => post_json(
+            body,
+            |request: crate::memory::MemoryStorageMigrateRequest| {
+                crate::memory_storage_migration::dry_run_storage_migration_request(&root, request)
+            },
+        ),
         ("POST", "/hook/events") => hook_event(root, body),
         _ if known_route(path) => Ok(error_response(
             405,
@@ -443,6 +449,7 @@ fn known_route(path: &str) -> bool {
             | "/memory/capture/scan"
             | "/memory/export"
             | "/memory/import"
+            | "/storage/migrate/dry-run"
             | "/hook/events"
     )
 }

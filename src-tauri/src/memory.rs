@@ -15,11 +15,12 @@ pub use crate::memory_models::{
     MemoryExportRequest, MemoryExportResult, MemoryFrontmatter, MemoryHookEventRequest,
     MemoryHookEventResponse, MemoryImportRequest, MemoryImportResult, MemoryIndexSearchItem,
     MemoryIndexSearchRequest, MemoryIndexSearchResult, MemoryIndexStatus, MemoryIntegrationStatus,
-    MemoryListFilter, MemoryPromoteRequest, MemoryPromoteResult, MemoryRecallConfig, MemoryRecord,
-    MemoryRepairRequest, MemoryRepairResult, MemorySummary, MemoryThreadFrontmatter,
-    MemoryThreadRecord, MemoryWorkspaceStatus, RecallMemoryItem, RecallRequest, RecallResult,
-    ThreadIndex, ThreadIndexEntry, ThreadListFilter, ThreadListItem, ThreadSaveRequest,
-    ThreadSaveResult,
+    MemoryListFilter, MemoryMarkdownImportReport, MemoryPromoteRequest, MemoryPromoteResult,
+    MemoryRecallConfig, MemoryRecord, MemoryRepairRequest, MemoryRepairResult,
+    MemoryStorageMigrateRequest, MemoryStorageMigrationReport, MemorySummary,
+    MemoryThreadFrontmatter, MemoryThreadRecord, MemoryWorkspaceStatus, RecallMemoryItem,
+    RecallRequest, RecallResult, ThreadIndex, ThreadIndexEntry, ThreadListFilter, ThreadListItem,
+    ThreadSaveRequest, ThreadSaveResult,
 };
 pub use crate::memory_projection::ProjectionReport;
 use crate::models::WorkspaceError;
