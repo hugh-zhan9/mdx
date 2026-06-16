@@ -821,6 +821,27 @@ fn daemon_dispatch_health_reports_memory_status() {
 }
 
 #[test]
+fn diagnostics_reports_queue_spool_projection_and_recent_errors() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+
+    let response = crate::memory_daemon::dispatch_for_test(
+        root.path().to_string_lossy().into_owned(),
+        "GET",
+        "/diagnostics",
+        "",
+    )
+    .unwrap();
+
+    assert_eq!(response.status, 200);
+    let json: serde_json::Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(json["ok"], true);
+    assert!(json["result"]["queue"]["depth"].is_number());
+    assert!(json["result"]["spool"]["pending"].is_number());
+    assert!(json["result"]["projection"]["dirty_count"].is_number());
+}
+
+#[test]
 fn daemon_dispatch_memory_add_accepts_json_body() {
     let root = tempdir().unwrap();
     memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
@@ -1163,6 +1184,7 @@ fn daemon_dispatch_exposes_complete_memory_routes() {
             r#"{"target":"missing-memory","ingest":false,"title":null}"#,
         ),
         ("POST", "/memory/capture/scan", r#"{"source":"codex"}"#),
+        ("GET", "/diagnostics", ""),
         (
             "POST",
             "/config/set",
@@ -1691,6 +1713,41 @@ fn hook_idempotency_key_is_stable_for_reordered_payload_keys() {
     .unwrap();
 
     assert_eq!(first_event.idempotency_key, second_event.idempotency_key);
+}
+
+#[test]
+fn hook_fixture_smoke_captures_codex_claude_cursor_events() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+    for (agent, event, fixture) in [
+        (
+            "codex",
+            "UserPromptSubmit",
+            include_str!("../tests/fixtures/memory-hooks/codex-user-prompt.json"),
+        ),
+        (
+            "claude",
+            "Stop",
+            include_str!("../tests/fixtures/memory-hooks/claude-stop.json"),
+        ),
+        (
+            "cursor",
+            "Stop",
+            include_str!("../tests/fixtures/memory-hooks/cursor-stop.json"),
+        ),
+    ] {
+        let payload: serde_json::Value = serde_json::from_str(fixture).unwrap();
+        let normalized = crate::memory_hooks::normalize_hook_payload(
+            agent,
+            event,
+            &root.path().to_string_lossy(),
+            &payload,
+            Some(400),
+        )
+        .unwrap();
+        assert_eq!(normalized.agent_source, agent);
+        assert_eq!(normalized.event_name, event);
+    }
 }
 
 #[test]

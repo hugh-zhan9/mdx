@@ -1,7 +1,12 @@
 use sha2::{Digest, Sha256};
 
+use crate::memory_models::MemoryQueueDiagnostics;
 use crate::memory_storage::{MemoryStorage, StoredJob};
 use crate::WorkspaceError;
+
+pub fn empty_queue_diagnostics() -> MemoryQueueDiagnostics {
+    MemoryQueueDiagnostics { depth: 0, dead: 0 }
+}
 
 pub fn enqueue_distill_for_session(
     storage: &mut dyn MemoryStorage,

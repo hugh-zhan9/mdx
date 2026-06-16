@@ -1,0 +1,6 @@
+{
+  "conversationId": "cursor-fixture-session",
+  "workspaceRoots": ["/tmp/mdx-fixture"],
+  "summary": "Cursor finished editing memory diagnostics.",
+  "eventSeq": 3
+}

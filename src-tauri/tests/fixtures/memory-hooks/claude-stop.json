@@ -1,0 +1,7 @@
+{
+  "sessionId": "claude-fixture-session",
+  "turnId": "turn-2",
+  "workspaceRoot": "/tmp/mdx-fixture",
+  "transcript_path": "/tmp/mdx-fixture/.claude/transcript.jsonl",
+  "eventSeq": 2
+}

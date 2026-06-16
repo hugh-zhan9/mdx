@@ -1,0 +1,7 @@
+{
+  "session_id": "codex-fixture-session",
+  "turn_id": "turn-1",
+  "cwd": "/tmp/mdx-fixture",
+  "prompt": "Remember that MDX Memory is an external backend for agents.",
+  "event_seq": 1
+}

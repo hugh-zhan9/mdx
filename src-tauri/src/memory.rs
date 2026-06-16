@@ -13,12 +13,13 @@ pub use crate::memory_models::{
     MemoryBackendStorageStatus, MemoryBackendTodayStatus, MemoryCaptureCandidate,
     MemoryCaptureConfig, MemoryCaptureImportRequest, MemoryCaptureImportResult,
     MemoryCaptureScanRequest, MemoryCaptureScanResult, MemoryConfig, MemoryConfigSetRequest,
-    MemoryDistillConfig, MemoryDistillRequest, MemoryDistillResult, MemoryDoctorReport,
-    MemoryEmbeddingConfig, MemoryExportRequest, MemoryExportResult, MemoryFrontmatter,
-    MemoryHookEventRequest, MemoryHookEventResponse, MemoryImportRequest, MemoryImportResult,
-    MemoryIndexSearchItem, MemoryIndexSearchRequest, MemoryIndexSearchResult, MemoryIndexStatus,
-    MemoryIntegrationStatus, MemoryListFilter, MemoryMarkdownImportReport, MemoryPromoteRequest,
-    MemoryPromoteResult, MemoryRecallConfig, MemoryRecord, MemoryRepairRequest, MemoryRepairResult,
+    MemoryDiagnostics, MemoryDistillConfig, MemoryDistillRequest, MemoryDistillResult,
+    MemoryDoctorReport, MemoryEmbeddingConfig, MemoryExportRequest, MemoryExportResult,
+    MemoryFrontmatter, MemoryHookEventRequest, MemoryHookEventResponse, MemoryImportRequest,
+    MemoryImportResult, MemoryIndexSearchItem, MemoryIndexSearchRequest, MemoryIndexSearchResult,
+    MemoryIndexStatus, MemoryIntegrationStatus, MemoryListFilter, MemoryMarkdownImportReport,
+    MemoryProjectionDiagnostics, MemoryPromoteRequest, MemoryPromoteResult, MemoryRecallConfig,
+    MemoryRecord, MemoryRepairRequest, MemoryRepairResult, MemorySpoolDiagnostics,
     MemoryStorageMigrateRequest, MemoryStorageMigrationReport, MemorySummary,
     MemoryThreadFrontmatter, MemoryThreadRecord, MemoryWorkspaceStatus, RecallMemoryItem,
     RecallRequest, RecallResult, ThreadIndex, ThreadIndexEntry, ThreadListFilter, ThreadListItem,
@@ -245,6 +246,48 @@ pub fn memory_backend_status(root_path: String) -> Result<MemoryBackendStatus, W
             captured_events: 0,
             pending_candidates,
         },
+    })
+}
+
+pub fn memory_diagnostics(root_path: String) -> Result<MemoryDiagnostics, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    let workspace = detect_memory_workspace(&root)?;
+    let config = if workspace.has_memory {
+        crate::memory_fs::read_memory_config(&root)?
+    } else {
+        default_memory_config()
+    };
+
+    let index_status = if workspace.has_memory {
+        Some(crate::search_index::status(&root)?)
+    } else {
+        None
+    };
+    let projection_dirty = index_status
+        .as_ref()
+        .map(|status| status.dirty)
+        .unwrap_or(false);
+    let projection_status = if !config.projection.enabled {
+        "disabled"
+    } else if projection_dirty {
+        "dirty"
+    } else if workspace.has_memory {
+        "ready"
+    } else {
+        "stopped"
+    };
+
+    Ok(MemoryDiagnostics {
+        queue: crate::memory_queue::empty_queue_diagnostics(),
+        spool: MemorySpoolDiagnostics {
+            pending: crate::memory_spool::count_spool_files(&root)?,
+            quarantined: crate::memory_spool::count_quarantine_files(&root)?,
+        },
+        projection: MemoryProjectionDiagnostics {
+            status: projection_status.to_string(),
+            dirty_count: if projection_dirty { 1 } else { 0 },
+        },
+        recent_errors: Vec::new(),
     })
 }
 

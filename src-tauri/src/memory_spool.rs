@@ -18,6 +18,14 @@ pub struct SpoolImportReport {
     pub quarantined: usize,
 }
 
+pub fn count_spool_files(root: impl AsRef<Path>) -> Result<usize, WorkspaceError> {
+    count_final_json_files(&spool_dir(root.as_ref()))
+}
+
+pub fn count_quarantine_files(root: impl AsRef<Path>) -> Result<usize, WorkspaceError> {
+    count_final_json_files(&root.as_ref().join(".mdx/memory-spool-quarantine"))
+}
+
 pub fn write_spool_event(
     root: impl AsRef<Path>,
     event: &AgentHookEvent,
@@ -191,6 +199,49 @@ fn read_spool_paths(spool_dir: &Path) -> Result<Vec<PathBuf>, WorkspaceError> {
         .collect()
 }
 
+fn count_final_json_files(dir: &Path) -> Result<usize, WorkspaceError> {
+    match existing_mdx_child_dir_kind(dir)? {
+        SpoolDirKind::Missing => Ok(0),
+        SpoolDirKind::Invalid => Err(WorkspaceError::new(
+            "spool_dir_invalid",
+            "memory spool path is not a real directory",
+        )),
+        SpoolDirKind::Directory => fs::read_dir(dir)
+            .map_err(|error| {
+                WorkspaceError::from_io(
+                    "spool_import_failed",
+                    "failed to read memory spool directory",
+                    &error,
+                )
+            })?
+            .try_fold(0usize, |count, entry| {
+                let entry = entry.map_err(|error| {
+                    WorkspaceError::from_io(
+                        "spool_import_failed",
+                        "failed to read memory spool entry",
+                        &error,
+                    )
+                })?;
+                let path = entry.path();
+                if !is_final_spool_json_path(&path) {
+                    return Ok(count);
+                }
+                let metadata = fs::symlink_metadata(&path).map_err(|error| {
+                    WorkspaceError::from_io(
+                        "spool_import_failed",
+                        "failed to inspect memory spool entry",
+                        &error,
+                    )
+                })?;
+                if metadata.file_type().is_file() {
+                    Ok(count + 1)
+                } else {
+                    Ok(count)
+                }
+            }),
+    }
+}
+
 fn is_final_spool_json_path(path: &Path) -> bool {
     let Some(file_name) = path.file_name().and_then(|file_name| file_name.to_str()) else {
         return false;
@@ -320,7 +371,11 @@ enum SpoolDirKind {
 }
 
 fn existing_spool_dir_kind(spool_dir: &Path) -> Result<SpoolDirKind, WorkspaceError> {
-    let mdx_dir = spool_dir.parent().ok_or_else(|| {
+    existing_mdx_child_dir_kind(spool_dir)
+}
+
+fn existing_mdx_child_dir_kind(child_dir: &Path) -> Result<SpoolDirKind, WorkspaceError> {
+    let mdx_dir = child_dir.parent().ok_or_else(|| {
         WorkspaceError::new("spool_dir_invalid", "memory spool path has no parent")
     })?;
     match fs::symlink_metadata(mdx_dir) {
@@ -341,7 +396,7 @@ fn existing_spool_dir_kind(spool_dir: &Path) -> Result<SpoolDirKind, WorkspaceEr
             ));
         }
     }
-    match fs::symlink_metadata(spool_dir) {
+    match fs::symlink_metadata(child_dir) {
         Ok(metadata) => {
             let file_type = metadata.file_type();
             if file_type.is_symlink() || !file_type.is_dir() {

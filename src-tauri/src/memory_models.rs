@@ -81,6 +81,36 @@ pub struct MemoryBackendTodayStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+pub struct MemoryDiagnostics {
+    pub queue: MemoryQueueDiagnostics,
+    pub spool: MemorySpoolDiagnostics,
+    pub projection: MemoryProjectionDiagnostics,
+    pub recent_errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryQueueDiagnostics {
+    pub depth: usize,
+    pub dead: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemorySpoolDiagnostics {
+    pub pending: usize,
+    pub quarantined: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryProjectionDiagnostics {
+    pub status: String,
+    pub dirty_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub struct InitializeMemoryResult {
     pub created_paths: Vec<String>,
     pub preserved_paths: Vec<String>,

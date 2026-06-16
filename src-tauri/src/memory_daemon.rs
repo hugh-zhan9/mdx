@@ -114,6 +114,7 @@ pub fn dispatch(
                 crate::memory_storage_migration::dry_run_storage_migration_request(&root, request)
             },
         ),
+        ("GET", "/diagnostics") => get_json(|| crate::memory::memory_diagnostics(root)),
         ("POST", "/config/set") => post_json(body, |request: MemoryConfigSetRequest| {
             crate::memory::memory_config_set(root, request)
         }),
@@ -454,6 +455,7 @@ fn known_route(path: &str) -> bool {
             | "/memory/export"
             | "/memory/import"
             | "/storage/migrate/dry-run"
+            | "/diagnostics"
             | "/config/set"
             | "/hook/events"
     )
