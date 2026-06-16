@@ -7,6 +7,7 @@ import {
   getMemoryBackendStatus,
   getMemoryIntegrationStatus,
   recallMemory,
+  setMemoryConfig,
 } from "./memory-client";
 
 vi.mock("@/common/lib/tauri", () => ({
@@ -144,6 +145,55 @@ describe("memory-client", () => {
     });
     expect(invoke).toHaveBeenCalledWith("memory_integration_status", {
       rootPath: "/tmp/ws",
+    });
+  });
+
+  it("forwards memory config set requests", async () => {
+    const invoke = vi.fn(async () => ({
+      version: 2,
+      memory: { enabled: true },
+      agent_backend: {
+        enabled: true,
+        capture_enabled: false,
+        recall_injection_enabled: true,
+        distill_enabled: true,
+        auto_accept: false,
+        context_byte_budget: 4096,
+      },
+      projection: { enabled: true },
+      agents: {
+        codex: { enabled: false, paused: false },
+        claude: { enabled: false, paused: false },
+        cursor: { enabled: false, paused: false },
+      },
+      storage: {
+        backend: "sqlite",
+        sqlite_path: null,
+        postgres_url_ref: null,
+      },
+      provider: {
+        mode: "reuse_llm",
+        provider: null,
+        model: null,
+      },
+    }));
+    vi.mocked(tauriCore).mockResolvedValue({
+      invoke,
+    } as unknown as Awaited<ReturnType<typeof tauriCore>>);
+
+    await setMemoryConfig("/tmp/ws", {
+      scope: "workspace",
+      key: "agent_backend.capture_enabled",
+      enabled: false,
+    });
+
+    expect(invoke).toHaveBeenCalledWith("memory_config_set", {
+      rootPath: "/tmp/ws",
+      request: {
+        scope: "workspace",
+        key: "agent_backend.capture_enabled",
+        enabled: false,
+      },
     });
   });
 });

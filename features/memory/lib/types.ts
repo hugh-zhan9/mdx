@@ -86,6 +86,41 @@ export interface MemoryDoctorReport {
   warnings: string[];
 }
 
+export interface MemoryConfigSetRequest {
+  scope: "workspace";
+  key: string;
+  enabled: boolean;
+}
+
+export interface MemoryConfig {
+  version: number;
+  memory: { enabled: boolean };
+  agent_backend: {
+    enabled: boolean;
+    capture_enabled: boolean;
+    recall_injection_enabled: boolean;
+    distill_enabled: boolean;
+    auto_accept: boolean;
+    context_byte_budget: number;
+  };
+  projection: { enabled: boolean };
+  agents: {
+    codex: { enabled: boolean; paused: boolean };
+    claude: { enabled: boolean; paused: boolean };
+    cursor: { enabled: boolean; paused: boolean };
+  };
+  storage: {
+    backend: string;
+    sqlite_path: string | null;
+    postgres_url_ref: string | null;
+  };
+  provider: {
+    mode: string;
+    provider: string | null;
+    model: string | null;
+  };
+}
+
 export interface MemoryIndexStatus {
   index_status: string;
   document_count: number;

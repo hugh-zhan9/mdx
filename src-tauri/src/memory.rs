@@ -12,13 +12,13 @@ pub use crate::memory_models::{
     MemoryBackendProjectionStatus, MemoryBackendQueueStatus, MemoryBackendStatus,
     MemoryBackendStorageStatus, MemoryBackendTodayStatus, MemoryCaptureCandidate,
     MemoryCaptureConfig, MemoryCaptureImportRequest, MemoryCaptureImportResult,
-    MemoryCaptureScanRequest, MemoryCaptureScanResult, MemoryConfig, MemoryDistillConfig,
-    MemoryDistillRequest, MemoryDistillResult, MemoryDoctorReport, MemoryEmbeddingConfig,
-    MemoryExportRequest, MemoryExportResult, MemoryFrontmatter, MemoryHookEventRequest,
-    MemoryHookEventResponse, MemoryImportRequest, MemoryImportResult, MemoryIndexSearchItem,
-    MemoryIndexSearchRequest, MemoryIndexSearchResult, MemoryIndexStatus, MemoryIntegrationStatus,
-    MemoryListFilter, MemoryMarkdownImportReport, MemoryPromoteRequest, MemoryPromoteResult,
-    MemoryRecallConfig, MemoryRecord, MemoryRepairRequest, MemoryRepairResult,
+    MemoryCaptureScanRequest, MemoryCaptureScanResult, MemoryConfig, MemoryConfigSetRequest,
+    MemoryDistillConfig, MemoryDistillRequest, MemoryDistillResult, MemoryDoctorReport,
+    MemoryEmbeddingConfig, MemoryExportRequest, MemoryExportResult, MemoryFrontmatter,
+    MemoryHookEventRequest, MemoryHookEventResponse, MemoryImportRequest, MemoryImportResult,
+    MemoryIndexSearchItem, MemoryIndexSearchRequest, MemoryIndexSearchResult, MemoryIndexStatus,
+    MemoryIntegrationStatus, MemoryListFilter, MemoryMarkdownImportReport, MemoryPromoteRequest,
+    MemoryPromoteResult, MemoryRecallConfig, MemoryRecord, MemoryRepairRequest, MemoryRepairResult,
     MemoryStorageMigrateRequest, MemoryStorageMigrationReport, MemorySummary,
     MemoryThreadFrontmatter, MemoryThreadRecord, MemoryWorkspaceStatus, RecallMemoryItem,
     RecallRequest, RecallResult, ThreadIndex, ThreadIndexEntry, ThreadListFilter, ThreadListItem,
@@ -101,6 +101,74 @@ pub fn memory_repair_workspace(
     let root = canonicalize_workspace_root(root_path)?;
     let _lock = try_acquire_memory_lock(&root)?;
     repair_memory_workspace(root, request)
+}
+
+pub fn load_memory_config_for_root(
+    root: impl AsRef<std::path::Path>,
+) -> Result<MemoryConfig, WorkspaceError> {
+    crate::memory_fs::read_memory_config(root.as_ref())
+}
+
+pub fn memory_config_set(
+    root_path: String,
+    request: MemoryConfigSetRequest,
+) -> Result<MemoryConfig, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    let _lock = try_acquire_memory_lock(&root)?;
+    memory_config_set_for_root(&root, request)
+}
+
+fn memory_config_set_for_root(
+    root: &std::path::Path,
+    request: MemoryConfigSetRequest,
+) -> Result<MemoryConfig, WorkspaceError> {
+    if request.scope != "workspace" {
+        return Err(WorkspaceError::new(
+            "memory_config_scope_unknown",
+            format!("unsupported memory config scope: {}", request.scope),
+        ));
+    }
+
+    let mut config = load_memory_config_for_root(root)?;
+    match request.key.as_str() {
+        "memory.enabled" => config.memory.enabled = request.enabled,
+        "agent_backend.capture_enabled" => {
+            config.agent_backend.capture_enabled = request.enabled;
+        }
+        "agent_backend.recall_injection_enabled" => {
+            config.agent_backend.recall_injection_enabled = request.enabled;
+        }
+        "agent_backend.distill_enabled" => {
+            config.agent_backend.distill_enabled = request.enabled;
+        }
+        "agent_backend.auto_accept" => config.agent_backend.auto_accept = request.enabled,
+        "projection.enabled" => config.projection.enabled = request.enabled,
+        "agents.codex.enabled" => config.agents.codex.enabled = request.enabled,
+        "agents.claude.enabled" => config.agents.claude.enabled = request.enabled,
+        "agents.cursor.enabled" => config.agents.cursor.enabled = request.enabled,
+        key => {
+            return Err(WorkspaceError::new(
+                "memory_config_key_unknown",
+                format!("unsupported memory config key: {key}"),
+            ));
+        }
+    }
+
+    write_memory_config(root, &config)?;
+    Ok(config)
+}
+
+fn write_memory_config(
+    root: &std::path::Path,
+    config: &MemoryConfig,
+) -> Result<(), WorkspaceError> {
+    let contents = serde_json::to_vec_pretty(config).map_err(|error| {
+        WorkspaceError::new(
+            "json_encode_failed",
+            format!("failed to encode memory config: {error}"),
+        )
+    })?;
+    write_workspace_file(root, ".mdx/memory-config.json", &contents)
 }
 
 pub fn memory_backend_status(root_path: String) -> Result<MemoryBackendStatus, WorkspaceError> {

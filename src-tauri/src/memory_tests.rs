@@ -1106,7 +1106,35 @@ fn daemon_hook_event_storage_error_degrades_to_success_response() {
     assert_eq!(json["captured"], false);
     assert_eq!(json["disabled_reason"], serde_json::Value::Null);
     assert_eq!(json["additional_context"], "");
-    assert_eq!(json["warnings"], serde_json::json!(["memory_db_path_invalid"]));
+    assert_eq!(
+        json["warnings"],
+        serde_json::json!(["memory_db_path_invalid"])
+    );
+}
+
+#[test]
+fn config_set_disables_capture_without_deleting_history() {
+    let root = tempfile::tempdir().unwrap();
+    crate::memory::memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+
+    let body = serde_json::json!({
+        "scope": "workspace",
+        "key": "agent_backend.capture_enabled",
+        "enabled": false
+    })
+    .to_string();
+    let response = crate::memory_daemon::dispatch_for_test(
+        root.path().to_string_lossy().into_owned(),
+        "POST",
+        "/config/set",
+        &body,
+    )
+    .unwrap();
+
+    assert_eq!(response.status, 200);
+    let config = crate::memory::load_memory_config_for_root(root.path()).unwrap();
+    assert!(!config.agent_backend.capture_enabled);
+    assert!(root.path().join("memory").exists());
 }
 
 #[test]
@@ -1135,6 +1163,11 @@ fn daemon_dispatch_exposes_complete_memory_routes() {
             r#"{"target":"missing-memory","ingest":false,"title":null}"#,
         ),
         ("POST", "/memory/capture/scan", r#"{"source":"codex"}"#),
+        (
+            "POST",
+            "/config/set",
+            r#"{"scope":"workspace","key":"agent_backend.capture_enabled","enabled":false}"#,
+        ),
     ];
 
     for (method, path, body) in routes {

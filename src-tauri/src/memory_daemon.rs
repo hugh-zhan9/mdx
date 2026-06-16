@@ -3,9 +3,10 @@ use serde_json::json;
 
 use crate::memory::{
     InboxAddRequest, InboxReviewRequest, MemoryAddRequest, MemoryCaptureImportRequest,
-    MemoryCaptureScanRequest, MemoryDistillRequest, MemoryExportRequest, MemoryHookEventRequest,
-    MemoryHookEventResponse, MemoryImportRequest, MemoryIndexSearchRequest, MemoryListFilter,
-    MemoryPromoteRequest, MemoryRepairRequest, RecallRequest, ThreadListFilter, ThreadSaveRequest,
+    MemoryCaptureScanRequest, MemoryConfigSetRequest, MemoryDistillRequest, MemoryExportRequest,
+    MemoryHookEventRequest, MemoryHookEventResponse, MemoryImportRequest, MemoryIndexSearchRequest,
+    MemoryListFilter, MemoryPromoteRequest, MemoryRepairRequest, RecallRequest, ThreadListFilter,
+    ThreadSaveRequest,
 };
 use crate::WorkspaceError;
 
@@ -113,6 +114,9 @@ pub fn dispatch(
                 crate::memory_storage_migration::dry_run_storage_migration_request(&root, request)
             },
         ),
+        ("POST", "/config/set") => post_json(body, |request: MemoryConfigSetRequest| {
+            crate::memory::memory_config_set(root, request)
+        }),
         ("POST", "/hook/events") => hook_event(root, body),
         _ if known_route(path) => Ok(error_response(
             405,
@@ -450,6 +454,7 @@ fn known_route(path: &str) -> bool {
             | "/memory/export"
             | "/memory/import"
             | "/storage/migrate/dry-run"
+            | "/config/set"
             | "/hook/events"
     )
 }

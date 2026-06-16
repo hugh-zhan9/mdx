@@ -8,6 +8,8 @@ import type {
   MemoryAgentSetupRequest,
   MemoryAgentSetupResult,
   MemoryBackendStatus,
+  MemoryConfig,
+  MemoryConfigSetRequest,
   MemoryDoctorReport,
   MemoryIndexStatus,
   MemoryIntegrationStatus,
@@ -77,6 +79,13 @@ export function repairMemoryIntegration(
   agent: string,
 ): Promise<MemoryDoctorReport> {
   return invokeCommand("memory_integration_repair", { rootPath, agent });
+}
+
+export function setMemoryConfig(
+  rootPath: string,
+  request: MemoryConfigSetRequest,
+): Promise<MemoryConfig> {
+  return invokeCommand("memory_config_set", { rootPath, request });
 }
 
 export function rebuildMemoryIndex(rootPath: string): Promise<MemoryIndexStatus> {

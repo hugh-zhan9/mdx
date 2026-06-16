@@ -10,6 +10,8 @@ import {
   saveLlmConfig,
   updateLlmWikiConfig,
 } from "@/features/llm-wiki/lib/llm-wiki-client";
+import { MemorySettingsSection } from "@/features/memory/components/memory-settings-section";
+import { setMemoryConfig } from "@/features/memory/lib/memory-client";
 import type { LlmWikiKnowledgeConfig } from "@/features/llm-wiki/lib/types";
 import type { LlmProviderApiMode } from "@/features/llm-wiki/lib/types";
 import {
@@ -88,6 +90,7 @@ function SettingsDialog({
     general: null,
     search: null,
     files: null,
+    memory: null,
     llm: null,
   });
   const [baseUrl, setBaseUrl] = useState("https://api.openai.com/v1");
@@ -97,6 +100,7 @@ function SettingsDialog({
   const [hasExistingApiKey, setHasExistingApiKey] = useState(false);
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [savingMemorySettings, setSavingMemorySettings] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [fileWatchEnabled, setFileWatchEnabled] = useState(
     preferences.fileWatchEnabled,
@@ -303,6 +307,28 @@ function SettingsDialog({
       setMessage(formatError(error, "刷新 LLM Wiki 日志失败。"));
     } finally {
       setLoadingLlmWiki(false);
+    }
+  };
+  const toggleMemoryConfig = async (key: string, enabled: boolean) => {
+    if (!workspaceRoot) {
+      setMessage("打开工作区后可以修改 Memory 设置。");
+      return;
+    }
+
+    setSavingMemorySettings(true);
+    setMessage(null);
+
+    try {
+      await setMemoryConfig(workspaceRoot, {
+        scope: "workspace",
+        key,
+        enabled,
+      });
+      setMessage("Memory 设置已保存。");
+    } catch (error) {
+      setMessage(formatError(error, "保存 Memory 设置失败。"));
+    } finally {
+      setSavingMemorySettings(false);
     }
   };
   const selectSection = (section: SettingsSection) => {
@@ -512,6 +538,16 @@ function SettingsDialog({
               </div>
             </section>
 
+            <MemorySettingsSection
+              sectionRef={(node) => {
+                sectionRefs.current.memory = node;
+              }}
+              disabled={!workspaceRoot || savingMemorySettings}
+              onToggle={(key, enabled) => {
+                void toggleMemoryConfig(key, enabled);
+              }}
+            />
+
             <section
               ref={(node) => {
                 sectionRefs.current.llm = node;
@@ -632,12 +668,13 @@ const LLM_API_MODE_OPTIONS: Array<{
   { value: "responses", label: "Responses" },
 ];
 
-type SettingsSection = "general" | "search" | "files" | "llm";
+type SettingsSection = "general" | "search" | "files" | "memory" | "llm";
 
 const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string }> = [
   { id: "general", label: "通用" },
   { id: "search", label: "搜索" },
   { id: "files", label: "文件" },
+  { id: "memory", label: "Memory" },
   { id: "llm", label: "LLM" },
 ];
 

@@ -90,6 +90,14 @@ fn memory_repair_workspace(
 }
 
 #[tauri::command]
+fn memory_config_set(
+    root_path: String,
+    request: memory::MemoryConfigSetRequest,
+) -> Result<memory::MemoryConfig, WorkspaceError> {
+    memory::memory_config_set(root_path, request)
+}
+
+#[tauri::command]
 fn memory_backend_status(root_path: String) -> Result<memory::MemoryBackendStatus, WorkspaceError> {
     memory::memory_backend_status(root_path)
 }
@@ -395,6 +403,7 @@ mod memory_tauri_command_tests {
             "memory_detect_workspace",
             "memory_initialize_workspace",
             "memory_repair_workspace",
+            "memory_config_set",
             "memory_backend_status",
             "memory_integration_status",
             "memory_integration_repair",
@@ -948,6 +957,7 @@ pub fn run() {
             memory_detect_workspace,
             memory_initialize_workspace,
             memory_repair_workspace,
+            memory_config_set,
             memory_backend_status,
             memory_integration_status,
             memory_integration_repair,

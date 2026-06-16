@@ -23,6 +23,10 @@ vi.mock("@/features/llm-wiki/lib/llm-wiki-client", () => ({
   updateLlmWikiConfig: vi.fn(),
 }));
 
+vi.mock("@/features/memory/lib/memory-client", () => ({
+  setMemoryConfig: vi.fn(),
+}));
+
 vi.mock("../lib/theme-preference", () => ({
   useThemePreference: () => ({
     preference: "system",
@@ -104,6 +108,19 @@ describe("SettingsButton", () => {
     expect(scrollContainer?.className).toContain("min-h-0");
     expect(scrollContainer?.className).toContain("flex-1");
     expect(scrollContainer?.className).toContain("overflow-y-auto");
+  });
+
+  it("renders memory feature hard shutdown controls", async () => {
+    await renderSettings(root);
+
+    expect(host.textContent).toContain("Memory");
+    expect(host.textContent).toContain("总开关");
+    expect(host.textContent).toContain("自动捕获");
+    expect(host.textContent).toContain("Recall 注入");
+    expect(host.textContent).toContain("自动提取");
+    expect(host.textContent).toContain("Markdown 投影");
+    expect(host.textContent).toContain("SQLite");
+    expect(host.textContent).toContain("PostgreSQL");
   });
 });
 

@@ -208,6 +208,14 @@ pub struct MemoryConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+pub struct MemoryConfigSetRequest {
+    pub scope: String,
+    pub key: String,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub struct MemoryMasterConfig {
     #[serde(default = "default_enabled")]
     pub enabled: bool,
