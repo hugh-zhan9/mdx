@@ -23,6 +23,8 @@
 3. `memory recall` **不得** 默认读取 `wiki/` 全文；需要深度/wiki 知识时调用方显式调用 `llm-wiki query`。
 4. Thread → Wiki 只能通过 `memory promote`（复制到 `raw/promoted/` 后可选 ingest）。
 5. In agent-backend mode, the runtime database is the source of truth; Markdown under `memory/**` is an async readable projection and import/export compatibility layer.
+6. MDX Memory is an external agent backend for Codex, Claude, and Cursor. Manual UI editing is a fallback and review surface, not the primary product workflow.
+7. Hard shutdown must stop new writes for the disabled feature without deleting historical DB records or Markdown projection files.
 
 ## Thread Contract
 
@@ -176,6 +178,16 @@ confidence: float
 - Inbox review is explicit: `memory_inbox_add` creates a candidate, `memory_inbox_list` reviews candidates, and `memory_inbox_accept` promotes a reviewed candidate to durable memory.
 - `memory_distill` remains a thread/background workflow and fallback safety net. It is not the only valid Memory extraction path.
 
+## Agent Backend Contract
+
+- Supported agent ids are `codex`, `claude`, and `cursor`.
+- Agent integrations may use hooks, MCP tools, CLI commands, or the local daemon. All surfaces must route through the Memory facade and preserve workspace path guards and locks.
+- Hook capture persists raw hook payloads as agent events. Distilled memories are derived records; they must not replace full thread/event archival.
+- Hook execution must stay lightweight. Provider calls and distill work happen outside the hook path through queued/background work.
+- If capture is disabled, hook handling must not write DB records, spool files, queue jobs, or projection files.
+- If recall injection is disabled, hook handling may still capture events but must return empty additional context.
+- If a per-agent integration is disabled, that agent must not create new capture/distill writes through automatic hooks.
+
 ## Inbox Contract
 
 - Path: `memory/inbox/{yyyy-mm-dd}-{slug}[-n].md`
@@ -221,6 +233,8 @@ confidence: float
 
 - HTTP daemon: `mdx-cli serve --workspace <workspace> --port 14243`.
 - Health endpoint reports top-level `ok`, `has_memory`, `can_initialize`, `mode`, `missing_paths`, and `workspace`.
+- Memory daemon command: `mdx-cli memory --root <workspace> daemon --port 14243`.
+- Memory daemon endpoints include `/health`, `/diagnostics`, `/hook/events`, `/memory/recall`, `/memory/add`, `/memory/search`, inbox review routes, capture routes, storage migration dry-run, and `/config/set`.
 - MCP stdio server: `mdx-mcp --workspace <workspace>`.
 - CLI, HTTP, MCP, and Tauri/UI call the same Memory facade and must not bypass locks or path guards.
 - The Tauri/UI command surface must expose the same complete Memory capability set as the daemon facade, not only the subset currently used by the visible panel.
@@ -309,6 +323,10 @@ Config fields use snake_case in JSON. Missing nested V2 fields use defaults. `co
 | `memory index rebuild` | no | rebuildable projection |
 | `memory promote` | yes | may trigger ingest |
 | `memory export/import` | import only | portable bundle |
+| `memory daemon` | no | local agent backend API |
+| `memory hook` | yes, when capture writes | hook adapter entry point |
+| `memory install/doctor/repair-agent/uninstall` | no | agent integration management |
+| `memory migrate storage` | no for dry run | runtime DB migration |
 
 ## CLI Runtime
 
@@ -328,11 +346,14 @@ Config fields use snake_case in JSON. Missing nested V2 fields use defaults. `co
 | `memory_working_get` | `memory working get` |
 | `memory_thread_save` | `memory thread save` |
 | `memory_thread_show` | `memory thread show` |
+| `memory_inbox_add` | Memory facade inbox candidate create; MCP-only in current CLI |
 | `memory_inbox_list` | `memory inbox list` |
 | `memory_inbox_accept` | `memory inbox accept` |
 | `memory_distill` | `memory distill` |
 | `memory_search` | `memory search` |
 | `memory_promote` | `memory promote` |
+| `memory_hook_status` | `memory doctor` |
+| `memory_diagnostics` | `memory doctor --json` |
 
 ## Agent Session Startup (Recommended)
 

@@ -31,6 +31,16 @@ CLI 默认连接正在运行的 MDX 桌面应用。要脱离桌面应用直接�
 mdx-cli memory --root /path/to/workspace status
 ```
 
+Agent backend 常用命令：
+
+```bash
+mdx-cli memory --root "$PWD" daemon --port 14243
+mdx-cli memory --root "$PWD" install --agent codex --dry-run
+mdx-cli memory --root "$PWD" doctor --agent codex --json
+mdx-cli memory --root "$PWD" hook codex UserPromptSubmit < codex-hook.json
+mdx-cli memory --root "$PWD" migrate storage --to postgresql --target "$MDX_MEMORY_POSTGRES_URL" --dry-run
+```
+
 ## 初始化
 
 首次在工作区使用 Memory：
@@ -234,6 +244,26 @@ MDX_CODEX_SESSION_DIRS="/path/to/sessions:/path/to/archived" \
 Memory 可以为 Codex/Claude/Cursor 配置 MCP、skill/rule，以及 Claude/Cursor 的 pre-compact hook：
 
 ```bash
+mdx-cli memory --root /path/to/workspace install --agent codex
+mdx-cli memory --root /path/to/workspace install --agent claude
+mdx-cli memory --root /path/to/workspace install --agent cursor
+```
+
+省略 `--agent` 会配置所有支持的 agent：
+
+```bash
+mdx-cli memory --root /path/to/workspace install
+```
+
+预览将写入哪些文件：
+
+```bash
+mdx-cli memory --root /path/to/workspace install --agent codex --dry-run
+```
+
+旧的聚合设置命令仍可用于一次性配置多项 agent 集成：
+
+```bash
 mdx-cli memory --root /path/to/workspace agent setup --all
 ```
 
@@ -270,6 +300,30 @@ mdx-cli memory --root /path/to/workspace agent setup --all \
 Pre-compact hook 的语义是“压缩前自动沉淀 memory”：当 hook 输入包含 `transcript_path` 时，会先 `capture import --distill`，再对同一 thread 执行 `distill --accept`，让结果进入 active memory。实现上会保存 source thread 作为溯源材料，但这不是“自动 thread 归档”入口。显式保存完整原文使用 `memory thread save`，Codex 本地 session 使用 `capture scan --source codex --import`。
 
 Codex 当前没有已验证的 pre-compact transcript hook，因此 `agent setup --codex` 只配置 MCP 和 skill；Codex 的压缩前 capture 仍需通过 MCP/CLI 显式触发，直到 Codex 暴露可靠的 transcript hook。Codex thread 原文归档不依赖 pre-compact hook，它通过扫描本地 Codex session JSONL 完成。
+
+## Agent Backend Daemon 和 Hook
+
+启动本地 daemon：
+
+```bash
+mdx-cli memory --root /path/to/workspace daemon --port 14243
+```
+
+手动模拟 hook 输入：
+
+```bash
+printf '{"session_id":"s1","turn_id":"t1","cwd":"%s","prompt":"remember Memory positioning"}' "/path/to/workspace" \
+  | mdx-cli memory --root /path/to/workspace hook codex UserPromptSubmit
+```
+
+查看 agent 集成状态：
+
+```bash
+mdx-cli memory --root /path/to/workspace doctor --json
+mdx-cli memory --root /path/to/workspace doctor --agent codex --json
+```
+
+Hook 失败不能阻塞 agent。daemon 不可用或存储退化时，hook 应返回成功并尽量写入 fallback spool；硬关闭时不写 DB、不写 spool、不入队。
 
 ## Distill 蒸馏
 
@@ -445,9 +499,30 @@ mdx-cli memory --root /path/to/other-workspace import \
 
 默认策略是 `skip`，已有文件会跳过。
 
+## SQLite 和 PostgreSQL 迁移
+
+SQLite 是默认本地运行库；PostgreSQL 适合服务化或跨进程部署。切换前先做 dry run：
+
+```bash
+mdx-cli memory --root /path/to/workspace migrate storage \
+  --to postgresql \
+  --target "$MDX_MEMORY_POSTGRES_URL" \
+  --dry-run
+```
+
+确认后再执行实际迁移：
+
+```bash
+mdx-cli memory --root /path/to/workspace migrate storage \
+  --to postgresql \
+  --target "$MDX_MEMORY_POSTGRES_URL"
+```
+
+Markdown under `memory/**` 是可读投影和导入/导出兼容层；agent-backend 模式下，运行时数据库是事实来源。
+
 ## Agent-time Memory extraction
 
-Memory 提取发生在 Agent 正常对话 turn 中：Agent 通过 MCP 工具和已安装的 skill/rule 判断何时 recall、search、add 或送审候选。它不是必须常驻的后台服务，也不要求每次压缩前都自动写入长期记忆。
+Memory 提取发生在 Agent 正常对话 turn 中：Agent 通过 hook、MCP 工具、CLI 和已安装的 skill/rule 判断何时 recall、search、add 或送审候选。daemon/hook 是推荐的自动化路径；MCP 和 CLI 是同一后端能力的显式入口。
 
 安全使用原则：
 
@@ -473,6 +548,8 @@ memory_inbox_accept
 memory_distill
 memory_search
 memory_promote
+memory_hook_status
+memory_diagnostics
 ```
 
 给 Agent 使用时，推荐流程：
