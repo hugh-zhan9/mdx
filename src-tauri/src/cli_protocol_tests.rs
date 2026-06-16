@@ -12,6 +12,14 @@ mod mdx_cli_for_tests {
     include!("bin/mdx_cli.rs");
 }
 
+mod mdx_mcp_for_tests {
+    #![allow(dead_code)]
+
+    use crate as mdx_lib;
+
+    include!("bin/mdx_mcp.rs");
+}
+
 #[test]
 fn parses_open_and_save_commands() {
     let open: CliRequest = serde_json::from_str(r#"{"cmd":"open","path":"/tmp/ws/a.md"}"#).unwrap();
@@ -108,6 +116,47 @@ fn parses_memory_migrate_storage_dry_run() {
     assert!(debug.contains("Storage"));
     assert!(debug.contains("postgres"));
     assert!(debug.contains("dry_run: true"));
+}
+
+#[test]
+fn mcp_lists_memory_backend_tools() {
+    let manifest = mdx_mcp_for_tests::tools_manifest_for_test();
+    let manifest: serde_json::Value = serde_json::from_str(&manifest).unwrap();
+    let tools = manifest["tools"].as_array().unwrap();
+
+    for name in [
+        "memory_recall",
+        "memory_search",
+        "memory_add",
+        "memory_inbox_add",
+        "memory_inbox_list",
+        "memory_inbox_accept",
+        "memory_hook_status",
+        "memory_diagnostics",
+    ] {
+        assert!(
+            tools.iter().any(|tool| tool["name"].as_str() == Some(name)),
+            "missing MCP tool {name}"
+        );
+    }
+
+    let hook_status = tools
+        .iter()
+        .find(|tool| tool["name"].as_str() == Some("memory_hook_status"))
+        .unwrap();
+    assert_eq!(
+        hook_status["inputSchema"]["properties"]["agent"]["type"],
+        "string"
+    );
+
+    let diagnostics = tools
+        .iter()
+        .find(|tool| tool["name"].as_str() == Some("memory_diagnostics"))
+        .unwrap();
+    assert_eq!(
+        diagnostics["inputSchema"]["properties"]["include_logs"]["type"],
+        "boolean"
+    );
 }
 
 #[test]

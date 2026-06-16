@@ -3,8 +3,9 @@ use std::io::{self, BufRead, Write};
 use mdx_lib::memory::{
     memory_add, memory_detect_workspace, memory_distill, memory_inbox_accept, memory_inbox_add,
     memory_inbox_list, memory_promote, memory_recall, memory_search, memory_thread_get,
-    memory_thread_save, memory_working_get, InboxAddRequest,
+    memory_thread_save, memory_working_get, InboxAddRequest, MemoryDoctorReport,
 };
+use mdx_lib::memory_agent_setup::{memory_agent_doctor, memory_agent_status};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -21,6 +22,8 @@ const TOOLS: &[&str] = &[
     "memory_distill",
     "memory_search",
     "memory_promote",
+    "memory_hook_status",
+    "memory_diagnostics",
 ];
 
 #[derive(Debug, Deserialize)]
@@ -103,6 +106,26 @@ struct SearchArguments {
     limit: Option<usize>,
     tag: Option<String>,
     since: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AgentStatusArguments {
+    agent: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DiagnosticsArguments {
+    #[serde(default)]
+    include_logs: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct DiagnosticsResult {
+    doctor: MemoryDoctorReport,
+    logs_included: bool,
+    logs: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    log_warning: Option<String>,
 }
 
 fn parse_request(line: &str) -> Result<JsonRpcRequest, serde_json::Error> {
@@ -246,6 +269,11 @@ fn list_tools_result() -> Value {
     json!({ "tools": tools })
 }
 
+#[cfg(test)]
+pub fn tools_manifest_for_test() -> String {
+    list_tools_result().to_string()
+}
+
 fn tool_descriptor(name: &str) -> Value {
     let (description, properties, required) = match name {
         "memory_status" => (
@@ -364,6 +392,16 @@ fn tool_descriptor(name: &str) -> Value {
             }),
             json!(["target", "ingest"]),
         ),
+        "memory_hook_status" => (
+            "Inspect installed MDX Memory agent hook and MCP integration status for the active workspace.",
+            json!({ "agent": { "type": "string" } }),
+            json!([]),
+        ),
+        "memory_diagnostics" => (
+            "Run MDX Memory agent integration diagnostics for the active workspace.",
+            json!({ "include_logs": { "type": "boolean" } }),
+            json!([]),
+        ),
         _ => unreachable!("tool descriptor requested for unregistered tool"),
     };
 
@@ -440,11 +478,31 @@ fn dispatch_tool_call(workspace: &str, params: Value) -> Result<Value, ProtocolE
             let request = parse_arguments(arguments)?;
             memory_result(memory_promote(workspace.to_string(), request))
         }
+        "memory_hook_status" => {
+            let arguments: AgentStatusArguments = parse_arguments(arguments)?;
+            io_result(memory_agent_status(workspace.to_string(), arguments.agent))
+        }
+        "memory_diagnostics" => {
+            let arguments: DiagnosticsArguments = parse_arguments(arguments)?;
+            io_result(
+                memory_agent_doctor(workspace.to_string(), None)
+                    .map(|doctor| diagnostics_result(doctor, arguments.include_logs)),
+            )
+        }
         name => Err(protocol_error(
             -32602,
             format!("Unknown tool: {name}"),
             Some(json!({ "known_tools": TOOLS })),
         )),
+    }
+}
+
+fn diagnostics_result(doctor: MemoryDoctorReport, include_logs: bool) -> DiagnosticsResult {
+    DiagnosticsResult {
+        doctor,
+        logs_included: false,
+        logs: Vec::new(),
+        log_warning: include_logs.then(|| "logs_unavailable".to_string()),
     }
 }
 
@@ -470,6 +528,32 @@ where
             )
         }),
         Err(error) => Err(workspace_error(error)),
+    }
+}
+
+fn io_result<T>(result: io::Result<T>) -> Result<Value, ProtocolError>
+where
+    T: Serialize,
+{
+    match result {
+        Ok(result) => serde_json::to_value(result).map_err(|error| {
+            protocol_error(
+                -32603,
+                format!("Failed to serialize memory result: {error}"),
+                None,
+            )
+        }),
+        Err(error) => {
+            let code = match error.kind() {
+                io::ErrorKind::InvalidInput => -32602,
+                _ => -32000,
+            };
+            Err(protocol_error(
+                code,
+                error.to_string(),
+                Some(json!({ "kind": error.kind().to_string() })),
+            ))
+        }
     }
 }
 
@@ -516,6 +600,46 @@ fn error_response(id: Value, code: i64, message: String, data: Option<Value>) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::MutexGuard;
+
+    struct HomeEnvGuard {
+        _lock: MutexGuard<'static, ()>,
+        home: Option<std::ffi::OsString>,
+        userprofile: Option<std::ffi::OsString>,
+    }
+
+    impl HomeEnvGuard {
+        fn use_home(path: impl AsRef<std::path::Path>) -> Self {
+            let lock = mdx_lib::llm_wiki_llm::llm_config_env_lock()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let home = std::env::var_os("HOME");
+            let userprofile = std::env::var_os("USERPROFILE");
+            let canonical_home = std::fs::canonicalize(path.as_ref()).unwrap();
+            std::env::set_var("HOME", canonical_home);
+            std::env::remove_var("USERPROFILE");
+            Self {
+                _lock: lock,
+                home,
+                userprofile,
+            }
+        }
+    }
+
+    impl Drop for HomeEnvGuard {
+        fn drop(&mut self) {
+            if let Some(value) = self.home.take() {
+                std::env::set_var("HOME", value);
+            } else {
+                std::env::remove_var("HOME");
+            }
+            if let Some(value) = self.userprofile.take() {
+                std::env::set_var("USERPROFILE", value);
+            } else {
+                std::env::remove_var("USERPROFILE");
+            }
+        }
+    }
 
     #[test]
     fn parses_mcp_tool_call_request() {
@@ -708,6 +832,63 @@ mod tests {
             result["body"],
             "Inbox candidates can be reviewed before becoming durable memory.\n"
         );
+    }
+
+    #[test]
+    fn dispatches_memory_hook_status_tool_call() {
+        let root = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let _home = HomeEnvGuard::use_home(home.path());
+        let request = parse_request(
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"memory_hook_status","arguments":{"agent":"codex"}}}"#,
+        )
+        .unwrap();
+
+        let response = handle_request(root.path().to_str().unwrap(), request);
+
+        assert!(response.error.is_none());
+        let result = response.result.unwrap();
+        let statuses = result.as_array().unwrap();
+        assert_eq!(statuses.len(), 1);
+        assert_eq!(statuses[0]["agent_source"], "codex");
+    }
+
+    #[test]
+    fn dispatches_memory_diagnostics_tool_call_with_log_boundary() {
+        let root = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let _home = HomeEnvGuard::use_home(home.path());
+        let request = parse_request(
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"memory_diagnostics","arguments":{"include_logs":true}}}"#,
+        )
+        .unwrap();
+
+        let response = handle_request(root.path().to_str().unwrap(), request);
+
+        assert!(response.error.is_none());
+        let result = response.result.unwrap();
+        assert_eq!(result["logs_included"], false);
+        assert_eq!(result["logs"], json!([]));
+        assert_eq!(result["log_warning"], "logs_unavailable");
+        assert_eq!(result["doctor"]["statuses"].as_array().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn invalid_memory_agent_selector_returns_invalid_params() {
+        let root = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let _home = HomeEnvGuard::use_home(home.path());
+        let request = parse_request(
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"memory_hook_status","arguments":{"agent":"vscode"}}}"#,
+        )
+        .unwrap();
+
+        let response = handle_request(root.path().to_str().unwrap(), request);
+
+        let error = response.error.unwrap();
+        assert_eq!(error.code, -32602);
+        assert!(error.message.contains("invalid memory agent"));
+        assert_eq!(error.data.unwrap()["kind"], "invalid input parameter");
     }
 
     #[test]
