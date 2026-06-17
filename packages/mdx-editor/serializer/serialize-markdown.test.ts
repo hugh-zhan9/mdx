@@ -76,6 +76,40 @@ describe("serializeMarkdown", () => {
         );
     });
 
+    it("serializes one normal link spanning multiple text nodes once", () => {
+        const link = mdxEditorSchema.marks.link.create({
+            href: "https://x.test",
+        });
+        const strong = mdxEditorSchema.marks.strong.create();
+        const doc = mdxEditorSchema.nodes.doc.create(null, [
+            mdxEditorSchema.nodes.paragraph.create(null, [
+                mdxEditorSchema.text("bold", [link, strong]),
+                mdxEditorSchema.text(" tail", [link]),
+            ]),
+        ]);
+
+        expect(serializeMarkdown(emptyParsedDocument(doc))).toBe(
+            "[**bold** tail](https://x.test)\n",
+        );
+    });
+
+    it("serializes one wikilink spanning multiple text nodes once", () => {
+        const link = mdxEditorSchema.marks.link.create({
+            href: "mdx-wikilink:Target%7CBold%20tail",
+        });
+        const strong = mdxEditorSchema.marks.strong.create();
+        const doc = mdxEditorSchema.nodes.doc.create(null, [
+            mdxEditorSchema.nodes.paragraph.create(null, [
+                mdxEditorSchema.text("Bold", [link, strong]),
+                mdxEditorSchema.text(" tail", [link]),
+            ]),
+        ]);
+
+        expect(serializeMarkdown(emptyParsedDocument(doc))).toBe(
+            "[[Target|**Bold** tail]]\n",
+        );
+    });
+
     it("does not resurrect deleted trailing blocks from the original source", () => {
         const markdown = "# Title\n\nBody.\n";
         const parsed = parseMarkdown(markdown);
