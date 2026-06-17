@@ -16,7 +16,16 @@ export const mdxEditorSchema = new Schema({
                 },
                 0,
             ],
-            parseDOM: [{ tag: "p" }],
+            parseDOM: [
+                {
+                    tag: "p",
+                    getAttrs: (dom) => ({
+                        sourceId: (dom as HTMLElement).getAttribute(
+                            "data-mdx-source-id",
+                        ),
+                    }),
+                },
+            ],
         },
         heading: {
             group: "block",
@@ -36,7 +45,16 @@ export const mdxEditorSchema = new Schema({
             ],
             parseDOM: [1, 2, 3, 4, 5, 6].map((level) => ({
                 tag: `h${level}`,
-                attrs: { level },
+                getAttrs: (dom) => ({
+                    level: Number(
+                        (dom as HTMLElement).getAttribute(
+                            "data-mdx-heading-level",
+                        ) ?? level,
+                    ),
+                    sourceId: (dom as HTMLElement).getAttribute(
+                        "data-mdx-source-id",
+                    ),
+                }),
             })),
         },
         code_block: {
@@ -55,11 +73,29 @@ export const mdxEditorSchema = new Schema({
                     "data-mdx-node-type": "code_block",
                     "data-mdx-code-block": "",
                     "data-mdx-language": node.attrs.language || undefined,
+                    "data-mdx-info": node.attrs.info || undefined,
                     "data-mdx-source-id": node.attrs.sourceId ?? undefined,
                 },
                 ["code", 0],
             ],
-            parseDOM: [{ tag: "pre", preserveWhitespace: "full" }],
+            parseDOM: [
+                {
+                    tag: "pre[data-mdx-code-block]",
+                    priority: 70,
+                    preserveWhitespace: "full",
+                    getAttrs: (dom) => ({
+                        language:
+                            (dom as HTMLElement).getAttribute("data-mdx-language") ??
+                            "",
+                        info:
+                            (dom as HTMLElement).getAttribute("data-mdx-info") ??
+                            "",
+                        sourceId: (dom as HTMLElement).getAttribute(
+                            "data-mdx-source-id",
+                        ),
+                    }),
+                },
+            ],
         },
         frontmatter: {
             group: "block",
@@ -76,7 +112,18 @@ export const mdxEditorSchema = new Schema({
                 },
                 ["code", 0],
             ],
-            parseDOM: [{ tag: "pre[data-mdx-node-type='frontmatter']" }],
+            parseDOM: [
+                {
+                    tag: "pre[data-mdx-node-type='frontmatter']",
+                    priority: 90,
+                    preserveWhitespace: "full",
+                    getAttrs: (dom) => ({
+                        sourceId: (dom as HTMLElement).getAttribute(
+                            "data-mdx-source-id",
+                        ),
+                    }),
+                },
+            ],
         },
         opaque_block: {
             group: "block",
@@ -91,11 +138,26 @@ export const mdxEditorSchema = new Schema({
                 "pre",
                 {
                     "data-mdx-node-type": "opaque",
+                    "data-mdx-reason": node.attrs.reason || undefined,
                     "data-mdx-source-id": node.attrs.sourceId ?? undefined,
                 },
                 ["code", 0],
             ],
-            parseDOM: [{ tag: "pre[data-mdx-node-type='opaque']" }],
+            parseDOM: [
+                {
+                    tag: "pre[data-mdx-node-type='opaque']",
+                    priority: 80,
+                    preserveWhitespace: "full",
+                    getAttrs: (dom) => ({
+                        reason:
+                            (dom as HTMLElement).getAttribute("data-mdx-reason") ??
+                            "unsupported",
+                        sourceId: (dom as HTMLElement).getAttribute(
+                            "data-mdx-source-id",
+                        ),
+                    }),
+                },
+            ],
         },
     },
     marks: {

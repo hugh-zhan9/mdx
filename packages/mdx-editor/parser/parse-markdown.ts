@@ -54,9 +54,10 @@ function parseBlocks(
                 mdxEditorSchema.nodes.frontmatter.create(
                     { sourceId },
                     textNode(
-                        markdown
-                            .slice(logicalLines[0].end, logicalLines[closing].start)
-                            .trim(),
+                        markdown.slice(
+                            logicalLines[0].end,
+                            logicalLines[closing].start,
+                        ),
                     ),
                 ),
             );
@@ -74,33 +75,35 @@ function parseBlocks(
         const fence = line.text.match(/^```([^\s`]*)?(.*)$/);
         if (fence) {
             const startLine = cursor;
-            let endLine = cursor;
+            let endLine = -1;
             for (let next = cursor + 1; next < logicalLines.length; next += 1) {
-                if (logicalLines[next]?.text.startsWith("```")) {
+                const closing = logicalLines[next];
+                if (closing?.text.match(/^```[ \t]*$/)) {
                     endLine = next;
                     break;
                 }
             }
             const start = logicalLines[startLine].start;
-            const end = logicalLines[endLine]?.end ?? line.end;
+            const end =
+                endLine >= 0
+                    ? logicalLines[endLine].end
+                    : logicalLines[logicalLines.length - 1]?.end ?? line.end;
             const sourceId = addSlice(sourceSlices, markdown, start, end);
             const contentStart = logicalLines[startLine].end;
-            const contentEnd = logicalLines[endLine]?.start ?? end;
+            const contentEnd =
+                endLine >= 0 ? logicalLines[endLine].start : end;
+            const info = line.text.slice(3).trim();
             blocks.push(
                 mdxEditorSchema.nodes.code_block.create(
                     {
                         language: fence[1] ?? "",
-                        info: line.text.slice(3).trim(),
+                        info,
                         sourceId,
                     },
-                    textNode(
-                        markdown
-                            .slice(contentStart, contentEnd)
-                            .replace(/^\r?\n|\r?\n$/g, ""),
-                    ),
+                    textNode(markdown.slice(contentStart, contentEnd)),
                 ),
             );
-            cursor = endLine + 1;
+            cursor = endLine >= 0 ? endLine + 1 : logicalLines.length;
             continue;
         }
 
