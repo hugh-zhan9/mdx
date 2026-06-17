@@ -27,6 +27,25 @@ function Probe() {
                     editor.insertImage(".assets/a.png", "Diagram", "Preview")
                 }
             />
+            <button
+                type="button"
+                data-testid="compound"
+                onClick={() => {
+                    editor.insertText(" world");
+                    editor.insertImage(".assets/b.png", "Alt", "Title");
+                }}
+            />
+            <button
+                type="button"
+                data-testid="snapshot"
+                onClick={() => {
+                    const snapshot = editor.getSelectionSnapshot();
+
+                    document
+                        .querySelector<HTMLDivElement>("[data-testid='snapshot-target']")
+                        ?.setAttribute("data-selection", snapshot?.selected_text ?? "");
+                }}
+            />
         </>
     );
 }
@@ -81,5 +100,44 @@ describe("MdxEditorProvider", () => {
         expect(onMarkdownChange).toHaveBeenLastCalledWith(
             'Hello world![Diagram](.assets/a.png "Preview")',
         );
+    });
+
+    it("handles sequential mutations and snapshots in one callback", async () => {
+        const onMarkdownChange = vi.fn();
+
+        await act(async () => {
+            root.render(
+                <MdxEditorProvider
+                    initialMarkdown="Hello"
+                    onMarkdownChange={onMarkdownChange}
+                >
+                    <MdxEditorView />
+                    <Probe />
+                    <div data-testid="snapshot-target" />
+                </MdxEditorProvider>,
+            );
+        });
+
+        await act(async () => {
+            host
+                .querySelector<HTMLButtonElement>("[data-testid='compound']")
+                ?.click();
+        });
+
+        expect(onMarkdownChange).toHaveBeenLastCalledWith(
+            'Hello world![Alt](.assets/b.png "Title")',
+        );
+
+        await act(async () => {
+            host
+                .querySelector<HTMLButtonElement>("[data-testid='snapshot']")
+                ?.click();
+        });
+
+        expect(
+            host
+                .querySelector<HTMLDivElement>("[data-testid='snapshot-target']")
+                ?.getAttribute("data-selection"),
+        ).toBe("");
     });
 });

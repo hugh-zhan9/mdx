@@ -4,16 +4,16 @@ import { useEffect, useRef } from "react";
 import { useMdxEditor } from "./mdx-editor-context";
 
 export function MdxEditorView() {
-    const editor = useMdxEditor();
+    const { currentMarkdown, registerRoot } = useMdxEditor();
     const rootRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
-        editor.registerRoot(rootRef.current);
+        registerRoot(rootRef.current);
 
         return () => {
-            editor.registerRoot(null);
+            registerRoot(null);
         };
-    }, [editor]);
+    }, [registerRoot]);
 
     return (
         <div
@@ -24,7 +24,7 @@ export function MdxEditorView() {
             data-mdx-text
             tabIndex={0}
         >
-            {editor.currentMarkdown}
+            {currentMarkdown}
         </div>
     );
 }

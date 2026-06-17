@@ -30,10 +30,12 @@ export function MdxEditorProvider({
         createCollapsedSelection(initialMarkdown, initialMarkdown.length),
     );
     const rootRef = useRef<HTMLDivElement | null>(null);
+    const markdownRef = useRef(initialMarkdown);
     const cursorRef = useRef(initialMarkdown.length);
 
     const updateMarkdown = useCallback(
         (next: string) => {
+            markdownRef.current = next;
             setMarkdown(next);
             onMarkdownChange?.(next);
         },
@@ -58,7 +60,7 @@ export function MdxEditorProvider({
             },
             insertText: (text: string) => {
                 const next = insertPlainTextMarkdown(
-                    markdown,
+                    markdownRef.current,
                     cursorRef.current,
                     text,
                 );
@@ -69,7 +71,7 @@ export function MdxEditorProvider({
             },
             insertImage: (url: string, altText = "", title?: string) => {
                 const next = insertImageMarkdown(
-                    markdown,
+                    markdownRef.current,
                     cursorRef.current,
                     title
                         ? `${url} "${title.replaceAll('"', '\\"')}"`
@@ -77,13 +79,13 @@ export function MdxEditorProvider({
                     altText,
                 );
 
-                cursorRef.current += next.length - markdown.length;
+                cursorRef.current += next.length - markdownRef.current.length;
                 setSelection(createCollapsedSelection(next, cursorRef.current));
                 updateMarkdown(next);
             },
             getSelectionSnapshot: (contextChars?: number) =>
                 selectionSnapshotFromMarkdownOffsets(
-                    markdown,
+                    markdownRef.current,
                     cursorRef.current,
                     cursorRef.current,
                     contextChars,
