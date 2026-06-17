@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mdxEditorSchema } from "../schema/schema";
 import { parseMarkdown } from "../parser/parse-markdown";
+import { sourceRange } from "../core/source-map";
 import { serializeMarkdown } from "./serialize-markdown";
 
 describe("serializeMarkdown", () => {
@@ -165,6 +166,34 @@ describe("serializeMarkdown", () => {
         const parsed = parseMarkdown(markdown);
 
         expect(serializeMarkdown(parsed)).toBe(markdown);
+    });
+
+    it("reuses original source for unchanged source-preserved opaque blocks", () => {
+        const markdown = "> [!NOTE]\n> Keep this.\n\n";
+        const doc = mdxEditorSchema.nodes.doc.create(null, [
+            mdxEditorSchema.nodes.opaque_block.create(
+                {
+                    reason: "source-preserved",
+                    sourceId: "source-0",
+                },
+                mdxEditorSchema.text("> [!NOTE]\n> Keep this."),
+            ),
+        ]);
+
+        expect(
+            serializeMarkdown({
+                doc,
+                originalMarkdown: markdown,
+                sourceSlices: [
+                    {
+                        id: "source-0",
+                        range: sourceRange(0, markdown.length),
+                        text: markdown,
+                    },
+                ],
+                diagnostics: [],
+            }),
+        ).toBe(markdown);
     });
 });
 

@@ -120,6 +120,25 @@ function parseBlocks(
             continue;
         }
 
+        const opaqueRange = tryParseOpaqueBlock(logicalLines, cursor);
+        if (opaqueRange) {
+            const start = logicalLines[opaqueRange.startLine]?.start ?? line.start;
+            const end =
+                logicalLines[opaqueRange.endLine]?.end ??
+                logicalLines[opaqueRange.startLine]?.end ??
+                line.end;
+            const sourceId = addSlice(sourceSlices, markdown, start, end);
+            const text = markdown.slice(start, end).replace(/\r?\n$/, "");
+            blocks.push(
+                mdxEditorSchema.nodes.opaque_block.create(
+                    { reason: "source-preserved", sourceId },
+                    textNode(text),
+                ),
+            );
+            cursor = opaqueRange.endLine + 1;
+            continue;
+        }
+
         const paragraphStart = cursor;
         const paragraphLines: string[] = [];
         while (
@@ -371,4 +390,101 @@ function addSlice(
         text: markdown.slice(start, end),
     });
     return id;
+}
+
+function tryParseOpaqueBlock(
+    logicalLines: { text: string; start: number; end: number }[],
+    startLine: number,
+) {
+    const firstLine = logicalLines[startLine]?.text ?? "";
+
+    if (isTableStart(logicalLines, startLine)) {
+        return consumeUntilBlankLine(logicalLines, startLine);
+    }
+
+    if (isCalloutStart(firstLine) || isListLikeStart(firstLine) || isHtmlStart(firstLine)) {
+        return consumeUntilBlankLine(logicalLines, startLine);
+    }
+
+    if (isFootnoteDefinitionStart(firstLine)) {
+        let endLine = startLine;
+        while (endLine + 1 < logicalLines.length) {
+            const next = logicalLines[endLine + 1];
+            if (!next || next.text.trim() === "") {
+                break;
+            }
+            if (!/^(?:[ \t]+|$)/.test(next.text)) {
+                break;
+            }
+            endLine += 1;
+        }
+
+        return { startLine, endLine };
+    }
+
+    if (isMathBlockStart(firstLine)) {
+        let endLine = startLine;
+        while (endLine + 1 < logicalLines.length) {
+            endLine += 1;
+            if ((logicalLines[endLine]?.text ?? "").trim() === "$$") {
+                break;
+            }
+        }
+
+        return { startLine, endLine };
+    }
+
+    return null;
+}
+
+function consumeUntilBlankLine(
+    logicalLines: { text: string; start: number; end: number }[],
+    startLine: number,
+) {
+    let endLine = startLine;
+    while (endLine + 1 < logicalLines.length) {
+        const next = logicalLines[endLine + 1];
+        if (!next || next.text.trim() === "") {
+            break;
+        }
+        endLine += 1;
+    }
+
+    return { startLine, endLine };
+}
+
+function isTableStart(
+    logicalLines: { text: string; start: number; end: number }[],
+    startLine: number,
+) {
+    const header = logicalLines[startLine]?.text ?? "";
+    const separator = logicalLines[startLine + 1]?.text ?? "";
+
+    return header.trimStart().startsWith("|") && isTableSeparator(separator);
+}
+
+function isTableSeparator(text: string) {
+    return /^[ \t]*\|?(?:[ \t]*:?-{3,}:?[ \t]*\|)+[ \t]*:?-{3,}:?[ \t]*\|?[ \t]*$/.test(
+        text,
+    );
+}
+
+function isCalloutStart(text: string) {
+    return /^>\s*\[![^\]]+\]/.test(text);
+}
+
+function isListLikeStart(text: string) {
+    return /^([*-]\s|\d+\.\s)/.test(text);
+}
+
+function isFootnoteDefinitionStart(text: string) {
+    return /^\[\^[^\]]+\]:/.test(text);
+}
+
+function isMathBlockStart(text: string) {
+    return text.trim() === "$$";
+}
+
+function isHtmlStart(text: string) {
+    return /^<[A-Za-z][^>]*>$/.test(text.trim());
 }

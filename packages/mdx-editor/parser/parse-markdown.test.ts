@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseMarkdown } from "./parse-markdown";
+import { roundTripFixtures } from "../test/fixtures";
 
 describe("parseMarkdown", () => {
     it("parses heading, paragraph, wikilink, and normal link into editor nodes", () => {
@@ -72,5 +73,55 @@ describe("parseMarkdown", () => {
             range: { start: 0, end: markdown.length },
             text: markdown,
         });
+    });
+
+    it("parses unsupported block features as source-preserved opaque blocks", () => {
+        const fixtures = roundTripFixtures.filter((fixture) =>
+            [
+                "gfm task list",
+                "gfm table",
+                "callout",
+                "html opaque",
+            ].includes(fixture.name),
+        );
+
+        for (const fixture of fixtures) {
+            const parsed = parseMarkdown(fixture.markdown);
+
+            expect(parsed.diagnostics).toEqual([]);
+            expect(parsed.doc.childCount).toBe(1);
+            expect(parsed.doc.child(0).type.name).toBe("opaque_block");
+            expect(parsed.doc.child(0).attrs.reason).toBe("source-preserved");
+            expect(parsed.doc.child(0).attrs.sourceId).toBe("source-0");
+            expect(parsed.sourceSlices).toEqual([
+                {
+                    id: "source-0",
+                    range: { start: 0, end: fixture.markdown.length },
+                    text: fixture.markdown,
+                },
+            ]);
+        }
+    });
+
+    it("source-preserves block math and footnote definition blocks while leaving supported paragraphs intact", () => {
+        const math = roundTripFixtures.find((fixture) => fixture.name === "math");
+        const footnote = roundTripFixtures.find((fixture) => fixture.name === "footnote");
+
+        expect(math).toBeDefined();
+        expect(footnote).toBeDefined();
+
+        const parsedMath = parseMarkdown(math!.markdown);
+        expect(parsedMath.doc.childCount).toBe(2);
+        expect(parsedMath.doc.child(0).type.name).toBe("paragraph");
+        expect(parsedMath.doc.child(0).textContent).toBe("Inline $x+1$.");
+        expect(parsedMath.doc.child(1).type.name).toBe("opaque_block");
+        expect(parsedMath.doc.child(1).attrs.reason).toBe("source-preserved");
+
+        const parsedFootnote = parseMarkdown(footnote!.markdown);
+        expect(parsedFootnote.doc.childCount).toBe(2);
+        expect(parsedFootnote.doc.child(0).type.name).toBe("paragraph");
+        expect(parsedFootnote.doc.child(0).textContent).toBe("A note[^1].");
+        expect(parsedFootnote.doc.child(1).type.name).toBe("opaque_block");
+        expect(parsedFootnote.doc.child(1).attrs.reason).toBe("source-preserved");
     });
 });
