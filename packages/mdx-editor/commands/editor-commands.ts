@@ -17,10 +17,14 @@ export function insertImageMarkdown(
     return insertPlainTextMarkdown(
         markdown,
         offset,
-        `![${escapeImageAlt(altText)}](${url})`,
+        `![${escapeImageAlt(altText)}](${escapeImageUrl(url)})`,
     );
 }
 
 function escapeImageAlt(text: string): string {
     return text.replace(/]/g, "\\]");
+}
+
+function escapeImageUrl(url: string): string {
+    return url.replaceAll("\\", "\\\\").replaceAll(")", "\\)");
 }

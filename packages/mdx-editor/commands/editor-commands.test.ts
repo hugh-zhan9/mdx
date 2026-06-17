@@ -15,9 +15,16 @@ describe("editor commands", () => {
         );
     });
 
-    it("produces serializable Markdown after command-style mutation", () => {
-        const parsed = parseMarkdown("# Title\n");
+    it("escapes parentheses in image URLs", () => {
+        expect(insertImageMarkdown("", 0, ".assets/a)b.png", "Diagram")).toBe(
+            "![Diagram](.assets/a\\)b.png)",
+        );
+    });
 
-        expect(serializeMarkdown(parsed)).toBe("# Title\n");
+    it("produces serializable Markdown after command-style mutation", () => {
+        const markdown = insertPlainTextMarkdown("# Title\n", 8, "Body.\n");
+        const parsed = parseMarkdown(markdown);
+
+        expect(serializeMarkdown(parsed)).toBe("# Title\nBody.\n");
     });
 });
