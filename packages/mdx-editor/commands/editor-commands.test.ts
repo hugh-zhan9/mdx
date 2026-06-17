@@ -21,7 +21,13 @@ describe("editor commands", () => {
         );
     });
 
-    it("round-trips inserted image markdown through parse and serialize", () => {
+    it("escapes brackets in image alt text", () => {
+        expect(insertImageMarkdown("", 0, ".assets/a.png", "Diagram [draft]")).toBe(
+            "![Diagram \\[draft\\]](.assets/a.png)",
+        );
+    });
+
+    it("round-trips inserted image markdown without source-slice reuse", () => {
         const markdown = insertImageMarkdown(
             "",
             0,
@@ -30,7 +36,9 @@ describe("editor commands", () => {
         );
         const parsed = parseMarkdown(markdown);
 
-        expect(serializeMarkdown(parsed)).toBe(markdown);
+        expect(serializeMarkdown({ ...parsed, sourceSlices: [] })).toBe(
+            `${markdown}\n`,
+        );
     });
 
     it("produces serializable Markdown after command-style mutation", () => {
