@@ -102,12 +102,14 @@ describe("visible text search", () => {
         expect(index.text).not.toContain("GeneratedLabel");
     });
 
-    it("excludes hidden markdown syntax marker elements", () => {
+    it("excludes data-mdx-syntax marker elements", () => {
         const root = element("div", "DOMD-Root");
         const paragraph = child(root, "p", "DOMD-P");
-        child(paragraph, "span", "DOMD-MdSymbol", "![");
+        const openSyntax = child(paragraph, "span", "", "![");
+        openSyntax.setAttribute("data-mdx-syntax", "image_open");
         child(paragraph, "span", "DOMD-Plain", "Visible alt");
-        child(paragraph, "span", "DOMD-MdSymbol", "](assets/raw.png)");
+        const closeSyntax = child(paragraph, "span", "", "](assets/raw.png)");
+        closeSyntax.setAttribute("data-mdx-syntax", "image_close");
 
         const index = buildVisibleTextIndex(root);
 
@@ -352,6 +354,7 @@ class TestElement extends TestNode {
     hidden = false;
     private readonly attributes = new Map<string, string>();
     private classNames: string[];
+    private parentNode: TestElement | null = null;
 
     constructor(
         readonly tagName: string,
@@ -377,6 +380,10 @@ class TestElement extends TestNode {
         return this.childNodes[0] ?? null;
     }
 
+    get parentElement(): TestElement | null {
+        return this.parentNode;
+    }
+
     get textContent(): string {
         return this.childNodes
             .map((childNode) => childNode.textContent ?? "")
@@ -391,6 +398,7 @@ class TestElement extends TestNode {
     }
 
     appendChild(childNode: TestElement): void {
+        childNode.parentNode = this;
         this.childNodes.push(childNode);
     }
 
@@ -404,6 +412,29 @@ class TestElement extends TestNode {
 
     removeAttribute(name: string): void {
         this.attributes.delete(name);
+    }
+
+    matches(selector: string): boolean {
+        const attributeMatch = selector.match(/^\[([^\]=]+)(?:=['"]?([^'"\]]+)['"]?)?\]$/);
+        if (!attributeMatch) {
+            return false;
+        }
+
+        const [, attributeName, expectedValue] = attributeMatch;
+        const actualValue = this.getAttribute(attributeName);
+        if (actualValue === null) {
+            return false;
+        }
+
+        return expectedValue === undefined || actualValue === expectedValue;
+    }
+
+    closest(selector: string): TestElement | null {
+        if (this.matches(selector)) {
+            return this;
+        }
+
+        return this.parentElement?.closest(selector) ?? null;
     }
 }
 

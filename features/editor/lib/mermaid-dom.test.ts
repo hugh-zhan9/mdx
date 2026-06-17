@@ -14,7 +14,7 @@ describe("mermaid dom helpers", () => {
         uninstallDomFixture();
     });
 
-    it("maps mermaid fences to DOMD pre elements by fenced-code order", () => {
+    it("maps mermaid fences to MDX code blocks by fenced-code order", () => {
         const root = document.createElement("div");
         root.append(pre("ts"));
         const mermaidPre = pre("mermaid");
@@ -61,10 +61,10 @@ describe("mermaid dom helpers", () => {
 
 function pre(language: string): HTMLPreElement {
     const element = document.createElement("pre");
-    element.className = "DOMD-Pre";
+    element.setAttribute("data-mdx-code-block", "");
+    element.setAttribute("data-mdx-node-type", "code_block");
     element.dataset.testLanguage = language;
     const code = document.createElement("code");
-    code.className = "DOMD-PreCode";
     code.textContent = language;
     element.append(code);
     return element;
@@ -146,12 +146,9 @@ class TestElement {
     }
 
     private matches(selector: string): boolean {
-        if (selector !== "pre.DOMD-Pre") {
+        if (selector !== "[data-mdx-code-block]") {
             return false;
         }
-        return (
-            this.tagName.toLowerCase() === "pre" &&
-            this.classNames.includes("DOMD-Pre")
-        );
+        return this.getAttribute("data-mdx-code-block") !== null;
     }
 }

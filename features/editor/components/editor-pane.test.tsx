@@ -91,7 +91,7 @@ describe("editor pane root helpers", () => {
         expect(editorViewportRef.current).toBeNull();
     });
 
-    it("resolves the content wrapper when no DOMD root exists", () => {
+    it("resolves the content wrapper when no MDX editor root exists", () => {
         const wrapper = {
             querySelector: vi.fn(() => null),
         } as unknown as HTMLElement;
@@ -100,26 +100,28 @@ describe("editor pane root helpers", () => {
         expect(resolveEditorRootFromContent(null)).toBeNull();
     });
 
-    it("prefers DOMD root inside the content wrapper", () => {
-        const domdRoot = {} as HTMLElement;
+    it("prefers the MDX editor root inside the content wrapper", () => {
+        const editorRoot = {} as HTMLElement;
         const wrapper = {
-            querySelector: vi.fn(() => domdRoot),
+            querySelector: vi.fn(() => editorRoot),
         } as unknown as HTMLElement;
 
-        expect(resolveEditorRootFromContent(wrapper)).toBe(domdRoot);
-        expect(wrapper.querySelector).toHaveBeenCalledWith(".DOMD-Root");
+        expect(resolveEditorRootFromContent(wrapper)).toBe(editorRoot);
+        expect(wrapper.querySelector).toHaveBeenCalledWith(
+            "[data-mdx-editor-root]",
+        );
     });
 
-    it("can resolve from wrapper to DOMD root after it appears later", () => {
-        const domdRoot = {} as HTMLElement;
+    it("can resolve from wrapper to the MDX editor root after it appears later", () => {
+        const editorRoot = {} as HTMLElement;
         const querySelector = vi.fn<() => HTMLElement | null>()
             .mockReturnValueOnce(null)
-            .mockReturnValueOnce(domdRoot);
+            .mockReturnValueOnce(editorRoot);
         const wrapper = {
             querySelector,
         } as unknown as HTMLElement;
 
         expect(resolveEditorRootFromContent(wrapper)).toBe(wrapper);
-        expect(resolveEditorRootFromContent(wrapper)).toBe(domdRoot);
+        expect(resolveEditorRootFromContent(wrapper)).toBe(editorRoot);
     });
 });

@@ -17,6 +17,7 @@ import { EditorFindBar } from "./editor-find-bar";
 import { EditorMermaidPreviewLayer } from "./editor-mermaid-preview-layer";
 import { useEditorBridge } from "../hooks/use-editor-bridge";
 import { useEditorFindReplace } from "../hooks/use-editor-find-replace";
+import { MDX_EDITOR_ROOT_SELECTOR } from "../lib/editor-dom-contract";
 import {
     elementFromNode,
     isSelectAllShortcut,
@@ -68,7 +69,7 @@ export function resolveEditorRootFromContent(
     contentRoot: HTMLElement | null,
 ): HTMLElement | null {
     return (
-        contentRoot?.querySelector<HTMLElement>(".DOMD-Root") ??
+        contentRoot?.querySelector<HTMLElement>(MDX_EDITOR_ROOT_SELECTOR) ??
         contentRoot
     );
 }

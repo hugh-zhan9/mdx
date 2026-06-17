@@ -37,31 +37,36 @@ describe("isSelectAllShortcut", () => {
 });
 
 describe("resolveScopedSelectAllTarget", () => {
-    it("selects the active code block when the event starts inside code", () => {
+    it("selects the active MDX code block when the event starts inside code", () => {
         const container = element("section");
-        const root = child(container, "div", "DOMD-Root");
+        const root = child(container, "div");
+        root.setAttribute("data-mdx-editor-root", "");
         const paragraph = child(root, "p", "DOMD-P");
-        const pre = child(root, "pre", "DOMD-Pre");
-        const code = child(pre, "code", "DOMD-PreCode");
+        const pre = child(root, "pre");
+        pre.setAttribute("data-mdx-code-block", "");
+        const code = child(pre, "code");
         const token = child(code, "span", "token");
 
-        expect(resolveScopedSelectAllTarget(token, container)).toBe(code);
+        expect(resolveScopedSelectAllTarget(token, container)).toBe(pre);
         expect(resolveScopedSelectAllTarget(paragraph, container)).toBe(root);
     });
 
     it("uses the selection anchor when contenteditable key events target the root", () => {
         const container = element("section");
-        const root = child(container, "div", "DOMD-Root");
-        const pre = child(root, "pre", "DOMD-Pre");
-        const code = child(pre, "code", "DOMD-PreCode");
+        const root = child(container, "div");
+        root.setAttribute("data-mdx-editor-root", "");
+        const pre = child(root, "pre");
+        pre.setAttribute("data-mdx-code-block", "");
+        const code = child(pre, "code");
         const token = child(code, "span", "token");
 
-        expect(resolveScopedSelectAllTarget(root, container, token)).toBe(code);
+        expect(resolveScopedSelectAllTarget(root, container, token)).toBe(pre);
     });
 
     it("ignores events outside the editor root", () => {
         const container = element("section");
-        child(container, "div", "DOMD-Root");
+        const root = child(container, "div");
+        root.setAttribute("data-mdx-editor-root", "");
         const outside = element("button");
 
         expect(resolveScopedSelectAllTarget(outside, container)).toBeNull();
@@ -80,6 +85,7 @@ function child(parent: TestElement, tagName: string, className = ""): TestElemen
 
 class TestElement {
     private readonly children: TestElement[] = [];
+    private readonly attributes = new Map<string, string>();
     private parent: TestElement | null = null;
     readonly nodeType = 1;
 
@@ -102,10 +108,7 @@ class TestElement {
     }
 
     closest(selector: string): TestElement | null {
-        const classNames = selector
-            .split(",")
-            .map((part) => part.trim().replace(/^\./, ""));
-        if (classNames.includes(this.className)) {
+        if (this.matches(selector)) {
             return this;
         }
 
@@ -113,8 +116,7 @@ class TestElement {
     }
 
     querySelector(selector: string): TestElement | null {
-        const className = selector.replace(/^\./, "");
-        if (this.className === className) {
+        if (this.matches(selector)) {
             return this;
         }
 
@@ -126,5 +128,39 @@ class TestElement {
         }
 
         return null;
+    }
+
+    getAttribute(name: string): string | null {
+        return this.attributes.get(name) ?? null;
+    }
+
+    setAttribute(name: string, value: string): void {
+        this.attributes.set(name, value);
+    }
+
+    private matches(selector: string): boolean {
+        const selectors = selector.split(",").map((part) => part.trim());
+        return selectors.some((part) => {
+            if (part.startsWith(".")) {
+                return this.className === part.slice(1);
+            }
+
+            const attributeMatch = part.match(
+                /^\[([^\]=]+)(?:=['"]?([^'"\]]+)['"]?)?\]$/,
+            );
+            if (!attributeMatch) {
+                return false;
+            }
+
+            const [, attributeName, expectedValue] = attributeMatch;
+            const actualValue = this.getAttribute(attributeName);
+            if (actualValue === null) {
+                return false;
+            }
+
+            return (
+                expectedValue === undefined || actualValue === expectedValue
+            );
+        });
     }
 }

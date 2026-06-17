@@ -1,4 +1,8 @@
-const BLOCK_SELECTOR = "h1,h2,h3,h4,h5,h6,p,ul,ol,pre,blockquote,table,hr";
+import {
+    MDX_BLOCK_SELECTOR,
+    MDX_EDITOR_ROOT_SELECTOR,
+} from "./editor-dom-contract";
+
 const SCROLL_OPTIONS: ScrollIntoViewOptions = {
     block: "center",
     inline: "nearest",
@@ -52,7 +56,8 @@ export function scrollMarkdownLineIntoView(
     }
 
     const root =
-        viewport.querySelector<HTMLElement>(".DOMD-Root") ?? viewport;
+        viewport.querySelector<HTMLElement>(MDX_EDITOR_ROOT_SELECTOR) ??
+        viewport;
     const renderedBlocks = collectRenderedBlocks(root);
 
     if (renderedBlocks.length === 0) {
@@ -74,10 +79,11 @@ export function scrollMarkdownLineIntoView(
 }
 
 function collectRenderedBlocks(root: HTMLElement) {
-    return Array.from(root.querySelectorAll<HTMLElement>(BLOCK_SELECTOR)).filter(
+    return Array.from(root.querySelectorAll<HTMLElement>(MDX_BLOCK_SELECTOR)).filter(
         (node) => {
             const closestBlockAncestor =
-                node.parentElement?.closest<HTMLElement>(BLOCK_SELECTOR) ?? null;
+                node.parentElement?.closest<HTMLElement>(MDX_BLOCK_SELECTOR) ??
+                null;
 
             return !closestBlockAncestor || !root.contains(closestBlockAncestor);
         },

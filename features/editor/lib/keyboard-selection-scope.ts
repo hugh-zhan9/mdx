@@ -1,3 +1,8 @@
+import {
+    MDX_CODE_BLOCK_SELECTOR,
+    MDX_EDITOR_ROOT_SELECTOR,
+} from "./editor-dom-contract";
+
 export interface KeyboardShortcutState {
     altKey: boolean;
     code: string;
@@ -13,8 +18,8 @@ interface DomElementLike<TContainsTarget> {
     querySelector(selector: string): DomElementLike<TContainsTarget> | null;
 }
 
-const CODE_BLOCK_SELECTOR = ".DOMD-PreCode, .DOMD-PreCodeEmpty";
-const EDITOR_ROOT_SELECTOR = ".DOMD-Root";
+const CODE_BLOCK_SELECTOR = MDX_CODE_BLOCK_SELECTOR;
+const EDITOR_ROOT_SELECTOR = MDX_EDITOR_ROOT_SELECTOR;
 
 export function isSelectAllShortcut(event: KeyboardShortcutState) {
     return (

@@ -1,4 +1,5 @@
 import type { MermaidCodeFence } from "./mermaid-code-fences";
+import { MDX_CODE_BLOCK_SELECTOR } from "./editor-dom-contract";
 
 export interface MermaidPreMapping {
     fence: MermaidCodeFence;
@@ -13,7 +14,7 @@ export function mapMermaidFencesToPreElements(
     fences: MermaidCodeFence[],
 ): MermaidPreMapping[] {
     const preElements = Array.from(
-        editorRoot.querySelectorAll<HTMLPreElement>("pre.DOMD-Pre"),
+        editorRoot.querySelectorAll<HTMLPreElement>(MDX_CODE_BLOCK_SELECTOR),
     );
 
     return fences.flatMap((fence) => {

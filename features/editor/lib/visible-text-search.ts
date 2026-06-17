@@ -1,3 +1,8 @@
+import {
+    isMdxSyntaxElement,
+    MDX_MERMAID_PREVIEW_SELECTOR,
+} from "./editor-dom-contract";
+
 export interface VisibleTextSegment {
     end: number;
     node: Text;
@@ -17,15 +22,6 @@ export interface VisibleTextMatch {
 export interface VisibleTextSearchOptions {
     caseSensitive: boolean;
 }
-
-const HIDDEN_TEXT_CLASSES = new Set([
-    "DOMD-MdSymbol",
-    "DOMD-MdHideSymbol",
-    "DOMD-UlListSymbol",
-    "DOMD-OlListSymbol",
-    "DOMD-FunctionSymbolHide",
-    "DOMD-FunctionTextHide",
-]);
 
 export function buildVisibleTextIndex(root: ParentNode): VisibleTextIndex {
     const segments: VisibleTextSegment[] = [];
@@ -204,14 +200,15 @@ function shouldSkipElement(element: Element): boolean {
         return true;
     }
 
-    if (element.getAttribute("data-mdx-mermaid-preview") !== null) {
+    if (
+        element.matches(MDX_MERMAID_PREVIEW_SELECTOR) ||
+        Boolean(element.closest(MDX_MERMAID_PREVIEW_SELECTOR))
+    ) {
         return true;
     }
 
-    for (const className of HIDDEN_TEXT_CLASSES) {
-        if (element.classList.contains(className)) {
-            return true;
-        }
+    if (isMdxSyntaxElement(element)) {
+        return true;
     }
 
     return false;

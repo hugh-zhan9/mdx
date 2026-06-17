@@ -36,9 +36,11 @@ describe("markdown line scroll", () => {
     it("scrolls the matching rendered block into view", () => {
         const root = document.createElement("div");
         const domd = document.createElement("div");
-        domd.className = "DOMD-Root";
+        domd.setAttribute("data-mdx-editor-root", "");
         const first = document.createElement("h1");
         const second = document.createElement("p");
+        first.setAttribute("data-mdx-node-type", "heading");
+        second.setAttribute("data-mdx-node-type", "paragraph");
         second.scrollIntoView = vi.fn();
         domd.append(first, second);
         root.append(domd);
@@ -55,9 +57,11 @@ describe("markdown line scroll", () => {
     it("scrolls the editor root when a single-line document has no rendered block elements", () => {
         const root = document.createElement("div");
         const domd = document.createElement("div");
-        domd.className = "DOMD-Root";
+        domd.setAttribute("data-mdx-editor-root", "");
+        domd.setAttribute("data-mdx-text", "");
         domd.textContent = "single line match";
         domd.scrollIntoView = vi.fn();
+        root.scrollIntoView = vi.fn();
         root.append(domd);
 
         expect(scrollMarkdownLineIntoView(root, "single line match", 1)).toBe(
@@ -67,15 +71,19 @@ describe("markdown line scroll", () => {
             block: "center",
             inline: "nearest",
         });
+        expect(root.scrollIntoView).not.toHaveBeenCalled();
     });
 
     it("ignores nested matching descendants when choosing a rendered block", () => {
         const root = document.createElement("div");
         const domd = document.createElement("div");
-        domd.className = "DOMD-Root";
+        domd.setAttribute("data-mdx-editor-root", "");
         const quote = document.createElement("blockquote");
         const quoteParagraph = document.createElement("p");
         const after = document.createElement("p");
+        quote.setAttribute("data-mdx-node-type", "blockquote");
+        quoteParagraph.setAttribute("data-mdx-node-type", "paragraph");
+        after.setAttribute("data-mdx-node-type", "paragraph");
         quote.scrollIntoView = vi.fn();
         quoteParagraph.scrollIntoView = vi.fn();
         after.scrollIntoView = vi.fn();
@@ -96,12 +104,16 @@ describe("markdown line scroll", () => {
     it("scrolls nested list-item code hits to the top-level list block", () => {
         const root = document.createElement("div");
         const domd = document.createElement("div");
-        domd.className = "DOMD-Root";
+        domd.setAttribute("data-mdx-editor-root", "");
         const list = document.createElement("ul");
         const item = document.createElement("li");
         const paragraph = document.createElement("p");
         const codeBlock = document.createElement("pre");
         const after = document.createElement("p");
+        list.setAttribute("data-mdx-node-type", "bullet_list");
+        paragraph.setAttribute("data-mdx-node-type", "paragraph");
+        codeBlock.setAttribute("data-mdx-node-type", "code_block");
+        after.setAttribute("data-mdx-node-type", "paragraph");
         list.scrollIntoView = vi.fn();
         codeBlock.scrollIntoView = vi.fn();
         after.scrollIntoView = vi.fn();
