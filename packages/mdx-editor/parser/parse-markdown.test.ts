@@ -124,4 +124,22 @@ describe("parseMarkdown", () => {
         expect(parsedFootnote.doc.child(1).type.name).toBe("opaque_block");
         expect(parsedFootnote.doc.child(1).attrs.reason).toBe("source-preserved");
     });
+
+    it("does not let source-preserved callouts swallow following headings", () => {
+        const parsed = parseMarkdown("> [!NOTE]\n> note\n# Title\n");
+
+        expect(parsed.doc.childCount).toBe(2);
+        expect(parsed.doc.child(0).type.name).toBe("opaque_block");
+        expect(parsed.doc.child(1).type.name).toBe("heading");
+        expect(parsed.doc.child(1).textContent).toBe("Title");
+    });
+
+    it("does not let source-preserved task lists swallow following headings", () => {
+        const parsed = parseMarkdown("- [x] done\n# Title\n");
+
+        expect(parsed.doc.childCount).toBe(2);
+        expect(parsed.doc.child(0).type.name).toBe("opaque_block");
+        expect(parsed.doc.child(1).type.name).toBe("heading");
+        expect(parsed.doc.child(1).textContent).toBe("Title");
+    });
 });

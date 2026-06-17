@@ -402,8 +402,16 @@ function tryParseOpaqueBlock(
         return consumeUntilBlankLine(logicalLines, startLine);
     }
 
-    if (isCalloutStart(firstLine) || isListLikeStart(firstLine) || isHtmlStart(firstLine)) {
-        return consumeUntilBlankLine(logicalLines, startLine);
+    if (isCalloutStart(firstLine)) {
+        return consumeCalloutBlock(logicalLines, startLine);
+    }
+
+    if (isListLikeStart(firstLine)) {
+        return consumeListLikeOpaqueBlock(logicalLines, startLine);
+    }
+
+    if (isHtmlStart(firstLine)) {
+        return consumeHtmlOpaqueBlock(logicalLines, startLine);
     }
 
     if (isFootnoteDefinitionStart(firstLine)) {
@@ -447,6 +455,76 @@ function consumeUntilBlankLine(
         if (!next || next.text.trim() === "") {
             break;
         }
+        endLine += 1;
+    }
+
+    return { startLine, endLine };
+}
+
+function consumeCalloutBlock(
+    logicalLines: { text: string; start: number; end: number }[],
+    startLine: number,
+) {
+    let endLine = startLine;
+
+    while (endLine + 1 < logicalLines.length) {
+        const next = logicalLines[endLine + 1];
+        if (!next || next.text.trim() === "") {
+            break;
+        }
+
+        if (!next.text.startsWith(">")) {
+            break;
+        }
+
+        endLine += 1;
+    }
+
+    return { startLine, endLine };
+}
+
+function consumeListLikeOpaqueBlock(
+    logicalLines: { text: string; start: number; end: number }[],
+    startLine: number,
+) {
+    let endLine = startLine;
+
+    while (endLine + 1 < logicalLines.length) {
+        const next = logicalLines[endLine + 1];
+        if (!next || next.text.trim() === "") {
+            break;
+        }
+
+        if (!isListLikeStart(next.text) && !/^[ \t]+/.test(next.text)) {
+            break;
+        }
+
+        endLine += 1;
+    }
+
+    return { startLine, endLine };
+}
+
+function consumeHtmlOpaqueBlock(
+    logicalLines: { text: string; start: number; end: number }[],
+    startLine: number,
+) {
+    let endLine = startLine;
+
+    while (endLine + 1 < logicalLines.length) {
+        const next = logicalLines[endLine + 1];
+        if (!next || next.text.trim() === "") {
+            break;
+        }
+
+        if (
+            /^#{1,6}\s/.test(next.text.trimStart()) ||
+            isListLikeStart(next.text) ||
+            isCalloutStart(next.text)
+        ) {
+            break;
+        }
+
         endLine += 1;
     }
 
