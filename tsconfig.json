@@ -35,7 +35,9 @@
         ".next/dev/types/**/*.ts",
         "**/*.mts",
         ".packages/**/*.ts",
-        ".packages/**/*.tsx"
+        ".packages/**/*.tsx",
+        "packages/**/*.ts",
+        "packages/**/*.tsx"
     ],
     "exclude": ["node_modules", "ref", "rust_out"]
 }
