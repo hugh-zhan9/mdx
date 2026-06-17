@@ -45,7 +45,7 @@ MDX 当前优先服务桌面端。当前应用不提供 Web 产品形态、Quick
 
 - 前端：Next.js 16、React 19、TypeScript、Tailwind CSS
 - 桌面壳：Tauri 2、Rust
-- 编辑器适配：`@do-md/react`
+- 编辑器内核：`packages/mdx-editor/` 下的自研 Markdown 原生所见即所得内核
 - 代码高亮：Prism
 - 测试：前端逻辑使用 Vitest，Tauri 侧工作区行为使用 Rust tests
 
@@ -143,6 +143,4 @@ cd src-tauri && cargo test
 
 ## 许可
 
-本仓库的应用层与辅助库采用 MIT 协议，见 [LICENSE](LICENSE)。
-
-`.packages/@do-md/dist/` 下的编译版编辑器内核使用其单独许可分发。该内核的商业使用需要事先获得书面授权。
+本仓库中的应用层、辅助库和自研 Markdown 编辑器内核均使用 MIT 许可；见 [LICENSE](LICENSE)。

@@ -1,16 +1,16 @@
 # Editor Integration Notes
 
-## Mermaid Preview And `@do-md/react`
+## Mermaid Preview And MDX Editor DOM Contract
 
-The shared Markdown editor's rendered DOM is owned by the bundled `@do-md/react` kernel. Integrations that map Markdown source to rendered editor nodes must align with the kernel's actual rendered surface.
+The shared Markdown editor's rendered DOM is owned by the self-owned MDX editor kernel under `packages/mdx-editor/`. Integrations that map Markdown source to rendered editor nodes must use the stable MDX editor DOM contract, not implementation-private classes.
 
 For Mermaid live preview:
 
 - Treat Markdown source as the single source of truth.
-- Map Mermaid fences only to rendered `pre.DOMD-Pre` nodes produced by the editor kernel.
-- Count only column-zero backtick fenced code blocks for `pre.DOMD-Pre` order mapping.
-- Do not count tilde fences or indented Mermaid-looking fences unless the kernel is first proven to render them as `pre.DOMD-Pre`.
-- Exclude generated preview UI from visible-text search and find/replace.
+- Map Mermaid fences only to rendered code blocks marked with `data-mdx-code-block`.
+- Count only column-zero backtick fenced code blocks for rendered code-block order mapping unless the parser explicitly adds support for more fence forms.
+- Exclude generated preview UI marked with `data-mdx-mermaid-preview` from visible-text search and find/replace.
+- Exclude Markdown syntax elements marked with `data-mdx-syntax` from visible-text search and find/replace.
 - Invalidate find/replace indexes when Mermaid source visibility changes.
 - Initialize Mermaid with strict security and `suppressErrorRendering: true`; the app owns invalid-diagram error UI.
 

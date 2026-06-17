@@ -24,9 +24,4 @@ SOFTWARE.
 
 Note: This MIT License covers all source code in this repository, including
 the helper libraries at `.packages/@do-md/utils/` and `.packages/@do-md/zenith/`
-(each carries its own MIT LICENSE file).
-
-The compiled core rendering engine at `.packages/@do-md/dist/` is separately
-licensed under the PolyForm Noncommercial License 1.0.0; see
-`.packages/@do-md/dist/LICENSE`. For commercial use of the kernel, please
-contact the author.
+and the self-owned Markdown editor kernel at `packages/mdx-editor/`.

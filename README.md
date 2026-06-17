@@ -45,7 +45,7 @@ The editor currently supports `.md` and `.markdown` files. This MVP does not tre
 
 - Frontend: Next.js 16, React 19, TypeScript, Tailwind CSS
 - Desktop shell: Tauri 2 and Rust
-- Editor adapter: `@do-md/react`
+- Editor kernel: self-owned Markdown-native WYSIWYG kernel under `packages/mdx-editor/`
 - Syntax highlighting: Prism
 - Tests: Vitest for frontend logic, Rust tests for Tauri-side workspace behavior
 
@@ -143,6 +143,4 @@ cd src-tauri && cargo test
 
 ## License
 
-The application layer and helper libraries in this repository are MIT licensed; see [LICENSE](LICENSE).
-
-The compiled editor kernel under `.packages/@do-md/dist/` is distributed separately under its own license. Commercial use of that kernel requires prior written authorization.
+The application layer, helper libraries, and self-owned Markdown editor kernel in this repository are MIT licensed; see [LICENSE](LICENSE).
