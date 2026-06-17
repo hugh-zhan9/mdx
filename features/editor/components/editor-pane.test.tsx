@@ -160,17 +160,48 @@ describe("editor pane source mode chrome", () => {
             markdown: "# Title",
             baseFingerprint: "base",
         };
+        const onMarkdownChange = vi.fn();
 
         await act(async () => {
             root.render(
                 <EditorPane
                     rootPath="/tmp"
                     tab={tab}
-                    onMarkdownChange={vi.fn()}
+                    onMarkdownChange={onMarkdownChange}
                 />,
             );
         });
 
         expect(host.textContent).toContain("源码");
+
+        await act(async () => {
+            host
+                .querySelectorAll<HTMLButtonElement>("button")
+                .item(1)
+                ?.click();
+        });
+
+        const sourceEditor = host.querySelector<HTMLTextAreaElement>(
+            "[data-mdx-source-mode]",
+        );
+
+        expect(sourceEditor).not.toBeNull();
+
+        await act(async () => {
+            if (!sourceEditor) {
+                return;
+            }
+
+            const setValue = Object.getOwnPropertyDescriptor(
+                HTMLTextAreaElement.prototype,
+                "value",
+            )?.set;
+
+            setValue?.call(sourceEditor, "# Changed");
+            sourceEditor.dispatchEvent(new Event("input", { bubbles: true }));
+            sourceEditor.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+
+        expect(onMarkdownChange).toHaveBeenLastCalledWith("tab-1", "# Changed");
     });
 });

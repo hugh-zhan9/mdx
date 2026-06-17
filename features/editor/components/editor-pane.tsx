@@ -154,6 +154,7 @@ function EditorPaneInner({
     });
     const { focus, insertImage, insertText } = bridge;
     const [mode, setMode] = useState<"wysiwyg" | "source">("wysiwyg");
+    const [sourceMarkdown, setSourceMarkdown] = useState(bridge.currentMarkdown);
     const contentRootRef = useRef<HTMLDivElement | null>(null);
     const [contentRootNode, setContentRootNode] =
         useState<HTMLDivElement | null>(null);
@@ -221,6 +222,10 @@ function EditorPaneInner({
     );
     const handleEditorKeyDownCapture = useCallback(
         (event: React.KeyboardEvent<HTMLDivElement>) => {
+            if (mode === "source") {
+                return;
+            }
+
             if (isEditorFindShortcut(event.nativeEvent)) {
                 event.preventDefault();
                 event.stopPropagation();
@@ -252,10 +257,14 @@ function EditorPaneInner({
             event.stopPropagation();
             selectElementContents(selectTarget as HTMLElement);
         },
-        [openFind, openReplace],
+        [mode, openFind, openReplace],
     );
     const handleEditorClickCapture = useCallback(
         (event: React.MouseEvent<HTMLDivElement>) => {
+            if (mode === "source") {
+                return;
+            }
+
             if (!onOpenWikilink || event.button !== 0) {
                 return;
             }
@@ -288,7 +297,7 @@ function EditorPaneInner({
             event.stopPropagation();
             onOpenWikilink(wikilink, tab.path);
         },
-        [onOpenWikilink, tab.path],
+        [mode, onOpenWikilink, tab.path],
     );
     const handlePasteCapture = useCallback(
         (event: React.ClipboardEvent<HTMLDivElement>) => {
@@ -420,7 +429,10 @@ function EditorPaneInner({
                         type="button"
                         className={`btn btn-xs join-item ${mode === "wysiwyg" ? "btn-active" : ""}`}
                         aria-pressed={mode === "wysiwyg"}
-                        onClick={() => setMode("wysiwyg")}
+                        onClick={() => {
+                            setMode("wysiwyg");
+                            close();
+                        }}
                     >
                         所见即所得
                     </button>
@@ -428,7 +440,11 @@ function EditorPaneInner({
                         type="button"
                         className={`btn btn-xs join-item ${mode === "source" ? "btn-active" : ""}`}
                         aria-pressed={mode === "source"}
-                        onClick={() => setMode("source")}
+                        onClick={() => {
+                            setSourceMarkdown(bridge.currentMarkdown);
+                            setMode("source");
+                            close();
+                        }}
                     >
                         源码
                     </button>
@@ -468,10 +484,11 @@ function EditorPaneInner({
                 >
                     {mode === "source" ? (
                         <SourceModeEditor
-                            markdown={bridge.currentMarkdown}
-                            onMarkdownChange={(markdown) =>
-                                onMarkdownChange(tab.tabId, markdown)
-                            }
+                            markdown={sourceMarkdown}
+                            onMarkdownChange={(markdown) => {
+                                setSourceMarkdown(markdown);
+                                onMarkdownChange(tab.tabId, markdown);
+                            }}
                         />
                     ) : (
                         <>
