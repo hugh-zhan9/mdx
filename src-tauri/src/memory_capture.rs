@@ -397,8 +397,9 @@ fn parse_simple_codex_jsonl(contents: &str) -> Result<ParsedCapture, WorkspaceEr
         })?;
         messages.push(message);
     }
+    let body = render_codex_capture_body(&messages, contents);
     let mut parsed = parsed_messages(None, None, messages)?;
-    append_raw_codex_jsonl(&mut parsed.body, contents);
+    parsed.body = body;
     Ok(parsed)
 }
 
@@ -465,11 +466,12 @@ fn parse_real_codex_jsonl(
         format!("Codex session {preview}")
     });
     let started_at = session_timestamp.clone();
+    let body = render_codex_capture_body(&messages, contents);
     let mut parsed = parsed_messages(source_thread_id, title, messages)?;
     if started_at.is_some() {
         parsed.started_at = started_at;
     }
-    append_raw_codex_jsonl(&mut parsed.body, contents);
+    parsed.body = body;
     Ok(parsed)
 }
 
@@ -490,9 +492,28 @@ fn codex_message_content(payload: &serde_json::Value) -> String {
         .join("\n")
 }
 
+fn render_codex_capture_body(messages: &[TranscriptMessage], contents: &str) -> String {
+    let mut body = render_codex_conversation(messages);
+    body.push_str("\n\n");
+    append_raw_codex_jsonl(&mut body, contents);
+    body
+}
+
+fn render_codex_conversation(messages: &[TranscriptMessage]) -> String {
+    let mut body = String::from("## Conversation\n");
+    for message in messages {
+        body.push('\n');
+        body.push_str(message.role.trim());
+        body.push_str(":\n\n");
+        body.push_str(message.content.trim());
+        body.push('\n');
+    }
+    body
+}
+
 fn append_raw_codex_jsonl(body: &mut String, contents: &str) {
     let fence = codex_raw_jsonl_fence(contents);
-    body.push_str("\n\n## Raw Codex JSONL\n\n");
+    body.push_str("## Raw Codex JSONL\n\n");
     body.push_str(&fence);
     body.push_str("jsonl\n");
     body.push_str(contents.trim_end());

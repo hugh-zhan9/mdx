@@ -2474,9 +2474,10 @@ fn capture_imports_codex_jsonl_as_thread() {
     assert!(result.distill_result.is_none());
     let thread =
         memory_thread_get(root.path().to_string_lossy().into_owned(), result.thread_id).unwrap();
+    assert!(thread.body.contains("## Conversation"));
     assert!(thread
         .body
-        .contains("## Message 1 — user — 2026-06-13T08:00:00Z"));
+        .contains("user:\n\nRemember that MDX memory supports Codex."));
     assert!(thread.body.contains("MDX memory supports Codex"));
 }
 
@@ -2506,15 +2507,19 @@ fn capture_imports_real_codex_jsonl_and_preserves_raw_source() {
 
     let thread =
         memory_thread_get(root.path().to_string_lossy().into_owned(), result.thread_id).unwrap();
+    let conversation_index = thread.body.find("## Conversation").unwrap();
+    let raw_index = thread.body.find("## Raw Codex JSONL").unwrap();
+    assert!(conversation_index < raw_index);
     assert!(thread
         .body
-        .contains("## Message 1 — user — 2026-06-14T00:28:11.000Z"));
+        .contains("user:\n\nPlease preserve this real Codex user text."));
+    assert!(thread
+        .body
+        .contains("assistant:\n\nI will preserve the complete raw Codex JSONL source."));
+    assert!(thread.body.contains("## Raw Codex JSONL\n\n```jsonl\n"));
     assert!(thread
         .body
         .contains("Please preserve this real Codex user text."));
-    assert!(thread
-        .body
-        .contains("## Message 2 — assistant — 2026-06-14T00:28:12.000Z"));
     assert!(thread
         .body
         .contains("I will preserve the complete raw Codex JSONL source."));
@@ -2548,6 +2553,10 @@ fn capture_imports_codex_jsonl_with_backticks_without_inflating_message_count() 
 
     let thread =
         memory_thread_get(root.path().to_string_lossy().into_owned(), result.thread_id).unwrap();
+    let conversation_index = thread.body.find("## Conversation").unwrap();
+    let raw_index = thread.body.find("## Raw Codex JSONL").unwrap();
+    assert!(conversation_index < raw_index);
+    assert!(thread.body.contains("## Raw Codex JSONL\n\n````jsonl\n"));
     assert!(thread.body.contains("````jsonl"));
     assert!(thread.body.contains("``` and ## Message fake heading"));
     assert_eq!(thread.frontmatter.message_count, Some(2));

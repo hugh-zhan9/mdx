@@ -116,6 +116,10 @@ fn count_thread_messages(body: &str) -> usize {
             message_count += 1;
             continue;
         }
+        if is_conversation_role_line(line) {
+            message_count += 1;
+            continue;
+        }
         if let Some(fence) = markdown_fence(line, '`').map(|len| ('`', len)) {
             open_fence = Some(fence);
         } else if let Some(fence) = markdown_fence(line, '~').map(|len| ('~', len)) {
@@ -123,6 +127,13 @@ fn count_thread_messages(body: &str) -> usize {
         }
     }
     message_count
+}
+
+fn is_conversation_role_line(line: &str) -> bool {
+    matches!(
+        line.trim(),
+        "user:" | "assistant:" | "system:" | "developer:" | "tool:"
+    )
 }
 
 fn markdown_fence(line: &str, fence_char: char) -> Option<usize> {
