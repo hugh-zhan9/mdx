@@ -26,7 +26,7 @@
 ### 2.2 需求范围
 
 - 本期范围：
-  - 新增 Document Mode：只接受已有 `.md/.markdown` 单文件。
+  - 新增 Document Mode：只接受已有 `.md/.markdown` 单文件。  
   - 新增顶层 app session / window role，区分 `document` 和 `workspace`。
   - macOS bundle 声明 `.md/.markdown` 文件关联。
   - 处理 macOS 系统打开文件事件：单文件或多文件打开对应 Document Mode 窗口。

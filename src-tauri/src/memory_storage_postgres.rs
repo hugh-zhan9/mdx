@@ -131,6 +131,104 @@ impl PostgresMemoryStorage {
             })
     }
 
+    pub fn list_memory_records_for_migration(
+        &mut self,
+    ) -> Result<Vec<crate::memory_storage::StoredMemoryRecord>, WorkspaceError> {
+        self.client
+            .query(
+                "SELECT
+                    memory_id,
+                    workspace_id,
+                    project_key,
+                    title,
+                    body,
+                    status,
+                    tags,
+                    importance,
+                    confidence,
+                    created_at,
+                    updated_at,
+                    archived_at
+                FROM memories
+                ORDER BY created_at ASC, memory_id ASC",
+                &[],
+            )
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|row| crate::memory_storage::StoredMemoryRecord {
+                        memory_id: row.get(0),
+                        workspace_id: row.get(1),
+                        project_key: row.get(2),
+                        title: row.get(3),
+                        body: row.get(4),
+                        status: row.get(5),
+                        tags: postgres_tags(&row.get(6)),
+                        importance: row.get(7),
+                        confidence: row.get(8),
+                        created_at: row.get(9),
+                        updated_at: row.get(10),
+                        archived_at: row.get(11),
+                    })
+                    .collect()
+            })
+            .map_err(|error| {
+                postgres_error(
+                    "memory_postgres_migration_list_failed",
+                    "failed to list postgres memory migration records",
+                    error,
+                )
+            })
+    }
+
+    pub fn list_thread_records_for_migration(
+        &mut self,
+    ) -> Result<Vec<crate::memory_storage::StoredThreadRecord>, WorkspaceError> {
+        self.client
+            .query(
+                "SELECT
+                    thread_id,
+                    workspace_id,
+                    agent_source,
+                    session_pk,
+                    title,
+                    body,
+                    content_hash,
+                    message_count,
+                    distilled,
+                    promoted_to_wiki,
+                    created_at,
+                    updated_at
+                FROM threads
+                ORDER BY created_at ASC, thread_id ASC",
+                &[],
+            )
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|row| crate::memory_storage::StoredThreadRecord {
+                        thread_id: row.get(0),
+                        workspace_id: row.get(1),
+                        agent_source: row.get(2),
+                        session_pk: row.get(3),
+                        title: row.get(4),
+                        body: row.get(5),
+                        content_hash: row.get(6),
+                        message_count: row.get(7),
+                        distilled: row.get(8),
+                        promoted_to_wiki: row.get(9),
+                        created_at: row.get(10),
+                        updated_at: row.get(11),
+                    })
+                    .collect()
+            })
+            .map_err(|error| {
+                postgres_error(
+                    "memory_postgres_migration_list_failed",
+                    "failed to list postgres thread migration records",
+                    error,
+                )
+            })
+    }
+
     pub fn count_threads(&mut self) -> Result<i64, WorkspaceError> {
         let scope = self.required_scope()?.clone();
         self.client
@@ -148,6 +246,80 @@ impl PostgresMemoryStorage {
                     error,
                 )
             })
+    }
+
+    pub fn insert_memory_record_for_migration(
+        &mut self,
+        memory: &crate::memory_storage::StoredMemoryRecord,
+    ) -> Result<bool, WorkspaceError> {
+        let tags = serde_json::Value::Array(
+            memory
+                .tags
+                .iter()
+                .map(|tag| serde_json::Value::String(tag.clone()))
+                .collect(),
+        );
+        self.client
+            .execute(
+                "INSERT INTO memories (
+                    memory_id,
+                    workspace_id,
+                    project_key,
+                    title,
+                    body,
+                    status,
+                    tags,
+                    importance,
+                    confidence,
+                    created_at,
+                    updated_at,
+                    archived_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12)
+                ON CONFLICT(memory_id) DO NOTHING",
+                &[
+                    &memory.memory_id,
+                    &memory.workspace_id,
+                    &memory.project_key,
+                    &memory.title,
+                    &memory.body,
+                    &memory.status,
+                    &tags,
+                    &memory.importance,
+                    &memory.confidence,
+                    &memory.created_at,
+                    &memory.updated_at,
+                    &memory.archived_at,
+                ],
+            )
+            .map(|rows_changed| rows_changed > 0)
+            .map_err(|error| {
+                postgres_error(
+                    "memory_postgres_migration_insert_failed",
+                    "failed to insert postgres migrated memory record",
+                    error,
+                )
+            })
+    }
+
+    pub fn upsert_thread_record_for_migration(
+        &mut self,
+        thread: &crate::memory_storage::StoredThreadRecord,
+    ) -> Result<bool, WorkspaceError> {
+        self.upsert_thread(&StoredThreadWrite {
+            thread_id: thread.thread_id.clone(),
+            workspace_id: thread.workspace_id.clone(),
+            agent_source: thread.agent_source.clone(),
+            session_pk: thread.session_pk.clone(),
+            title: thread.title.clone(),
+            body: thread.body.clone(),
+            content_hash: thread.content_hash.clone(),
+            message_count: thread.message_count,
+            distilled: Some(thread.distilled),
+            promoted_to_wiki: Some(thread.promoted_to_wiki),
+            created_at: thread.created_at.clone(),
+            updated_at: thread.updated_at.clone(),
+        })
     }
 
     fn required_scope(&self) -> Result<&MemoryStorageScope, WorkspaceError> {

@@ -16,6 +16,33 @@ interface LlmWikiPanelProps {
   onConfigureLlm?: () => void;
 }
 
+const MAX_PROGRESS_MESSAGE_CHARS = 4000;
+const MAX_PROGRESS_MESSAGE_LINES = 80;
+
+function formatPanelProgressMessage(message: string) {
+  const lines = message.split("\n");
+  const lineLimited = lines.length > MAX_PROGRESS_MESSAGE_LINES;
+  let preview = (lineLimited
+    ? lines.slice(0, MAX_PROGRESS_MESSAGE_LINES)
+    : lines
+  ).join("\n");
+  const charLimited = preview.length > MAX_PROGRESS_MESSAGE_CHARS;
+
+  if (charLimited) {
+    preview = preview.slice(0, MAX_PROGRESS_MESSAGE_CHARS).trimEnd();
+  }
+
+  if (!lineLimited && !charLimited) {
+    return message;
+  }
+
+  return [
+    preview,
+    "",
+    `... 已截断，完整进度共 ${lines.length} 行、${message.length} 个字符。`,
+  ].join("\n");
+}
+
 export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
   const {
     status,
@@ -84,7 +111,7 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
     [digest, digestPrompt, digestTitle],
   );
 
-  const panelMessage = message;
+  const panelMessage = message ? formatPanelProgressMessage(message) : null;
   const actionsDisabled = !isReady || isLoading || isProcessing;
   const queryActionsDisabled =
     !isReady ||

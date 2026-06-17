@@ -336,6 +336,25 @@ export function useWorkspaceBootstrap() {
         };
     }, [isTauri]);
 
+    const persistCurrentWindowSize = useCallback(async () => {
+        if (!isTauri) {
+            return;
+        }
+
+        if (windowResizeSaveTimerRef.current) {
+            clearTimeout(windowResizeSaveTimerRef.current);
+            windowResizeSaveTimerRef.current = null;
+        }
+
+        const nextAppState = withWindowSize(
+            appStateRef.current,
+            workspaceRef.current,
+            getCurrentWindowSize(appStateRef.current.windowSize),
+        );
+        appStateRef.current = nextAppState;
+        await saveAppState(nextAppState);
+    }, [isTauri]);
+
     return useMemo(
         () => ({
             status,
@@ -346,6 +365,7 @@ export function useWorkspaceBootstrap() {
             canChooseWorkspace: isTauri,
             message,
             preferences,
+            persistCurrentWindowSize,
             updatePreferences: async (nextPreferences: AppPreferences) => {
                 const normalizedPreferences =
                     normalizeAppPreferences(nextPreferences);
@@ -384,7 +404,16 @@ export function useWorkspaceBootstrap() {
                 }
             },
         }),
-        [chooseWorkspace, dispatch, isTauri, message, preferences, status, workspace],
+        [
+            chooseWorkspace,
+            dispatch,
+            isTauri,
+            message,
+            persistCurrentWindowSize,
+            preferences,
+            status,
+            workspace,
+        ],
     );
 }
 

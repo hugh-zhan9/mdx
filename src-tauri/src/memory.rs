@@ -13,6 +13,7 @@ pub use crate::memory_models::{
     MemoryBackendStorageStatus, MemoryBackendTodayStatus, MemoryCaptureCandidate,
     MemoryCaptureConfig, MemoryCaptureImportRequest, MemoryCaptureImportResult,
     MemoryCaptureScanRequest, MemoryCaptureScanResult, MemoryConfig, MemoryConfigSetRequest,
+    MemoryConfigUpdateRequest,
     MemoryDiagnostics, MemoryDistillConfig, MemoryDistillRequest, MemoryDistillResult,
     MemoryDoctorReport, MemoryEmbeddingConfig, MemoryExportRequest, MemoryExportResult,
     MemoryFrontmatter, MemoryHookEventRequest, MemoryHookEventResponse, MemoryImportRequest,
@@ -119,6 +120,15 @@ pub fn memory_config_set(
     memory_config_set_for_root(&root, request)
 }
 
+pub fn memory_config_update(
+    root_path: String,
+    request: MemoryConfigUpdateRequest,
+) -> Result<MemoryConfig, WorkspaceError> {
+    let root = canonicalize_workspace_root(root_path)?;
+    let _lock = try_acquire_memory_lock(&root)?;
+    memory_config_update_for_root(&root, request)
+}
+
 fn memory_config_set_for_root(
     root: &std::path::Path,
     request: MemoryConfigSetRequest,
@@ -157,6 +167,76 @@ fn memory_config_set_for_root(
 
     write_memory_config(root, &config)?;
     Ok(config)
+}
+
+fn memory_config_update_for_root(
+    root: &std::path::Path,
+    request: MemoryConfigUpdateRequest,
+) -> Result<MemoryConfig, WorkspaceError> {
+    if request.scope != "workspace" {
+        return Err(WorkspaceError::new(
+            "memory_config_scope_unknown",
+            format!("unsupported memory config scope: {}", request.scope),
+        ));
+    }
+
+    let mut config = load_memory_config_for_root(root)?;
+
+    if let Some(provider) = request.provider {
+        if let Some(mode) = provider.mode {
+            config.provider.mode = normalize_memory_provider_mode(&mode)?;
+        }
+        if let Some(provider_name) = provider.provider {
+            config.provider.provider =
+                provider_name.and_then(|value| normalize_optional_text(&value));
+        }
+        if let Some(model) = provider.model {
+            config.provider.model = model.and_then(|value| normalize_optional_text(&value));
+        }
+    }
+
+    if let Some(storage) = request.storage {
+        if let Some(backend) = storage.backend {
+            config.storage.backend = normalize_storage_backend_config(&backend)?;
+        }
+        if let Some(postgres_url_ref) = storage.postgres_url_ref {
+            config.storage.postgres_url_ref =
+                postgres_url_ref.and_then(|value| normalize_optional_text(&value));
+        }
+    }
+
+    write_memory_config(root, &config)?;
+    Ok(config)
+}
+
+fn normalize_memory_provider_mode(mode: &str) -> Result<String, WorkspaceError> {
+    match mode.trim() {
+        "reuse_llm" | "provider" => Ok(mode.trim().to_string()),
+        other => Err(WorkspaceError::new(
+            "memory_config_provider_mode_unknown",
+            format!("unsupported memory provider mode: {other}"),
+        )),
+    }
+}
+
+fn normalize_storage_backend_config(backend: &str) -> Result<String, WorkspaceError> {
+    match backend.trim() {
+        "sqlite" => Ok("sqlite".to_string()),
+        "postgres" | "postgresql" => Ok("postgresql".to_string()),
+        other => Err(WorkspaceError::new(
+            "memory_config_storage_backend_unknown",
+            format!("unsupported memory storage backend: {other}"),
+        )),
+    }
+}
+
+fn normalize_optional_text(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
 }
 
 fn write_memory_config(

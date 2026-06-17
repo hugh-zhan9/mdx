@@ -114,6 +114,12 @@ pub fn dispatch(
                 crate::memory_storage_migration::dry_run_storage_migration_request(&root, request)
             },
         ),
+        ("POST", "/storage/migrate") => post_json(
+            body,
+            |request: crate::memory::MemoryStorageMigrateRequest| {
+                crate::memory_storage_migration::run_storage_migration_request(&root, request)
+            },
+        ),
         ("GET", "/diagnostics") => get_json(|| crate::memory::memory_diagnostics(root)),
         ("POST", "/config/set") => post_json(body, |request: MemoryConfigSetRequest| {
             crate::memory::memory_config_set(root, request)

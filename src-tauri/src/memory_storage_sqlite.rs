@@ -110,6 +110,140 @@ impl SqliteMemoryStorage {
         <Self as MemoryStorage>::list_active_memories_for_projection(self)
     }
 
+    pub fn list_memory_records_for_migration(
+        &mut self,
+    ) -> Result<Vec<crate::memory_storage::StoredMemoryRecord>, WorkspaceError> {
+        let mut statement = self
+            .conn
+            .prepare(
+                "SELECT
+                    memory_id,
+                    workspace_id,
+                    project_key,
+                    title,
+                    body,
+                    status,
+                    tags,
+                    importance,
+                    confidence,
+                    created_at,
+                    updated_at,
+                    archived_at
+                FROM memories
+                ORDER BY created_at ASC, memory_id ASC",
+            )
+            .map_err(|error| {
+                sqlite_error(
+                    "memory_migration_prepare_failed",
+                    "failed to prepare sqlite memory migration query",
+                    error,
+                )
+            })?;
+        let rows = statement
+            .query_map([], |row| {
+                let tags_json: String = row.get(6)?;
+                let tags = serde_json::from_str::<Vec<String>>(&tags_json).map_err(|error| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        6,
+                        rusqlite::types::Type::Text,
+                        Box::new(error),
+                    )
+                })?;
+                Ok(crate::memory_storage::StoredMemoryRecord {
+                    memory_id: row.get(0)?,
+                    workspace_id: row.get(1)?,
+                    project_key: row.get(2)?,
+                    title: row.get(3)?,
+                    body: row.get(4)?,
+                    status: row.get(5)?,
+                    tags,
+                    importance: row.get(7)?,
+                    confidence: row.get(8)?,
+                    created_at: row.get(9)?,
+                    updated_at: row.get(10)?,
+                    archived_at: row.get(11)?,
+                })
+            })
+            .map_err(|error| {
+                sqlite_error(
+                    "memory_migration_list_failed",
+                    "failed to list sqlite memory migration records",
+                    error,
+                )
+            })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|error| {
+            sqlite_error(
+                "memory_migration_decode_failed",
+                "failed to decode sqlite memory migration record",
+                error,
+            )
+        })
+    }
+
+    pub fn list_thread_records_for_migration(
+        &mut self,
+    ) -> Result<Vec<crate::memory_storage::StoredThreadRecord>, WorkspaceError> {
+        let mut statement = self
+            .conn
+            .prepare(
+                "SELECT
+                    thread_id,
+                    workspace_id,
+                    agent_source,
+                    session_pk,
+                    title,
+                    body,
+                    content_hash,
+                    message_count,
+                    distilled,
+                    promoted_to_wiki,
+                    created_at,
+                    updated_at
+                FROM threads
+                ORDER BY created_at ASC, thread_id ASC",
+            )
+            .map_err(|error| {
+                sqlite_error(
+                    "memory_migration_prepare_failed",
+                    "failed to prepare sqlite thread migration query",
+                    error,
+                )
+            })?;
+        let rows = statement
+            .query_map([], |row| {
+                let distilled: i64 = row.get(8)?;
+                let promoted_to_wiki: i64 = row.get(9)?;
+                Ok(crate::memory_storage::StoredThreadRecord {
+                    thread_id: row.get(0)?,
+                    workspace_id: row.get(1)?,
+                    agent_source: row.get(2)?,
+                    session_pk: row.get(3)?,
+                    title: row.get(4)?,
+                    body: row.get(5)?,
+                    content_hash: row.get(6)?,
+                    message_count: row.get(7)?,
+                    distilled: distilled != 0,
+                    promoted_to_wiki: promoted_to_wiki != 0,
+                    created_at: row.get(10)?,
+                    updated_at: row.get(11)?,
+                })
+            })
+            .map_err(|error| {
+                sqlite_error(
+                    "memory_migration_list_failed",
+                    "failed to list sqlite thread migration records",
+                    error,
+                )
+            })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|error| {
+            sqlite_error(
+                "memory_migration_decode_failed",
+                "failed to decode sqlite thread migration record",
+                error,
+            )
+        })
+    }
+
     pub fn count_active_memories(&mut self) -> Result<i64, WorkspaceError> {
         self.conn
             .query_row(

@@ -84,6 +84,10 @@ const EMPTY_SCAN: RawScanResult = {
   skipped: [],
 };
 
+const MAX_PENDING_PATH_PREVIEW = 10;
+const MAX_FAILED_INGEST_SUMMARY = 20;
+const MAX_INLINE_ERROR_CHARS = 1000;
+
 interface RootSnapshot {
   rootPath: string;
   status: LlmWikiWorkspaceStatus | null;
@@ -96,6 +100,49 @@ interface RootSnapshot {
   activeOperation: LlmWikiOperation | null;
   activeOperationId: string | null;
   activeStage: string | null;
+}
+
+export function formatPendingRawStartMessage(
+  processedCount: number,
+  pending: string[],
+) {
+  const pendingPreview = pending.slice(0, MAX_PENDING_PATH_PREVIEW);
+  const hiddenCount = pending.length - pendingPreview.length;
+  return [
+    `开始后台处理 raw：${processedCount}/${processedCount + pending.length}`,
+    `待处理：${pending.length}`,
+    ...pendingPreview.map((path) => `- ${path}`),
+    ...(hiddenCount > 0 ? [`... 还有 ${hiddenCount} 个待处理未显示`] : []),
+  ].join("\n");
+}
+
+function formatFailedIngestSummary(
+  processedCount: number,
+  failed: Array<{ path: string; error: string }>,
+) {
+  if (failed.length === 0) {
+    return `后台处理完成：${processedCount} 个 raw。`;
+  }
+
+  const failedPreview = failed.slice(0, MAX_FAILED_INGEST_SUMMARY);
+  const hiddenCount = failed.length - failedPreview.length;
+  return [
+    `后台处理完成：${processedCount} 个成功，${failed.length} 个失败。`,
+    "",
+    ...failedPreview.map(
+      (item, index) =>
+        `${index + 1}. ${item.path}\n   ${formatInlineText(item.error, MAX_INLINE_ERROR_CHARS)}`,
+    ),
+    ...(hiddenCount > 0 ? [`... 还有 ${hiddenCount} 个失败未显示`] : []),
+  ].join("\n");
+}
+
+function formatInlineText(value: string, maxChars: number) {
+  if (value.length <= maxChars) {
+    return value;
+  }
+
+  return `${value.slice(0, maxChars).trimEnd()}...`;
 }
 
 export function useLlmWikiWorkspace(
@@ -226,7 +273,7 @@ export function useLlmWikiWorkspace(
           current.rootPath === ingestRootPath
             ? {
                 ...current,
-                message: `开始后台处理 raw：${processedCount}/${processedCount + batch.length}\n待处理：${batch.join("\n")}`,
+                message: formatPendingRawStartMessage(processedCount, batch),
               }
             : current,
         );
@@ -302,7 +349,7 @@ export function useLlmWikiWorkspace(
                     message: [
                       `后台处理 raw 失败：${processedCount}/${totalInBatch} 个已完成`,
                       `当前：${rawRelativePath}`,
-                      `错误：${formatError(error)}`,
+                      `错误：${formatInlineText(formatError(error), MAX_INLINE_ERROR_CHARS)}`,
                     ].join("\n"),
                   }
                 : current,
@@ -387,17 +434,7 @@ export function useLlmWikiWorkspace(
           ? {
               ...current,
               scan: latest,
-              message:
-                failed.length === 0
-                  ? `后台处理完成：${processedCount} 个 raw。`
-                  : [
-                      `后台处理完成：${processedCount} 个成功，${failed.length} 个失败。`,
-                      "",
-                      ...failed.map(
-                        (item, index) =>
-                          `${index + 1}. ${item.path}\n   ${item.error}`,
-                      ),
-                    ].join("\n"),
+              message: formatFailedIngestSummary(processedCount, failed),
             }
           : current,
       );

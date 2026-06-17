@@ -181,6 +181,30 @@ describe("LlmWikiPanel", () => {
         ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     });
 
+    it("renders a bounded progress preview for very large messages", () => {
+        const largeMessage = Array.from(
+            { length: 300 },
+            (_, index) => `raw/large/note-${index}.md`,
+        ).join("\n");
+
+        act(() => {
+            root.render(
+                <LlmWikiPanel
+                    llmWiki={createHook({
+                        message: largeMessage,
+                    })}
+                />,
+            );
+        });
+
+        const progress = host.querySelector('[data-testid="llm-wiki-progress"]');
+
+        expect(progress).not.toBeNull();
+        expect(progress?.textContent).toContain("raw/large/note-0.md");
+        expect(progress?.textContent).not.toContain("raw/large/note-299.md");
+        expect(progress?.textContent?.length ?? 0).toBeLessThan(5000);
+    });
+
     it("allows question input while raw ingest is active", () => {
         act(() => {
             root.render(

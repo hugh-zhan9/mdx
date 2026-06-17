@@ -86,6 +86,30 @@ describe("createLlmWikiStatusViewModel", () => {
         ]);
     });
 
+    it("limits failed raw files exposed to the panel", () => {
+        const failures = Array.from({ length: 120 }, (_, index) => ({
+            path: `raw/failed-${index}.md`,
+            reason: "llm_failed: failed",
+        }));
+
+        const viewModel = createLlmWikiStatusViewModel({
+            mode: "llmWiki",
+            llmConfigured: true,
+            paused: false,
+            totalRawFiles: 130,
+            pendingCount: 0,
+            completedCount: 10,
+            failedCount: failures.length,
+            failed: failures,
+            skippedCount: 0,
+        });
+
+        expect(viewModel.statusLines).toContain("失败：120");
+        expect(viewModel.failed).toHaveLength(50);
+        expect(viewModel.failed[0]?.path).toBe("raw/failed-0.md");
+        expect(viewModel.failed.at(-1)?.path).toBe("raw/failed-49.md");
+    });
+
     it("groups panel modes by task priority", () => {
         const viewModel = createLlmWikiStatusViewModel({
             mode: "llmWiki",

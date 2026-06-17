@@ -30,12 +30,12 @@ describe("normalizePersistedWindowSize", () => {
     it("rounds valid physical window sizes", () => {
         expect(
             normalizePersistedWindowSize({
-                width: 1280.4,
-                height: 768.6,
+                width: 1440.4,
+                height: 900.6,
             }),
         ).toEqual({
-            width: 1280,
-            height: 769,
+            width: 1440,
+            height: 901,
         });
     });
 });

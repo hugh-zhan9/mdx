@@ -10,6 +10,7 @@ import type {
   MemoryBackendStatus,
   MemoryConfig,
   MemoryConfigSetRequest,
+  MemoryConfigUpdateRequest,
   MemoryDoctorReport,
   MemoryIndexStatus,
   MemoryIntegrationStatus,
@@ -19,6 +20,8 @@ import type {
   MemoryRecord,
   MemoryRepairRequest,
   MemoryRepairResult,
+  MemoryStorageMigrateRequest,
+  MemoryStorageMigrationReport,
   MemorySummary,
   MemoryThreadRecord,
   MemoryWorkspaceStatus,
@@ -86,6 +89,33 @@ export function setMemoryConfig(
   request: MemoryConfigSetRequest,
 ): Promise<MemoryConfig> {
   return invokeCommand("memory_config_set", { rootPath, request });
+}
+
+export function updateMemoryConfig(
+  rootPath: string,
+  request: MemoryConfigUpdateRequest,
+): Promise<MemoryConfig> {
+  return invokeCommand("memory_config_update", { rootPath, request });
+}
+
+export function dryRunMemoryStorageMigration(
+  rootPath: string,
+  request: MemoryStorageMigrateRequest,
+): Promise<MemoryStorageMigrationReport> {
+  return invokeCommand("memory_storage_migrate_dry_run", {
+    rootPath,
+    request,
+  });
+}
+
+export function runMemoryStorageMigration(
+  rootPath: string,
+  request: MemoryStorageMigrateRequest,
+): Promise<MemoryStorageMigrationReport> {
+  return invokeCommand("memory_storage_migrate", {
+    rootPath,
+    request,
+  });
 }
 
 export function rebuildMemoryIndex(rootPath: string): Promise<MemoryIndexStatus> {

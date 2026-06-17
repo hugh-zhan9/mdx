@@ -246,6 +246,36 @@ pub struct MemoryConfigSetRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+pub struct MemoryConfigUpdateRequest {
+    pub scope: String,
+    #[serde(default)]
+    pub provider: Option<MemoryProviderConfigUpdate>,
+    #[serde(default)]
+    pub storage: Option<MemoryStorageConfigUpdate>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryProviderConfigUpdate {
+    #[serde(default)]
+    pub mode: Option<String>,
+    #[serde(default)]
+    pub provider: Option<Option<String>>,
+    #[serde(default)]
+    pub model: Option<Option<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct MemoryStorageConfigUpdate {
+    #[serde(default)]
+    pub backend: Option<String>,
+    #[serde(default)]
+    pub postgres_url_ref: Option<Option<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub struct MemoryMasterConfig {
     #[serde(default = "default_enabled")]
     pub enabled: bool,

@@ -1,5 +1,7 @@
 import type { LlmWikiPanelState, LlmWikiStatusViewModel } from "./types";
 
+const MAX_FAILED_DETAILS = 50;
+
 export function createLlmWikiStatusViewModel(
     state: LlmWikiPanelState,
 ): LlmWikiStatusViewModel {
@@ -19,6 +21,7 @@ export function createLlmWikiStatusViewModel(
         };
     }
 
+    const hasHiddenFailedDetails = state.failed.length > MAX_FAILED_DETAILS;
     const statusLines = [
         state.paused ? "状态：已暂停" : "状态：就绪",
         `raw 文件：${state.totalRawFiles}`,
@@ -26,6 +29,9 @@ export function createLlmWikiStatusViewModel(
         `已完成：${state.completedCount}`,
         `失败：${state.failedCount}`,
         `已跳过：${state.skippedCount}`,
+        ...(hasHiddenFailedDetails
+            ? [`失败明细：显示前 ${MAX_FAILED_DETAILS} 条`]
+            : []),
     ];
 
     return {
@@ -36,7 +42,7 @@ export function createLlmWikiStatusViewModel(
               ? "重新扫描 raw"
               : "配置 LLM",
         statusLines,
-        failed: state.failed,
+        failed: state.failed.slice(0, MAX_FAILED_DETAILS),
         modes: createModes(state.llmConfigured),
         secondaryActions: createSecondaryActions(!state.llmConfigured),
         emptyState: state.llmConfigured

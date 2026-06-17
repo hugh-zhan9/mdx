@@ -98,6 +98,32 @@ fn memory_config_set(
 }
 
 #[tauri::command]
+fn memory_config_update(
+    root_path: String,
+    request: memory::MemoryConfigUpdateRequest,
+) -> Result<memory::MemoryConfig, WorkspaceError> {
+    memory::memory_config_update(root_path, request)
+}
+
+#[tauri::command]
+fn memory_storage_migrate_dry_run(
+    root_path: String,
+    request: memory::MemoryStorageMigrateRequest,
+) -> Result<memory::MemoryStorageMigrationReport, WorkspaceError> {
+    let root = path_guard::canonicalize_workspace_root(root_path)?;
+    memory_storage_migration::dry_run_storage_migration_request(root, request)
+}
+
+#[tauri::command]
+fn memory_storage_migrate(
+    root_path: String,
+    request: memory::MemoryStorageMigrateRequest,
+) -> Result<memory::MemoryStorageMigrationReport, WorkspaceError> {
+    let root = path_guard::canonicalize_workspace_root(root_path)?;
+    memory_storage_migration::run_storage_migration_request(root, request)
+}
+
+#[tauri::command]
 fn memory_backend_status(root_path: String) -> Result<memory::MemoryBackendStatus, WorkspaceError> {
     memory::memory_backend_status(root_path)
 }
@@ -404,6 +430,9 @@ mod memory_tauri_command_tests {
             "memory_initialize_workspace",
             "memory_repair_workspace",
             "memory_config_set",
+            "memory_config_update",
+            "memory_storage_migrate_dry_run",
+            "memory_storage_migrate",
             "memory_backend_status",
             "memory_integration_status",
             "memory_integration_repair",
@@ -977,6 +1006,9 @@ pub fn run() {
             memory_initialize_workspace,
             memory_repair_workspace,
             memory_config_set,
+            memory_config_update,
+            memory_storage_migrate_dry_run,
+            memory_storage_migrate,
             memory_backend_status,
             memory_integration_status,
             memory_integration_repair,

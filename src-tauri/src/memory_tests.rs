@@ -244,6 +244,64 @@ fn storage_migration_dry_run_reports_copy_counts_without_switching_backend() {
 }
 
 #[test]
+fn storage_migration_copies_records_and_switches_config_after_success() {
+    let root = tempfile::tempdir().unwrap();
+    let target = tempfile::tempdir().unwrap();
+    crate::memory::initialize_memory_workspace(root.path()).unwrap();
+    let mut sqlite =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root.path()).unwrap();
+    sqlite.initialize().unwrap();
+    sqlite
+        .insert_memory_for_test(
+            "memory-1",
+            "workspace:test",
+            "workspace:test",
+            "Decision",
+            "Use DB first.",
+            &["db"],
+            0.9,
+        )
+        .unwrap();
+    sqlite
+        .upsert_thread(&crate::memory_storage::StoredThreadWrite {
+            thread_id: "codex:migration".to_string(),
+            workspace_id: crate::memory_storage::workspace_scope_for_root(root.path()).workspace_id,
+            agent_source: "codex".to_string(),
+            session_pk: None,
+            title: "Migration thread".to_string(),
+            body: "thread body".to_string(),
+            content_hash: "sha256:migration".to_string(),
+            message_count: Some(1),
+            distilled: Some(false),
+            promoted_to_wiki: Some(false),
+            created_at: "2026-06-14T10:00:00Z".to_string(),
+            updated_at: "2026-06-14T10:00:00Z".to_string(),
+        })
+        .unwrap();
+
+    let report = crate::memory_storage_migration::run_storage_migration_to_sqlite_for_test(
+        root.path(),
+        target.path(),
+    )
+    .unwrap();
+
+    assert_eq!(report.records_seen.get("memories"), Some(&1));
+    assert_eq!(report.records_seen.get("threads"), Some(&1));
+    assert_eq!(report.records_copied.get("memories"), Some(&1));
+    assert_eq!(report.records_copied.get("threads"), Some(&1));
+    assert!(report.config_switched);
+
+    let config = crate::memory::load_memory_config_for_root(root.path()).unwrap();
+    assert_eq!(config.storage.backend, "sqlite");
+
+    let mut migrated =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(target.path()).unwrap();
+    migrated.initialize().unwrap();
+    assert_eq!(migrated.list_memory_records_for_migration().unwrap().len(), 1);
+    assert_eq!(migrated.list_thread_records_for_migration().unwrap().len(), 1);
+}
+
+#[test]
 fn daemon_storage_migration_dry_run_reports_invalid_request_flags() {
     let root = tempfile::tempdir().unwrap();
     crate::memory::initialize_memory_workspace(root.path()).unwrap();

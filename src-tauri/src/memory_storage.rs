@@ -66,6 +66,19 @@ pub struct StoredJob {
     pub last_error: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredAgentIntegration {
+    pub integration_id: String,
+    pub workspace_id: String,
+    pub agent_source: String,
+    pub enabled: bool,
+    pub paused: bool,
+    pub hook_version: Option<String>,
+    pub installed_at: Option<String>,
+    pub last_event_at: Option<String>,
+    pub last_error: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoredMemoryWrite {
     pub memory_id: String,
@@ -80,6 +93,22 @@ pub struct StoredMemoryWrite {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct StoredMemoryRecord {
+    pub memory_id: String,
+    pub workspace_id: String,
+    pub project_key: String,
+    pub title: String,
+    pub body: String,
+    pub status: String,
+    pub tags: Vec<String>,
+    pub importance: Option<f64>,
+    pub confidence: Option<f64>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub archived_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct StoredThreadWrite {
     pub thread_id: String,
     pub workspace_id: String,
@@ -91,6 +120,22 @@ pub struct StoredThreadWrite {
     pub message_count: Option<i64>,
     pub distilled: Option<bool>,
     pub promoted_to_wiki: Option<bool>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StoredThreadRecord {
+    pub thread_id: String,
+    pub workspace_id: String,
+    pub agent_source: String,
+    pub session_pk: Option<String>,
+    pub title: String,
+    pub body: String,
+    pub content_hash: String,
+    pub message_count: Option<i64>,
+    pub distilled: bool,
+    pub promoted_to_wiki: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -120,6 +165,22 @@ pub struct StoredInboxWrite {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct StoredInboxRecord {
+    pub inbox_id: String,
+    pub workspace_id: String,
+    pub project_key: String,
+    pub title: String,
+    pub body: String,
+    pub status: String,
+    pub tags: Vec<String>,
+    pub confidence: Option<f64>,
+    pub risk_level: String,
+    pub accepted_memory_id: Option<String>,
+    pub created_at: String,
+    pub reviewed_at: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredProvenanceLink {
     pub link_id: String,
@@ -132,6 +193,54 @@ pub struct StoredProvenanceLink {
     pub model: Option<String>,
     pub prompt_version: String,
     pub created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredJobAttempt {
+    pub attempt_id: String,
+    pub job_id: String,
+    pub started_at: String,
+    pub ended_at: Option<String>,
+    pub status: String,
+    pub error_code: Option<String>,
+    pub error_message: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredHookLog {
+    pub log_id: String,
+    pub workspace_id: Option<String>,
+    pub agent_source: String,
+    pub event_name: String,
+    pub duration_ms: i64,
+    pub result: String,
+    pub disabled_reason: Option<String>,
+    pub error_code: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredProjectionRecord {
+    pub projection_id: String,
+    pub workspace_id: String,
+    pub target_type: String,
+    pub target_id: String,
+    pub path: String,
+    pub status: String,
+    pub content_hash: Option<String>,
+    pub projection_version: i64,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredFeatureFlag {
+    pub flag_id: String,
+    pub scope: String,
+    pub scope_id: String,
+    pub key: String,
+    pub enabled: bool,
+    pub reason: Option<String>,
+    pub updated_at: String,
 }
 
 pub trait MemoryStorage {

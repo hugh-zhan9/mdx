@@ -4,6 +4,7 @@ import { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  formatPendingRawStartMessage,
   useLlmWikiWorkspace,
   type LlmWikiWorkspaceHook,
 } from "./use-llm-wiki-workspace";
@@ -494,5 +495,19 @@ describe("useLlmWikiWorkspace", () => {
 
     expect(latest?.isReady).toBe(true);
     expect(client.rescanRaw).toHaveBeenCalledWith("/tmp/wiki");
+  });
+
+  it("does not put every pending raw path into the background ingest start message", () => {
+    const pending = Array.from(
+      { length: 250 },
+      (_, index) => `raw/large/note-${index}.md`,
+    );
+
+    const message = formatPendingRawStartMessage(0, pending);
+
+    expect(message).toContain("待处理：250");
+    expect(message).toContain("raw/large/note-0.md");
+    expect(message).not.toContain("raw/large/note-249.md");
+    expect(message.length).toBeLessThan(1000);
   });
 });

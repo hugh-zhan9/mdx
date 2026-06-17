@@ -92,6 +92,19 @@ export interface MemoryConfigSetRequest {
   enabled: boolean;
 }
 
+export interface MemoryConfigUpdateRequest {
+  scope: "workspace";
+  provider?: {
+    mode?: string;
+    provider?: string | null;
+    model?: string | null;
+  };
+  storage?: {
+    backend?: string;
+    postgres_url_ref?: string | null;
+  };
+}
+
 export interface MemoryConfig {
   version: number;
   memory: { enabled: boolean };
@@ -119,6 +132,27 @@ export interface MemoryConfig {
     provider: string | null;
     model: string | null;
   };
+}
+
+export interface MemoryStorageMigrateRequest {
+  from: string;
+  to: string;
+  target: string | null;
+  dry_run: boolean;
+  resume: boolean;
+}
+
+export interface MemoryStorageMigrationReport {
+  migration_id: string;
+  from: string;
+  to: string;
+  dry_run: boolean;
+  records_seen: Record<string, number>;
+  records_copied: Record<string, number>;
+  records_skipped: Record<string, number>;
+  validation_errors: string[];
+  backup_path: string | null;
+  config_switched: boolean;
 }
 
 export interface MemoryIndexStatus {

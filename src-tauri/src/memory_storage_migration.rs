@@ -106,6 +106,250 @@ pub fn dry_run_storage_migration_request(
     Ok(report)
 }
 
+pub fn run_storage_migration_request(
+    root: impl AsRef<Path>,
+    request: MemoryStorageMigrateRequest,
+) -> Result<MemoryStorageMigrationReport, WorkspaceError> {
+    if request.dry_run {
+        return Err(WorkspaceError::new(
+            "dry_run_not_migration",
+            "storage migration requires dry_run=false",
+        ));
+    }
+    if request.resume {
+        return Err(WorkspaceError::new(
+            "resume_not_supported",
+            "storage migration resume is not supported yet",
+        ));
+    }
+
+    let root = root.as_ref();
+    let target = request.target.as_deref();
+    let mut validation_errors = Vec::new();
+    validate_storage_migration_target(&request.to, target, &mut validation_errors);
+    if request.from != "sqlite" {
+        validation_errors.push(format!("unsupported_source:{}", request.from));
+    }
+    if !validation_errors.is_empty() {
+        return Ok(migration_report(
+            &request.from,
+            &request.to,
+            false,
+            BTreeMap::new(),
+            BTreeMap::new(),
+            BTreeMap::new(),
+            validation_errors,
+            false,
+        )?);
+    }
+
+    match request.to.as_str() {
+        "postgresql" => {
+            let target = target.expect("validated target is present");
+            let mut target_storage =
+                crate::memory_storage_postgres::PostgresMemoryStorage::connect(target)?;
+            target_storage.scope_to_workspace(root);
+            target_storage.initialize()?;
+            migrate_sqlite_to_storage(root, &mut target_storage, &request.to, target)
+        }
+        other => Err(WorkspaceError::new(
+            "unsupported_target",
+            format!("unsupported memory migration target: {other}"),
+        )),
+    }
+}
+
+#[cfg(test)]
+pub fn run_storage_migration_to_sqlite_for_test(
+    root: impl AsRef<Path>,
+    target_root: impl AsRef<Path>,
+) -> Result<MemoryStorageMigrationReport, WorkspaceError> {
+    let target_root = target_root.as_ref();
+    crate::memory::initialize_memory_workspace(target_root)?;
+    let mut target_storage =
+        crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(target_root)?;
+    target_storage.initialize()?;
+    migrate_sqlite_to_storage(root, &mut target_storage, "sqlite", "sqlite:test")
+}
+
+fn migrate_sqlite_to_storage(
+    root: impl AsRef<Path>,
+    target_storage: &mut dyn MigrationTargetStorage,
+    target_backend: &str,
+    target_ref: &str,
+) -> Result<MemoryStorageMigrationReport, WorkspaceError> {
+    let root = root.as_ref();
+    let mut source = crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(root)?;
+    source.initialize()?;
+    import_markdown_memory_to_db(root, &mut source)?;
+
+    let memories = source.list_memory_records_for_migration()?;
+    let threads = source.list_thread_records_for_migration()?;
+    let mut records_seen = BTreeMap::new();
+    records_seen.insert("memories".to_string(), memories.len());
+    records_seen.insert("threads".to_string(), threads.len());
+
+    let mut records_copied = BTreeMap::new();
+    let mut records_skipped = BTreeMap::new();
+
+    let copied_memories = copy_count(
+        memories
+            .iter()
+            .map(|memory| target_storage.insert_migrated_memory(memory)),
+    )?;
+    records_copied.insert("memories".to_string(), copied_memories.0);
+    records_skipped.insert("memories".to_string(), copied_memories.1);
+
+    let copied_threads = copy_count(
+        threads
+            .iter()
+            .map(|thread| target_storage.upsert_migrated_thread(thread)),
+    )?;
+    records_copied.insert("threads".to_string(), copied_threads.0);
+    records_skipped.insert("threads".to_string(), copied_threads.1);
+
+    switch_memory_storage_config(root, target_backend, target_ref)?;
+
+    migration_report(
+        "sqlite",
+        target_backend,
+        false,
+        records_seen,
+        records_copied,
+        records_skipped,
+        Vec::new(),
+        true,
+    )
+}
+
+trait MigrationTargetStorage {
+    fn insert_migrated_memory(
+        &mut self,
+        memory: &crate::memory_storage::StoredMemoryRecord,
+    ) -> Result<bool, WorkspaceError>;
+    fn upsert_migrated_thread(
+        &mut self,
+        thread: &crate::memory_storage::StoredThreadRecord,
+    ) -> Result<bool, WorkspaceError>;
+}
+
+impl MigrationTargetStorage for crate::memory_storage_postgres::PostgresMemoryStorage {
+    fn insert_migrated_memory(
+        &mut self,
+        memory: &crate::memory_storage::StoredMemoryRecord,
+    ) -> Result<bool, WorkspaceError> {
+        self.insert_memory_record_for_migration(memory)
+    }
+
+    fn upsert_migrated_thread(
+        &mut self,
+        thread: &crate::memory_storage::StoredThreadRecord,
+    ) -> Result<bool, WorkspaceError> {
+        self.upsert_thread_record_for_migration(thread)
+    }
+}
+
+#[cfg(test)]
+impl MigrationTargetStorage for crate::memory_storage_sqlite::SqliteMemoryStorage {
+    fn insert_migrated_memory(
+        &mut self,
+        memory: &crate::memory_storage::StoredMemoryRecord,
+    ) -> Result<bool, WorkspaceError> {
+        self.insert_memory(&StoredMemoryWrite {
+            memory_id: memory.memory_id.clone(),
+            workspace_id: memory.workspace_id.clone(),
+            project_key: memory.project_key.clone(),
+            title: memory.title.clone(),
+            body: memory.body.clone(),
+            tags: memory.tags.clone(),
+            importance: memory.importance,
+            confidence: memory.confidence,
+            created_at: memory.created_at.clone(),
+        })
+    }
+
+    fn upsert_migrated_thread(
+        &mut self,
+        thread: &crate::memory_storage::StoredThreadRecord,
+    ) -> Result<bool, WorkspaceError> {
+        self.upsert_thread(&StoredThreadWrite {
+            thread_id: thread.thread_id.clone(),
+            workspace_id: thread.workspace_id.clone(),
+            agent_source: thread.agent_source.clone(),
+            session_pk: thread.session_pk.clone(),
+            title: thread.title.clone(),
+            body: thread.body.clone(),
+            content_hash: thread.content_hash.clone(),
+            message_count: thread.message_count,
+            distilled: Some(thread.distilled),
+            promoted_to_wiki: Some(thread.promoted_to_wiki),
+            created_at: thread.created_at.clone(),
+            updated_at: thread.updated_at.clone(),
+        })
+    }
+}
+
+fn copy_count<I>(results: I) -> Result<(usize, usize), WorkspaceError>
+where
+    I: IntoIterator<Item = Result<bool, WorkspaceError>>,
+{
+    let mut copied = 0;
+    let mut skipped = 0;
+    for result in results {
+        if result? {
+            copied += 1;
+        } else {
+            skipped += 1;
+        }
+    }
+    Ok((copied, skipped))
+}
+
+fn switch_memory_storage_config(
+    root: &Path,
+    backend: &str,
+    target_ref: &str,
+) -> Result<(), WorkspaceError> {
+    let mut config = crate::memory_fs::read_memory_config(root)?;
+    config.storage.backend = backend.to_string();
+    config.storage.postgres_url_ref = if backend == "postgresql" {
+        Some(target_ref.to_string())
+    } else {
+        config.storage.postgres_url_ref
+    };
+    let contents = serde_json::to_vec_pretty(&config).map_err(|error| {
+        WorkspaceError::new(
+            "json_encode_failed",
+            format!("failed to encode memory config: {error}"),
+        )
+    })?;
+    crate::memory_fs::write_workspace_file(root, ".mdx/memory-config.json", &contents)
+}
+
+fn migration_report(
+    from: &str,
+    to: &str,
+    dry_run: bool,
+    records_seen: BTreeMap<String, usize>,
+    records_copied: BTreeMap<String, usize>,
+    records_skipped: BTreeMap<String, usize>,
+    validation_errors: Vec<String>,
+    config_switched: bool,
+) -> Result<MemoryStorageMigrationReport, WorkspaceError> {
+    Ok(MemoryStorageMigrationReport {
+        migration_id: format!("migration:{}:{to}", crate::memory_fs::now_utc_rfc3339()?),
+        from: from.to_string(),
+        to: to.to_string(),
+        dry_run,
+        records_seen,
+        records_copied,
+        records_skipped,
+        validation_errors,
+        backup_path: None,
+        config_switched,
+    })
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
 struct LegacyMemoryFrontmatter {

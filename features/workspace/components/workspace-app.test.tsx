@@ -17,6 +17,7 @@ const confirm = vi.fn(async () => true);
 const destroy = vi.fn(async () => {});
 const draftDelete = vi.fn(async () => {});
 const invoke = vi.fn(async () => {});
+const persistCurrentWindowSize = vi.fn(async () => {});
 const useWorkspaceBootstrap = vi.fn();
 
 vi.mock("@/common/lib/tauri", () => ({
@@ -88,6 +89,7 @@ describe("WorkspaceApp window close", () => {
         searchMaxMatchesPerFile: 20,
       },
       updatePreferences: vi.fn(),
+      persistCurrentWindowSize,
     });
     host = document.createElement("div");
     document.body.append(host);
@@ -115,6 +117,7 @@ describe("WorkspaceApp window close", () => {
 
     expect(preventDefault).toHaveBeenCalledOnce();
     expect(close).not.toHaveBeenCalled();
+    expect(persistCurrentWindowSize).toHaveBeenCalledOnce();
     expect(destroy).toHaveBeenCalledOnce();
     expect(invoke).toHaveBeenCalledWith("workspace_close_diagnostic", {
       stage: "close-destroy-clean",
@@ -153,6 +156,7 @@ describe("WorkspaceApp window close", () => {
         searchMaxMatchesPerFile: 20,
       },
       updatePreferences: vi.fn(),
+      persistCurrentWindowSize,
     });
     await act(async () => {
       root.render(<WorkspaceApp />);
@@ -169,6 +173,7 @@ describe("WorkspaceApp window close", () => {
     expect(preventDefault).toHaveBeenCalledOnce();
     expect(confirm).toHaveBeenCalledOnce();
     expect(draftDelete).toHaveBeenCalledWith({ realPath: "/tmp/ws/note.md" });
+    expect(persistCurrentWindowSize).toHaveBeenCalledOnce();
     expect(destroy).toHaveBeenCalledOnce();
     expect(close).not.toHaveBeenCalled();
     expect(invoke).toHaveBeenCalledWith("workspace_close_diagnostic", {

@@ -1,8 +1,8 @@
 import type { PersistedWindowSize } from "./types";
 
 export const DEFAULT_WINDOW_SIZE: PersistedWindowSize = {
-    width: 1280,
-    height: 820,
+    width: 1440,
+    height: 900,
 };
 
 export const MIN_WINDOW_SIZE: PersistedWindowSize = {

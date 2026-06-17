@@ -14,8 +14,8 @@ fn loads_empty_state_when_state_file_is_missing() {
     assert_eq!(state.state_version, 1);
     assert!(state.recent_workspace_root.is_none());
     assert!(state.workspaces.is_empty());
-    assert_eq!(state.window_size.width, 1280.0);
-    assert_eq!(state.window_size.height, 820.0);
+    assert_eq!(state.window_size.width, 1440.0);
+    assert_eq!(state.window_size.height, 900.0);
 }
 
 #[test]
@@ -236,6 +236,6 @@ fn save_normalizes_invalid_app_state_values() {
     assert_eq!(saved.workspaces[0].tabs[0].title, "Untitled");
     assert_eq!(saved.workspaces[0].panels.left_width, 160);
     assert_eq!(saved.workspaces[0].panels.right_width, 640);
-    assert_eq!(saved.window_size.width, 1280.0);
+    assert_eq!(saved.window_size.width, 1440.0);
     assert_eq!(saved.window_size.height, 640.0);
 }

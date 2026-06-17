@@ -4,10 +4,13 @@ import {
   addMemory,
   appendWorkingMemory,
   detectMemoryWorkspace,
+  dryRunMemoryStorageMigration,
   getMemoryBackendStatus,
   getMemoryIntegrationStatus,
   recallMemory,
+  runMemoryStorageMigration,
   setMemoryConfig,
+  updateMemoryConfig,
 } from "./memory-client";
 
 vi.mock("@/common/lib/tauri", () => ({
@@ -193,6 +196,135 @@ describe("memory-client", () => {
         scope: "workspace",
         key: "agent_backend.capture_enabled",
         enabled: false,
+      },
+    });
+  });
+
+  it("forwards memory config update requests", async () => {
+    const invoke = vi.fn(async () => ({
+      version: 2,
+      memory: { enabled: true },
+      agent_backend: {
+        enabled: true,
+        capture_enabled: false,
+        recall_injection_enabled: true,
+        distill_enabled: true,
+        auto_accept: false,
+        context_byte_budget: 4096,
+      },
+      projection: { enabled: true },
+      agents: {
+        codex: { enabled: false, paused: false },
+        claude: { enabled: false, paused: false },
+        cursor: { enabled: false, paused: false },
+      },
+      storage: {
+        backend: "postgresql",
+        sqlite_path: null,
+        postgres_url_ref: "postgresql://localhost/mdx",
+      },
+      provider: {
+        mode: "provider",
+        provider: "openai",
+        model: null,
+      },
+    }));
+    vi.mocked(tauriCore).mockResolvedValue({
+      invoke,
+    } as unknown as Awaited<ReturnType<typeof tauriCore>>);
+
+    await updateMemoryConfig("/tmp/ws", {
+      scope: "workspace",
+      provider: { mode: "provider", provider: "openai" },
+      storage: {
+        backend: "postgresql",
+        postgres_url_ref: "postgresql://localhost/mdx",
+      },
+    });
+
+    expect(invoke).toHaveBeenCalledWith("memory_config_update", {
+      rootPath: "/tmp/ws",
+      request: {
+        scope: "workspace",
+        provider: { mode: "provider", provider: "openai" },
+        storage: {
+          backend: "postgresql",
+          postgres_url_ref: "postgresql://localhost/mdx",
+        },
+      },
+    });
+  });
+
+  it("forwards memory storage migration dry-run requests", async () => {
+    const invoke = vi.fn(async () => ({
+      migration_id: "migration:1:postgresql",
+      from: "sqlite",
+      to: "postgresql",
+      dry_run: true,
+      records_seen: { memories: 2, threads: 1 },
+      records_copied: {},
+      records_skipped: {},
+      validation_errors: [],
+      backup_path: null,
+      config_switched: false,
+    }));
+    vi.mocked(tauriCore).mockResolvedValue({
+      invoke,
+    } as unknown as Awaited<ReturnType<typeof tauriCore>>);
+
+    await dryRunMemoryStorageMigration("/tmp/ws", {
+      from: "sqlite",
+      to: "postgresql",
+      target: "postgresql://localhost/mdx",
+      dry_run: true,
+      resume: false,
+    });
+
+    expect(invoke).toHaveBeenCalledWith("memory_storage_migrate_dry_run", {
+      rootPath: "/tmp/ws",
+      request: {
+        from: "sqlite",
+        to: "postgresql",
+        target: "postgresql://localhost/mdx",
+        dry_run: true,
+        resume: false,
+      },
+    });
+  });
+
+  it("forwards memory storage migration apply requests", async () => {
+    const invoke = vi.fn(async () => ({
+      migration_id: "migration:1:postgresql",
+      from: "sqlite",
+      to: "postgresql",
+      dry_run: false,
+      records_seen: { memories: 2, threads: 1 },
+      records_copied: { memories: 2, threads: 1 },
+      records_skipped: {},
+      validation_errors: [],
+      backup_path: null,
+      config_switched: true,
+    }));
+    vi.mocked(tauriCore).mockResolvedValue({
+      invoke,
+    } as unknown as Awaited<ReturnType<typeof tauriCore>>);
+
+    await runMemoryStorageMigration("/tmp/ws", {
+      from: "sqlite",
+      to: "postgresql",
+      target: "postgresql://localhost/mdx",
+      dry_run: false,
+      resume: false,
+    });
+
+    expect(invoke).toHaveBeenCalledWith("memory_storage_migrate", {
+      rootPath: "/tmp/ws",
+      request: {
+        from: "sqlite",
+        to: "postgresql",
+        target: "postgresql://localhost/mdx",
+        dry_run: false,
+        resume: false,
       },
     });
   });

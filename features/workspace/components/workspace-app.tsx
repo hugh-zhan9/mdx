@@ -43,6 +43,7 @@ function WorkspaceAppInner() {
         message,
         preferences,
         updatePreferences,
+        persistCurrentWindowSize,
     } = useWorkspaceBootstrap();
     useEffect(() => {
         workspaceRef.current = workspace;
@@ -96,7 +97,7 @@ function WorkspaceAppInner() {
         chooseWorkspaceWithGuard,
     );
     useWorkspaceOpenFolderStartupAction(chooseWorkspaceWithGuard);
-    useWorkspaceCloseGuard(workspaceRef, dialogs);
+    useWorkspaceCloseGuard(workspaceRef, dialogs, persistCurrentWindowSize);
 
     return (
         <main
@@ -217,6 +218,7 @@ function useWorkspaceMenuEvents(
 function useWorkspaceCloseGuard(
     workspaceRef: RefObject<WorkspaceState | null>,
     dialogs: ReturnType<typeof useAppDialogs>,
+    persistCurrentWindowSize: () => Promise<void>,
 ) {
     const closingRef = useRef(false);
 
@@ -258,7 +260,9 @@ function useWorkspaceCloseGuard(
                         logWorkspaceCloseDiagnostic("close-destroy-clean", {
                             hasWorkspace: Boolean(workspace),
                         });
-                        void closeWorkspaceWindow(currentWindow).catch((error) => {
+                        void persistCurrentWindowSize()
+                            .then(() => closeWorkspaceWindow(currentWindow))
+                            .catch((error) => {
                             closingRef.current = false;
                             logWorkspaceCloseDiagnostic("close-destroy-failed", {
                                 message: formatError(error, "close failed"),
@@ -296,6 +300,8 @@ function useWorkspaceCloseGuard(
                             logWorkspaceCloseDiagnostic("close-destroy-start", {
                                 dirtyTabCount: dirtyCount,
                             });
+                            return persistCurrentWindowSize();
+                        }).then(() => {
                             return closeWorkspaceWindow(currentWindow);
                         }).catch((error) => {
                             closingRef.current = false;
@@ -339,7 +345,7 @@ function useWorkspaceCloseGuard(
             disposed = true;
             unlisten?.();
         };
-    }, [dialogs, workspaceRef]);
+    }, [dialogs, persistCurrentWindowSize, workspaceRef]);
 }
 
 function useWorkspaceOpenFolderStartupAction(
