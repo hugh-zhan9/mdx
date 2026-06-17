@@ -87,9 +87,10 @@ export function useEditorBridge({
         });
     }, [editorStore]);
 
+    const rawMarkdown = toMarkdown(renderData) ?? "";
     const currentMarkdown = useMemo(
-        () => restoreWikilinksFromEditor(toMarkdown(renderData) ?? ""),
-        [renderData],
+        () => restoreWikilinksFromEditor(rawMarkdown),
+        [rawMarkdown],
     );
 
     useEffect(() => {
@@ -110,7 +111,7 @@ export function useEditorBridge({
 
         emittedMarkdownRef.current = currentMarkdown;
         onMarkdownChange(tabId, currentMarkdown);
-    }, [currentMarkdown, editorStore, onMarkdownChange, tabId]);
+    }, [currentMarkdown, onMarkdownChange, tabId]);
 
     const focus = useCallback(() => {
         editor?.focus();

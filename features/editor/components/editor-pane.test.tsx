@@ -6,7 +6,7 @@ import {
     resolveEditorRootFromContent,
 } from "./editor-pane";
 
-vi.mock("@do-md/react", () => ({
+vi.mock("./editor-kernel-adapter", () => ({
     DOMD: () => null,
     DOMDProvider: ({ children }: { children: React.ReactNode }) => children,
     toMarkdown: () => "",
@@ -14,8 +14,6 @@ vi.mock("@do-md/react", () => ({
     useEditorStoreApi: () => null,
     useRenderData: () => null,
 }));
-
-vi.mock("@do-md/react/style.css", () => ({}));
 
 vi.mock("./editor-mermaid-preview-layer", () => ({
     EditorMermaidPreviewLayer: () => null,

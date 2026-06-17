@@ -1,28 +1,93 @@
 "use client";
 
+import { useEffect, useMemo, useRef } from "react";
 import {
-    DOMD as KernelDOMD,
-    DOMDProvider as KernelDOMDProvider,
-    toMarkdown as kernelToMarkdown,
-    useEditor as kernelUseEditor,
-    useEditorStoreApi as kernelUseEditorStoreApi,
-    useRenderData as kernelUseRenderData,
-} from "@do-md/react";
-import "@do-md/react/style.css";
+    MdxEditorProvider,
+    MdxEditorView,
+    useMdxEditor,
+} from "../../../packages/mdx-editor/react";
 import type {
-    DOMDProviderProps,
-    Editor,
-    EditorStoreApi,
-    RenderData,
-    SelectionState,
-} from "@do-md/react";
+    MdxEditorContextValue,
+    MdxEditorProviderProps,
+} from "../../../packages/mdx-editor/react";
+import type { SelectionState } from "../../../packages/mdx-editor";
 
-export const DOMDProvider = KernelDOMDProvider;
-export const DOMD = KernelDOMD;
-export const toMarkdown = kernelToMarkdown;
-export const useEditor = kernelUseEditor;
-export const useEditorStoreApi = kernelUseEditorStoreApi;
-export const useRenderData = kernelUseRenderData;
+type StoreListener = (newState: unknown, prevState: unknown) => void;
+
+export interface DOMDProviderProps
+    extends Pick<
+        MdxEditorProviderProps,
+        "children" | "editable" | "placeholder" | "imageLoader" | "codeTokenizer"
+    > {
+    initMd?: string;
+}
+
+export interface Editor {
+    focus(): void;
+}
+
+export interface EditorStoreApi {
+    resetMD(markdown: string): void;
+    insertText(text: string): void;
+    insertImage(url: string, altText?: string): void;
+    getTitle(): string;
+    getSelectionState(contextChars?: number): SelectionState | null;
+    subscribe(listener: StoreListener): () => void;
+}
+
+export interface RenderData {
+    currentMarkdown: string;
+    selection: SelectionState | null;
+}
+
+export function DOMDProvider({
+    children,
+    editable = true,
+    initMd = "",
+    placeholder,
+    imageLoader,
+    codeTokenizer,
+}: DOMDProviderProps) {
+    return (
+        <MdxEditorProvider
+            editable={editable}
+            initialMarkdown={initMd}
+            placeholder={placeholder}
+            imageLoader={imageLoader}
+            codeTokenizer={codeTokenizer}
+        >
+            {children}
+        </MdxEditorProvider>
+    );
+}
+
+export const DOMD = MdxEditorView;
+
+export function useEditor(): Editor | null {
+    const { focus } = useMdxEditor();
+
+    return useMemo(() => ({ focus }), [focus]);
+}
+
+export function useEditorStoreApi(): EditorStoreApi | null {
+    return useCompatStoreApi();
+}
+
+export function useRenderData(): RenderData {
+    const { currentMarkdown, selection } = useMdxEditor();
+
+    return useMemo(
+        () => ({
+            currentMarkdown,
+            selection,
+        }),
+        [currentMarkdown, selection],
+    );
+}
+
+export function toMarkdown(data: RenderData): string | null {
+    return data.currentMarkdown;
+}
 
 export function resetMD(store: EditorStoreApi | null, markdown: string) {
     store?.resetMD(markdown);
@@ -47,10 +112,75 @@ export function getSelectionState(
     return store?.getSelectionState(contextChars) ?? null;
 }
 
-export type {
-    DOMDProviderProps,
-    Editor,
-    EditorStoreApi,
-    RenderData,
-    SelectionState,
-};
+function useCompatStoreApi(): EditorStoreApi {
+    const editor = useMdxEditor();
+    const editorRef = useRef<MdxEditorContextValue>(editor);
+    const listenersRef = useRef(new Set<StoreListener>());
+    const stateRef = useRef<RenderData>({
+        currentMarkdown: editor.currentMarkdown,
+        selection: editor.selection,
+    });
+
+    editorRef.current = editor;
+
+    useEffect(() => {
+        const previousState = stateRef.current;
+        const nextState: RenderData = {
+            currentMarkdown: editor.currentMarkdown,
+            selection: editor.selection,
+        };
+
+        stateRef.current = nextState;
+
+        if (
+            previousState.currentMarkdown === nextState.currentMarkdown &&
+            previousState.selection === nextState.selection
+        ) {
+            return;
+        }
+
+        for (const listener of listenersRef.current) {
+            listener(nextState, previousState);
+        }
+    }, [editor.currentMarkdown, editor.selection]);
+
+    return useMemo(
+        () => ({
+            resetMD(markdown: string) {
+                editorRef.current.resetMarkdown(markdown);
+            },
+            insertText(text: string) {
+                editorRef.current.insertText(text);
+            },
+            insertImage(url: string, altText?: string) {
+                editorRef.current.insertImage(url, altText);
+            },
+            getTitle() {
+                return titleFromMarkdown(editorRef.current.currentMarkdown);
+            },
+            getSelectionState(contextChars?: number) {
+                return editorRef.current.getSelectionSnapshot(contextChars);
+            },
+            subscribe(listener: StoreListener) {
+                listenersRef.current.add(listener);
+
+                return () => {
+                    listenersRef.current.delete(listener);
+                };
+            },
+        }),
+        [],
+    );
+}
+
+function titleFromMarkdown(markdown: string) {
+    const firstLine =
+        markdown
+            .split(/\r?\n/u)
+            .map((line) => line.trim())
+            .find((line) => line.length > 0) ?? "";
+
+    return firstLine.replace(/^#+\s*/u, "");
+}
+
+export type { SelectionState };
