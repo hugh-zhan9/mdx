@@ -146,45 +146,212 @@ function parseBlocks(
 
 function parseInlineText(text: string): ProseMirrorNode[] {
     const children: ProseMirrorNode[] = [];
-    const pattern =
-        /\[\[([^\]\r\n|]+)(?:\|([^\]\r\n]+))?\]\]|\[([^\]\r\n]+)\]\(([^)\s]+)(?:\s+"([^"]+)")?\)/g;
     let cursor = 0;
-    let match: RegExpExecArray | null;
+    let buffer = "";
 
-    while ((match = pattern.exec(text))) {
-        if (match.index > cursor) {
-            children.push(mdxEditorSchema.text(text.slice(cursor, match.index)));
-        }
-        if (match[1]) {
-            const target = match[1];
-            const label = match[2] ?? target;
+    while (cursor < text.length) {
+        const wikilink = tryParseWikilink(text, cursor);
+        if (wikilink) {
+            pushText(children, buffer);
+            buffer = "";
             children.push(
-                mdxEditorSchema.text(label, [
+                mdxEditorSchema.text(wikilink.label, [
                     mdxEditorSchema.marks.link.create({
-                        href: `mdx-wikilink:${encodeURIComponent(
-                            match[2] ? `${target}|${label}` : target,
-                        )}`,
+                        href: `mdx-wikilink:${encodeURIComponent(wikilink.payload)}`,
                     }),
                 ]),
             );
-        } else {
+            cursor = wikilink.nextIndex;
+            continue;
+        }
+
+        const link = tryParseLink(text, cursor);
+        if (link) {
+            pushText(children, buffer);
+            buffer = "";
             children.push(
-                mdxEditorSchema.text(match[3], [
+                mdxEditorSchema.text(link.label, [
                     mdxEditorSchema.marks.link.create({
-                        href: match[4],
-                        title: match[5] ?? null,
+                        href: link.href,
+                        title: link.title,
                     }),
                 ]),
             );
+            cursor = link.nextIndex;
+            continue;
         }
-        cursor = match.index + match[0].length;
+
+        const escaped = tryParseEscapedChar(text, cursor);
+        if (escaped) {
+            buffer += escaped.value;
+            cursor = escaped.nextIndex;
+            continue;
+        }
+
+        buffer += text[cursor];
+        cursor += 1;
     }
 
-    if (cursor < text.length) {
-        children.push(mdxEditorSchema.text(text.slice(cursor)));
-    }
-
+    pushText(children, buffer);
     return children;
+}
+
+function pushText(children: ProseMirrorNode[], text: string) {
+    if (text.length > 0) {
+        children.push(mdxEditorSchema.text(text));
+    }
+}
+
+function tryParseEscapedChar(text: string, startIndex: number) {
+    if (text[startIndex] !== "\\" || startIndex + 1 >= text.length) {
+        return null;
+    }
+
+    return {
+        value: text[startIndex + 1],
+        nextIndex: startIndex + 2,
+    };
+}
+
+function tryParseWikilink(text: string, startIndex: number) {
+    if (!text.startsWith("[[", startIndex)) {
+        return null;
+    }
+
+    let cursor = startIndex + 2;
+    while (cursor < text.length) {
+        if (text[cursor] === "\\" && cursor + 1 < text.length) {
+            cursor += 2;
+            continue;
+        }
+
+        if (text[cursor] === "]" && text[cursor + 1] === "]") {
+            const body = text.slice(startIndex + 2, cursor);
+            const separatorIndex = findUnescaped(body, "|");
+            const rawTarget =
+                separatorIndex >= 0 ? body.slice(0, separatorIndex) : body;
+            const rawLabel =
+                separatorIndex >= 0 ? body.slice(separatorIndex + 1) : rawTarget;
+            const target = decodeEscapes(rawTarget);
+            const label = decodeEscapes(rawLabel);
+
+            return {
+                label,
+                payload:
+                    separatorIndex >= 0 ? `${target}|${label}` : target,
+                nextIndex: cursor + 2,
+            };
+        }
+
+        cursor += 1;
+    }
+
+    return null;
+}
+
+function tryParseLink(text: string, startIndex: number) {
+    if (text[startIndex] !== "[" || text[startIndex + 1] === "[") {
+        return null;
+    }
+
+    const labelEnd = findUnescaped(text, "]", startIndex + 1);
+    if (labelEnd < 0 || text[labelEnd + 1] !== "(") {
+        return null;
+    }
+
+    const rawLabel = text.slice(startIndex + 1, labelEnd);
+    let cursor = labelEnd + 2;
+    let href = "";
+
+    while (cursor < text.length) {
+        const current = text[cursor];
+        if (current === "\\" && cursor + 1 < text.length) {
+            href += text[cursor + 1];
+            cursor += 2;
+            continue;
+        }
+
+        if (current === ")") {
+            return {
+                label: decodeEscapes(rawLabel),
+                href,
+                title: null,
+                nextIndex: cursor + 1,
+            };
+        }
+
+        if (/\s/.test(current)) {
+            break;
+        }
+
+        href += current;
+        cursor += 1;
+    }
+
+    while (cursor < text.length && /\s/.test(text[cursor])) {
+        cursor += 1;
+    }
+
+    if (text[cursor] !== '"') {
+        return null;
+    }
+
+    cursor += 1;
+    let title = "";
+    while (cursor < text.length) {
+        const current = text[cursor];
+        if (current === "\\" && cursor + 1 < text.length) {
+            title += text[cursor + 1];
+            cursor += 2;
+            continue;
+        }
+
+        if (current === '"') {
+            cursor += 1;
+            break;
+        }
+
+        title += current;
+        cursor += 1;
+    }
+
+    while (cursor < text.length && /\s/.test(text[cursor])) {
+        cursor += 1;
+    }
+
+    if (text[cursor] !== ")") {
+        return null;
+    }
+
+    return {
+        label: decodeEscapes(rawLabel),
+        href,
+        title,
+        nextIndex: cursor + 1,
+    };
+}
+
+function findUnescaped(
+    text: string,
+    target: string,
+    startIndex = 0,
+) {
+    for (let index = startIndex; index < text.length; index += 1) {
+        if (text[index] === "\\" && index + 1 < text.length) {
+            index += 1;
+            continue;
+        }
+
+        if (text[index] === target) {
+            return index;
+        }
+    }
+
+    return -1;
+}
+
+function decodeEscapes(text: string) {
+    return text.replace(/\\(.)/g, "$1");
 }
 
 function textNode(text: string): ProseMirrorNode | null {

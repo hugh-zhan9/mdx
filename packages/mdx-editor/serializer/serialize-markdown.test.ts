@@ -52,6 +52,13 @@ describe("serializeMarkdown", () => {
         expect(serializeMarkdown(parsed)).toBe(markdown);
     });
 
+    it("preserves literal markdown-looking text as plain text", () => {
+        const markdown = String.raw`Escaped \[\[Page\]\] and \[x\]\(y\).\n`;
+        const parsed = parseMarkdown(markdown);
+
+        expect(serializeMarkdown(parsed)).toBe(markdown);
+    });
+
     it("preserves unchanged frontmatter and fenced code inner text", () => {
         const markdown = "---\ntitle: Test\n\n---\n\n```mermaid live\ngraph TD\n  A --> B\n```\n";
         const parsed = parseMarkdown(markdown);
@@ -74,6 +81,26 @@ describe("serializeMarkdown", () => {
         expect(serializeMarkdown(emptyParsedDocument(doc))).toBe(
             '[docs](https://example.com "Example Site")\n',
         );
+    });
+
+    it("round-trips links whose href contains closing parentheses", () => {
+        const markdown = String.raw`[docs](https://example.com/a\)b)\n`;
+        const parsed = parseMarkdown(markdown);
+
+        expect(parsed.doc.child(0).child(0).marks[0]?.attrs.href).toBe(
+            "https://example.com/a)b",
+        );
+        expect(serializeMarkdown(parsed)).toBe(markdown);
+    });
+
+    it("round-trips links whose title contains escaped quotes", () => {
+        const markdown = String.raw`[docs](https://example.com "A \"quoted\" title")\n`;
+        const parsed = parseMarkdown(markdown);
+
+        expect(parsed.doc.child(0).child(0).marks[0]?.attrs.title).toBe(
+            'A "quoted" title',
+        );
+        expect(serializeMarkdown(parsed)).toBe(markdown);
     });
 
     it("serializes one normal link spanning multiple text nodes once", () => {

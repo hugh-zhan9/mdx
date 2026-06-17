@@ -315,7 +315,7 @@ function serializeTextRun(
             activeMarks.push(marks[markIndex]);
         }
 
-        serialized += child.text ?? "";
+        serialized += escapePlainText(child.text ?? "");
         nextIndex += 1;
     }
 
@@ -340,7 +340,7 @@ function serializeLinkedText(text: string, link: Mark) {
             ? ` "${escapeLinkTitle(link.attrs.title)}"`
             : "";
 
-    return `[${text}](${href}${title})`;
+    return `[${text}](${escapeLinkHref(href)}${title})`;
 }
 
 function findLinkMark(node: ProseMirrorNode) {
@@ -403,14 +403,16 @@ function serializeWikilink(text: string, href: string) {
         separatorIndex >= 0 ? originalPayload.slice(separatorIndex + 1) : target;
 
     if (text === originalLabel) {
-        return `[[${originalPayload}]]`;
+        return separatorIndex >= 0
+            ? `[[${escapeWikilinkSegment(target)}|${escapeWikilinkSegment(originalLabel)}]]`
+            : `[[${escapeWikilinkSegment(originalPayload)}]]`;
     }
 
     if (text === target) {
-        return `[[${target}]]`;
+        return `[[${escapeWikilinkSegment(target)}]]`;
     }
 
-    return `[[${target}|${text}]]`;
+    return `[[${escapeWikilinkSegment(target)}|${text}]]`;
 }
 
 function decodeWikilinkPayload(payload: string) {
@@ -423,6 +425,23 @@ function decodeWikilinkPayload(payload: string) {
 
 function escapeLinkTitle(title: string) {
     return title.replaceAll('"', '\\"');
+}
+
+function escapeLinkHref(href: string) {
+    return href.replaceAll("\\", "\\\\").replaceAll(")", "\\)");
+}
+
+function escapePlainText(text: string) {
+    return text
+        .replaceAll("\\", "\\\\")
+        .replaceAll("[", "\\[")
+        .replaceAll("]", "\\]");
+}
+
+function escapeWikilinkSegment(segment: string) {
+    return segment
+        .replaceAll("\\", "\\\\")
+        .replaceAll("]", "\\]");
 }
 
 function normalizeLineEndings(value: string) {
