@@ -111,7 +111,7 @@ export function useEditorBridge({
 
         emittedMarkdownRef.current = currentMarkdown;
         onMarkdownChange(tabId, currentMarkdown);
-    }, [currentMarkdown, onMarkdownChange, tabId]);
+    }, [currentMarkdown, editorStore, onMarkdownChange, tabId]);
 
     const focus = useCallback(() => {
         editor?.focus();

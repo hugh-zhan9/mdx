@@ -121,7 +121,9 @@ function useCompatStoreApi(): EditorStoreApi {
         selection: editor.selection,
     });
 
-    editorRef.current = editor;
+    useEffect(() => {
+        editorRef.current = editor;
+    }, [editor]);
 
     useEffect(() => {
         const previousState = stateRef.current;

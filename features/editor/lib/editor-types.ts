@@ -2,8 +2,9 @@ import type { SelectionState } from "../components/editor-kernel-adapter";
 import type { WorkspaceTab } from "@/features/workspace/lib/types";
 
 export interface EditorBridgeState {
-    currentMarkdown: string;
+    markdown: string;
     selection: SelectionState | null;
+    isReady: boolean;
 }
 
 export interface EditorPaneProps {
