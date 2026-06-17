@@ -610,7 +610,7 @@ async function loadAppState() {
 
 async function saveAppState(state: PersistedAppState) {
     const { invoke } = await import("@tauri-apps/api/core");
-    await invoke("save_app_state", { state });
+    await invoke("save_app_state", { state: normalizeAppState(state) });
 }
 
 async function scanWorkspace(rootPath: string, options: ScanWorkspaceOptions) {

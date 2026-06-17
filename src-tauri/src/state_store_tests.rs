@@ -163,3 +163,79 @@ fn saves_and_reloads_workspace_state() {
     assert_eq!(reloaded.window_size.width, 1440.0);
     assert_eq!(reloaded.window_size.height, 900.0);
 }
+
+#[test]
+fn save_normalizes_invalid_app_state_values() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("state.json");
+    let state = AppState {
+        state_version: 0,
+        recent_workspace_root: Some("/tmp/ws".to_string()),
+        preferences: AppPreferences {
+            file_tree_exclude_dirs: vec![
+                " vendor ".to_string(),
+                "vendor".to_string(),
+                "../outside".to_string(),
+            ],
+            file_watch_enabled: true,
+            search_max_file_bytes: 1,
+            search_max_results: 10_000,
+            search_max_matches_per_file: 0,
+        },
+        workspaces: vec![
+            PersistedWorkspaceState {
+                root_path: "".to_string(),
+                tabs: Vec::new(),
+                active_tab_id: None,
+                panels: PersistedPanelState::default(),
+            },
+            PersistedWorkspaceState {
+                root_path: "/tmp/ws".to_string(),
+                tabs: vec![
+                    PersistedWorkspaceTab {
+                        tab_id: " tab-1 ".to_string(),
+                        path: "/tmp/ws/one.md".to_string(),
+                        title: " ".to_string(),
+                        dirty: false,
+                        needs_rename_on_first_save: false,
+                    },
+                    PersistedWorkspaceTab {
+                        tab_id: "tab-2".to_string(),
+                        path: "/other/two.md".to_string(),
+                        title: "two.md".to_string(),
+                        dirty: false,
+                        needs_rename_on_first_save: false,
+                    },
+                ],
+                active_tab_id: Some("tab-1".to_string()),
+                panels: PersistedPanelState {
+                    left_collapsed: false,
+                    left_width: 10,
+                    right_collapsed: false,
+                    right_width: 900,
+                },
+            },
+        ],
+        window_size: PersistedWindowSize {
+            width: f64::NAN,
+            height: 100.2,
+        },
+    };
+
+    save_state_to_path(&path, &state).unwrap();
+
+    let saved = load_state_from_path(&path).unwrap();
+    assert_eq!(saved.state_version, 1);
+    assert_eq!(saved.preferences.file_tree_exclude_dirs, vec!["vendor"]);
+    assert_eq!(saved.preferences.search_max_file_bytes, 1_024);
+    assert_eq!(saved.preferences.search_max_results, 5_000);
+    assert_eq!(saved.preferences.search_max_matches_per_file, 1);
+    assert_eq!(saved.workspaces.len(), 1);
+    assert_eq!(saved.workspaces[0].tabs.len(), 1);
+    assert_eq!(saved.workspaces[0].tabs[0].tab_id, "tab-1");
+    assert_eq!(saved.workspaces[0].tabs[0].title, "Untitled");
+    assert_eq!(saved.workspaces[0].panels.left_width, 160);
+    assert_eq!(saved.workspaces[0].panels.right_width, 640);
+    assert_eq!(saved.window_size.width, 1280.0);
+    assert_eq!(saved.window_size.height, 640.0);
+}

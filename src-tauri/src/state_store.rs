@@ -141,7 +141,8 @@ pub fn load_app_state() -> Result<AppState, WorkspaceError> {
 }
 
 #[tauri::command]
-pub fn save_app_state(state: AppState) -> Result<(), WorkspaceError> {
+pub fn save_app_state(mut state: AppState) -> Result<(), WorkspaceError> {
+    normalize_app_state(&mut state);
     save_state_to_path(default_state_path()?, &state)
 }
 
@@ -174,6 +175,8 @@ pub fn load_state_from_path(path: impl AsRef<Path>) -> Result<AppState, Workspac
 
 pub fn save_state_to_path(path: impl AsRef<Path>, state: &AppState) -> Result<(), WorkspaceError> {
     let path = path.as_ref();
+    let mut state = state.clone();
+    normalize_app_state(&mut state);
     let parent = path.parent().ok_or_else(|| {
         WorkspaceError::new("state_save_failed", "state path has no parent directory")
     })?;
@@ -185,7 +188,7 @@ pub fn save_state_to_path(path: impl AsRef<Path>, state: &AppState) -> Result<()
         )
     })?;
 
-    let bytes = serde_json::to_vec_pretty(state).map_err(|error| {
+    let bytes = serde_json::to_vec_pretty(&state).map_err(|error| {
         WorkspaceError::new(
             "state_save_failed",
             format!("failed to serialize app state: {error}"),
@@ -279,6 +282,110 @@ fn default_search_max_file_bytes() -> u64 {
 
 fn default_search_max_results() -> usize {
     200
+}
+
+fn normalize_app_state(state: &mut AppState) {
+    if state.state_version == 0 {
+        state.state_version = STATE_VERSION;
+    }
+    state.window_size = normalize_window_size(&state.window_size);
+    state.preferences = normalize_preferences(&state.preferences);
+    state.workspaces = state
+        .workspaces
+        .iter()
+        .filter_map(normalize_workspace_state)
+        .collect();
+}
+
+fn normalize_preferences(preferences: &AppPreferences) -> AppPreferences {
+    let mut seen_exclude_dirs = std::collections::BTreeSet::new();
+    AppPreferences {
+        file_tree_exclude_dirs: preferences
+            .file_tree_exclude_dirs
+            .iter()
+            .filter_map(|dir| {
+                let normalized = dir.replace('\\', "/");
+                let trimmed = normalized.trim_matches('/').trim();
+                if trimmed.is_empty() || trimmed.split('/').any(|part| part == "." || part == "..")
+                {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                }
+            })
+            .filter(|dir| seen_exclude_dirs.insert(dir.clone()))
+            .collect(),
+        file_watch_enabled: preferences.file_watch_enabled,
+        search_max_file_bytes: preferences.search_max_file_bytes.clamp(1_024, 52_428_800),
+        search_max_results: preferences.search_max_results.clamp(1, 5_000),
+        search_max_matches_per_file: preferences.search_max_matches_per_file.clamp(1, 500),
+    }
+}
+
+fn normalize_workspace_state(
+    workspace: &PersistedWorkspaceState,
+) -> Option<PersistedWorkspaceState> {
+    let root_path = workspace.root_path.trim().to_string();
+    if root_path.is_empty() {
+        return None;
+    }
+
+    Some(PersistedWorkspaceState {
+        root_path: root_path.clone(),
+        tabs: workspace
+            .tabs
+            .iter()
+            .filter_map(|tab| normalize_workspace_tab(tab, &root_path))
+            .collect(),
+        active_tab_id: workspace.active_tab_id.clone(),
+        panels: normalize_panel_state(&workspace.panels),
+    })
+}
+
+fn normalize_workspace_tab(
+    tab: &PersistedWorkspaceTab,
+    root_path: &str,
+) -> Option<PersistedWorkspaceTab> {
+    let path = tab.path.trim().to_string();
+    if tab.tab_id.trim().is_empty() || path.is_empty() || !path.starts_with(root_path) {
+        return None;
+    }
+
+    Some(PersistedWorkspaceTab {
+        tab_id: tab.tab_id.trim().to_string(),
+        path,
+        title: if tab.title.trim().is_empty() {
+            "Untitled".to_string()
+        } else {
+            tab.title.trim().to_string()
+        },
+        dirty: tab.dirty,
+        needs_rename_on_first_save: tab.needs_rename_on_first_save,
+    })
+}
+
+fn normalize_panel_state(panel: &PersistedPanelState) -> PersistedPanelState {
+    PersistedPanelState {
+        left_collapsed: panel.left_collapsed,
+        left_width: panel.left_width.clamp(160, 640),
+        right_collapsed: panel.right_collapsed,
+        right_width: panel.right_width.clamp(160, 640),
+    }
+}
+
+fn normalize_window_size(window_size: &PersistedWindowSize) -> PersistedWindowSize {
+    PersistedWindowSize {
+        width: normalize_window_dimension(window_size.width, 1280.0, 1100.0),
+        height: normalize_window_dimension(window_size.height, 820.0, 640.0),
+    }
+}
+
+fn normalize_window_dimension(value: f64, fallback: f64, min: f64) -> f64 {
+    if !value.is_finite() {
+        return fallback;
+    }
+
+    value.round().max(min)
 }
 
 fn default_search_max_matches_per_file() -> usize {
