@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="src-tauri/icons/icon.png" alt="MDX アプリアイコン" width="128" height="128">
+</p>
+
 # MDX
 
 **MDX は、単一ドキュメント編集とフォルダーワークスペースの 2 つのモードを備えた、ローカルファーストの Markdown アプリです。**

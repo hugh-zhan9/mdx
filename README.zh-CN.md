@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="src-tauri/icons/icon.png" alt="MDX 应用图标" width="128" height="128">
+</p>
+
 # MDX
 
 **MDX 是一个本地优先 Markdown 应用，提供单文档编辑和文件夹工作区两种模式。**
