@@ -2,6 +2,10 @@
   <img src="src-tauri/icons/icon.png" alt="MDX app icon" width="128" height="128">
 </p>
 
+<p align="center">
+  English · <a href="README.zh-CN.md">简体中文</a>
+</p>
+
 # MDX
 
 **MDX is a local-first Markdown app with two modes: single-document editing and folder workspaces.**

@@ -1380,7 +1380,7 @@ git commit -m "Wire find replace into editor pane"
 ### Task 5: Final Verification And Documentation Notes
 
 **Files:**
-- Modify only if needed: `README.md`, `README.zh-CN.md`, `README.ja.md`
+- Modify only if needed: `README.md`, `README.zh-CN.md`
 
 - [ ] **Step 1: Run all focused editor tests**
 
@@ -1458,7 +1458,7 @@ features/editor/lib/visible-text-search.test.ts
 If formatting or documentation notes changed files after earlier commits, commit them:
 
 ```bash
-git add features/editor README.md README.zh-CN.md README.ja.md
+git add features/editor README.md README.zh-CN.md
 git commit -m "Polish editor find replace"
 ```
 

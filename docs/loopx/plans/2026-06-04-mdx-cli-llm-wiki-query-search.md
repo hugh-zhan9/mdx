@@ -31,7 +31,7 @@
   - Reject non LLM Wiki workspaces with `llm_wiki_not_ready`.
   - Call existing `llm_wiki_search` and `llm_wiki_query_sync`.
   - Keep CLI quiet: do not emit UI events for query/search.
-- Modify `README.md`, `README.zh-CN.md`, `README.ja.md`
+- Modify `README.md`, `README.zh-CN.md`
   - Add the two supported LLM Wiki CLI commands.
   - State that init/scan/ingest/lint/graph/digest are not exposed.
 
@@ -713,7 +713,6 @@ git commit -m "Handle LLM Wiki CLI query and search"
 **Files:**
 - Modify: `README.md`
 - Modify: `README.zh-CN.md`
-- Modify: `README.ja.md`
 
 - [ ] **Step 1: Update English README command list**
 
@@ -745,35 +744,20 @@ Add this paragraph immediately after the code block:
 LLM Wiki 的 CLI 能力刻意保持为查询/检索入口：只针对当前 Workspace Mode root 暴露 `query` 和 `search`，不对外暴露初始化、扫描、ingest、lint、graph、digest 等操作能力。
 ```
 
-- [ ] **Step 3: Update Japanese README command list**
-
-In `README.ja.md`, add these lines inside the supported commands code block after `mdx-cli rename <path> <new-name>`:
-
-```bash
-mdx-cli llm-wiki query [--json] <question...>
-mdx-cli llm-wiki search <query...>
-```
-
-Add this paragraph immediately after the code block:
-
-```markdown
-LLM Wiki の CLI は問い合わせと検索に限定しています。現在の Workspace Mode root に対して `query` と `search` のみを公開し、初期化、スキャン、ingest、lint、graph、digest などの操作系コマンドは公開しません。
-```
-
-- [ ] **Step 4: Verify docs contain no operation commands**
+- [ ] **Step 3: Verify docs contain no operation commands**
 
 Run:
 
 ```bash
-rg -n "llm-wiki (init|scan|rescan|ingest|lint|graph|digest)" README.md README.zh-CN.md README.ja.md
+rg -n "llm-wiki (init|scan|rescan|ingest|lint|graph|digest)" README.md README.zh-CN.md
 ```
 
 Expected: exit 1 with no matches.
 
-- [ ] **Step 5: Commit Task 4**
+- [ ] **Step 4: Commit Task 4**
 
 ```bash
-git add README.md README.zh-CN.md README.ja.md
+git add README.md README.zh-CN.md
 git commit -m "Document LLM Wiki CLI query commands"
 ```
 
@@ -852,7 +836,6 @@ Expected: only these implementation files should appear:
 ```text
 README.md
 README.zh-CN.md
-README.ja.md
 src-tauri/src/bin/mdx_cli.rs
 src-tauri/src/cli_protocol.rs
 src-tauri/src/cli_protocol_tests.rs
@@ -872,7 +855,7 @@ docs/loopx/plans/2026-06-04-mdx-cli-llm-wiki-query-search.md
 If `cargo fmt` or docs adjustments changed files after Task 4, commit them:
 
 ```bash
-git add README.md README.zh-CN.md README.ja.md src-tauri/src/bin/mdx_cli.rs src-tauri/src/cli_protocol.rs src-tauri/src/cli_protocol_tests.rs src-tauri/src/cli_server.rs
+git add README.md README.zh-CN.md src-tauri/src/bin/mdx_cli.rs src-tauri/src/cli_protocol.rs src-tauri/src/cli_protocol_tests.rs src-tauri/src/cli_server.rs
 git commit -m "Polish LLM Wiki CLI query support"
 ```
 

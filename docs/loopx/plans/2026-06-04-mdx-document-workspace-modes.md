@@ -60,7 +60,7 @@
   - Keep LLM Wiki mounted only here; add optional conflict lookup event if needed.
 - Modify `features/workspace/lib/types.ts`
   - Add any shared dirty-path snapshot type only if needed for cross-window conflict warning.
-- Modify `README.zh-CN.md`, `README.md`, `README.ja.md` if existing translations are maintained together
+- Modify `README.zh-CN.md`, `README.md` if existing translations are maintained together
   - Update product positioning and mode descriptions.
 
 ---
@@ -1992,7 +1992,6 @@ git commit -m "Warn when document is dirty in workspace"
 **Files:**
 - Modify: `README.zh-CN.md`
 - Modify: `README.md`
-- Modify: `README.ja.md`
 - Modify: any user-facing release/build docs if needed.
 
 - [ ] **Step 1: Update README.zh-CN.md positioning**
@@ -2016,9 +2015,9 @@ Document Mode 不参与 `mdx-cli` 自动化，不恢复为最近工作区，也�
 
 Update existing “功能/范围” bullets so they distinguish Document Mode and Workspace Mode.
 
-- [ ] **Step 2: Update README.md and README.ja.md consistently**
+- [ ] **Step 2: Update README.md consistently**
 
-If these files are translations of README.zh-CN.md, update them with equivalent mode descriptions. If they are intentionally minimal, add a short “Modes” section with the same constraints.
+If it is a translation of README.zh-CN.md, update it with equivalent mode descriptions. If it is intentionally minimal, add a short “Modes” section with the same constraints.
 
 - [ ] **Step 3: Run complete verification**
 
@@ -2075,7 +2074,7 @@ Expected:
 - [ ] **Step 6: Commit**
 
 ```bash
-git add README.zh-CN.md README.md README.ja.md
+git add README.zh-CN.md README.md
 git commit -m "Document MDX dual modes"
 ```
 
