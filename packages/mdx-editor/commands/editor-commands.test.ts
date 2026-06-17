@@ -21,6 +21,18 @@ describe("editor commands", () => {
         );
     });
 
+    it("round-trips inserted image markdown through parse and serialize", () => {
+        const markdown = insertImageMarkdown(
+            "",
+            0,
+            ".assets/a)b.png",
+            String.raw`Diagram \ draft`,
+        );
+        const parsed = parseMarkdown(markdown);
+
+        expect(serializeMarkdown(parsed)).toBe(markdown);
+    });
+
     it("produces serializable Markdown after command-style mutation", () => {
         const markdown = insertPlainTextMarkdown("# Title\n", 8, "Body.\n");
         const parsed = parseMarkdown(markdown);

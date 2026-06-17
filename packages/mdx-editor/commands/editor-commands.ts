@@ -22,7 +22,10 @@ export function insertImageMarkdown(
 }
 
 function escapeImageAlt(text: string): string {
-    return text.replace(/]/g, "\\]");
+    return text
+        .replaceAll("\\", "\\\\")
+        .replaceAll("[", "\\[")
+        .replaceAll("]", "\\]");
 }
 
 function escapeImageUrl(url: string): string {
