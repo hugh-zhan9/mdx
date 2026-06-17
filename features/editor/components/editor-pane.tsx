@@ -26,6 +26,7 @@ import {
 } from "../lib/keyboard-selection-scope";
 import { scrollMarkdownLineIntoView } from "../lib/markdown-line-scroll";
 import { wikilinkTargetFromEditorHref } from "../lib/wikilink-markdown";
+import { SourceModeEditor } from "../../../packages/mdx-editor/react";
 
 interface EditorPaneProps {
     rootPath: string | null;
@@ -152,6 +153,7 @@ function EditorPaneInner({
         onMarkdownChange,
     });
     const { focus, insertImage, insertText } = bridge;
+    const [mode, setMode] = useState<"wysiwyg" | "source">("wysiwyg");
     const contentRootRef = useRef<HTMLDivElement | null>(null);
     const [contentRootNode, setContentRootNode] =
         useState<HTMLDivElement | null>(null);
@@ -412,6 +414,26 @@ function EditorPaneInner({
 
     return (
         <div className="flex h-full min-h-0 flex-col">
+            <div className="flex h-9 items-center justify-end border-b border-base-300 bg-base-100 px-2">
+                <div className="join" role="group" aria-label="编辑模式">
+                    <button
+                        type="button"
+                        className={`btn btn-xs join-item ${mode === "wysiwyg" ? "btn-active" : ""}`}
+                        aria-pressed={mode === "wysiwyg"}
+                        onClick={() => setMode("wysiwyg")}
+                    >
+                        所见即所得
+                    </button>
+                    <button
+                        type="button"
+                        className={`btn btn-xs join-item ${mode === "source" ? "btn-active" : ""}`}
+                        aria-pressed={mode === "source"}
+                        onClick={() => setMode("source")}
+                    >
+                        源码
+                    </button>
+                </div>
+            </div>
             {findReplace.state.isOpen ? (
                 <EditorFindBar
                     caseSensitive={findReplace.state.caseSensitive}
@@ -444,12 +466,23 @@ function EditorPaneInner({
                     onKeyDownCapture={handleEditorKeyDownCapture}
                     onPasteCapture={handlePasteCapture}
                 >
-                    <DOMD />
-                    <EditorMermaidPreviewLayer
-                        editorRoot={editorRoot}
-                        markdown={bridge.currentMarkdown}
-                        onVisibilityChange={handleMermaidVisibilityChange}
-                    />
+                    {mode === "source" ? (
+                        <SourceModeEditor
+                            markdown={bridge.currentMarkdown}
+                            onMarkdownChange={(markdown) =>
+                                onMarkdownChange(tab.tabId, markdown)
+                            }
+                        />
+                    ) : (
+                        <>
+                            <DOMD />
+                            <EditorMermaidPreviewLayer
+                                editorRoot={editorRoot}
+                                markdown={bridge.currentMarkdown}
+                                onVisibilityChange={handleMermaidVisibilityChange}
+                            />
+                        </>
+                    )}
                 </div>
             </div>
         </div>

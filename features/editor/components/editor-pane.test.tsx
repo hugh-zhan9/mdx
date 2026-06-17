@@ -1,10 +1,18 @@
-import { describe, expect, it, vi } from "vitest";
+// @vitest-environment jsdom
+
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+    EditorPane,
     assignEditorViewportRef,
     isEditorFindShortcut,
     isEditorReplaceShortcut,
     resolveEditorRootFromContent,
 } from "./editor-pane";
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
+    .IS_REACT_ACT_ENVIRONMENT = true;
 
 vi.mock("./editor-kernel-adapter", () => ({
     DOMD: () => null,
@@ -123,5 +131,46 @@ describe("editor pane root helpers", () => {
 
         expect(resolveEditorRootFromContent(wrapper)).toBe(wrapper);
         expect(resolveEditorRootFromContent(wrapper)).toBe(editorRoot);
+    });
+
+});
+
+describe("editor pane source mode chrome", () => {
+    let host: HTMLDivElement;
+    let root: ReturnType<typeof createRoot>;
+
+    beforeEach(() => {
+        host = document.createElement("div");
+        document.body.append(host);
+        root = createRoot(host);
+    });
+
+    afterEach(() => {
+        act(() => root.unmount());
+        host.remove();
+    });
+
+    it("exposes a source mode toggle for the self-owned editor", async () => {
+        const tab = {
+            tabId: "tab-1",
+            path: "/tmp/note.md",
+            title: "note.md",
+            dirty: false,
+            needsRenameOnFirstSave: false,
+            markdown: "# Title",
+            baseFingerprint: "base",
+        };
+
+        await act(async () => {
+            root.render(
+                <EditorPane
+                    rootPath="/tmp"
+                    tab={tab}
+                    onMarkdownChange={vi.fn()}
+                />,
+            );
+        });
+
+        expect(host.textContent).toContain("源码");
     });
 });

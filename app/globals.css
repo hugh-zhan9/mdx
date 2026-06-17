@@ -69,6 +69,19 @@ html[data-theme="dark"] {
 [data-mdx-root] {
 }
 
+[data-mdx-editor-root] {
+    min-height: 100%;
+    outline: none;
+}
+
+[data-mdx-source-mode] {
+    min-height: calc(100vh - 12rem);
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: inherit;
+}
+
 .mdx-mermaid-source-hidden {
     display: none !important;
 }
