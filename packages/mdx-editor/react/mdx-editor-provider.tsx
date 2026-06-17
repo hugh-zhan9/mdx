@@ -40,6 +40,10 @@ export function MdxEditorProvider({
         [onMarkdownChange],
     );
 
+    const registerRoot = useCallback((root: HTMLDivElement | null) => {
+        rootRef.current = root;
+    }, []);
+
     const value = useMemo(
         () => ({
             currentMarkdown: markdown,
@@ -63,11 +67,13 @@ export function MdxEditorProvider({
                 setSelection(createCollapsedSelection(next, cursorRef.current));
                 updateMarkdown(next);
             },
-            insertImage: (url: string, altText = "") => {
+            insertImage: (url: string, altText = "", title?: string) => {
                 const next = insertImageMarkdown(
                     markdown,
                     cursorRef.current,
-                    url,
+                    title
+                        ? `${url} "${title.replaceAll('"', '\\"')}"`
+                        : url,
                     altText,
                 );
 
@@ -82,21 +88,13 @@ export function MdxEditorProvider({
                     cursorRef.current,
                     contextChars,
                 ),
+            registerRoot,
         }),
-        [markdown, selection, updateMarkdown],
+        [markdown, registerRoot, selection, updateMarkdown],
     );
 
     return (
-        <MdxEditorContext.Provider value={value}>
-            <div
-                ref={rootRef}
-                data-mdx-editor-root
-                data-mdx-node-type="doc"
-                tabIndex={0}
-            >
-                {children}
-            </div>
-        </MdxEditorContext.Provider>
+        <MdxEditorContext.Provider value={value}>{children}</MdxEditorContext.Provider>
     );
 }
 

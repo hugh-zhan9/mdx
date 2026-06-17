@@ -11,18 +11,22 @@ export interface MdxEditorContextValue {
     insertText: (text: string) => void;
     insertImage: (url: string, altText?: string, title?: string) => void;
     getSelectionSnapshot: (contextChars?: number) => SelectionState | null;
+    registerRoot: (root: HTMLDivElement | null) => void;
 }
 
-export const MdxEditorContext = createContext<MdxEditorContextValue | null>(
-    null,
-);
+const noopContext: MdxEditorContextValue = {
+    currentMarkdown: "",
+    selection: null,
+    focus: () => {},
+    resetMarkdown: () => {},
+    insertText: () => {},
+    insertImage: () => {},
+    getSelectionSnapshot: () => null,
+    registerRoot: () => {},
+};
+
+export const MdxEditorContext = createContext<MdxEditorContextValue>(noopContext);
 
 export function useMdxEditor(): MdxEditorContextValue {
-    const value = useContext(MdxEditorContext);
-
-    if (!value) {
-        throw new Error("useMdxEditor must be used inside MdxEditorProvider");
-    }
-
-    return value;
+    return useContext(MdxEditorContext);
 }

@@ -12,13 +12,22 @@ function Probe() {
     const editor = useMdxEditor();
 
     return (
-        <button
-            type="button"
-            data-testid="insert"
-            onClick={() => editor.insertText(" world")}
-        >
-            {editor.currentMarkdown}
-        </button>
+        <>
+            <button
+                type="button"
+                data-testid="insert"
+                onClick={() => editor.insertText(" world")}
+            >
+                {editor.currentMarkdown}
+            </button>
+            <button
+                type="button"
+                data-testid="insert-image"
+                onClick={() =>
+                    editor.insertImage(".assets/a.png", "Diagram", "Preview")
+                }
+            />
+        </>
     );
 }
 
@@ -62,5 +71,15 @@ describe("MdxEditorProvider", () => {
         });
 
         expect(onMarkdownChange).toHaveBeenLastCalledWith("Hello world");
+
+        await act(async () => {
+            host
+                .querySelector<HTMLButtonElement>("[data-testid='insert-image']")
+                ?.click();
+        });
+
+        expect(onMarkdownChange).toHaveBeenLastCalledWith(
+            'Hello world![Diagram](.assets/a.png "Preview")',
+        );
     });
 });
