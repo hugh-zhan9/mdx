@@ -20,6 +20,7 @@ const memoryClientMocks = vi.hoisted(() => ({
   archiveMemory: vi.fn(),
   getMemoryBackendStatus: vi.fn(),
   getMemoryIntegrationStatus: vi.fn(),
+  getMemory: vi.fn(),
   getMemoryThread: vi.fn(),
   getWorkingMemory: vi.fn(),
   listMemories: vi.fn(),
@@ -118,6 +119,24 @@ describe("MemoryPanel", () => {
     ]);
     memoryClientMocks.listMemoryThreads.mockResolvedValue([]);
     memoryClientMocks.listMemories.mockResolvedValue([]);
+    memoryClientMocks.getMemory.mockResolvedValue({
+      path: "memory/memories/default.md",
+      frontmatter: {
+        schema_version: 1,
+        kind: "memory",
+        memory_id: "mem_default",
+        title: "Default memory",
+        status: "active",
+        created_at: "2026-06-14T10:00:00Z",
+        source_thread: null,
+        source_message_refs: [],
+        importance: null,
+        confidence: null,
+        tags: [],
+        evolves_from: null,
+      },
+      body: "Default memory body",
+    });
     memoryClientMocks.listMemoryInbox.mockResolvedValue([]);
     memoryClientMocks.getWorkingMemory.mockResolvedValue("# Working Memory\n");
     host = document.createElement("div");
@@ -221,6 +240,109 @@ describe("MemoryPanel", () => {
 
     expect(host.textContent).toContain("codex · 消息数未知");
     expect(host.textContent).not.toContain("codex · 0 条消息");
+  });
+
+  it("does not automatically load the first session body when opening sessions", async () => {
+    memoryClientMocks.listMemoryThreads.mockResolvedValueOnce([
+      {
+        path: "memory/threads/codex/heavy.md",
+        thread_id: "codex:heavy",
+        source: "codex",
+        title: "Large captured session",
+        started_at: null,
+        ended_at: null,
+        message_count: 2000,
+        archived: false,
+      },
+    ]);
+    memoryClientMocks.getMemoryThread.mockResolvedValueOnce({
+      path: "memory/threads/codex/heavy.md",
+      frontmatter: {
+        schema_version: 1,
+        kind: "memory_thread",
+        thread_id: "codex:heavy",
+        source: "codex",
+        title: "Large captured session",
+        content_hash: "hash",
+        started_at: null,
+        ended_at: null,
+        message_count: 2000,
+        model: null,
+        workspace_root: null,
+        tags: [],
+        distilled: false,
+        promoted_to_wiki: false,
+        archived: false,
+      },
+      body: "Very large session body",
+    });
+
+    await act(async () => {
+      root.render(<MemoryPanel rootPath="/tmp/ws" />);
+      await flushPromises();
+    });
+
+    await act(async () => {
+      getButton("会话").click();
+      await flushPromises();
+    });
+
+    expect(host.textContent).toContain("Large captured session");
+    expect(memoryClientMocks.getMemoryThread).not.toHaveBeenCalled();
+  });
+
+  it("loads and previews a durable memory body after selecting it", async () => {
+    memoryClientMocks.listMemories.mockResolvedValueOnce([
+      {
+        path: "memory/memories/auth.md",
+        memory_id: "mem_auth",
+        title: "Auth decision",
+        status: "active",
+        created_at: "2026-06-14T10:00:00Z",
+        tags: ["auth"],
+      },
+    ]);
+    memoryClientMocks.getMemory.mockResolvedValueOnce({
+      path: "memory/memories/auth.md",
+      frontmatter: {
+        schema_version: 1,
+        kind: "memory",
+        memory_id: "mem_auth",
+        title: "Auth decision",
+        status: "active",
+        created_at: "2026-06-14T10:00:00Z",
+        source_thread: null,
+        source_message_refs: [],
+        importance: 0.8,
+        confidence: 0.9,
+        tags: ["auth"],
+        evolves_from: null,
+      },
+      body: "Use signed access tokens for API requests.",
+    });
+
+    await act(async () => {
+      root.render(<MemoryPanel rootPath="/tmp/ws" />);
+      await flushPromises();
+    });
+
+    await act(async () => {
+      getButton("长期记忆").click();
+      await flushPromises();
+    });
+
+    await act(async () => {
+      getButton("Auth decision").click();
+      await flushPromises();
+    });
+
+    expect(memoryClientMocks.getMemory).toHaveBeenCalledWith(
+      "/tmp/ws",
+      "mem_auth",
+    );
+    expect(host.textContent).toContain(
+      "Use signed access tokens for API requests.",
+    );
   });
 
   it("appends quick working notes into the selected section", async () => {

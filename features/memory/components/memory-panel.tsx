@@ -15,6 +15,7 @@ import {
   archiveMemory,
   getMemoryBackendStatus,
   getMemoryIntegrationStatus,
+  getMemory,
   getMemoryThread,
   getWorkingMemory,
   listMemories,
@@ -37,6 +38,7 @@ import type {
   MemoryIndexStatus,
   MemoryIntegrationStatus,
   MemoryRepairResult,
+  MemoryRecord,
   MemorySummary,
   MemoryThreadRecord,
   ThreadListItem,
@@ -104,6 +106,12 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
   const [memories, setMemories] = useState<MemorySummary[]>([]);
   const [memoriesLoaded, setMemoriesLoaded] = useState(false);
   const [memoriesLoading, setMemoriesLoading] = useState(false);
+  const [selectedMemoryId, setSelectedMemoryId] = useState<string | null>(null);
+  const [selectedMemory, setSelectedMemory] = useState<MemoryRecord | null>(
+    null,
+  );
+  const [memoryLoading, setMemoryLoading] = useState(false);
+  const memoryRequestIdRef = useRef(0);
 
   const [inbox, setInbox] = useState<InboxRecord[]>([]);
   const [inboxLoaded, setInboxLoaded] = useState(false);
@@ -144,6 +152,7 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
     workingRequestIdRef.current += 1;
     workingSaveRequestIdRef.current += 1;
     memoriesRequestIdRef.current += 1;
+    memoryRequestIdRef.current += 1;
     inboxRequestIdRef.current += 1;
     threadsRequestIdRef.current += 1;
     setActiveTab("overview");
@@ -165,6 +174,9 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
     setMemories([]);
     setMemoriesLoaded(false);
     setMemoriesLoading(false);
+    setSelectedMemoryId(null);
+    setSelectedMemory(null);
+    setMemoryLoading(false);
     setInbox([]);
     setInboxLoaded(false);
     setInboxLoading(false);
@@ -374,6 +386,21 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
       }
       setMemories(nextMemories);
       setMemoriesLoaded(true);
+      setSelectedMemoryId((current) =>
+        current &&
+        nextMemories.some((memoryItem) => memoryItem.memory_id === current)
+          ? current
+          : null,
+      );
+      setSelectedMemory((current) =>
+        current &&
+        nextMemories.some(
+          (memoryItem) =>
+            memoryItem.memory_id === current.frontmatter.memory_id,
+        )
+          ? current
+          : null,
+      );
     } catch (error) {
       if (
         isCurrentRoot(requestRootPath) &&
@@ -451,7 +478,7 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
       setSelectedThreadId((current) =>
         current && items.some((thread) => thread.thread_id === current)
           ? current
-          : (items[0]?.thread_id ?? null),
+          : null,
       );
     } catch (error) {
       if (
@@ -556,6 +583,43 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
       cancelled = true;
     };
   }, [effectiveTab, rootPath, selectedThreadId, setError]);
+
+  useEffect(() => {
+    if (effectiveTab !== "longTerm" || !selectedMemoryId || !rootPath) {
+      return;
+    }
+
+    const requestRootPath = rootPath;
+    const requestId = memoryRequestIdRef.current + 1;
+    memoryRequestIdRef.current = requestId;
+    setMemoryLoading(true);
+    setActionError(null);
+    void getMemory(requestRootPath, selectedMemoryId)
+      .then((memoryRecord) => {
+        if (
+          isCurrentRoot(requestRootPath) &&
+          memoryRequestIdRef.current === requestId
+        ) {
+          setSelectedMemory(memoryRecord);
+        }
+      })
+      .catch((error: unknown) => {
+        if (
+          isCurrentRoot(requestRootPath) &&
+          memoryRequestIdRef.current === requestId
+        ) {
+          setError(error);
+        }
+      })
+      .finally(() => {
+        if (
+          isCurrentRoot(requestRootPath) &&
+          memoryRequestIdRef.current === requestId
+        ) {
+          setMemoryLoading(false);
+        }
+      });
+  }, [effectiveTab, isCurrentRoot, rootPath, selectedMemoryId, setError]);
 
   const resetLoadedData = useCallback(() => {
     setBackendLoaded(false);
@@ -934,8 +998,15 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
         ) : effectiveTab === "longTerm" ? (
           <MemoryLongTermTab
             memories={memories}
+            selectedMemory={selectedMemory}
+            selectedMemoryId={selectedMemoryId}
             loading={memoriesLoading}
+            memoryLoading={memoryLoading}
             onRefresh={refreshMemories}
+            onSelect={(memoryId) => {
+              setSelectedMemoryId(memoryId);
+              setSelectedMemory(null);
+            }}
             onArchive={handleArchiveMemory}
             isActionPending={isActionPending}
           />

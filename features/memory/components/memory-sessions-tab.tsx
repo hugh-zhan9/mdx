@@ -76,7 +76,7 @@ export function MemorySessionsTab({
             </TextControlButton>
           </div>
           <pre className="max-h-72 overflow-auto whitespace-pre-wrap font-sans text-xs leading-relaxed text-base-content/75">
-            {threadLoading ? "加载中..." : (selectedThread?.body ?? "")}
+            {threadLoading ? "加载中..." : previewBody(selectedThread?.body ?? "")}
           </pre>
         </div>
       ) : null}
@@ -86,6 +86,14 @@ export function MemorySessionsTab({
 
 function formatThreadMessageCount(messageCount: number | null) {
   return messageCount === null ? "消息数未知" : `${messageCount} 条消息`;
+}
+
+function previewBody(body: string) {
+  const maxChars = 4000;
+  if (body.length <= maxChars) {
+    return body;
+  }
+  return `${body.slice(0, maxChars)}\n\n...`;
 }
 
 function ListPanel({
