@@ -125,11 +125,17 @@ function defaultBlockGap(output: string) {
 
 function nodeMatchesSource(node: ProseMirrorNode, source: SourceSlice) {
     if (node.type.name === "opaque_block") {
+        const sourceText = normalizeLineEndings(source.text);
+        const nodeText = normalizeLineEndings(node.textContent);
+
         if (node.attrs.reason === "source-preserved") {
-            return true;
+            return (
+                sourceText === nodeText ||
+                sourceText === `${nodeText}\n`
+            );
         }
 
-        return normalizeLineEndings(source.text) === normalizeLineEndings(node.textContent);
+        return sourceText === nodeText;
     }
 
     const reparsed = parseMarkdown(source.text);

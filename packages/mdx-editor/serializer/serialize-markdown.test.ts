@@ -193,7 +193,35 @@ describe("serializeMarkdown", () => {
                 ],
                 diagnostics: [],
             }),
-        ).toBe(markdown);
+        ).toBe("> [!NOTE]\n> Keep this.\n");
+    });
+
+    it("does not reuse original source for edited source-preserved opaque blocks", () => {
+        const markdown = "> [!NOTE]\n> Keep this.\n\n";
+        const doc = mdxEditorSchema.nodes.doc.create(null, [
+            mdxEditorSchema.nodes.opaque_block.create(
+                {
+                    reason: "source-preserved",
+                    sourceId: "source-0",
+                },
+                mdxEditorSchema.text("> [!NOTE]\n> Changed this."),
+            ),
+        ]);
+
+        expect(
+            serializeMarkdown({
+                doc,
+                originalMarkdown: markdown,
+                sourceSlices: [
+                    {
+                        id: "source-0",
+                        range: sourceRange(0, markdown.length),
+                        text: markdown,
+                    },
+                ],
+                diagnostics: [],
+            }),
+        ).toBe("> [!NOTE]\n> Changed this.\n");
     });
 });
 
