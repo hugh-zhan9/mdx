@@ -1,3 +1,5 @@
+export { parseMarkdown } from "./parser/parse-markdown";
+export { mdxEditorSchema } from "./schema/schema";
 export type {
     EditorDiagnostic,
     MdxEditorSnapshot,
