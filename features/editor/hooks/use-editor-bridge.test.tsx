@@ -24,7 +24,7 @@ describe("useEditorBridge", () => {
         host.remove();
     });
 
-    it("keeps the markdown bridge synchronized with the self-owned kernel", async () => {
+    it("keeps the markdown bridge synchronized for text and image insertions", async () => {
         const onMarkdownChange = vi.fn();
 
         function Harness() {
@@ -41,6 +41,13 @@ describe("useEditorBridge", () => {
                         type="button"
                         data-testid="insert"
                         onClick={() => bridge.insertText(" world")}
+                    />
+                    <button
+                        type="button"
+                        data-testid="insert-image"
+                        onClick={() =>
+                            bridge.insertImage(".assets/diagram.png", "Diagram")
+                        }
                     />
                 </>
             );
@@ -59,5 +66,19 @@ describe("useEditorBridge", () => {
         });
 
         expect(onMarkdownChange).toHaveBeenLastCalledWith("tab-1", "Hello world");
+
+        await act(async () => {
+            host.querySelector<HTMLButtonElement>(
+                "[data-testid='insert-image']",
+            )?.click();
+        });
+
+        expect(onMarkdownChange).toHaveBeenLastCalledWith(
+            "tab-1",
+            "Hello world![Diagram](.assets/diagram.png)",
+        );
+        expect(host.textContent).toContain(
+            "Hello world![Diagram](.assets/diagram.png)",
+        );
     });
 });

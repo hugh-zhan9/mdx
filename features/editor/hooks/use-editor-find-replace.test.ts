@@ -117,14 +117,9 @@ describe("editor find replace visible text index", () => {
     it("rebuilds from the live DOM when mermaid visibility changes", () => {
         const root = document.createElement("div");
         document.body.append(root);
-        const pre = document.createElement("pre");
-        pre.className = "DOMD-Pre";
+        const pre = createCodeBlock("mermaid", "graph TD\n  HiddenRaw --> B");
         pre.hidden = true;
         pre.setAttribute("aria-hidden", "true");
-        const code = document.createElement("code");
-        code.className = "DOMD-PreCode";
-        code.textContent = "graph TD\n  HiddenRaw --> B";
-        pre.append(code);
         root.append(pre);
 
         expect(buildVisibleTextIndexForMarkdown(root, "").text).toBe("");
@@ -145,14 +140,9 @@ describe("editor find replace visible text index", () => {
         const editorRoot = document.createElement("div");
         document.body.append(host, editorRoot);
         const reactRoot = createRoot(host);
-        const pre = document.createElement("pre");
-        pre.className = "DOMD-Pre";
+        const pre = createCodeBlock("mermaid", "graph TD\n  HiddenRaw --> B");
         pre.hidden = true;
         pre.setAttribute("aria-hidden", "true");
-        const code = document.createElement("code");
-        code.className = "DOMD-PreCode";
-        code.textContent = "graph TD\n  HiddenRaw --> B";
-        pre.append(code);
         editorRoot.append(pre);
         let latestMatchCount = -1;
 
@@ -292,3 +282,14 @@ describe("editor find replace visible text index", () => {
         host.remove();
     });
 });
+
+function createCodeBlock(language: string, text: string): HTMLPreElement {
+    const pre = document.createElement("pre");
+    pre.setAttribute("data-mdx-code-block", "");
+    pre.setAttribute("data-mdx-node-type", "code_block");
+    pre.setAttribute("data-mdx-language", language);
+    const code = document.createElement("code");
+    code.textContent = text;
+    pre.append(code);
+    return pre;
+}

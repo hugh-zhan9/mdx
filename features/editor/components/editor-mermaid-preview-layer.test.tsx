@@ -33,8 +33,8 @@ describe("EditorMermaidPreviewLayer", () => {
         root = createRoot(host);
         onVisibilityChange = vi.fn();
         editorRoot = document.createElement("div");
-        editorRoot.className = "DOMD-Root";
-        editorRoot.append(pre("graph TD\n  A --> B"));
+        editorRoot.setAttribute("data-mdx-editor-root", "");
+        editorRoot.append(codeBlock("mermaid", "graph TD\n  A --> B"));
         document.body.append(editorRoot);
     });
 
@@ -312,8 +312,8 @@ describe("EditorMermaidPreviewLayer", () => {
         const secondEditorRoot = document.createElement("div");
         const secondRoot = createRoot(secondHost);
         document.body.append(secondHost, secondEditorRoot);
-        secondEditorRoot.className = "DOMD-Root";
-        secondEditorRoot.append(pre("graph TD\n  A --> B"));
+        secondEditorRoot.setAttribute("data-mdx-editor-root", "");
+        secondEditorRoot.append(codeBlock("mermaid", "graph TD\n  A --> B"));
 
         await act(async () => {
             root.render(
@@ -399,11 +399,18 @@ describe("EditorMermaidPreviewLayer", () => {
 
 function pre(text: string): HTMLPreElement {
     const element = document.createElement("pre");
-    element.className = "DOMD-Pre";
+    element.setAttribute("data-mdx-code-block", "");
+    element.setAttribute("data-mdx-node-type", "code_block");
+    element.setAttribute("data-mdx-language", "mermaid");
     const code = document.createElement("code");
-    code.className = "DOMD-PreCode";
     code.textContent = text;
     element.append(code);
+    return element;
+}
+
+function codeBlock(language: string, text: string): HTMLPreElement {
+    const element = pre(text);
+    element.setAttribute("data-mdx-language", language);
     return element;
 }
 

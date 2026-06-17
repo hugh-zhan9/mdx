@@ -7,6 +7,7 @@ import {
     mapMermaidFencesToPreElements,
     type MermaidPreMapping,
 } from "../lib/mermaid-dom";
+import { MDX_CODE_BLOCK_SELECTOR } from "../lib/editor-dom-contract";
 import {
     renderMermaidDiagram,
     type MermaidEditorTheme,
@@ -382,7 +383,7 @@ function restoreUnmappedSourceVisibility(
     let changed = false;
 
     for (const pre of Array.from(
-        editorRoot.querySelectorAll<HTMLPreElement>("pre.DOMD-Pre"),
+        editorRoot.querySelectorAll<HTMLPreElement>(MDX_CODE_BLOCK_SELECTOR),
     )) {
         if (mappedSources.has(pre) || !isManagedMermaidSource(pre)) {
             continue;
