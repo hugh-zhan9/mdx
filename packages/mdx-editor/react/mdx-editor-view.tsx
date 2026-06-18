@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { useMdxEditor } from "./mdx-editor-context";
 
 export function MdxEditorView() {
-    const { currentMarkdown, registerRoot } = useMdxEditor();
+    const { registerRoot } = useMdxEditor();
     const rootRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
@@ -23,8 +23,6 @@ export function MdxEditorView() {
             data-mdx-editor-view
             data-mdx-text
             tabIndex={0}
-        >
-            {currentMarkdown}
-        </div>
+        />
     );
 }

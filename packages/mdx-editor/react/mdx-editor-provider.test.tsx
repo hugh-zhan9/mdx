@@ -102,6 +102,22 @@ describe("MdxEditorProvider", () => {
         );
     });
 
+    it("renders parsed block structure through the editor view", async () => {
+        await act(async () => {
+            root.render(
+                <MdxEditorProvider initialMarkdown={"# Title\n\nBody.\n"}>
+                    <MdxEditorView />
+                </MdxEditorProvider>,
+            );
+        });
+
+        const heading = host.querySelector("h1[data-mdx-node-type='heading']");
+        const paragraph = host.querySelector("p[data-mdx-node-type='paragraph']");
+
+        expect(heading?.textContent).toBe("Title");
+        expect(paragraph?.textContent).toBe("Body.");
+    });
+
     it("handles sequential mutations and snapshots in one callback", async () => {
         const onMarkdownChange = vi.fn();
 

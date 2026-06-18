@@ -77,8 +77,8 @@ describe("useEditorBridge", () => {
             "tab-1",
             "Hello world![Diagram](.assets/diagram.png)",
         );
-        expect(host.textContent).toContain(
-            "Hello world![Diagram](.assets/diagram.png)",
-        );
+        expect(
+            host.querySelector("[data-mdx-editor-root]")?.textContent,
+        ).toContain("Hello world!Diagram");
     });
 });

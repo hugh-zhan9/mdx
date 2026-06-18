@@ -154,7 +154,8 @@ function EditorPaneInner({
     });
     const { focus, insertImage, insertText } = bridge;
     const [mode, setMode] = useState<"wysiwyg" | "source">("wysiwyg");
-    const [sourceMarkdown, setSourceMarkdown] = useState(bridge.currentMarkdown);
+    const [sourceDraft, setSourceDraft] = useState<string | null>(null);
+    const sourceMarkdown = sourceDraft ?? bridge.currentMarkdown;
     const contentRootRef = useRef<HTMLDivElement | null>(null);
     const [contentRootNode, setContentRootNode] =
         useState<HTMLDivElement | null>(null);
@@ -441,7 +442,7 @@ function EditorPaneInner({
                         className={`btn btn-xs join-item ${mode === "source" ? "btn-active" : ""}`}
                         aria-pressed={mode === "source"}
                         onClick={() => {
-                            setSourceMarkdown(bridge.currentMarkdown);
+                            setSourceDraft(null);
                             setMode("source");
                             close();
                         }}
@@ -486,7 +487,7 @@ function EditorPaneInner({
                         <SourceModeEditor
                             markdown={sourceMarkdown}
                             onMarkdownChange={(markdown) => {
-                                setSourceMarkdown(markdown);
+                                setSourceDraft(markdown);
                                 onMarkdownChange(tab.tabId, markdown);
                             }}
                         />

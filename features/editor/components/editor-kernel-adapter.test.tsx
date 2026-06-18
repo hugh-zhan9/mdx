@@ -76,6 +76,9 @@ describe("editor kernel adapter", () => {
 
         expect(host.textContent).toContain("Hello world");
         expect(host.textContent).toContain("![A](.assets/a.png)");
+        expect(
+            host.querySelector("[data-mdx-editor-root]")?.textContent,
+        ).toContain("Hello world!A");
     });
 });
 
