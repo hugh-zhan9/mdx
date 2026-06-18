@@ -83,6 +83,62 @@ describe("markdown line scroll", () => {
         expect(after.scrollIntoView).not.toHaveBeenCalled();
     });
 
+    it.each([
+        {
+            markdown: "# Title\n\n> [!NOTE]\n> Keep this.\n\nAfter\n",
+            nodeType: "callout",
+            tagName: "aside",
+            lineNumber: 4,
+        },
+        {
+            markdown: "# Title\n\n$$\ny = mx + b\n$$\n\nAfter\n",
+            nodeType: "math_block",
+            tagName: "pre",
+            lineNumber: 4,
+        },
+        {
+            markdown: "# Title\n\nA note[^1].\n\n[^1]: Body\n\nAfter\n",
+            nodeType: "footnote_definition",
+            tagName: "section",
+            lineNumber: 5,
+            beforeTargetNodeTypes: ["paragraph"],
+        },
+    ])(
+        "scrolls rendered $nodeType blocks by markdown line",
+        ({ markdown, nodeType, tagName, lineNumber, beforeTargetNodeTypes = [] }) => {
+            const root = document.createElement("div");
+            const domd = document.createElement("div");
+            domd.setAttribute("data-mdx-editor-root", "");
+            const heading = document.createElement("h1");
+            const target = document.createElement(tagName);
+            const after = document.createElement("p");
+            heading.setAttribute("data-mdx-node-type", "heading");
+            target.setAttribute("data-mdx-node-type", nodeType);
+            after.setAttribute("data-mdx-node-type", "paragraph");
+            target.scrollIntoView = vi.fn();
+            after.scrollIntoView = vi.fn();
+
+            const beforeTargetNodes = beforeTargetNodeTypes.map((type) => {
+                const node = document.createElement("p");
+                node.setAttribute("data-mdx-node-type", type);
+
+                return node;
+            });
+
+            domd.append(heading, ...beforeTargetNodes, target, after);
+            root.append(domd);
+
+            expect(scrollMarkdownLineIntoView(root, markdown, lineNumber)).toBe(
+                true,
+            );
+            expect(target.scrollIntoView).toHaveBeenCalledWith({
+                block: "center",
+                inline: "nearest",
+            });
+            expect(after.scrollIntoView).not.toHaveBeenCalled();
+        },
+    );
+
     it("scrolls the editor root when a single-line document has no rendered block elements", () => {
         const root = document.createElement("div");
         const domd = document.createElement("div");
