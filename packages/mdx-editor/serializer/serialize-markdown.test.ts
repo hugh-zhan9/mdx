@@ -164,6 +164,23 @@ describe("serializeMarkdown", () => {
         expect(reparsed.doc.child(0).child(2).attrs.latex).toBe(String.raw`\alpha`);
     });
 
+    it("round-trips literal backticks inside inline code", () => {
+        const schema = mdxEditorSchema;
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("a`b", [schema.marks.inline_code.create()]),
+            ]),
+        ]);
+        const markdown = serializeMarkdown(emptyParsedDocument(doc));
+        const reparsed = parseMarkdown(markdown);
+
+        expect(markdown).toBe("``a`b``\n");
+        expect(reparsed.doc.child(0).child(0).text).toBe("a`b");
+        expect(reparsed.doc.child(0).child(0).marks[0]?.type.name).toBe(
+            "inline_code",
+        );
+    });
+
     it("does not bracket-escape inline code content", () => {
         const schema = mdxEditorSchema;
         const doc = schema.nodes.doc.create(null, [
@@ -267,6 +284,44 @@ describe("serializeMarkdown", () => {
         );
     });
 
+    it("round-trips math inside normal link labels", () => {
+        const parsed = parseMarkdown("[eq $x$](https://x.test)");
+        const markdown = serializeMarkdown(emptyParsedDocument(parsed.doc));
+        const reparsed = parseMarkdown(markdown);
+
+        expect(markdown).toBe("[eq $x$](https://x.test)\n");
+        expect(reparsed.doc.child(0).child(0).marks[0]?.type.name).toBe("link");
+        expect(reparsed.doc.child(0).child(1).type.name).toBe("math_inline");
+        expect(reparsed.doc.child(0).child(1).marks[0]?.type.name).toBe("link");
+    });
+
+    it("round-trips math inside wikilink labels", () => {
+        const parsed = parseMarkdown("[[Target|eq $x$]]");
+        const markdown = serializeMarkdown(emptyParsedDocument(parsed.doc));
+        const reparsed = parseMarkdown(markdown);
+
+        expect(markdown).toBe("[[Target|eq $x$]]\n");
+        expect(reparsed.doc.child(0).child(0).marks[0]?.type.name).toBe("link");
+        expect(reparsed.doc.child(0).child(1).type.name).toBe("math_inline");
+        expect(reparsed.doc.child(0).child(1).marks[0]?.type.name).toBe("link");
+    });
+
+    it("round-trips strong and emphasis inside normal link labels", () => {
+        const parsed = parseMarkdown("[**bold** *em*](https://x.test)");
+        const markdown = serializeMarkdown(emptyParsedDocument(parsed.doc));
+        const reparsed = parseMarkdown(markdown);
+
+        expect(markdown).toBe("[**bold** *em*](https://x.test)\n");
+        expect(reparsed.doc.child(0).child(0).marks.map((mark) => mark.type.name)).toEqual([
+            "strong",
+            "link",
+        ]);
+        expect(reparsed.doc.child(0).child(2).marks.map((mark) => mark.type.name)).toEqual([
+            "emphasis",
+            "link",
+        ]);
+    });
+
     it("serializes one wikilink spanning multiple text nodes once", () => {
         const link = mdxEditorSchema.marks.link.create({
             href: "mdx-wikilink:Target%7CBold%20tail",
@@ -351,6 +406,32 @@ describe("serializeMarkdown", () => {
         expect(reparsed.doc.child(0).child(0).marks[0]?.attrs.href).toBe(
             "docs/My File.md",
         );
+    });
+
+    it("escapes paragraph line starts that would reparse as block syntax", () => {
+        const schema = mdxEditorSchema;
+        const cases = [
+            { text: "# not heading", markdown: "\\# not heading\n" },
+            { text: "- not list", markdown: "\\- not list\n" },
+            { text: "- [x] not task", markdown: "\\- \\[x\\] not task\n" },
+            { text: "> not quote", markdown: "\\> not quote\n" },
+            { text: "```not fence", markdown: "\\`\\`\\`not fence\n" },
+            { text: "| not | table |", markdown: "\\| not | table |\n" },
+        ];
+
+        for (const testCase of cases) {
+            const doc = schema.nodes.doc.create(null, [
+                schema.nodes.paragraph.create(null, [
+                    schema.text(testCase.text),
+                ]),
+            ]);
+            const markdown = serializeMarkdown(emptyParsedDocument(doc));
+            const reparsed = parseMarkdown(markdown);
+
+            expect(markdown).toBe(testCase.markdown);
+            expect(reparsed.doc.child(0).type.name).toBe("paragraph");
+            expect(reparsed.doc.child(0).textContent).toBe(testCase.text);
+        }
     });
 
     it("does not resurrect deleted trailing blocks from the original source", () => {

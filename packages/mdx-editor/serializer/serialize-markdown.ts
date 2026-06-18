@@ -215,7 +215,7 @@ function serializeNode(node: ProseMirrorNode): string {
         case "heading":
             return `${"#".repeat(headingLevel(node))} ${serializeInlineContent(node)}\n`;
         case "paragraph":
-            return `${serializeInlineContent(node)}\n`;
+            return `${escapeParagraphLineStarts(serializeInlineContent(node))}\n`;
         case "bullet_list":
             return serializeList(node, "-");
         case "ordered_list":
@@ -374,6 +374,17 @@ function serializeCallout(node: ProseMirrorNode) {
 
 function serializeNestedBlock(node: ProseMirrorNode) {
     return serializeNode(node).replace(/\n$/, "");
+}
+
+function escapeParagraphLineStarts(text: string) {
+    return text
+        .split("\n")
+        .map((line) => line.replace(blockStartMarkerPattern(), "\\$1"))
+        .join("\n");
+}
+
+function blockStartMarkerPattern() {
+    return /^(#{1,6}(?:\s|$)|[-*+](?:\s|$)|[-*+]\s+\[[ xX]\]\s|>(?:\s|$)|```|\|(?=.*\|))/;
 }
 
 function headingLevel(node: ProseMirrorNode) {

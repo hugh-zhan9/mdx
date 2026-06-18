@@ -81,9 +81,7 @@ export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
             continue;
         }
 
-        const inlineCode = tryParseDelimitedInline(text, cursor, "`", "`", {
-            preserveEscapes: true,
-        });
+        const inlineCode = tryParseInlineCode(text, cursor);
         if (inlineCode) {
             pushMarkedText(
                 children,
@@ -178,8 +176,8 @@ function pushInlineNodesWithMark(
     for (const node of nodes) {
         if (node.isText) {
             pushText(children, node.text ?? "", mark.addToSet(node.marks));
-        } else if (node.textContent.length > 0) {
-            pushText(children, node.textContent, [mark]);
+        } else {
+            children.push(node.mark(mark.addToSet(node.marks)));
         }
     }
 }
@@ -390,6 +388,29 @@ function tryParseFootnoteRef(text: string, startIndex: number) {
     return {
         label: decodeEscapes(rawLabel),
         nextIndex: labelEnd + 1,
+    };
+}
+
+function tryParseInlineCode(text: string, startIndex: number) {
+    if (text[startIndex] !== "`") {
+        return null;
+    }
+
+    let openerLength = 0;
+    while (text[startIndex + openerLength] === "`") {
+        openerLength += 1;
+    }
+
+    const opener = "`".repeat(openerLength);
+    const contentStart = startIndex + openerLength;
+    const closeIndex = text.indexOf(opener, contentStart);
+    if (closeIndex < 0) {
+        return null;
+    }
+
+    return {
+        content: text.slice(contentStart, closeIndex),
+        nextIndex: closeIndex + openerLength,
     };
 }
 

@@ -8,35 +8,30 @@ export function serializeInlineContent(node: ProseMirrorNode): string {
 
     while (index < node.childCount) {
         const child = node.child(index);
+        const link = findLinkMark(child);
+        if (link) {
+            const serializedRun = serializeInlineRun(
+                node,
+                index,
+                (candidate) => linkMarksEquivalent(link, findLinkMark(candidate)),
+                link,
+            );
+            output += serializeLinkedText(serializedRun.serialized, link);
+            index = serializedRun.nextIndex;
+            continue;
+        }
+
         if (!child.isText) {
             output += serializeInlineNode(child);
             index += 1;
             continue;
         }
 
-        const link = findLinkMark(child);
-        if (!link) {
             const serializedRun = serializeTextRun(node, index, (candidate) => {
                 return candidate.isText && findLinkMark(candidate) === null;
             });
             output += serializedRun.serialized;
             index = serializedRun.nextIndex;
-            continue;
-        }
-
-        const serializedRun = serializeTextRun(
-            node,
-            index,
-            (candidate) => {
-                return (
-                    candidate.isText &&
-                    linkMarksEquivalent(link, findLinkMark(candidate))
-                );
-            },
-            link,
-        );
-        output += serializeLinkedText(serializedRun.serialized, link);
-        index = serializedRun.nextIndex;
     }
 
     return output;
@@ -61,20 +56,35 @@ function serializeTextRun(
     predicate: (candidate: ProseMirrorNode) => boolean,
     excludedMark?: Mark,
 ) {
+    return serializeInlineRun(node, startIndex, predicate, excludedMark);
+}
+
+function serializeInlineRun(
+    node: ProseMirrorNode,
+    startIndex: number,
+    predicate: (candidate: ProseMirrorNode) => boolean,
+    excludedMark?: Mark,
+) {
     let serialized = "";
     const activeMarks: Mark[] = [];
     let nextIndex = startIndex;
 
     while (nextIndex < node.childCount) {
         const child = node.child(nextIndex);
-        if (!child.isText || !predicate(child)) {
+        if (!predicate(child)) {
             break;
         }
 
         const marks = excludedMark
             ? child.marks.filter((mark) => mark !== excludedMark)
             : [...child.marks];
-        const sharedPrefixLength = sharedMarkPrefixLength(activeMarks, marks);
+        const activeChildMarks = marks.filter(
+            (mark) => mark.type.name !== "inline_code",
+        );
+        const sharedPrefixLength = sharedMarkPrefixLength(
+            activeMarks,
+            activeChildMarks,
+        );
 
         for (
             let markIndex = activeMarks.length - 1;
@@ -87,16 +97,20 @@ function serializeTextRun(
 
         for (
             let markIndex = sharedPrefixLength;
-            markIndex < marks.length;
+            markIndex < activeChildMarks.length;
             markIndex += 1
         ) {
-            serialized += openMark(marks[markIndex]);
-            activeMarks.push(marks[markIndex]);
+            serialized += openMark(activeChildMarks[markIndex]);
+            activeMarks.push(activeChildMarks[markIndex]);
         }
 
-        serialized += shouldSerializeAsCodeText(marks)
-            ? escapeInlineCodeText(child.text ?? "")
-            : escapePlainText(child.text ?? "");
+        if (child.isText) {
+            serialized += shouldSerializeAsCodeText(marks)
+                ? serializeInlineCodeText(child.text ?? "")
+                : escapePlainText(child.text ?? "");
+        } else {
+            serialized += serializeInlineNode(child);
+        }
         nextIndex += 1;
     }
 
@@ -171,8 +185,6 @@ function openMark(mark: Mark) {
             return "*";
         case "strike":
             return "~~";
-        case "inline_code":
-            return "`";
         default:
             return "";
     }
@@ -247,8 +259,13 @@ function escapePlainText(text: string) {
     return escaped;
 }
 
-function escapeInlineCodeText(text: string) {
-    return text.replaceAll("`", "\\`");
+function serializeInlineCodeText(text: string) {
+    const longestBacktickRun = text.match(/`+/g)?.reduce((longest, run) => {
+        return Math.max(longest, run.length);
+    }, 0) ?? 0;
+    const delimiter = "`".repeat(longestBacktickRun + 1);
+
+    return `${delimiter}${text}${delimiter}`;
 }
 
 function escapeWikilinkSegment(segment: string) {

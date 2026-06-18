@@ -131,6 +131,32 @@ describe("parseMarkdown", () => {
         ]);
     });
 
+    it("parses inline math inside normal link labels", () => {
+        const parsed = parseMarkdown("[eq $x$](https://x.test)");
+        const paragraph = parsed.doc.child(0);
+
+        expect(paragraph.child(0).text).toBe("eq ");
+        expect(paragraph.child(0).marks[0]?.type.name).toBe("link");
+        expect(paragraph.child(1).type.name).toBe("math_inline");
+        expect(paragraph.child(1).attrs.latex).toBe("x");
+        expect(paragraph.child(1).marks[0]?.type.name).toBe("link");
+    });
+
+    it("parses inline math inside wikilink labels", () => {
+        const parsed = parseMarkdown("[[Target|eq $x$]]");
+        const paragraph = parsed.doc.child(0);
+
+        expect(paragraph.child(0).text).toBe("eq ");
+        expect(paragraph.child(0).marks[0]?.attrs.href).toBe(
+            "mdx-wikilink:Target%7Ceq%20%24x%24",
+        );
+        expect(paragraph.child(1).type.name).toBe("math_inline");
+        expect(paragraph.child(1).attrs.latex).toBe("x");
+        expect(paragraph.child(1).marks[0]?.attrs.href).toBe(
+            "mdx-wikilink:Target%7Ceq%20%24x%24",
+        );
+    });
+
     it("consumes an unclosed fence through EOF as a code block", () => {
         const markdown = "```ts\n# not a heading\nbody";
         const parsed = parseMarkdown(markdown);
