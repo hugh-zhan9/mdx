@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { EditorState, TextSelection } from "prosemirror-state";
 import { parseMarkdown, serializeMarkdown } from "..";
-import { insertImageMarkdown, insertPlainTextMarkdown } from "./editor-commands";
+import { mdxEditorSchema } from "../schema/schema";
+import { createMdxEditorPlugins } from "../plugins/editor-plugins";
+import {
+    insertImageMarkdown,
+    insertPlainTextMarkdown,
+    insertTableMarkdown,
+    setHeadingBlock,
+    toggleStrongMark,
+} from "./editor-commands";
 
 describe("editor commands", () => {
     it("inserts plain text into Markdown at an offset", () => {
@@ -46,5 +55,52 @@ describe("editor commands", () => {
         const parsed = parseMarkdown(markdown);
 
         expect(serializeMarkdown(parsed)).toBe("# Title\nBody.\n");
+    });
+
+    it("toggles strong marks through a ProseMirror command", () => {
+        const doc = mdxEditorSchema.nodes.doc.create(null, [
+            mdxEditorSchema.nodes.paragraph.create(null, [
+                mdxEditorSchema.text("bold"),
+            ]),
+        ]);
+        let state = EditorState.create({
+            doc,
+            plugins: createMdxEditorPlugins(),
+            schema: mdxEditorSchema,
+            selection: TextSelection.create(doc, 1, 5),
+        });
+
+        expect(
+            toggleStrongMark(state, (transaction) => {
+                state = state.apply(transaction);
+            }),
+        ).toBe(true);
+        expect(state.doc.child(0).child(0).marks[0]?.type.name).toBe("strong");
+    });
+
+    it("sets the current block to a heading level 2", () => {
+        let state = EditorState.create({
+            doc: mdxEditorSchema.nodes.doc.create(null, [
+                mdxEditorSchema.nodes.paragraph.create(null, [
+                    mdxEditorSchema.text("Title"),
+                ]),
+            ]),
+            plugins: createMdxEditorPlugins(),
+            schema: mdxEditorSchema,
+        });
+
+        expect(
+            setHeadingBlock(2)(state, (transaction) => {
+                state = state.apply(transaction);
+            }),
+        ).toBe(true);
+        expect(state.doc.child(0).type.name).toBe("heading");
+        expect(state.doc.child(0).attrs.level).toBe(2);
+    });
+
+    it("inserts Markdown table syntax", () => {
+        expect(insertTableMarkdown(2, 2)).toBe(
+            "|  |  |\n|---|---|\n|  |  |\n|  |  |\n",
+        );
     });
 });
