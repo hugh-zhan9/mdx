@@ -232,7 +232,7 @@ function decodeWikilinkPayload(payload: string) {
 }
 
 function escapeLinkTitle(title: string) {
-    return title.replaceAll('"', '\\"');
+    return title.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
 }
 
 function escapeLinkHref(href: string) {
@@ -278,7 +278,7 @@ function escapeWikilinkSegment(segment: string) {
 }
 
 function escapeMathInline(latex: string) {
-    return latex.replaceAll("$", "\\$");
+    return latex.replaceAll("\\", "\\\\").replaceAll("$", "\\$");
 }
 
 function escapeFootnoteLabel(label: string) {

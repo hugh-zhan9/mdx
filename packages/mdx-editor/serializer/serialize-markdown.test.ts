@@ -159,9 +159,33 @@ describe("serializeMarkdown", () => {
         const markdown = serializeMarkdown(emptyParsedDocument(doc));
         const reparsed = parseMarkdown(markdown);
 
-        expect(markdown).toBe(String.raw`` + "`" + String.raw`a\b` + "` " + String.raw`$\alpha$` + "\n");
+        expect(markdown).toBe(String.raw`` + "`" + String.raw`a\b` + "` " + String.raw`$\\alpha$` + "\n");
         expect(reparsed.doc.child(0).child(0).text).toBe(String.raw`a\b`);
         expect(reparsed.doc.child(0).child(2).attrs.latex).toBe(String.raw`\alpha`);
+    });
+
+    it("round-trips inline math containing dollars and trailing backslashes", () => {
+        const schema = mdxEditorSchema;
+        const cases = [
+            { latex: "x$", markdown: String.raw`$x\$$` + "\n" },
+            { latex: "x\\", markdown: String.raw`$x\\$` + "\n" },
+        ];
+
+        for (const testCase of cases) {
+            const doc = schema.nodes.doc.create(null, [
+                schema.nodes.paragraph.create(null, [
+                    schema.nodes.math_inline.create({ latex: testCase.latex }),
+                ]),
+            ]);
+            const markdown = serializeMarkdown(emptyParsedDocument(doc));
+            const reparsed = parseMarkdown(markdown);
+
+            expect(markdown).toBe(testCase.markdown);
+            expect(reparsed.doc.child(0).child(0).type.name).toBe("math_inline");
+            expect(reparsed.doc.child(0).child(0).attrs.latex).toBe(
+                testCase.latex,
+            );
+        }
     });
 
     it("round-trips literal backticks inside inline code", () => {
@@ -191,6 +215,27 @@ describe("serializeMarkdown", () => {
                 "inline_code",
             );
         }
+    });
+
+    it("round-trips combined strong and inline code marks", () => {
+        const schema = mdxEditorSchema;
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("x", [
+                    schema.marks.strong.create(),
+                    schema.marks.inline_code.create(),
+                ]),
+            ]),
+        ]);
+        const markdown = serializeMarkdown(emptyParsedDocument(doc));
+        const reparsed = parseMarkdown(markdown);
+
+        expect(markdown).toBe("**`x`**\n");
+        expect(reparsed.doc.child(0).child(0).text).toBe("x");
+        expect(reparsed.doc.child(0).child(0).marks.map((mark) => mark.type.name)).toEqual([
+            "strong",
+            "inline_code",
+        ]);
     });
 
     it("does not block-escape leading triple-backtick inline code spans", () => {
@@ -295,6 +340,43 @@ describe("serializeMarkdown", () => {
             'A "quoted" title',
         );
         expect(serializeMarkdown(parsed)).toBe(markdown);
+    });
+
+    it("round-trips normal link and image title backslashes", () => {
+        const schema = mdxEditorSchema;
+        const linkDoc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("docs", [
+                    schema.marks.link.create({
+                        href: "https://example.com",
+                        title: String.raw`a\b`,
+                    }),
+                ]),
+            ]),
+        ]);
+        const imageDoc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.nodes.image.create({
+                    src: "image.png",
+                    alt: "Alt",
+                    title: String.raw`a\b`,
+                }),
+            ]),
+        ]);
+
+        const linkMarkdown = serializeMarkdown(emptyParsedDocument(linkDoc));
+        const imageMarkdown = serializeMarkdown(emptyParsedDocument(imageDoc));
+        const reparsedLink = parseMarkdown(linkMarkdown);
+        const reparsedImage = parseMarkdown(imageMarkdown);
+
+        expect(linkMarkdown).toBe(String.raw`[docs](https://example.com "a\\b")` + "\n");
+        expect(imageMarkdown).toBe(String.raw`![Alt](image.png "a\\b")` + "\n");
+        expect(reparsedLink.doc.child(0).child(0).marks[0]?.attrs.title).toBe(
+            String.raw`a\b`,
+        );
+        expect(reparsedImage.doc.child(0).child(0).attrs.title).toBe(
+            String.raw`a\b`,
+        );
     });
 
     it("serializes one normal link spanning multiple text nodes once", () => {

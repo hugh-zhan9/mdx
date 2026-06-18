@@ -74,7 +74,7 @@ export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
             buffer = "";
             children.push(
                 mdxEditorSchema.nodes.math_inline.create({
-                    latex: inlineMath.content,
+                    latex: decodeMathEscapes(inlineMath.content),
                 }),
             );
             cursor = inlineMath.nextIndex;
@@ -96,10 +96,10 @@ export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
 
         const strong = tryParseDelimitedInline(text, cursor, "**", "**");
         if (strong) {
-            pushMarkedText(
+            pushText(children, buffer);
+            pushInlineNodesWithMark(
                 children,
-                buffer,
-                strong.content,
+                parseInlineMarkdown(strong.content),
                 mdxEditorSchema.marks.strong.create(),
             );
             buffer = "";
@@ -109,10 +109,10 @@ export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
 
         const strike = tryParseDelimitedInline(text, cursor, "~~", "~~");
         if (strike) {
-            pushMarkedText(
+            pushText(children, buffer);
+            pushInlineNodesWithMark(
                 children,
-                buffer,
-                strike.content,
+                parseInlineMarkdown(strike.content),
                 mdxEditorSchema.marks.strike.create(),
             );
             buffer = "";
@@ -122,10 +122,10 @@ export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
 
         const emphasis = tryParseDelimitedInline(text, cursor, "*", "*");
         if (emphasis) {
-            pushMarkedText(
+            pushText(children, buffer);
+            pushInlineNodesWithMark(
                 children,
-                buffer,
-                emphasis.content,
+                parseInlineMarkdown(emphasis.content),
                 mdxEditorSchema.marks.emphasis.create(),
             );
             buffer = "";
@@ -455,10 +455,7 @@ function tryParseDelimitedInline(
         return null;
     }
 
-    if (
-        closer === "$" &&
-        (text[closeIndex - 1] === "$" || text[closeIndex + 1] === "$")
-    ) {
+    if (closer === "$" && text[closeIndex + 1] === "$") {
         return null;
     }
 
@@ -506,4 +503,8 @@ function findUnescapedToken(text: string, target: string, startIndex = 0) {
 
 function decodeEscapes(text: string) {
     return text.replace(/\\(.)/g, "$1");
+}
+
+function decodeMathEscapes(text: string) {
+    return text.replace(/\\([\\$])/g, "$1");
 }

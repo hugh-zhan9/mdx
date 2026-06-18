@@ -90,6 +90,27 @@ describe("parseMarkdown", () => {
         expect(paragraph.child(11).attrs.label).toBe("note");
     });
 
+    it("recursively parses inline syntax inside strong, emphasis, and strike marks", () => {
+        const parsed = parseMarkdown("**`code`** *`em`* ~~`gone`~~");
+        const paragraph = parsed.doc.child(0);
+
+        expect(paragraph.child(0).text).toBe("code");
+        expect(paragraph.child(0).marks.map((mark) => mark.type.name)).toEqual([
+            "strong",
+            "inline_code",
+        ]);
+        expect(paragraph.child(2).text).toBe("em");
+        expect(paragraph.child(2).marks.map((mark) => mark.type.name)).toEqual([
+            "emphasis",
+            "inline_code",
+        ]);
+        expect(paragraph.child(4).text).toBe("gone");
+        expect(paragraph.child(4).marks.map((mark) => mark.type.name)).toEqual([
+            "strike",
+            "inline_code",
+        ]);
+    });
+
     it("keeps escaped inline markdown delimiters as literal text", () => {
         const markdown = String.raw`\*\*bold\*\* \*em\* \~\~gone\~\~ \`code\` \$x+1\$ \[\^note\]`;
         const parsed = parseMarkdown(markdown);
@@ -107,6 +128,13 @@ describe("parseMarkdown", () => {
         expect(paragraph.child(0).marks[0]?.type.name).toBe("inline_code");
         expect(paragraph.child(2).type.name).toBe("math_inline");
         expect(paragraph.child(2).attrs.latex).toBe(String.raw`\alpha`);
+    });
+
+    it("parses escaped dollars and backslashes inside inline math", () => {
+        const parsed = parseMarkdown(String.raw`$x\$$ $x\\$`);
+
+        expect(parsed.doc.child(0).child(0).attrs.latex).toBe("x$");
+        expect(parsed.doc.child(0).child(2).attrs.latex).toBe("x\\");
     });
 
     it("parses angle-bracket link hrefs containing spaces", () => {
