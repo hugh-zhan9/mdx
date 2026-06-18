@@ -94,7 +94,9 @@ function serializeTextRun(
             activeMarks.push(marks[markIndex]);
         }
 
-        serialized += escapePlainText(child.text ?? "");
+        serialized += shouldSerializeAsCodeText(marks)
+            ? escapeInlineCodeText(child.text ?? "")
+            : escapePlainText(child.text ?? "");
         nextIndex += 1;
     }
 
@@ -180,6 +182,10 @@ function closeMark(mark: Mark) {
     return openMark(mark);
 }
 
+function shouldSerializeAsCodeText(marks: readonly Mark[]) {
+    return marks.some((mark) => mark.type.name === "inline_code");
+}
+
 function serializeWikilink(text: string, href: string) {
     const originalPayload = decodeWikilinkPayload(
         href.slice(WIKILINK_HREF_PREFIX.length),
@@ -226,6 +232,10 @@ function escapePlainText(text: string) {
         .replaceAll("\\", "\\\\")
         .replaceAll("[", "\\[")
         .replaceAll("]", "\\]");
+}
+
+function escapeInlineCodeText(text: string) {
+    return text.replaceAll("`", "\\`");
 }
 
 function escapeWikilinkSegment(segment: string) {

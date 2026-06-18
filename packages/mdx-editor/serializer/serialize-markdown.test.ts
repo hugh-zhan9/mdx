@@ -116,6 +116,72 @@ describe("serializeMarkdown", () => {
         );
     });
 
+    it("does not bracket-escape inline code content", () => {
+        const schema = mdxEditorSchema;
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("Code "),
+                schema.text(String.raw`a[b]\c`, [schema.marks.inline_code.create()]),
+            ]),
+        ]);
+
+        expect(serializeMarkdown(emptyParsedDocument(doc))).toBe(
+            String.raw`Code ` + "`" + String.raw`a[b]\c` + "`\n",
+        );
+    });
+
+    it("serializes inline marks inside table cells", () => {
+        const schema = mdxEditorSchema;
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.table.create(
+                { alignments: [] },
+                schema.nodes.table_row.create(null, [
+                    schema.nodes.table_header.create(null, [
+                        schema.text("Head", [schema.marks.strong.create()]),
+                    ]),
+                    schema.nodes.table_cell.create(null, [
+                        schema.text("Cell", [schema.marks.strong.create()]),
+                    ]),
+                ]),
+            ),
+        ]);
+
+        expect(serializeMarkdown(emptyParsedDocument(doc))).toBe(
+            "| **Head** | **Cell** |\n| --- | --- |\n",
+        );
+    });
+
+    it("serializes inline marks inside list item paragraphs", () => {
+        const schema = mdxEditorSchema;
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.bullet_list.create(null, [
+                schema.nodes.list_item.create(null, [
+                    schema.nodes.paragraph.create(null, [
+                        schema.text("bold", [schema.marks.strong.create()]),
+                    ]),
+                ]),
+            ]),
+        ]);
+
+        expect(serializeMarkdown(emptyParsedDocument(doc))).toBe("- **bold**\n");
+    });
+
+    it("serializes inline marks inside callout paragraphs", () => {
+        const schema = mdxEditorSchema;
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.callout.create(
+                { kind: "NOTE", title: null },
+                schema.nodes.paragraph.create(null, [
+                    schema.text("bold", [schema.marks.strong.create()]),
+                ]),
+            ),
+        ]);
+
+        expect(serializeMarkdown(emptyParsedDocument(doc))).toBe(
+            "> [!NOTE]\n> **bold**\n",
+        );
+    });
+
     it("round-trips links whose href contains closing parentheses", () => {
         const markdown = String.raw`[docs](https://example.com/a\)b)\n`;
         const parsed = parseMarkdown(markdown);
