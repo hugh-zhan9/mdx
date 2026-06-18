@@ -277,6 +277,53 @@ describe("serializeMarkdown", () => {
         expect(markdown).toBe("**$x$** **[^n]** **![alt](src)**\n");
     });
 
+    it("does not reuse source when removing marks from inline atom nodes", () => {
+        const parsed = parseMarkdown("**$x$**\n\n**[^n]**\n");
+        const mathParagraph = parsed.doc.child(0);
+        const footnoteParagraph = parsed.doc.child(1);
+        const mathWithoutStrong = mathParagraph.type.create(
+            mathParagraph.attrs,
+            mathParagraph.child(0).mark([]),
+        );
+        const footnoteWithoutStrong = footnoteParagraph.type.create(
+            footnoteParagraph.attrs,
+            footnoteParagraph.child(0).mark([]),
+        );
+        const editedDoc = parsed.doc.copy(
+            parsed.doc.content
+                .replaceChild(0, mathWithoutStrong)
+                .replaceChild(1, footnoteWithoutStrong),
+        );
+
+        expect(serializeMarkdown({ ...parsed, doc: editedDoc })).toBe(
+            "$x$\n\n[^n]\n",
+        );
+    });
+
+    it("does not reuse source when adding marks to inline atom nodes", () => {
+        const parsed = parseMarkdown("$x$\n\n[^n]\n");
+        const strong = mdxEditorSchema.marks.strong.create();
+        const mathParagraph = parsed.doc.child(0);
+        const footnoteParagraph = parsed.doc.child(1);
+        const mathWithStrong = mathParagraph.type.create(
+            mathParagraph.attrs,
+            mathParagraph.child(0).mark([strong]),
+        );
+        const footnoteWithStrong = footnoteParagraph.type.create(
+            footnoteParagraph.attrs,
+            footnoteParagraph.child(0).mark([strong]),
+        );
+        const editedDoc = parsed.doc.copy(
+            parsed.doc.content
+                .replaceChild(0, mathWithStrong)
+                .replaceChild(1, footnoteWithStrong),
+        );
+
+        expect(serializeMarkdown({ ...parsed, doc: editedDoc })).toBe(
+            "**$x$**\n\n**[^n]**\n",
+        );
+    });
+
     it("does not block-escape leading triple-backtick inline code spans", () => {
         const schema = mdxEditorSchema;
         const doc = schema.nodes.doc.create(null, [

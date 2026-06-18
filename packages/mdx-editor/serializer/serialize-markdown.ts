@@ -151,12 +151,15 @@ function nodesEquivalent(left: ProseMirrorNode, right: ProseMirrorNode): boolean
         return false;
     }
 
+    if (!marksEquivalent(left.marks, right.marks)) {
+        return false;
+    }
+
     if (left.isText || right.isText) {
         return (
             left.isText &&
             right.isText &&
-            left.text === right.text &&
-            marksEquivalent(left.marks, right.marks)
+            left.text === right.text
         );
     }
 
