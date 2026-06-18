@@ -38,11 +38,20 @@ function createSourceFallbackNodeView(
             return;
         }
 
+        const nextAttrs = {
+            ...currentNode.attrs,
+            ...attrs,
+        };
+        const markdown = String(nextAttrs.markdown ?? "");
+        const content =
+            markdown.length > 0 ? currentNode.type.schema.text(markdown) : null;
+
         view.dispatch(
-            view.state.tr.setNodeMarkup(pos, undefined, {
-                ...currentNode.attrs,
-                ...attrs,
-            }),
+            view.state.tr.replaceWith(
+                pos,
+                pos + currentNode.nodeSize,
+                currentNode.type.create(nextAttrs, content),
+            ),
         );
     };
 

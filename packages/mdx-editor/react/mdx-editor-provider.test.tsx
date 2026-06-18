@@ -22,6 +22,11 @@ function Probe() {
             </button>
             <button
                 type="button"
+                data-testid="insert-x"
+                onClick={() => editor.insertText("X")}
+            />
+            <button
+                type="button"
                 data-testid="insert-image"
                 onClick={() =>
                     editor.insertImage(".assets/a.png", "Diagram", "Preview")
@@ -163,6 +168,50 @@ describe("MdxEditorProvider", () => {
 
         expect(onMarkdownChange).toHaveBeenLastCalledWith(editedMarkdown);
         expect(textarea?.value).toBe(editedMarkdown);
+    });
+
+    it("keeps selection offsets aligned after source fallback text length changes", async () => {
+        const markdown = "<div>\nfallback\n</div>\n";
+        const editedMarkdown = "<section>\nmuch longer fallback\n</section>\n";
+        const onMarkdownChange = vi.fn();
+
+        await act(async () => {
+            root.render(
+                <MdxEditorProvider
+                    initialMarkdown={markdown}
+                    onMarkdownChange={onMarkdownChange}
+                >
+                    <MdxEditorView />
+                    <Probe />
+                </MdxEditorProvider>,
+            );
+        });
+
+        const textarea = host.querySelector<HTMLTextAreaElement>(
+            "textarea[aria-label='Markdown source fallback']",
+        );
+
+        await act(async () => {
+            if (!textarea) {
+                return;
+            }
+
+            const valueSetter = Object.getOwnPropertyDescriptor(
+                HTMLTextAreaElement.prototype,
+                "value",
+            )?.set;
+
+            valueSetter?.call(textarea, editedMarkdown);
+            textarea.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+
+        await act(async () => {
+            host
+                .querySelector<HTMLButtonElement>("[data-testid='insert-x']")
+                ?.click();
+        });
+
+        expect(onMarkdownChange).toHaveBeenLastCalledWith(`${editedMarkdown}X`);
     });
 
     it("hydrates rendered image nodes through imageLoader", async () => {
