@@ -1,4 +1,4 @@
-import { DOMParser } from "prosemirror-model";
+import { DOMParser, DOMSerializer } from "prosemirror-model";
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vitest";
 import { mdxEditorSchema } from "./schema";
@@ -72,7 +72,8 @@ describe("mdxEditorSchema advanced markdown nodes", () => {
             schema.nodes.math_inline.create({ latex: "x+1" }).attrs.latex,
         ).toBe("x+1");
         expect(
-            schema.nodes.math_block.create({ latex: "y=mx+b" }).attrs.latex,
+            schema.nodes.math_block.create(null, schema.text("y=mx+b"))
+                .textContent,
         ).toBe("y=mx+b");
         expect(
             schema.nodes.callout.create(
@@ -81,12 +82,14 @@ describe("mdxEditorSchema advanced markdown nodes", () => {
             ).attrs.kind,
         ).toBe("NOTE");
         expect(
-            schema.nodes.mermaid_block.create({ code: "graph TD\nA-->B" }).attrs
-                .code,
+            schema.nodes.mermaid_block.create(
+                null,
+                schema.text("graph TD\nA-->B"),
+            ).textContent,
         ).toContain("graph TD");
         expect(
-            schema.nodes.source_fallback.create({ markdown: "<x>" }).attrs
-                .markdown,
+            schema.nodes.source_fallback.create(null, schema.text("<x>"))
+                .textContent,
         ).toBe("<x>");
     });
 
@@ -135,10 +138,13 @@ describe("mdxEditorSchema advanced markdown nodes", () => {
             tableCell,
             tableHeader,
             schema.nodes.footnote_definition.create({ label: "a" }, paragraph),
-            schema.nodes.math_block.create({ latex: "x=1" }),
+            schema.nodes.math_block.create(null, schema.text("x=1")),
             schema.nodes.callout.create({ kind: "TIP" }, paragraph),
-            schema.nodes.mermaid_block.create({ code: "graph TD\nA-->B" }),
-            schema.nodes.source_fallback.create({ markdown: "<x>" }),
+            schema.nodes.mermaid_block.create(
+                null,
+                schema.text("graph TD\nA-->B"),
+            ),
+            schema.nodes.source_fallback.create(null, schema.text("<x>")),
         ];
 
         for (const node of advancedBlocks) {
@@ -148,10 +154,66 @@ describe("mdxEditorSchema advanced markdown nodes", () => {
 
         const mermaidDom = JSON.stringify(
             schema.nodes.mermaid_block.spec.toDOM?.(
-                schema.nodes.mermaid_block.create({ code: "graph TD\nA-->B" }),
+                schema.nodes.mermaid_block.create(
+                    null,
+                    schema.text("graph TD\nA-->B"),
+                ),
             ),
         );
         expect(mermaidDom).not.toContain("data-mdx-mermaid-preview");
         expect(mermaidDom).not.toContain("mdx-mermaid-preview");
+    });
+
+    it("preserves advanced code block payloads through DOM serialization and parsing", () => {
+        const schema = mdxEditorSchema;
+        const jsdom = new JSDOM("<article></article>");
+        const document = jsdom.window.document;
+        const article = document.querySelector("article")!;
+        const serializer = DOMSerializer.fromSchema(schema);
+        const blocks = [
+            {
+                expectedType: "math_block",
+                expectedText: "y=mx+b\n",
+                node: schema.nodes.math_block.create(
+                    { sourceId: "source-math" },
+                    schema.text("y=mx+b\n"),
+                ),
+            },
+            {
+                expectedType: "mermaid_block",
+                expectedText: "graph TD\nA-->B\n",
+                node: schema.nodes.mermaid_block.create(
+                    { info: "mermaid live", sourceId: "source-mermaid" },
+                    schema.text("graph TD\nA-->B\n"),
+                ),
+            },
+            {
+                expectedType: "source_fallback",
+                expectedText: "<x>\n",
+                node: schema.nodes.source_fallback.create(
+                    { reason: "unsupported", sourceId: "source-fallback" },
+                    schema.text("<x>\n"),
+                ),
+            },
+        ];
+
+        for (const block of blocks) {
+            const domNode = serializer.serializeNode(block.node, { document });
+            expect(domNode.textContent).toBe(block.expectedText);
+            expect((domNode as HTMLElement).querySelector("code")?.textContent).toBe(
+                block.expectedText,
+            );
+            article.append(domNode);
+        }
+
+        const parsed = DOMParser.fromSchema(schema).parse(article, {
+            preserveWhitespace: "full",
+        });
+
+        blocks.forEach((block, index) => {
+            const parsedBlock = parsed.child(index);
+            expect(parsedBlock.type.name).toBe(block.expectedType);
+            expect(parsedBlock.textContent).toBe(block.expectedText);
+        });
     });
 });

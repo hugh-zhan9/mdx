@@ -400,10 +400,11 @@ export const mdxEditorSchema = new Schema({
         },
         math_block: {
             group: "block",
-            atom: true,
+            content: "text*",
+            code: true,
+            marks: "",
             selectable: true,
             attrs: {
-                latex: { default: "" },
                 sourceId: { default: null },
             },
             toDOM: (node) => [
@@ -413,14 +414,13 @@ export const mdxEditorSchema = new Schema({
                     "data-mdx-syntax": "math",
                     "data-mdx-source-id": node.attrs.sourceId ?? undefined,
                 },
-                ["code", node.attrs.latex],
+                ["code", 0],
             ],
             parseDOM: [
                 {
                     tag: "pre[data-mdx-node-type='math_block']",
                     preserveWhitespace: "full",
                     getAttrs: (dom) => ({
-                        latex: (dom as HTMLElement).textContent ?? "",
                         sourceId: (dom as HTMLElement).getAttribute(
                             "data-mdx-source-id",
                         ),
@@ -466,10 +466,11 @@ export const mdxEditorSchema = new Schema({
         },
         mermaid_block: {
             group: "block",
-            atom: true,
+            content: "text*",
+            code: true,
+            marks: "",
             selectable: true,
             attrs: {
-                code: { default: "" },
                 info: { default: "mermaid" },
                 sourceId: { default: null },
             },
@@ -481,14 +482,13 @@ export const mdxEditorSchema = new Schema({
                     "data-mdx-info": node.attrs.info || undefined,
                     "data-mdx-source-id": node.attrs.sourceId ?? undefined,
                 },
-                ["code", node.attrs.code],
+                ["code", 0],
             ],
             parseDOM: [
                 {
                     tag: "pre[data-mdx-node-type='mermaid_block']",
                     preserveWhitespace: "full",
                     getAttrs: (dom) => ({
-                        code: (dom as HTMLElement).textContent ?? "",
                         info:
                             (dom as HTMLElement).getAttribute(
                                 "data-mdx-info",
@@ -607,10 +607,11 @@ export const mdxEditorSchema = new Schema({
         },
         source_fallback: {
             group: "block",
-            atom: true,
+            content: "text*",
+            code: true,
+            marks: "",
             selectable: true,
             attrs: {
-                markdown: { default: "" },
                 reason: { default: "unsupported" },
                 sourceId: { default: null },
             },
@@ -621,7 +622,7 @@ export const mdxEditorSchema = new Schema({
                     "data-mdx-source-id": node.attrs.sourceId ?? undefined,
                     "data-mdx-reason": node.attrs.reason || undefined,
                 },
-                ["code", node.attrs.markdown],
+                ["code", 0],
             ],
             parseDOM: [
                 {
@@ -629,7 +630,6 @@ export const mdxEditorSchema = new Schema({
                     priority: 85,
                     preserveWhitespace: "full",
                     getAttrs: (dom) => ({
-                        markdown: (dom as HTMLElement).textContent ?? "",
                         reason:
                             (dom as HTMLElement).getAttribute(
                                 "data-mdx-reason",
