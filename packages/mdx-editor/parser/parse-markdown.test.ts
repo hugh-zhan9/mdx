@@ -111,6 +111,24 @@ describe("parseMarkdown", () => {
         ]);
     });
 
+    it("preserves outer marks on parsed inline atom nodes", () => {
+        const parsed = parseMarkdown("**$x$** **[^n]** **![alt](src)**");
+        const paragraph = parsed.doc.child(0);
+
+        expect(paragraph.child(0).type.name).toBe("math_inline");
+        expect(paragraph.child(0).marks.map((mark) => mark.type.name)).toEqual([
+            "strong",
+        ]);
+        expect(paragraph.child(2).type.name).toBe("footnote_ref");
+        expect(paragraph.child(2).marks.map((mark) => mark.type.name)).toEqual([
+            "strong",
+        ]);
+        expect(paragraph.child(4).type.name).toBe("image");
+        expect(paragraph.child(4).marks.map((mark) => mark.type.name)).toEqual([
+            "strong",
+        ]);
+    });
+
     it("keeps escaped inline markdown delimiters as literal text", () => {
         const markdown = String.raw`\*\*bold\*\* \*em\* \~\~gone\~\~ \`code\` \$x+1\$ \[\^note\]`;
         const parsed = parseMarkdown(markdown);

@@ -238,6 +238,45 @@ describe("serializeMarkdown", () => {
         ]);
     });
 
+    it("round-trips outer marks on generated inline atom nodes", () => {
+        const schema = mdxEditorSchema;
+        const strong = schema.marks.strong.create();
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.nodes.math_inline.create({ latex: "x" }).mark([strong]),
+                schema.text(" "),
+                schema.nodes.footnote_ref.create({ label: "n" }).mark([strong]),
+                schema.text(" "),
+                schema.nodes.image.create({ src: "src", alt: "alt" }).mark([
+                    strong,
+                ]),
+            ]),
+        ]);
+        const markdown = serializeMarkdown(emptyParsedDocument(doc));
+        const reparsed = parseMarkdown(markdown);
+
+        expect(markdown).toBe("**$x$** **[^n]** **![alt](src)**\n");
+        expect(reparsed.doc.child(0).child(0).type.name).toBe("math_inline");
+        expect(reparsed.doc.child(0).child(0).marks.map((mark) => mark.type.name)).toEqual([
+            "strong",
+        ]);
+        expect(reparsed.doc.child(0).child(2).type.name).toBe("footnote_ref");
+        expect(reparsed.doc.child(0).child(2).marks.map((mark) => mark.type.name)).toEqual([
+            "strong",
+        ]);
+        expect(reparsed.doc.child(0).child(4).type.name).toBe("image");
+        expect(reparsed.doc.child(0).child(4).marks.map((mark) => mark.type.name)).toEqual([
+            "strong",
+        ]);
+    });
+
+    it("round-trips parsed marks on inline atom nodes", () => {
+        const parsed = parseMarkdown("**$x$** **[^n]** **![alt](src)**");
+        const markdown = serializeMarkdown(emptyParsedDocument(parsed.doc));
+
+        expect(markdown).toBe("**$x$** **[^n]** **![alt](src)**\n");
+    });
+
     it("does not block-escape leading triple-backtick inline code spans", () => {
         const schema = mdxEditorSchema;
         const doc = schema.nodes.doc.create(null, [

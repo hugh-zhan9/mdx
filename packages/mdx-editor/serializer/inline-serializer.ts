@@ -21,17 +21,11 @@ export function serializeInlineContent(node: ProseMirrorNode): string {
             continue;
         }
 
-        if (!child.isText) {
-            output += serializeInlineNode(child);
-            index += 1;
-            continue;
-        }
-
-            const serializedRun = serializeTextRun(node, index, (candidate) => {
-                return candidate.isText && findLinkMark(candidate) === null;
-            });
-            output += serializedRun.serialized;
-            index = serializedRun.nextIndex;
+        const serializedRun = serializeTextRun(node, index, (candidate) => {
+            return findLinkMark(candidate) === null;
+        });
+        output += serializedRun.serialized;
+        index = serializedRun.nextIndex;
     }
 
     return output;
