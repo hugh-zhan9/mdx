@@ -62,6 +62,64 @@ describe("mhtml archive parser", () => {
 		expect(parseMhtmlArchive(archive).html).toContain("Hello World");
 	});
 
+	it("resolves resource locations relative to the html part location", () => {
+		const archive = [
+			"Content-Type: multipart/related; boundary=abc",
+			"",
+			"--abc",
+			"Content-Type: text/html; charset=utf-8",
+			"Content-Location: https://example.test/page/index.html",
+			"",
+			'<html><body><img src="images/a.png"></body></html>',
+			"--abc",
+			"Content-Type: image/png",
+			"Content-Transfer-Encoding: base64",
+			"Content-Location: https://example.test/page/images/a.png",
+			"",
+			"AAAA",
+			"--abc--",
+		].join("\n");
+
+		const parsed = parseMhtmlArchive(archive);
+		const safe = createSafePreviewHtml(parsed.html, {
+			resourceUrls: parsed.resourceUrls,
+		});
+
+		expect(safe).toContain('src="data:image/png;base64,AAAA"');
+	});
+
+	it("resolves CSS url references relative to the css part location", () => {
+		const archive = [
+			"Content-Type: multipart/related; boundary=abc",
+			"",
+			"--abc",
+			"Content-Type: text/html; charset=utf-8",
+			"Content-Location: https://example.test/page/index.html",
+			"",
+			'<html><head><link rel="stylesheet" href="css/site.css"></head><body></body></html>',
+			"--abc",
+			"Content-Type: text/css; charset=utf-8",
+			"Content-Location: https://example.test/page/css/site.css",
+			"",
+			"body{background:url(../images/bg.png)}",
+			"--abc",
+			"Content-Type: image/png",
+			"Content-Transfer-Encoding: base64",
+			"Content-Location: https://example.test/page/images/bg.png",
+			"",
+			"BBBB",
+			"--abc--",
+		].join("\n");
+
+		const parsed = parseMhtmlArchive(archive);
+		const safe = createSafePreviewHtml(parsed.html, {
+			resourceUrls: parsed.resourceUrls,
+		});
+
+		expect(safe).toContain("data:text/css;charset=utf-8,");
+		expect(decodeURIComponent(safe)).toContain("data:image/png;base64,BBBB");
+	});
+
 	it("throws when the archive has no html part", () => {
 		const archive = [
 			"Content-Type: multipart/related; boundary=abc",

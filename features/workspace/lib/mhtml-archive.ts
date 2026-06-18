@@ -43,13 +43,24 @@ export function parseMhtmlArchive(archive: string): ParsedMhtmlArchive {
 	const resourceUrls = new Map<string, string>();
 	const diagnostics: string[] = [];
 	const cssResources: CssResource[] = [];
+	const htmlBaseLocation = getContentLocation(htmlPart.headers);
+	const cssBaseLocations = parts
+		.filter((part) => part.mimeType === "text/css")
+		.map((part) => getContentLocation(part.headers))
+		.filter((location): location is string => location !== undefined);
 
 	for (const part of parts) {
 		if (part === htmlPart || part.mimeType === "text/html") {
 			continue;
 		}
 
-		const aliases = createResourceAliases(part.headers);
+		const relativeBaseLocations =
+			part.mimeType === "text/css"
+				? [htmlBaseLocation].filter((location): location is string => location !== undefined)
+				: [htmlBaseLocation, ...cssBaseLocations].filter(
+						(location): location is string => location !== undefined,
+					);
+		const aliases = createResourceAliases(part.headers, relativeBaseLocations);
 
 		if (aliases.length === 0) {
 			diagnostics.push(
@@ -290,10 +301,13 @@ function decodeBytes(bytes: Uint8Array, charset: string): string {
 	}
 }
 
-function createResourceAliases(headers: Map<string, string>): string[] {
+function createResourceAliases(
+	headers: Map<string, string>,
+	relativeBaseLocations: string[],
+): string[] {
 	const aliases = new Set<string>();
 	const contentId = normalizeContentId(headers.get("content-id"));
-	const contentLocation = headers.get("content-location")?.trim();
+	const contentLocation = getContentLocation(headers);
 
 	if (contentId !== undefined) {
 		aliases.add(`cid:${contentId}`);
@@ -308,9 +322,17 @@ function createResourceAliases(headers: Map<string, string>): string[] {
 		}
 
 		addAbsoluteLocationAliases(aliases, contentLocation);
+		addRelativeLocationAliases(aliases, contentLocation, relativeBaseLocations);
 	}
 
 	return [...aliases];
+}
+
+function getContentLocation(headers: Map<string, string>): string | undefined {
+	const contentLocation = headers.get("content-location")?.trim();
+	return contentLocation === undefined || contentLocation.length === 0
+		? undefined
+		: contentLocation;
 }
 
 function normalizeContentId(value: string | undefined): string | undefined {
@@ -350,6 +372,72 @@ function addAbsoluteLocationAliases(
 	if (finalSegment !== undefined) {
 		aliases.add(finalSegment);
 	}
+}
+
+function addRelativeLocationAliases(
+	aliases: Set<string>,
+	contentLocation: string,
+	baseLocations: string[],
+): void {
+	for (const baseLocation of baseLocations) {
+		const relativeLocation = getRelativeLocationAlias(contentLocation, baseLocation);
+
+		if (relativeLocation !== undefined) {
+			aliases.add(relativeLocation);
+		}
+	}
+}
+
+function getRelativeLocationAlias(
+	contentLocation: string,
+	baseLocation: string,
+): string | undefined {
+	let contentUrl: URL;
+	let baseUrl: URL;
+
+	try {
+		contentUrl = new URL(contentLocation);
+		baseUrl = new URL(baseLocation);
+	} catch {
+		return undefined;
+	}
+
+	if (contentUrl.origin !== baseUrl.origin) {
+		return undefined;
+	}
+
+	const baseDirectory = baseUrl.pathname.endsWith("/")
+		? baseUrl.pathname
+		: baseUrl.pathname.slice(0, baseUrl.pathname.lastIndexOf("/") + 1);
+	const relativePath = createRelativePath(baseDirectory, contentUrl.pathname);
+
+	return relativePath.length > 0 ? relativePath : undefined;
+}
+
+function createRelativePath(baseDirectory: string, targetPath: string): string {
+	const baseSegments = getPathSegments(baseDirectory);
+	const targetSegments = getPathSegments(targetPath);
+	let commonSegmentCount = 0;
+
+	while (
+		commonSegmentCount < baseSegments.length &&
+		commonSegmentCount < targetSegments.length &&
+		baseSegments[commonSegmentCount] === targetSegments[commonSegmentCount]
+	) {
+		commonSegmentCount += 1;
+	}
+
+	const parentSegments = baseSegments.slice(commonSegmentCount).map(() => "..");
+	const relativeSegments = [
+		...parentSegments,
+		...targetSegments.slice(commonSegmentCount),
+	];
+
+	return relativeSegments.join("/");
+}
+
+function getPathSegments(path: string): string[] {
+	return path.replace(/^\/+/, "").split("/").filter(Boolean);
 }
 
 function addResourceAliases(
