@@ -11,6 +11,12 @@ export interface SourceSlice {
     text: string;
 }
 
+export interface SourcePreservationMetadata {
+    sourceId: string | null;
+    originalSyntax?: string;
+    dirty?: boolean;
+}
+
 export interface EditorDiagnostic {
     code: string;
     message: string;
