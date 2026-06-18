@@ -70,15 +70,24 @@ export function parseMarkdownBlocks(
             const contentStart = logicalLines[startLine].end;
             const contentEnd = endLine >= 0 ? logicalLines[endLine].start : end;
             const info = line.text.slice(3).trim();
+            const content = textNode(markdown.slice(contentStart, contentEnd));
             blocks.push(
-                mdxEditorSchema.nodes.code_block.create(
-                    {
-                        language: fence[1] ?? "",
-                        info,
-                        sourceId,
-                    },
-                    textNode(markdown.slice(contentStart, contentEnd)),
-                ),
+                firstInfoToken(info).toLowerCase() === "mermaid"
+                    ? mdxEditorSchema.nodes.mermaid_block.create(
+                          {
+                              info: info || "mermaid",
+                              sourceId,
+                          },
+                          content,
+                      )
+                    : mdxEditorSchema.nodes.code_block.create(
+                          {
+                              language: fence[1] ?? "",
+                              info,
+                              sourceId,
+                          },
+                          content,
+                      ),
             );
             cursor = endLine >= 0 ? endLine + 1 : logicalLines.length;
             continue;
@@ -99,6 +108,71 @@ export function parseMarkdownBlocks(
                 ),
             );
             cursor += 1;
+            continue;
+        }
+
+        const taskListRange = tryParseTaskList(
+            logicalLines,
+            cursor,
+            markdown,
+            sourceSlices,
+        );
+        if (taskListRange) {
+            const { node, nextCursor } = taskListRange;
+            blocks.push(node);
+            cursor = nextCursor;
+            continue;
+        }
+
+        const tableRange = tryParseTable(
+            logicalLines,
+            cursor,
+            markdown,
+            sourceSlices,
+        );
+        if (tableRange) {
+            const { node, nextCursor } = tableRange;
+            blocks.push(node);
+            cursor = nextCursor;
+            continue;
+        }
+
+        const calloutRange = tryParseCallout(
+            logicalLines,
+            cursor,
+            markdown,
+            sourceSlices,
+        );
+        if (calloutRange) {
+            const { node, nextCursor } = calloutRange;
+            blocks.push(node);
+            cursor = nextCursor;
+            continue;
+        }
+
+        const mathRange = tryParseMathBlock(
+            logicalLines,
+            cursor,
+            markdown,
+            sourceSlices,
+        );
+        if (mathRange) {
+            const { node, nextCursor } = mathRange;
+            blocks.push(node);
+            cursor = nextCursor;
+            continue;
+        }
+
+        const footnoteRange = tryParseFootnoteDefinition(
+            logicalLines,
+            cursor,
+            markdown,
+            sourceSlices,
+        );
+        if (footnoteRange) {
+            const { node, nextCursor } = footnoteRange;
+            blocks.push(node);
+            cursor = nextCursor;
             continue;
         }
 
@@ -185,6 +259,10 @@ export function parseMarkdownBlocks(
     return blocks;
 }
 
+function firstInfoToken(info: string) {
+    return info.trim().split(/\s+/, 1)[0] ?? "";
+}
+
 function splitLogicalLines(markdown: string): LogicalLine[] {
     const lines = markdown.split(/(\r?\n)/);
     const logicalLines: LogicalLine[] = [];
@@ -237,6 +315,218 @@ function tryParseBulletList(
     return {
         node: mdxEditorSchema.nodes.bullet_list.create({ sourceId }, items),
         nextCursor: cursor,
+    };
+}
+
+function tryParseTaskList(
+    logicalLines: LogicalLine[],
+    startLine: number,
+    markdown: string,
+    sourceSlices: SourceSlice[],
+) {
+    if (!taskListItem(logicalLines[startLine]?.text ?? "")) {
+        return null;
+    }
+
+    const items: ProseMirrorNode[] = [];
+    let cursor = startLine;
+    while (cursor < logicalLines.length) {
+        const line = logicalLines[cursor];
+        const match = taskListItem(line?.text ?? "");
+        if (!line || !match) {
+            break;
+        }
+
+        items.push(createTaskItem(match[1].toLowerCase() === "x", match[2]));
+        cursor += 1;
+    }
+
+    const sourceId = addSlice(
+        sourceSlices,
+        markdown,
+        logicalLines[startLine].start,
+        logicalLines[cursor - 1]?.end ?? logicalLines[startLine].end,
+    );
+
+    return {
+        node: mdxEditorSchema.nodes.bullet_list.create({ sourceId }, items),
+        nextCursor: cursor,
+    };
+}
+
+function tryParseTable(
+    logicalLines: LogicalLine[],
+    startLine: number,
+    markdown: string,
+    sourceSlices: SourceSlice[],
+) {
+    if (!isTableStart(logicalLines, startLine)) {
+        return null;
+    }
+
+    const headerCells = parseTableRow(logicalLines[startLine]?.text ?? "");
+    const alignments = parseTableAlignments(
+        logicalLines[startLine + 1]?.text ?? "",
+    );
+
+    if (
+        headerCells.length === 0 ||
+        headerCells.length !== alignments.length
+    ) {
+        return null;
+    }
+
+    const rows: ProseMirrorNode[] = [
+        createTableRow("table_header", headerCells, alignments),
+    ];
+    let cursor = startLine + 2;
+
+    while (cursor < logicalLines.length) {
+        const line = logicalLines[cursor];
+        if (!line || line.text.trim() === "" || !line.text.includes("|")) {
+            break;
+        }
+
+        const bodyCells = parseTableRow(line.text);
+        if (bodyCells.length !== headerCells.length) {
+            break;
+        }
+
+        rows.push(createTableRow("table_cell", bodyCells, alignments));
+        cursor += 1;
+    }
+
+    const sourceId = addSlice(
+        sourceSlices,
+        markdown,
+        logicalLines[startLine].start,
+        logicalLines[cursor - 1]?.end ?? logicalLines[startLine].end,
+    );
+
+    return {
+        node: mdxEditorSchema.nodes.table.create(
+            { alignments, sourceId },
+            rows,
+        ),
+        nextCursor: cursor,
+    };
+}
+
+function tryParseCallout(
+    logicalLines: LogicalLine[],
+    startLine: number,
+    markdown: string,
+    sourceSlices: SourceSlice[],
+) {
+    const firstLine = logicalLines[startLine]?.text ?? "";
+    const callout = firstLine.match(/^>\s*\[!([^\]]+)\](?:[ \t]+(.*))?$/);
+    if (!callout) {
+        return null;
+    }
+
+    const contentLines: string[] = [];
+    let cursor = startLine + 1;
+    while (cursor < logicalLines.length) {
+        const line = logicalLines[cursor];
+        const match = blockquoteLine(line?.text ?? "");
+        if (!line || line.text.trim() === "" || !match) {
+            break;
+        }
+
+        contentLines.push(match[1] ?? "");
+        cursor += 1;
+    }
+
+    const children = createParagraphBlocks(contentLines);
+    const sourceId = addSlice(
+        sourceSlices,
+        markdown,
+        logicalLines[startLine].start,
+        logicalLines[cursor - 1]?.end ?? logicalLines[startLine].end,
+    );
+
+    return {
+        node: mdxEditorSchema.nodes.callout.create(
+            {
+                kind: callout[1].toUpperCase(),
+                title: callout[2] && callout[2].length > 0 ? callout[2] : null,
+                sourceId,
+            },
+            children.length > 0
+                ? children
+                : [mdxEditorSchema.nodes.paragraph.create({ sourceId: null })],
+        ),
+        nextCursor: cursor,
+    };
+}
+
+function tryParseMathBlock(
+    logicalLines: LogicalLine[],
+    startLine: number,
+    markdown: string,
+    sourceSlices: SourceSlice[],
+) {
+    if (!isMathBlockStart(logicalLines[startLine]?.text ?? "")) {
+        return null;
+    }
+
+    let endLine = -1;
+    for (let cursor = startLine + 1; cursor < logicalLines.length; cursor += 1) {
+        if ((logicalLines[cursor]?.text ?? "").trim() === "$$") {
+            endLine = cursor;
+            break;
+        }
+    }
+
+    if (endLine < 0) {
+        return null;
+    }
+
+    const start = logicalLines[startLine].start;
+    const end = logicalLines[endLine].end;
+    const sourceId = addSlice(sourceSlices, markdown, start, end);
+    const content = markdown.slice(
+        logicalLines[startLine].end,
+        logicalLines[endLine].start,
+    );
+
+    return {
+        node: mdxEditorSchema.nodes.math_block.create(
+            { sourceId },
+            textNode(content),
+        ),
+        nextCursor: endLine + 1,
+    };
+}
+
+function tryParseFootnoteDefinition(
+    logicalLines: LogicalLine[],
+    startLine: number,
+    markdown: string,
+    sourceSlices: SourceSlice[],
+) {
+    const line = logicalLines[startLine];
+    const match = (line?.text ?? "").match(/^\[\^([^\]]+)\]:[ \t]*(.*)$/);
+    if (!line || !match) {
+        return null;
+    }
+
+    const nextLine = logicalLines[startLine + 1];
+    if (nextLine && nextLine.text.trim() !== "" && /^[ \t]+/.test(nextLine.text)) {
+        return null;
+    }
+
+    const sourceId = addSlice(sourceSlices, markdown, line.start, line.end);
+
+    return {
+        node: mdxEditorSchema.nodes.footnote_definition.create(
+            { label: match[1], sourceId },
+            mdxEditorSchema.nodes.paragraph.create(
+                { sourceId: null },
+                parseInlineMarkdown(match[2]),
+            ),
+        ),
+        nextCursor: startLine + 1,
     };
 }
 
@@ -355,6 +645,94 @@ function createListItem(content: string) {
     );
 }
 
+function createTaskItem(checked: boolean, content: string) {
+    return mdxEditorSchema.nodes.task_item.create(
+        { checked, sourceId: null },
+        mdxEditorSchema.nodes.paragraph.create(
+            { sourceId: null },
+            parseInlineMarkdown(content),
+        ),
+    );
+}
+
+function createParagraphBlocks(lines: string[]) {
+    const children: ProseMirrorNode[] = [];
+    let paragraphLines: string[] = [];
+    const flushParagraph = () => {
+        if (paragraphLines.length === 0) {
+            return;
+        }
+
+        children.push(
+            mdxEditorSchema.nodes.paragraph.create(
+                { sourceId: null },
+                parseInlineMarkdown(paragraphLines.join("\n")),
+            ),
+        );
+        paragraphLines = [];
+    };
+
+    for (const line of lines) {
+        if (line.trim() === "") {
+            flushParagraph();
+            continue;
+        }
+
+        paragraphLines.push(line);
+    }
+    flushParagraph();
+
+    return children;
+}
+
+function createTableRow(
+    cellType: "table_cell" | "table_header",
+    cells: string[],
+    alignments: (string | null)[],
+) {
+    return mdxEditorSchema.nodes.table_row.create(
+        null,
+        cells.map((cell, index) =>
+            mdxEditorSchema.nodes[cellType].create(
+                { align: alignments[index] ?? null },
+                parseInlineMarkdown(cell),
+            ),
+        ),
+    );
+}
+
+function parseTableRow(text: string) {
+    const trimmed = text.trim();
+    const withoutLeadingPipe = trimmed.startsWith("|")
+        ? trimmed.slice(1)
+        : trimmed;
+    const withoutOuterPipes = withoutLeadingPipe.endsWith("|")
+        ? withoutLeadingPipe.slice(0, -1)
+        : withoutLeadingPipe;
+
+    return withoutOuterPipes.split("|").map((cell) => cell.trim());
+}
+
+function parseTableAlignments(text: string) {
+    return parseTableRow(text).map((cell) => {
+        const trimmed = cell.trim();
+        const left = trimmed.startsWith(":");
+        const right = trimmed.endsWith(":");
+
+        if (left && right) {
+            return "center";
+        }
+        if (left) {
+            return "left";
+        }
+        if (right) {
+            return "right";
+        }
+
+        return null;
+    });
+}
+
 function plainBulletListItem(text: string) {
     const match = text.match(/^[-*]\s+(.*)$/);
     if (!match || /^\[[ xX]\]\s/.test(match[1])) {
@@ -362,6 +740,10 @@ function plainBulletListItem(text: string) {
     }
 
     return match;
+}
+
+function taskListItem(text: string) {
+    return text.match(/^[-*]\s+\[([ xX])\]\s+(.*)$/);
 }
 
 function orderedListItem(text: string) {

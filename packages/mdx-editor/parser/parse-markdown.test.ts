@@ -28,8 +28,7 @@ describe("parseMarkdown", () => {
 
         expect(parsed.doc.child(0).type.name).toBe("frontmatter");
         expect(parsed.doc.child(0).textContent).toBe("  title: Test\n\n");
-        expect(parsed.doc.child(1).type.name).toBe("code_block");
-        expect(parsed.doc.child(1).attrs.language).toBe("mermaid");
+        expect(parsed.doc.child(1).type.name).toBe("mermaid_block");
         expect(parsed.doc.child(1).attrs.info).toBe("mermaid live");
         expect(parsed.doc.child(1).textContent).toBe("graph TD\n  A --> B\n");
         const codeStart = markdown.indexOf("```mermaid live");
@@ -279,35 +278,80 @@ describe("parseMarkdown", () => {
         expect(parsed.sourceSlices[0]?.text).toBe(markdown);
     });
 
-    it("parses unsupported block features as source-preserved opaque blocks", () => {
-        const fixtures = roundTripFixtures.filter((fixture) =>
-            [
-                "gfm task list",
-                "gfm table",
-                "callout",
-                "html opaque",
-            ].includes(fixture.name),
-        );
+    it("parses advanced markdown blocks as structured nodes", () => {
+        const cases = [
+            { name: "gfm task list", expected: ["bullet_list"] },
+            { name: "gfm table", expected: ["table"] },
+            { name: "callout", expected: ["callout"] },
+            { name: "math", expected: ["paragraph", "math_block"] },
+            { name: "footnote", expected: ["paragraph", "footnote_definition"] },
+            { name: "mermaid fence", expected: ["mermaid_block"] },
+        ];
 
-        for (const fixture of fixtures) {
-            const parsed = parseMarkdown(fixture.markdown);
+        for (const testCase of cases) {
+            const fixture = roundTripFixtures.find(
+                (candidate) => candidate.name === testCase.name,
+            );
+            expect(fixture, testCase.name).toBeDefined();
+            const parsed = parseMarkdown(fixture!.markdown);
 
-            expect(parsed.diagnostics).toEqual([]);
-            expect(parsed.doc.childCount).toBe(1);
-            expect(parsed.doc.child(0).type.name).toBe("opaque_block");
-            expect(parsed.doc.child(0).attrs.reason).toBe("source-preserved");
-            expect(parsed.doc.child(0).attrs.sourceId).toBe("source-0");
-            expect(parsed.sourceSlices).toEqual([
-                {
-                    id: "source-0",
-                    range: { start: 0, end: fixture.markdown.length },
-                    text: fixture.markdown,
-                },
-            ]);
+            expect(
+                Array.from(
+                    { length: parsed.doc.childCount },
+                    (_, index) => parsed.doc.child(index).type.name,
+                ),
+            ).toEqual(testCase.expected);
         }
     });
 
-    it("source-preserves block math and footnote definition blocks while leaving supported paragraphs intact", () => {
+    it("parses advanced block details into schema attrs and children", () => {
+        const taskList = parseMarkdown("- [x] Done\n- [ ] Todo\n").doc.child(0);
+        expect(taskList.child(0).type.name).toBe("task_item");
+        expect(taskList.child(0).attrs.checked).toBe(true);
+        expect(taskList.child(0).child(0).textContent).toBe("Done");
+        expect(taskList.child(1).attrs.checked).toBe(false);
+        expect(taskList.child(1).child(0).textContent).toBe("Todo");
+
+        const table = parseMarkdown(
+            "| A | B | C | D |\n|:---|---:|:---:|---|\n| 1 | 2 | 3 | 4 |\n",
+        ).doc.child(0);
+        expect(table.attrs.alignments).toEqual([
+            "left",
+            "right",
+            "center",
+            null,
+        ]);
+        expect(table.child(0).child(0).type.name).toBe("table_header");
+        expect(table.child(1).child(0).type.name).toBe("table_cell");
+
+        const callout = parseMarkdown("> [!tip] Remember\n> Keep this.\n").doc.child(
+            0,
+        );
+        expect(callout.attrs.kind).toBe("TIP");
+        expect(callout.attrs.title).toBe("Remember");
+        expect(callout.child(0).textContent).toBe("Keep this.");
+    });
+
+    it("keeps unsupported block boundaries source-preserved", () => {
+        const html = roundTripFixtures.find(
+            (fixture) => fixture.name === "html opaque",
+        );
+        expect(html).toBeDefined();
+
+        const parsedHtml = parseMarkdown(html!.markdown);
+        expect(parsedHtml.doc.childCount).toBe(1);
+        expect(parsedHtml.doc.child(0).type.name).toBe("opaque_block");
+        expect(parsedHtml.doc.child(0).attrs.reason).toBe("source-preserved");
+        expect(parsedHtml.doc.child(0).attrs.sourceId).toBe("source-0");
+
+        const parsedFootnote = parseMarkdown("[^1]: Body\n    Nested body\n");
+        expect(parsedFootnote.doc.childCount).toBe(1);
+        expect(parsedFootnote.doc.child(0).type.name).toBe("opaque_block");
+        expect(parsedFootnote.doc.child(0).attrs.reason).toBe("source-preserved");
+        expect(parsedFootnote.doc.child(0).attrs.sourceId).toBe("source-0");
+    });
+
+    it("parses block math and footnote definition blocks while leaving supported paragraphs intact", () => {
         const math = roundTripFixtures.find((fixture) => fixture.name === "math");
         const footnote = roundTripFixtures.find((fixture) => fixture.name === "footnote");
 
@@ -320,8 +364,8 @@ describe("parseMarkdown", () => {
         expect(parsedMath.doc.child(0).textContent).toBe("Inline .");
         expect(parsedMath.doc.child(0).child(1).type.name).toBe("math_inline");
         expect(parsedMath.doc.child(0).child(1).attrs.latex).toBe("x+1");
-        expect(parsedMath.doc.child(1).type.name).toBe("opaque_block");
-        expect(parsedMath.doc.child(1).attrs.reason).toBe("source-preserved");
+        expect(parsedMath.doc.child(1).type.name).toBe("math_block");
+        expect(parsedMath.doc.child(1).textContent).toBe("y = mx + b\n");
 
         const parsedFootnote = parseMarkdown(footnote!.markdown);
         expect(parsedFootnote.doc.childCount).toBe(2);
@@ -329,24 +373,25 @@ describe("parseMarkdown", () => {
         expect(parsedFootnote.doc.child(0).textContent).toBe("A note.");
         expect(parsedFootnote.doc.child(0).child(1).type.name).toBe("footnote_ref");
         expect(parsedFootnote.doc.child(0).child(1).attrs.label).toBe("1");
-        expect(parsedFootnote.doc.child(1).type.name).toBe("opaque_block");
-        expect(parsedFootnote.doc.child(1).attrs.reason).toBe("source-preserved");
+        expect(parsedFootnote.doc.child(1).type.name).toBe("footnote_definition");
+        expect(parsedFootnote.doc.child(1).attrs.label).toBe("1");
+        expect(parsedFootnote.doc.child(1).child(0).textContent).toBe("Footnote body.");
     });
 
-    it("does not let source-preserved callouts swallow following headings", () => {
+    it("does not let callouts swallow following headings", () => {
         const parsed = parseMarkdown("> [!NOTE]\n> note\n# Title\n");
 
         expect(parsed.doc.childCount).toBe(2);
-        expect(parsed.doc.child(0).type.name).toBe("opaque_block");
+        expect(parsed.doc.child(0).type.name).toBe("callout");
         expect(parsed.doc.child(1).type.name).toBe("heading");
         expect(parsed.doc.child(1).textContent).toBe("Title");
     });
 
-    it("does not let source-preserved task lists swallow following headings", () => {
+    it("does not let task lists swallow following headings", () => {
         const parsed = parseMarkdown("- [x] done\n# Title\n");
 
         expect(parsed.doc.childCount).toBe(2);
-        expect(parsed.doc.child(0).type.name).toBe("opaque_block");
+        expect(parsed.doc.child(0).type.name).toBe("bullet_list");
         expect(parsed.doc.child(1).type.name).toBe("heading");
         expect(parsed.doc.child(1).textContent).toBe("Title");
     });

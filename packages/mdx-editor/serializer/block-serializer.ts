@@ -26,6 +26,12 @@ export function serializeBlockNode(node: ProseMirrorNode): string {
             return `${serializeInlineContent(node)}\n`;
         case "callout":
             return serializeCallout(node);
+        case "math_block":
+            return `$$\n${textBeforeClosingFence(node.textContent)}$$\n`;
+        case "footnote_definition":
+            return serializeFootnoteDefinition(node);
+        case "mermaid_block":
+            return `\`\`\`${mermaidBlockInfo(node)}\n${textBeforeClosingFence(node.textContent)}\`\`\`\n`;
         case "code_block":
             return `\`\`\`${codeBlockInfo(node)}\n${textBeforeClosingFence(node.textContent)}\`\`\`\n`;
         case "frontmatter":
@@ -41,7 +47,10 @@ function serializeList(node: ProseMirrorNode, marker: string) {
     let output = "";
 
     node.forEach((child) => {
-        output += serializeListItem(child, marker);
+        output +=
+            child.type.name === "task_item"
+                ? serializeTaskItem(child)
+                : serializeListItem(child, marker);
     });
 
     return output;
@@ -143,7 +152,7 @@ function serializeTableSeparator(row: ProseMirrorNode, alignments: unknown) {
         }
     });
 
-    return `| ${cells.join(" | ")} |\n`;
+    return `|${cells.join("|")}|\n`;
 }
 
 function tableRowHasHeader(row: ProseMirrorNode) {
@@ -169,6 +178,29 @@ function serializeCallout(node: ProseMirrorNode) {
             lines.push(line.length > 0 ? `> ${line}` : ">");
         }
     });
+
+    return `${lines.join("\n")}\n`;
+}
+
+function serializeFootnoteDefinition(node: ProseMirrorNode) {
+    const label = String(node.attrs.label ?? "");
+    const firstChild = node.firstChild;
+    if (!firstChild) {
+        return `[^${label}]:\n`;
+    }
+
+    const firstLine =
+        firstChild.type.name === "paragraph"
+            ? serializeInlineContent(firstChild)
+            : serializeNestedBlock(firstChild);
+    const lines = [`[^${label}]: ${firstLine}`];
+
+    for (let index = 1; index < node.childCount; index += 1) {
+        const childText = serializeNestedBlock(node.child(index));
+        for (const line of childText.split("\n")) {
+            lines.push(line.length > 0 ? `    ${line}` : "");
+        }
+    }
 
     return `${lines.join("\n")}\n`;
 }
@@ -224,6 +256,12 @@ function codeBlockInfo(node: ProseMirrorNode) {
     }
 
     return typeof language === "string" ? language : "";
+}
+
+function mermaidBlockInfo(node: ProseMirrorNode) {
+    const info = node.attrs.info;
+
+    return typeof info === "string" && info.length > 0 ? info : "mermaid";
 }
 
 function textBeforeClosingFence(text: string) {

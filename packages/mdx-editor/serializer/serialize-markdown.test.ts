@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mdxEditorSchema } from "../schema/schema";
 import { parseMarkdown } from "../parser/parse-markdown";
 import { sourceRange } from "../core/source-map";
+import { roundTripFixtures } from "../test/fixtures";
 import { serializeMarkdown } from "./serialize-markdown";
 
 describe("serializeMarkdown", () => {
@@ -65,6 +66,54 @@ describe("serializeMarkdown", () => {
         const parsed = parseMarkdown(markdown);
 
         expect(serializeMarkdown(parsed)).toBe(markdown);
+    });
+
+    it("round-trips structured advanced markdown blocks", () => {
+        for (const name of [
+            "gfm task list",
+            "gfm table",
+            "math",
+            "footnote",
+            "callout",
+            "mermaid fence",
+        ]) {
+            const fixture = roundTripFixtures.find(
+                (candidate) => candidate.name === name,
+            );
+            expect(fixture, name).toBeDefined();
+            const parsed = parseMarkdown(fixture!.markdown);
+
+            expect(serializeMarkdown(parsed)).toBe(fixture!.markdown);
+        }
+    });
+
+    it("serializes generated advanced block structures", () => {
+        const schema = mdxEditorSchema;
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.bullet_list.create(null, [
+                schema.nodes.task_item.create(
+                    { checked: true },
+                    schema.nodes.paragraph.create(null, [schema.text("Done")]),
+                ),
+                schema.nodes.task_item.create(
+                    { checked: false },
+                    schema.nodes.paragraph.create(null, [schema.text("Todo")]),
+                ),
+            ]),
+            schema.nodes.math_block.create(null, schema.text("y = mx + b\n")),
+            schema.nodes.footnote_definition.create(
+                { label: "1" },
+                schema.nodes.paragraph.create(null, [schema.text("Footnote body.")]),
+            ),
+            schema.nodes.mermaid_block.create(
+                { info: "mermaid live" },
+                schema.text("graph TD\n  A --> B\n"),
+            ),
+        ]);
+
+        expect(serializeMarkdown(emptyParsedDocument(doc))).toBe(
+            "- [x] Done\n- [ ] Todo\n\n$$\ny = mx + b\n$$\n\n[^1]: Footnote body.\n\n```mermaid live\ngraph TD\n  A --> B\n```\n",
+        );
     });
 
     it("serializes normal links with titles", () => {
@@ -373,7 +422,7 @@ describe("serializeMarkdown", () => {
         ]);
 
         expect(serializeMarkdown(emptyParsedDocument(doc))).toBe(
-            "| **Head** | **Cell** |\n| --- | --- |\n",
+            "| **Head** | **Cell** |\n|---|---|\n",
         );
     });
 
