@@ -109,6 +109,7 @@ function isParserPlaceholderDocument(parsed: ParsedMarkdownDocument) {
         parsed.sourceSlices.length === 0 &&
         parsed.doc.childCount === 1 &&
         parsed.doc.child(0).type.name === "paragraph" &&
+        parsed.doc.child(0).childCount === 0 &&
         parsed.doc.child(0).textContent.length === 0 &&
         parsed.originalMarkdown.trim().length === 0
     );

@@ -116,6 +116,54 @@ describe("serializeMarkdown", () => {
         );
     });
 
+    it("serializes atom-only paragraphs instead of treating them as placeholders", () => {
+        const schema = mdxEditorSchema;
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.nodes.image.create({ src: "image.png", alt: "Alt" }),
+                schema.nodes.math_inline.create({ latex: "x+1" }),
+                schema.nodes.footnote_ref.create({ label: "note" }),
+            ]),
+        ]);
+
+        expect(serializeMarkdown(emptyParsedDocument(doc))).toBe(
+            "![Alt](image.png)$x+1$[^note]\n",
+        );
+    });
+
+    it("escapes generated plain text active delimiters so they stay plain", () => {
+        const schema = mdxEditorSchema;
+        const plainText = "plain **bold** *em* ~~gone~~ `code` $x+1$";
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [schema.text(plainText)]),
+        ]);
+        const serialized = serializeMarkdown(emptyParsedDocument(doc));
+        const reparsed = parseMarkdown(serialized);
+
+        expect(serialized).toBe(
+            String.raw`plain \*\*bold\*\* \*em\* \~\~gone\~\~ \`code\` \$x+1\$` + "\n",
+        );
+        expect(reparsed.doc.child(0).childCount).toBe(1);
+        expect(reparsed.doc.child(0).textContent).toBe(plainText);
+    });
+
+    it("round-trips backslashes inside inline code and math", () => {
+        const schema = mdxEditorSchema;
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text(String.raw`a\b`, [schema.marks.inline_code.create()]),
+                schema.text(" "),
+                schema.nodes.math_inline.create({ latex: String.raw`\alpha` }),
+            ]),
+        ]);
+        const markdown = serializeMarkdown(emptyParsedDocument(doc));
+        const reparsed = parseMarkdown(markdown);
+
+        expect(markdown).toBe(String.raw`` + "`" + String.raw`a\b` + "` " + String.raw`$\alpha$` + "\n");
+        expect(reparsed.doc.child(0).child(0).text).toBe(String.raw`a\b`);
+        expect(reparsed.doc.child(0).child(2).attrs.latex).toBe(String.raw`\alpha`);
+    });
+
     it("does not bracket-escape inline code content", () => {
         const schema = mdxEditorSchema;
         const doc = schema.nodes.doc.create(null, [
@@ -214,9 +262,7 @@ describe("serializeMarkdown", () => {
             ]),
         ]);
 
-        expect(serializeMarkdown(emptyParsedDocument(doc))).toBe(
-            "[**bold** tail](https://x.test)\n",
-        );
+        expect(serializeMarkdown(emptyParsedDocument(doc))).toBe("[bold tail](https://x.test)\n");
     });
 
     it("serializes one wikilink spanning multiple text nodes once", () => {
@@ -231,8 +277,44 @@ describe("serializeMarkdown", () => {
             ]),
         ]);
 
-        expect(serializeMarkdown(emptyParsedDocument(doc))).toBe(
-            "[[Target|**Bold** tail]]\n",
+        expect(serializeMarkdown(emptyParsedDocument(doc))).toBe("[[Target|Bold tail]]\n");
+    });
+
+    it("serializes linked marked text as a plain link label", () => {
+        const link = mdxEditorSchema.marks.link.create({
+            href: "https://x.test",
+        });
+        const strong = mdxEditorSchema.marks.strong.create();
+        const doc = mdxEditorSchema.nodes.doc.create(null, [
+            mdxEditorSchema.nodes.paragraph.create(null, [
+                mdxEditorSchema.text("bold", [link, strong]),
+                mdxEditorSchema.text(" tail", [link]),
+            ]),
+        ]);
+        const markdown = serializeMarkdown(emptyParsedDocument(doc));
+        const reparsed = parseMarkdown(markdown);
+
+        expect(markdown).toBe("[bold tail](https://x.test)\n");
+        expect(reparsed.doc.child(0).textContent).toBe("bold tail");
+        expect(reparsed.doc.child(0).child(0).marks[0]?.type.name).toBe("link");
+    });
+
+    it("serializes link hrefs containing spaces as angle-bracket hrefs", () => {
+        const doc = mdxEditorSchema.nodes.doc.create(null, [
+            mdxEditorSchema.nodes.paragraph.create(null, [
+                mdxEditorSchema.text("docs", [
+                    mdxEditorSchema.marks.link.create({
+                        href: "docs/My File.md",
+                    }),
+                ]),
+            ]),
+        ]);
+        const markdown = serializeMarkdown(emptyParsedDocument(doc));
+        const reparsed = parseMarkdown(markdown);
+
+        expect(markdown).toBe("[docs](<docs/My File.md>)\n");
+        expect(reparsed.doc.child(0).child(0).marks[0]?.attrs.href).toBe(
+            "docs/My File.md",
         );
     });
 

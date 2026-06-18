@@ -66,7 +66,9 @@ export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
             continue;
         }
 
-        const inlineMath = tryParseDelimitedInline(text, cursor, "$", "$");
+        const inlineMath = tryParseDelimitedInline(text, cursor, "$", "$", {
+            preserveEscapes: true,
+        });
         if (inlineMath) {
             pushText(children, buffer);
             buffer = "";
@@ -79,7 +81,9 @@ export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
             continue;
         }
 
-        const inlineCode = tryParseDelimitedInline(text, cursor, "`", "`");
+        const inlineCode = tryParseDelimitedInline(text, cursor, "`", "`", {
+            preserveEscapes: true,
+        });
         if (inlineCode) {
             pushMarkedText(
                 children,
@@ -241,15 +245,34 @@ function tryParseLink(text: string, startIndex: number) {
     let cursor = labelEnd + 2;
     let href = "";
 
-    while (cursor < text.length) {
-        const current = text[cursor];
-        if (current === "\\" && cursor + 1 < text.length) {
-            href += text[cursor + 1];
-            cursor += 2;
-            continue;
+    if (text[cursor] === "<") {
+        cursor += 1;
+        while (cursor < text.length) {
+            const current = text[cursor];
+            if (current === "\\" && cursor + 1 < text.length) {
+                href += text[cursor + 1];
+                cursor += 2;
+                continue;
+            }
+
+            if (current === ">") {
+                cursor += 1;
+                break;
+            }
+
+            href += current;
+            cursor += 1;
         }
 
-        if (current === ")") {
+        if (text[cursor - 1] !== ">") {
+            return null;
+        }
+
+        while (cursor < text.length && /\s/.test(text[cursor])) {
+            cursor += 1;
+        }
+
+        if (text[cursor] === ")") {
             return {
                 label: decodeEscapes(rawLabel),
                 href,
@@ -257,13 +280,31 @@ function tryParseLink(text: string, startIndex: number) {
                 nextIndex: cursor + 1,
             };
         }
+    } else {
+        while (cursor < text.length) {
+            const current = text[cursor];
+            if (current === "\\" && cursor + 1 < text.length) {
+                href += text[cursor + 1];
+                cursor += 2;
+                continue;
+            }
 
-        if (/\s/.test(current)) {
-            break;
+            if (current === ")") {
+                return {
+                    label: decodeEscapes(rawLabel),
+                    href,
+                    title: null,
+                    nextIndex: cursor + 1,
+                };
+            }
+
+            if (/\s/.test(current)) {
+                break;
+            }
+
+            href += current;
+            cursor += 1;
         }
-
-        href += current;
-        cursor += 1;
     }
 
     while (cursor < text.length && /\s/.test(text[cursor])) {
@@ -335,6 +376,7 @@ function tryParseDelimitedInline(
     startIndex: number,
     opener: string,
     closer: string,
+    options: { preserveEscapes?: boolean } = {},
 ) {
     if (!text.startsWith(opener, startIndex)) {
         return null;
@@ -361,7 +403,9 @@ function tryParseDelimitedInline(
     }
 
     return {
-        content: decodeEscapes(text.slice(contentStart, closeIndex)),
+        content: options.preserveEscapes
+            ? text.slice(contentStart, closeIndex)
+            : decodeEscapes(text.slice(contentStart, closeIndex)),
         nextIndex: closeIndex + closer.length,
     };
 }

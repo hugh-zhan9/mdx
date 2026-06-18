@@ -24,22 +24,40 @@ export function serializeInlineContent(node: ProseMirrorNode): string {
             continue;
         }
 
-        const serializedRun = serializeTextRun(
+        const linkedRun = collectLinkedTextRun(
             node,
             index,
-            (candidate) => {
-                return (
-                    candidate.isText &&
-                    linkMarksEquivalent(link, findLinkMark(candidate))
-                );
-            },
             link,
         );
-        output += serializeLinkedText(serializedRun.serialized, link);
-        index = serializedRun.nextIndex;
+        output += serializeLinkedText(linkedRun.text, link);
+        index = linkedRun.nextIndex;
     }
 
     return output;
+}
+
+function collectLinkedTextRun(
+    node: ProseMirrorNode,
+    startIndex: number,
+    link: Mark,
+) {
+    let text = "";
+    let nextIndex = startIndex;
+
+    while (nextIndex < node.childCount) {
+        const child = node.child(nextIndex);
+        if (!child.isText || !linkMarksEquivalent(link, findLinkMark(child))) {
+            break;
+        }
+
+        text += child.text ?? "";
+        nextIndex += 1;
+    }
+
+    return {
+        text,
+        nextIndex,
+    };
 }
 
 function serializeInlineNode(node: ProseMirrorNode) {
@@ -121,7 +139,7 @@ function serializeLinkedText(text: string, link: Mark) {
             ? ` "${escapeLinkTitle(link.attrs.title)}"`
             : "";
 
-    return `[${text}](${escapeLinkHref(href)}${title})`;
+    return `[${escapeLinkLabelText(text)}](${escapeLinkHref(href)}${title})`;
 }
 
 function serializeImageNode(node: ProseMirrorNode) {
@@ -224,14 +242,27 @@ function escapeLinkTitle(title: string) {
 }
 
 function escapeLinkHref(href: string) {
+    if (/\s/.test(href)) {
+        return `<${href
+            .replaceAll("\\", "\\\\")
+            .replaceAll(">", "\\>")}>`;
+    }
+
     return href.replaceAll("\\", "\\\\").replaceAll(")", "\\)");
 }
 
 function escapePlainText(text: string) {
-    return text
-        .replaceAll("\\", "\\\\")
-        .replaceAll("[", "\\[")
-        .replaceAll("]", "\\]");
+    let escaped = "";
+
+    for (const char of text) {
+        if ("\\[]*~`$".includes(char)) {
+            escaped += `\\${char}`;
+        } else {
+            escaped += char;
+        }
+    }
+
+    return escaped;
 }
 
 function escapeInlineCodeText(text: string) {
@@ -242,6 +273,10 @@ function escapeWikilinkSegment(segment: string) {
     return segment
         .replaceAll("\\", "\\\\")
         .replaceAll("]", "\\]");
+}
+
+function escapeLinkLabelText(text: string) {
+    return escapePlainText(text).replaceAll(")", "\\)");
 }
 
 function escapeMathInline(latex: string) {

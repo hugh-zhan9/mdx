@@ -99,6 +99,23 @@ describe("parseMarkdown", () => {
         expect(paragraph.textContent).toBe("**bold** *em* ~~gone~~ `code` $x+1$ [^note]");
     });
 
+    it("preserves backslashes inside inline code and math", () => {
+        const parsed = parseMarkdown("`a\\b` $\\alpha$");
+        const paragraph = parsed.doc.child(0);
+
+        expect(paragraph.child(0).text).toBe(String.raw`a\b`);
+        expect(paragraph.child(0).marks[0]?.type.name).toBe("inline_code");
+        expect(paragraph.child(2).type.name).toBe("math_inline");
+        expect(paragraph.child(2).attrs.latex).toBe(String.raw`\alpha`);
+    });
+
+    it("parses angle-bracket link hrefs containing spaces", () => {
+        const parsed = parseMarkdown("[docs](<docs/My File.md>)");
+        const link = parsed.doc.child(0).child(0).marks[0];
+
+        expect(link.attrs.href).toBe("docs/My File.md");
+    });
+
     it("consumes an unclosed fence through EOF as a code block", () => {
         const markdown = "```ts\n# not a heading\nbody";
         const parsed = parseMarkdown(markdown);
