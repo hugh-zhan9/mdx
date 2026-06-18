@@ -72,6 +72,33 @@ describe("parseMarkdown", () => {
         });
     });
 
+    it("parses inline markdown marks, footnote refs, and math into structured nodes", () => {
+        const parsed = parseMarkdown("A **bold** *em* ~~gone~~ `code` $x+1$ [^note].\n");
+        const paragraph = parsed.doc.child(0);
+
+        expect(paragraph.child(1).text).toBe("bold");
+        expect(paragraph.child(1).marks[0]?.type.name).toBe("strong");
+        expect(paragraph.child(3).text).toBe("em");
+        expect(paragraph.child(3).marks[0]?.type.name).toBe("emphasis");
+        expect(paragraph.child(5).text).toBe("gone");
+        expect(paragraph.child(5).marks[0]?.type.name).toBe("strike");
+        expect(paragraph.child(7).text).toBe("code");
+        expect(paragraph.child(7).marks[0]?.type.name).toBe("inline_code");
+        expect(paragraph.child(9).type.name).toBe("math_inline");
+        expect(paragraph.child(9).attrs.latex).toBe("x+1");
+        expect(paragraph.child(11).type.name).toBe("footnote_ref");
+        expect(paragraph.child(11).attrs.label).toBe("note");
+    });
+
+    it("keeps escaped inline markdown delimiters as literal text", () => {
+        const markdown = String.raw`\*\*bold\*\* \*em\* \~\~gone\~\~ \`code\` \$x+1\$ \[\^note\]`;
+        const parsed = parseMarkdown(markdown);
+        const paragraph = parsed.doc.child(0);
+
+        expect(paragraph.childCount).toBe(1);
+        expect(paragraph.textContent).toBe("**bold** *em* ~~gone~~ `code` $x+1$ [^note]");
+    });
+
     it("consumes an unclosed fence through EOF as a code block", () => {
         const markdown = "```ts\n# not a heading\nbody";
         const parsed = parseMarkdown(markdown);
@@ -125,14 +152,18 @@ describe("parseMarkdown", () => {
         const parsedMath = parseMarkdown(math!.markdown);
         expect(parsedMath.doc.childCount).toBe(2);
         expect(parsedMath.doc.child(0).type.name).toBe("paragraph");
-        expect(parsedMath.doc.child(0).textContent).toBe("Inline $x+1$.");
+        expect(parsedMath.doc.child(0).textContent).toBe("Inline .");
+        expect(parsedMath.doc.child(0).child(1).type.name).toBe("math_inline");
+        expect(parsedMath.doc.child(0).child(1).attrs.latex).toBe("x+1");
         expect(parsedMath.doc.child(1).type.name).toBe("opaque_block");
         expect(parsedMath.doc.child(1).attrs.reason).toBe("source-preserved");
 
         const parsedFootnote = parseMarkdown(footnote!.markdown);
         expect(parsedFootnote.doc.childCount).toBe(2);
         expect(parsedFootnote.doc.child(0).type.name).toBe("paragraph");
-        expect(parsedFootnote.doc.child(0).textContent).toBe("A note[^1].");
+        expect(parsedFootnote.doc.child(0).textContent).toBe("A note.");
+        expect(parsedFootnote.doc.child(0).child(1).type.name).toBe("footnote_ref");
+        expect(parsedFootnote.doc.child(0).child(1).attrs.label).toBe("1");
         expect(parsedFootnote.doc.child(1).type.name).toBe("opaque_block");
         expect(parsedFootnote.doc.child(1).attrs.reason).toBe("source-preserved");
     });

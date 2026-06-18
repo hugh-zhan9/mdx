@@ -92,6 +92,30 @@ describe("serializeMarkdown", () => {
         expect(serializeMarkdown(parsed)).toBe(markdown);
     });
 
+    it("serializes inline marks, math, and footnote refs", () => {
+        const schema = mdxEditorSchema;
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("A "),
+                schema.text("bold", [schema.marks.strong.create()]),
+                schema.text(" "),
+                schema.text("em", [schema.marks.emphasis.create()]),
+                schema.text(" "),
+                schema.text("gone", [schema.marks.strike.create()]),
+                schema.text(" "),
+                schema.text("code", [schema.marks.inline_code.create()]),
+                schema.text(" "),
+                schema.nodes.math_inline.create({ latex: "x+1" }),
+                schema.text(" "),
+                schema.nodes.footnote_ref.create({ label: "note" }),
+            ]),
+        ]);
+
+        expect(serializeMarkdown(emptyParsedDocument(doc))).toBe(
+            "A **bold** *em* ~~gone~~ `code` $x+1$ [^note]\n",
+        );
+    });
+
     it("round-trips links whose href contains closing parentheses", () => {
         const markdown = String.raw`[docs](https://example.com/a\)b)\n`;
         const parsed = parseMarkdown(markdown);

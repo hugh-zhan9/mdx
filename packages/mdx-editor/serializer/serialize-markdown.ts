@@ -1,8 +1,7 @@
-import type { Mark, Node as ProseMirrorNode } from "prosemirror-model";
+import type { Node as ProseMirrorNode } from "prosemirror-model";
 import type { ParsedMarkdownDocument, SourceSlice } from "../core/types";
 import { parseMarkdown } from "../parser/parse-markdown";
-
-const WIKILINK_HREF_PREFIX = "mdx-wikilink:";
+import { serializeInlineContent } from "./inline-serializer";
 
 interface RenderedBlock {
     text: string;
@@ -213,9 +212,9 @@ function attrsEquivalent(
 function serializeNode(node: ProseMirrorNode): string {
     switch (node.type.name) {
         case "heading":
-            return `${"#".repeat(headingLevel(node))} ${serializeInline(node)}\n`;
+            return `${"#".repeat(headingLevel(node))} ${serializeInlineContent(node)}\n`;
         case "paragraph":
-            return `${serializeInline(node)}\n`;
+            return `${serializeInlineContent(node)}\n`;
         case "code_block":
             return `\`\`\`${codeBlockInfo(node)}\n${textBeforeClosingFence(
                 node.textContent,
@@ -252,221 +251,6 @@ function textBeforeClosingFence(text: string) {
 
 function ensureTrailingNewline(text: string) {
     return text.endsWith("\n") ? text : `${text}\n`;
-}
-
-function serializeInline(node: ProseMirrorNode): string {
-    let output = "";
-    let index = 0;
-
-    while (index < node.childCount) {
-        const child = node.child(index);
-        if (!child.isText) {
-            if (child.type.name === "image") {
-                output += serializeImageNode(child);
-            } else {
-                output += child.textContent;
-            }
-            index += 1;
-            continue;
-        }
-
-        const link = findLinkMark(child);
-        if (!link) {
-            const serializedRun = serializeTextRun(node, index, (candidate) => {
-                return candidate.isText && findLinkMark(candidate) === null;
-            });
-            output += serializedRun.serialized;
-            index = serializedRun.nextIndex;
-            continue;
-        }
-
-        const serializedRun = serializeTextRun(
-            node,
-            index,
-            (candidate) => {
-                return (
-                    candidate.isText &&
-                    linkMarksEquivalent(link, findLinkMark(candidate))
-                );
-            },
-            link,
-        );
-        output += serializeLinkedText(serializedRun.serialized, link);
-        index = serializedRun.nextIndex;
-    }
-
-    return output;
-}
-
-function serializeTextRun(
-    node: ProseMirrorNode,
-    startIndex: number,
-    predicate: (candidate: ProseMirrorNode) => boolean,
-    excludedMark?: Mark,
-) {
-    let serialized = "";
-    const activeMarks: Mark[] = [];
-    let nextIndex = startIndex;
-
-    while (nextIndex < node.childCount) {
-        const child = node.child(nextIndex);
-        if (!child.isText || !predicate(child)) {
-            break;
-        }
-
-        const marks = excludedMark
-            ? child.marks.filter((mark) => mark !== excludedMark)
-            : [...child.marks];
-        const sharedPrefixLength = sharedMarkPrefixLength(activeMarks, marks);
-
-        for (let markIndex = activeMarks.length - 1; markIndex >= sharedPrefixLength; markIndex -= 1) {
-            serialized += closeMark(activeMarks[markIndex]);
-        }
-        activeMarks.length = sharedPrefixLength;
-
-        for (let markIndex = sharedPrefixLength; markIndex < marks.length; markIndex += 1) {
-            serialized += openMark(marks[markIndex]);
-            activeMarks.push(marks[markIndex]);
-        }
-
-        serialized += escapePlainText(child.text ?? "");
-        nextIndex += 1;
-    }
-
-    for (let markIndex = activeMarks.length - 1; markIndex >= 0; markIndex -= 1) {
-        serialized += closeMark(activeMarks[markIndex]);
-    }
-
-    return {
-        serialized,
-        nextIndex,
-    };
-}
-
-function serializeLinkedText(text: string, link: Mark) {
-    const href = String(link.attrs.href ?? "");
-    if (href.startsWith(WIKILINK_HREF_PREFIX)) {
-        return serializeWikilink(text, href);
-    }
-
-    const title =
-        typeof link.attrs.title === "string" && link.attrs.title.length > 0
-            ? ` "${escapeLinkTitle(link.attrs.title)}"`
-            : "";
-
-    return `[${text}](${escapeLinkHref(href)}${title})`;
-}
-
-function serializeImageNode(node: ProseMirrorNode) {
-    const alt = escapePlainText(String(node.attrs.alt ?? ""));
-    const src = escapeLinkHref(String(node.attrs.src ?? ""));
-    const title =
-        typeof node.attrs.title === "string" && node.attrs.title.length > 0
-            ? ` "${escapeLinkTitle(node.attrs.title)}"`
-            : "";
-
-    return `![${alt}](${src}${title})`;
-}
-
-function findLinkMark(node: ProseMirrorNode) {
-    return node.marks.find((mark) => mark.type.name === "link") ?? null;
-}
-
-function linkMarksEquivalent(left: Mark, right: Mark | null) {
-    return (
-        right !== null &&
-        left.type.name === right.type.name &&
-        attrsEquivalent(left.attrs, right.attrs)
-    );
-}
-
-function sharedMarkPrefixLength(left: readonly Mark[], right: readonly Mark[]) {
-    let index = 0;
-    while (
-        index < left.length &&
-        index < right.length &&
-        left[index] !== undefined &&
-        right[index] !== undefined &&
-        left[index].type.name === right[index].type.name &&
-        attrsEquivalent(left[index].attrs, right[index].attrs)
-    ) {
-        index += 1;
-    }
-
-    return index;
-}
-
-function openMark(mark: Mark) {
-    switch (mark.type.name) {
-        case "strong":
-            return "**";
-        case "emphasis":
-            return "*";
-        case "strike":
-            return "~~";
-        case "inline_code":
-            return "`";
-        default:
-            return "";
-    }
-}
-
-function closeMark(mark: Mark) {
-    return openMark(mark);
-}
-
-function serializeWikilink(text: string, href: string) {
-    const originalPayload = decodeWikilinkPayload(
-        href.slice(WIKILINK_HREF_PREFIX.length),
-    );
-    const separatorIndex = originalPayload.indexOf("|");
-    const target =
-        separatorIndex >= 0
-            ? originalPayload.slice(0, separatorIndex)
-            : originalPayload;
-    const originalLabel =
-        separatorIndex >= 0 ? originalPayload.slice(separatorIndex + 1) : target;
-
-    if (text === originalLabel) {
-        return separatorIndex >= 0
-            ? `[[${escapeWikilinkSegment(target)}|${escapeWikilinkSegment(originalLabel)}]]`
-            : `[[${escapeWikilinkSegment(originalPayload)}]]`;
-    }
-
-    if (text === target) {
-        return `[[${escapeWikilinkSegment(target)}]]`;
-    }
-
-    return `[[${escapeWikilinkSegment(target)}|${text}]]`;
-}
-
-function decodeWikilinkPayload(payload: string) {
-    try {
-        return decodeURIComponent(payload);
-    } catch {
-        return payload;
-    }
-}
-
-function escapeLinkTitle(title: string) {
-    return title.replaceAll('"', '\\"');
-}
-
-function escapeLinkHref(href: string) {
-    return href.replaceAll("\\", "\\\\").replaceAll(")", "\\)");
-}
-
-function escapePlainText(text: string) {
-    return text
-        .replaceAll("\\", "\\\\")
-        .replaceAll("[", "\\[")
-        .replaceAll("]", "\\]");
-}
-
-function escapeWikilinkSegment(segment: string) {
-    return segment
-        .replaceAll("\\", "\\\\")
-        .replaceAll("]", "\\]");
 }
 
 function normalizeLineEndings(value: string) {
