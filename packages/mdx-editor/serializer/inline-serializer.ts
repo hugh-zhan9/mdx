@@ -24,40 +24,22 @@ export function serializeInlineContent(node: ProseMirrorNode): string {
             continue;
         }
 
-        const linkedRun = collectLinkedTextRun(
+        const serializedRun = serializeTextRun(
             node,
             index,
+            (candidate) => {
+                return (
+                    candidate.isText &&
+                    linkMarksEquivalent(link, findLinkMark(candidate))
+                );
+            },
             link,
         );
-        output += serializeLinkedText(linkedRun.text, link);
-        index = linkedRun.nextIndex;
+        output += serializeLinkedText(serializedRun.serialized, link);
+        index = serializedRun.nextIndex;
     }
 
     return output;
-}
-
-function collectLinkedTextRun(
-    node: ProseMirrorNode,
-    startIndex: number,
-    link: Mark,
-) {
-    let text = "";
-    let nextIndex = startIndex;
-
-    while (nextIndex < node.childCount) {
-        const child = node.child(nextIndex);
-        if (!child.isText || !linkMarksEquivalent(link, findLinkMark(child))) {
-            break;
-        }
-
-        text += child.text ?? "";
-        nextIndex += 1;
-    }
-
-    return {
-        text,
-        nextIndex,
-    };
 }
 
 function serializeInlineNode(node: ProseMirrorNode) {
@@ -139,7 +121,7 @@ function serializeLinkedText(text: string, link: Mark) {
             ? ` "${escapeLinkTitle(link.attrs.title)}"`
             : "";
 
-    return `[${escapeLinkLabelText(text)}](${escapeLinkHref(href)}${title})`;
+    return `[${text}](${escapeLinkHref(href)}${title})`;
 }
 
 function serializeImageNode(node: ProseMirrorNode) {
@@ -273,10 +255,6 @@ function escapeWikilinkSegment(segment: string) {
     return segment
         .replaceAll("\\", "\\\\")
         .replaceAll("]", "\\]");
-}
-
-function escapeLinkLabelText(text: string) {
-    return escapePlainText(text).replaceAll(")", "\\)");
 }
 
 function escapeMathInline(latex: string) {

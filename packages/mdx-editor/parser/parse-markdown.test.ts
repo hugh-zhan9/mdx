@@ -116,6 +116,21 @@ describe("parseMarkdown", () => {
         expect(link.attrs.href).toBe("docs/My File.md");
     });
 
+    it("parses inline marks inside normal link labels", () => {
+        const parsed = parseMarkdown("[**bold** tail](https://x.test)");
+        const paragraph = parsed.doc.child(0);
+
+        expect(paragraph.child(0).text).toBe("bold");
+        expect(paragraph.child(0).marks.map((mark) => mark.type.name)).toEqual([
+            "strong",
+            "link",
+        ]);
+        expect(paragraph.child(1).text).toBe(" tail");
+        expect(paragraph.child(1).marks.map((mark) => mark.type.name)).toEqual([
+            "link",
+        ]);
+    });
+
     it("consumes an unclosed fence through EOF as a code block", () => {
         const markdown = "```ts\n# not a heading\nbody";
         const parsed = parseMarkdown(markdown);

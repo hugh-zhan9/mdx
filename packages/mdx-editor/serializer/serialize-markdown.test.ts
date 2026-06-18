@@ -262,7 +262,9 @@ describe("serializeMarkdown", () => {
             ]),
         ]);
 
-        expect(serializeMarkdown(emptyParsedDocument(doc))).toBe("[bold tail](https://x.test)\n");
+        expect(serializeMarkdown(emptyParsedDocument(doc))).toBe(
+            "[**bold** tail](https://x.test)\n",
+        );
     });
 
     it("serializes one wikilink spanning multiple text nodes once", () => {
@@ -277,10 +279,12 @@ describe("serializeMarkdown", () => {
             ]),
         ]);
 
-        expect(serializeMarkdown(emptyParsedDocument(doc))).toBe("[[Target|Bold tail]]\n");
+        expect(serializeMarkdown(emptyParsedDocument(doc))).toBe(
+            "[[Target|**Bold** tail]]\n",
+        );
     });
 
-    it("serializes linked marked text as a plain link label", () => {
+    it("round-trips nested marks inside normal link labels", () => {
         const link = mdxEditorSchema.marks.link.create({
             href: "https://x.test",
         });
@@ -294,9 +298,40 @@ describe("serializeMarkdown", () => {
         const markdown = serializeMarkdown(emptyParsedDocument(doc));
         const reparsed = parseMarkdown(markdown);
 
-        expect(markdown).toBe("[bold tail](https://x.test)\n");
+        expect(markdown).toBe("[**bold** tail](https://x.test)\n");
         expect(reparsed.doc.child(0).textContent).toBe("bold tail");
-        expect(reparsed.doc.child(0).child(0).marks[0]?.type.name).toBe("link");
+        expect(reparsed.doc.child(0).child(0).marks.map((mark) => mark.type.name)).toEqual([
+            "strong",
+            "link",
+        ]);
+        expect(reparsed.doc.child(0).child(1).marks.map((mark) => mark.type.name)).toEqual([
+            "link",
+        ]);
+    });
+
+    it("round-trips nested marks inside wikilink labels", () => {
+        const link = mdxEditorSchema.marks.link.create({
+            href: "mdx-wikilink:Target%7C**Bold**%20tail",
+        });
+        const strong = mdxEditorSchema.marks.strong.create();
+        const doc = mdxEditorSchema.nodes.doc.create(null, [
+            mdxEditorSchema.nodes.paragraph.create(null, [
+                mdxEditorSchema.text("Bold", [link, strong]),
+                mdxEditorSchema.text(" tail", [link]),
+            ]),
+        ]);
+        const markdown = serializeMarkdown(emptyParsedDocument(doc));
+        const reparsed = parseMarkdown(markdown);
+
+        expect(markdown).toBe("[[Target|**Bold** tail]]\n");
+        expect(reparsed.doc.child(0).textContent).toBe("Bold tail");
+        expect(reparsed.doc.child(0).child(0).marks.map((mark) => mark.type.name)).toEqual([
+            "strong",
+            "link",
+        ]);
+        expect(reparsed.doc.child(0).child(1).marks.map((mark) => mark.type.name)).toEqual([
+            "link",
+        ]);
     });
 
     it("serializes link hrefs containing spaces as angle-bracket hrefs", () => {

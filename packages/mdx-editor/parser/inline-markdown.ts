@@ -26,12 +26,12 @@ export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
         if (wikilink) {
             pushText(children, buffer);
             buffer = "";
-            children.push(
-                mdxEditorSchema.text(wikilink.label, [
-                    mdxEditorSchema.marks.link.create({
-                        href: `mdx-wikilink:${encodeURIComponent(wikilink.payload)}`,
-                    }),
-                ]),
+            pushInlineNodesWithMark(
+                children,
+                parseInlineMarkdown(wikilink.rawLabel),
+                mdxEditorSchema.marks.link.create({
+                    href: `mdx-wikilink:${encodeURIComponent(wikilink.payload)}`,
+                }),
             );
             cursor = wikilink.nextIndex;
             continue;
@@ -41,13 +41,13 @@ export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
         if (link) {
             pushText(children, buffer);
             buffer = "";
-            children.push(
-                mdxEditorSchema.text(link.label, [
-                    mdxEditorSchema.marks.link.create({
-                        href: link.href,
-                        title: link.title,
-                    }),
-                ]),
+            pushInlineNodesWithMark(
+                children,
+                parseInlineMarkdown(link.rawLabel),
+                mdxEditorSchema.marks.link.create({
+                    href: link.href,
+                    title: link.title,
+                }),
             );
             cursor = link.nextIndex;
             continue;
@@ -160,9 +160,27 @@ function pushMarkedText(
     pushText(children, markedText, [mark]);
 }
 
-function pushText(children: ProseMirrorNode[], text: string, marks?: Mark[]) {
+function pushText(
+    children: ProseMirrorNode[],
+    text: string,
+    marks?: readonly Mark[],
+) {
     if (text.length > 0) {
         children.push(mdxEditorSchema.text(text, marks));
+    }
+}
+
+function pushInlineNodesWithMark(
+    children: ProseMirrorNode[],
+    nodes: ProseMirrorNode[],
+    mark: Mark,
+) {
+    for (const node of nodes) {
+        if (node.isText) {
+            pushText(children, node.text ?? "", mark.addToSet(node.marks));
+        } else if (node.textContent.length > 0) {
+            pushText(children, node.textContent, [mark]);
+        }
     }
 }
 
@@ -201,6 +219,7 @@ function tryParseWikilink(text: string, startIndex: number) {
 
             return {
                 label,
+                rawLabel,
                 payload:
                     separatorIndex >= 0 ? `${target}|${label}` : target,
                 nextIndex: cursor + 2,
@@ -275,6 +294,7 @@ function tryParseLink(text: string, startIndex: number) {
         if (text[cursor] === ")") {
             return {
                 label: decodeEscapes(rawLabel),
+                rawLabel,
                 href,
                 title: null,
                 nextIndex: cursor + 1,
@@ -292,6 +312,7 @@ function tryParseLink(text: string, startIndex: number) {
             if (current === ")") {
                 return {
                     label: decodeEscapes(rawLabel),
+                    rawLabel,
                     href,
                     title: null,
                     nextIndex: cursor + 1,
@@ -344,6 +365,7 @@ function tryParseLink(text: string, startIndex: number) {
 
     return {
         label: decodeEscapes(rawLabel),
+        rawLabel,
         href,
         title,
         nextIndex: cursor + 1,
