@@ -54,6 +54,35 @@ describe("markdown line scroll", () => {
         });
     });
 
+    it("scrolls rendered mermaid blocks by markdown fence line", () => {
+        const root = document.createElement("div");
+        const domd = document.createElement("div");
+        domd.setAttribute("data-mdx-editor-root", "");
+        const heading = document.createElement("h1");
+        const mermaid = document.createElement("pre");
+        const after = document.createElement("p");
+        heading.setAttribute("data-mdx-node-type", "heading");
+        mermaid.setAttribute("data-mdx-node-type", "mermaid_block");
+        after.setAttribute("data-mdx-node-type", "paragraph");
+        mermaid.scrollIntoView = vi.fn();
+        after.scrollIntoView = vi.fn();
+        domd.append(heading, mermaid, after);
+        root.append(domd);
+
+        expect(
+            scrollMarkdownLineIntoView(
+                root,
+                "# Title\n\n```mermaid\ngraph TD\n  A --> B\n```\n\nAfter\n",
+                4,
+            ),
+        ).toBe(true);
+        expect(mermaid.scrollIntoView).toHaveBeenCalledWith({
+            block: "center",
+            inline: "nearest",
+        });
+        expect(after.scrollIntoView).not.toHaveBeenCalled();
+    });
+
     it("scrolls the editor root when a single-line document has no rendered block elements", () => {
         const root = document.createElement("div");
         const domd = document.createElement("div");
