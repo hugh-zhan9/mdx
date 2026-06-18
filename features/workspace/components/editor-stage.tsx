@@ -6,13 +6,14 @@ import { tauriCore } from "@/common/lib/tauri";
 import { EditorPane } from "@/features/editor/components/editor-pane";
 import { documentFingerprint } from "@/features/file-watch/lib/external-change";
 import { EmptyState } from "../../../common/components/ui-controls";
+import { HtmlPreview } from "./html-preview";
 import { createEditorEmptyState } from "../lib/empty-state-copy";
 import {
-  isHtmlFilePath,
   isImageFilePath,
   isMarkdownFilePath,
   isPdfFilePath,
   isPlainTextFilePath,
+  isRenderableHtmlFilePath,
 } from "../lib/path";
 import type {
   PendingCliEditorCommand,
@@ -178,7 +179,7 @@ export function EditorStage({
         ) : activeTabKind === "text" ? (
           <TextPreview rootPath={rootPath} path={activeTab.path} />
         ) : activeTabKind === "html" ? (
-          <TextPreview rootPath={rootPath} path={activeTab.path} />
+          <HtmlPreview rootPath={rootPath} path={activeTab.path} />
         ) : activeTabKind === "unsupported" ? (
           <UnsupportedPreview title={activeTab.title} />
         ) : activeTab.markdown === undefined ? (
@@ -354,12 +355,12 @@ function getTabKind(path: string) {
     return "image";
   }
 
-  if (isPlainTextFilePath(path)) {
-    return "text";
+  if (isRenderableHtmlFilePath(path)) {
+    return "html";
   }
 
-  if (isHtmlFilePath(path)) {
-    return "html";
+  if (isPlainTextFilePath(path)) {
+    return "text";
   }
 
   return "unsupported";
