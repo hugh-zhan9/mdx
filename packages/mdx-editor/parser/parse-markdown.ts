@@ -73,7 +73,9 @@ function parseBlocks(
             continue;
         }
 
-        const fence = line.text.match(/^```([^\s`]*)?(.*)$/);
+        const fence = isLineStartingInlineCodeSpan(line.text)
+            ? null
+            : line.text.match(/^```([^\s`]*)?(.*)$/);
         if (fence) {
             const startLine = cursor;
             let endLine = -1;
@@ -181,6 +183,21 @@ function addSlice(
         text: markdown.slice(start, end),
     });
     return id;
+}
+
+function isLineStartingInlineCodeSpan(text: string) {
+    if (text[0] !== "`") {
+        return false;
+    }
+
+    let delimiterLength = 0;
+    while (text[delimiterLength] === "`") {
+        delimiterLength += 1;
+    }
+
+    const delimiter = "`".repeat(delimiterLength);
+
+    return text.indexOf(delimiter, delimiterLength) >= delimiterLength;
 }
 
 function tryParseOpaqueBlock(

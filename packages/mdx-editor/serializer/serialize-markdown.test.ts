@@ -166,16 +166,46 @@ describe("serializeMarkdown", () => {
 
     it("round-trips literal backticks inside inline code", () => {
         const schema = mdxEditorSchema;
+        const cases = [
+            { text: "`", markdown: "`` ` ``\n" },
+            { text: "a`", markdown: "`` a` ``\n" },
+            { text: "`a", markdown: "`` `a ``\n" },
+            { text: "a`b", markdown: "``a`b``\n" },
+        ];
+
+        for (const testCase of cases) {
+            const doc = schema.nodes.doc.create(null, [
+                schema.nodes.paragraph.create(null, [
+                    schema.text(testCase.text, [
+                        schema.marks.inline_code.create(),
+                    ]),
+                ]),
+            ]);
+            const markdown = serializeMarkdown(emptyParsedDocument(doc));
+            const reparsed = parseMarkdown(markdown);
+
+            expect(markdown).toBe(testCase.markdown);
+            expect(reparsed.doc.child(0).type.name).toBe("paragraph");
+            expect(reparsed.doc.child(0).child(0).text).toBe(testCase.text);
+            expect(reparsed.doc.child(0).child(0).marks[0]?.type.name).toBe(
+                "inline_code",
+            );
+        }
+    });
+
+    it("does not block-escape leading triple-backtick inline code spans", () => {
+        const schema = mdxEditorSchema;
         const doc = schema.nodes.doc.create(null, [
             schema.nodes.paragraph.create(null, [
-                schema.text("a`b", [schema.marks.inline_code.create()]),
+                schema.text("``", [schema.marks.inline_code.create()]),
             ]),
         ]);
         const markdown = serializeMarkdown(emptyParsedDocument(doc));
         const reparsed = parseMarkdown(markdown);
 
-        expect(markdown).toBe("``a`b``\n");
-        expect(reparsed.doc.child(0).child(0).text).toBe("a`b");
+        expect(markdown).toBe("``` `` ```\n");
+        expect(reparsed.doc.child(0).type.name).toBe("paragraph");
+        expect(reparsed.doc.child(0).child(0).text).toBe("``");
         expect(reparsed.doc.child(0).child(0).marks[0]?.type.name).toBe(
             "inline_code",
         );

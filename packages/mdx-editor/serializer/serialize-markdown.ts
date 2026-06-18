@@ -379,12 +379,33 @@ function serializeNestedBlock(node: ProseMirrorNode) {
 function escapeParagraphLineStarts(text: string) {
     return text
         .split("\n")
-        .map((line) => line.replace(blockStartMarkerPattern(), "\\$1"))
+        .map((line) => {
+            if (startsWithInlineCodeSpan(line)) {
+                return line;
+            }
+
+            return line.replace(blockStartMarkerPattern(), "\\$1");
+        })
         .join("\n");
 }
 
 function blockStartMarkerPattern() {
     return /^(#{1,6}(?:\s|$)|[-*+](?:\s|$)|[-*+]\s+\[[ xX]\]\s|>(?:\s|$)|```|\|(?=.*\|))/;
+}
+
+function startsWithInlineCodeSpan(line: string) {
+    if (line[0] !== "`") {
+        return false;
+    }
+
+    let delimiterLength = 0;
+    while (line[delimiterLength] === "`") {
+        delimiterLength += 1;
+    }
+
+    const delimiter = "`".repeat(delimiterLength);
+
+    return line.indexOf(delimiter, delimiterLength) >= delimiterLength;
 }
 
 function headingLevel(node: ProseMirrorNode) {

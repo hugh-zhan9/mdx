@@ -264,8 +264,11 @@ function serializeInlineCodeText(text: string) {
         return Math.max(longest, run.length);
     }, 0) ?? 0;
     const delimiter = "`".repeat(longestBacktickRun + 1);
+    const needsBoundaryPadding = text.startsWith("`") || text.endsWith("`");
 
-    return `${delimiter}${text}${delimiter}`;
+    return needsBoundaryPadding
+        ? `${delimiter} ${text} ${delimiter}`
+        : `${delimiter}${text}${delimiter}`;
 }
 
 function escapeWikilinkSegment(segment: string) {

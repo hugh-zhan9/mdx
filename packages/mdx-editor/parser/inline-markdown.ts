@@ -408,10 +408,27 @@ function tryParseInlineCode(text: string, startIndex: number) {
         return null;
     }
 
+    const rawContent = text.slice(contentStart, closeIndex);
+
     return {
-        content: text.slice(contentStart, closeIndex),
+        content: trimCodeSpanPadding(rawContent),
         nextIndex: closeIndex + openerLength,
     };
+}
+
+function trimCodeSpanPadding(content: string) {
+    if (
+        content.length >= 3 &&
+        content.startsWith(" ") &&
+        content.endsWith(" ")
+    ) {
+        const inner = content.slice(1, -1);
+        if (inner.startsWith("`") || inner.endsWith("`")) {
+            return inner;
+        }
+    }
+
+    return content;
 }
 
 function tryParseDelimitedInline(
