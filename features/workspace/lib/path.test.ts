@@ -3,10 +3,12 @@ import {
     isHtmlFilePath,
     isImageFilePath,
     isMarkdownFilePath,
+    isMhtmlFilePath,
     isPdfFilePath,
     isPathInsideRoot,
     isPlainTextFilePath,
     isPreviewableFilePath,
+    isRenderableHtmlFilePath,
     shouldOpenWithDefaultApplication,
     normalizeWorkspacePath,
 } from "./path";
@@ -38,7 +40,7 @@ describe("isPlainTextFilePath", () => {
         expect(isPlainTextFilePath("/tmp/ws/script.py")).toBe(true);
         expect(isPlainTextFilePath("/tmp/ws/config.json")).toBe(true);
         expect(isPlainTextFilePath("/tmp/ws/app.yaml")).toBe(true);
-        expect(isPlainTextFilePath("/tmp/ws/archive.mhtml")).toBe(true);
+        expect(isPlainTextFilePath("/tmp/ws/archive.mhtml")).toBe(false);
         expect(isPlainTextFilePath("/tmp/ws/LICENSE")).toBe(true);
         expect(isPlainTextFilePath("/tmp/ws/notes.md")).toBe(false);
         expect(isPlainTextFilePath("/tmp/ws/movie.mp4")).toBe(false);
@@ -50,7 +52,26 @@ describe("isHtmlFilePath", () => {
         expect(isHtmlFilePath("/tmp/ws/page.html")).toBe(true);
         expect(isHtmlFilePath("/tmp/ws/page.htm")).toBe(true);
         expect(isHtmlFilePath("/tmp/ws/page.HTML")).toBe(true);
+        expect(isHtmlFilePath("/tmp/ws/archive.mhtml")).toBe(false);
         expect(isHtmlFilePath("/tmp/ws/page.md")).toBe(false);
+    });
+});
+
+describe("isMhtmlFilePath", () => {
+    it("allows mhtml files only", () => {
+        expect(isMhtmlFilePath("/tmp/ws/archive.mhtml")).toBe(true);
+        expect(isMhtmlFilePath("/tmp/ws/archive.MHTML")).toBe(true);
+        expect(isMhtmlFilePath("/tmp/ws/page.html")).toBe(false);
+        expect(isMhtmlFilePath("/tmp/ws/page.md")).toBe(false);
+    });
+});
+
+describe("isRenderableHtmlFilePath", () => {
+    it("allows html, htm, and mhtml files", () => {
+        expect(isRenderableHtmlFilePath("/tmp/ws/page.html")).toBe(true);
+        expect(isRenderableHtmlFilePath("/tmp/ws/page.htm")).toBe(true);
+        expect(isRenderableHtmlFilePath("/tmp/ws/archive.mhtml")).toBe(true);
+        expect(isRenderableHtmlFilePath("/tmp/ws/notes.txt")).toBe(false);
     });
 });
 

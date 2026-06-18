@@ -93,6 +93,20 @@ export function isPdfFilePath(path: string) {
     return normalizeWorkspacePath(path).toLowerCase().endsWith(".pdf");
 }
 
+export function isHtmlFilePath(path: string) {
+    const normalized = normalizeWorkspacePath(path).toLowerCase();
+
+    return normalized.endsWith(".html") || normalized.endsWith(".htm");
+}
+
+export function isMhtmlFilePath(path: string) {
+    return normalizeWorkspacePath(path).toLowerCase().endsWith(".mhtml");
+}
+
+export function isRenderableHtmlFilePath(path: string) {
+    return isHtmlFilePath(path) || isMhtmlFilePath(path);
+}
+
 const PLAIN_TEXT_EXTENSIONS = new Set([
     "",
     ".csv",
@@ -101,7 +115,6 @@ const PLAIN_TEXT_EXTENSIONS = new Set([
     ".js",
     ".json",
     ".jsp",
-    ".mhtml",
     ".ndjson",
     ".properties",
     ".py",
@@ -138,12 +151,6 @@ export function isPlainTextFilePath(path: string) {
     return PLAIN_TEXT_EXTENSIONS.has(getFileExtension(path));
 }
 
-export function isHtmlFilePath(path: string) {
-    const normalized = normalizeWorkspacePath(path).toLowerCase();
-
-    return normalized.endsWith(".html") || normalized.endsWith(".htm");
-}
-
 export function isImageFilePath(path: string) {
     return IMAGE_EXTENSIONS.has(getFileExtension(path));
 }
@@ -157,7 +164,7 @@ export function isPreviewableFilePath(path: string) {
         isMarkdownFilePath(path) ||
         isPdfFilePath(path) ||
         isPlainTextFilePath(path) ||
-        isHtmlFilePath(path) ||
+        isRenderableHtmlFilePath(path) ||
         isImageFilePath(path)
     );
 }
