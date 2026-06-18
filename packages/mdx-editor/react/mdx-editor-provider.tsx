@@ -30,6 +30,7 @@ export function MdxEditorProvider({
     children,
     editable = true,
     initialMarkdown,
+    placeholder,
     imageLoader,
     onMarkdownChange,
 }: MdxEditorProviderProps) {
@@ -172,6 +173,21 @@ export function MdxEditorProvider({
             }
         };
     }, [editable, imageLoader, rootNode, updateMarkdown, updateSelectionFromState]);
+
+    useEffect(() => {
+        if (!rootNode) {
+            return;
+        }
+
+        if (placeholder && markdownRef.current.trim().length === 0) {
+            rootNode.setAttribute("data-mdx-placeholder", placeholder);
+            rootNode.setAttribute("data-mdx-empty", "true");
+            return;
+        }
+
+        rootNode.removeAttribute("data-mdx-placeholder");
+        rootNode.removeAttribute("data-mdx-empty");
+    }, [placeholder, rootNode, markdown]);
 
     const value = useMemo(
         () => ({

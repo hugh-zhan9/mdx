@@ -144,6 +144,26 @@ describe("MdxEditorProvider", () => {
         expect(image?.getAttribute("alt")).toBe("Diagram");
     });
 
+    it("exposes placeholder state on an empty editor root", async () => {
+        await act(async () => {
+            root.render(
+                <MdxEditorProvider
+                    initialMarkdown=""
+                    placeholder="Start writing"
+                >
+                    <MdxEditorView />
+                </MdxEditorProvider>,
+            );
+        });
+
+        const editorRoot = host.querySelector("[data-mdx-editor-root]");
+
+        expect(editorRoot?.getAttribute("data-mdx-placeholder")).toBe(
+            "Start writing",
+        );
+        expect(editorRoot?.getAttribute("data-mdx-empty")).toBe("true");
+    });
+
     it("handles sequential mutations and snapshots in one callback", async () => {
         const onMarkdownChange = vi.fn();
 

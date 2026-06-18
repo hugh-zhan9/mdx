@@ -74,6 +74,19 @@ html[data-theme="dark"] {
     outline: none;
 }
 
+[data-mdx-editor-root][data-mdx-empty="true"] {
+    position: relative;
+}
+
+[data-mdx-editor-root][data-mdx-empty="true"]::before {
+    content: attr(data-mdx-placeholder);
+    color: color-mix(in srgb, var(--color-base-content) 55%, transparent);
+    left: 0;
+    pointer-events: none;
+    position: absolute;
+    top: 0;
+}
+
 [data-mdx-source-mode] {
     min-height: calc(100vh - 12rem);
     border: 0;
