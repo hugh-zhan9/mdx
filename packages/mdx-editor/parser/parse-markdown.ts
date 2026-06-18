@@ -184,6 +184,21 @@ function parseInlineText(text: string): ProseMirrorNode[] {
             continue;
         }
 
+        const image = tryParseImage(text, cursor);
+        if (image) {
+            pushText(children, buffer);
+            buffer = "";
+            children.push(
+                mdxEditorSchema.nodes.image.create({
+                    src: image.src,
+                    alt: image.alt,
+                    title: image.title,
+                }),
+            );
+            cursor = image.nextIndex;
+            continue;
+        }
+
         const link = tryParseLink(text, cursor);
         if (link) {
             pushText(children, buffer);
@@ -266,6 +281,24 @@ function tryParseWikilink(text: string, startIndex: number) {
     }
 
     return null;
+}
+
+function tryParseImage(text: string, startIndex: number) {
+    if (text[startIndex] !== "!" || text[startIndex + 1] !== "[") {
+        return null;
+    }
+
+    const link = tryParseLink(text, startIndex + 1);
+    if (!link) {
+        return null;
+    }
+
+    return {
+        alt: link.label,
+        src: link.href,
+        title: link.title,
+        nextIndex: link.nextIndex,
+    };
 }
 
 function tryParseLink(text: string, startIndex: number) {

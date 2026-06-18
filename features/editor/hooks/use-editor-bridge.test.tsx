@@ -78,7 +78,7 @@ describe("useEditorBridge", () => {
             "Hello world![Diagram](.assets/diagram.png)",
         );
         expect(
-            host.querySelector("[data-mdx-editor-root]")?.textContent,
-        ).toContain("Hello world!Diagram");
+            host.querySelector("img[data-mdx-node-type='image']")?.getAttribute("alt"),
+        ).toBe("Diagram");
     });
 });

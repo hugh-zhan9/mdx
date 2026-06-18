@@ -261,7 +261,11 @@ function serializeInline(node: ProseMirrorNode): string {
     while (index < node.childCount) {
         const child = node.child(index);
         if (!child.isText) {
-            output += child.textContent;
+            if (child.type.name === "image") {
+                output += serializeImageNode(child);
+            } else {
+                output += child.textContent;
+            }
             index += 1;
             continue;
         }
@@ -351,6 +355,17 @@ function serializeLinkedText(text: string, link: Mark) {
             : "";
 
     return `[${text}](${escapeLinkHref(href)}${title})`;
+}
+
+function serializeImageNode(node: ProseMirrorNode) {
+    const alt = escapePlainText(String(node.attrs.alt ?? ""));
+    const src = escapeLinkHref(String(node.attrs.src ?? ""));
+    const title =
+        typeof node.attrs.title === "string" && node.attrs.title.length > 0
+            ? ` "${escapeLinkTitle(node.attrs.title)}"`
+            : "";
+
+    return `![${alt}](${src}${title})`;
 }
 
 function findLinkMark(node: ProseMirrorNode) {

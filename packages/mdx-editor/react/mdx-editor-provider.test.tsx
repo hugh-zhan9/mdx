@@ -100,6 +100,9 @@ describe("MdxEditorProvider", () => {
         expect(onMarkdownChange).toHaveBeenLastCalledWith(
             'Hello world![Diagram](.assets/a.png "Preview")',
         );
+        expect(
+            host.querySelector("img[data-mdx-node-type='image']")?.getAttribute("alt"),
+        ).toBe("Diagram");
     });
 
     it("renders parsed block structure through the editor view", async () => {

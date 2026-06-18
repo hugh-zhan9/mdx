@@ -4,6 +4,35 @@ export const mdxEditorSchema = new Schema({
     nodes: {
         doc: { content: "block+" },
         text: { group: "inline" },
+        image: {
+            inline: true,
+            group: "inline",
+            atom: true,
+            attrs: {
+                src: {},
+                alt: { default: "" },
+                title: { default: null },
+            },
+            toDOM: (node) => [
+                "img",
+                {
+                    src: node.attrs.src,
+                    alt: node.attrs.alt || "",
+                    title: node.attrs.title ?? undefined,
+                    "data-mdx-node-type": "image",
+                },
+            ],
+            parseDOM: [
+                {
+                    tag: "img[src]",
+                    getAttrs: (dom) => ({
+                        src: (dom as HTMLElement).getAttribute("src"),
+                        alt: (dom as HTMLElement).getAttribute("alt") ?? "",
+                        title: (dom as HTMLElement).getAttribute("title"),
+                    }),
+                },
+            ],
+        },
         paragraph: {
             group: "block",
             content: "inline*",

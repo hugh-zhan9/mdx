@@ -60,6 +60,18 @@ describe("parseMarkdown", () => {
         });
     });
 
+    it("parses markdown image syntax into an image node", () => {
+        const parsed = parseMarkdown('![Diagram](.assets/a.png "Preview")\n');
+        const image = parsed.doc.child(0).child(0);
+
+        expect(image.type.name).toBe("image");
+        expect(image.attrs).toEqual({
+            src: ".assets/a.png",
+            alt: "Diagram",
+            title: "Preview",
+        });
+    });
+
     it("consumes an unclosed fence through EOF as a code block", () => {
         const markdown = "```ts\n# not a heading\nbody";
         const parsed = parseMarkdown(markdown);

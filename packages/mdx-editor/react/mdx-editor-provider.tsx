@@ -237,8 +237,8 @@ function selectionOffsetsFromDocSelection(
     selection: EditorSelection,
 ) {
     return {
-        anchor: doc.textBetween(0, selection.anchor, "\n", "\n").length,
-        head: doc.textBetween(0, selection.head, "\n", "\n").length,
+        anchor: doc.textBetween(0, selection.anchor, "\n", markdownLeafText).length,
+        head: doc.textBetween(0, selection.head, "\n", markdownLeafText).length,
     };
 }
 
@@ -247,7 +247,7 @@ function createSelectionSnapshot(
     selection: EditorState["selection"],
     contextChars?: number,
 ): SelectionState {
-    const text = doc.textBetween(0, doc.content.size, "\n", "\n");
+    const text = doc.textBetween(0, doc.content.size, "\n", markdownLeafText);
     const { anchor, head } = selectionOffsetsFromDocSelection(doc, selection);
 
     return selectionSnapshotFromMarkdownOffsets(
@@ -256,6 +256,26 @@ function createSelectionSnapshot(
         head,
         contextChars,
     );
+}
+
+function markdownLeafText(node: EditorState["doc"]) {
+    if (node.type.name !== "image") {
+        return "";
+    }
+
+    const alt = String(node.attrs.alt ?? "")
+        .replaceAll("\\", "\\\\")
+        .replaceAll("[", "\\[")
+        .replaceAll("]", "\\]");
+    const src = String(node.attrs.src ?? "")
+        .replaceAll("\\", "\\\\")
+        .replaceAll(")", "\\)");
+    const title =
+        typeof node.attrs.title === "string" && node.attrs.title.length > 0
+            ? ` "${node.attrs.title.replaceAll('"', '\\"')}"`
+            : "";
+
+    return `![${alt}](${src}${title})`;
 }
 
 function replaceMarkdownRange(

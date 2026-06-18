@@ -84,6 +84,14 @@ describe("serializeMarkdown", () => {
         );
     });
 
+    it("serializes image nodes as markdown image syntax", () => {
+        const markdown = '![Diagram](.assets/a.png "Preview")\n';
+        const parsed = parseMarkdown(markdown);
+
+        expect(parsed.doc.child(0).child(0).type.name).toBe("image");
+        expect(serializeMarkdown(parsed)).toBe(markdown);
+    });
+
     it("round-trips links whose href contains closing parentheses", () => {
         const markdown = String.raw`[docs](https://example.com/a\)b)\n`;
         const parsed = parseMarkdown(markdown);
