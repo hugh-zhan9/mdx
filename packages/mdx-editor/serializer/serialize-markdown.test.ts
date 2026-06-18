@@ -493,6 +493,33 @@ describe("serializeMarkdown", () => {
         expect(reparsed.doc.child(0).child(1).marks[0]?.type.name).toBe("link");
     });
 
+    it("round-trips image and footnote refs inside normal link labels", () => {
+        const link = mdxEditorSchema.marks.link.create({
+            href: "https://x.test",
+        });
+        const doc = mdxEditorSchema.nodes.doc.create(null, [
+            mdxEditorSchema.nodes.paragraph.create(null, [
+                mdxEditorSchema.text("see ", [link]),
+                mdxEditorSchema.nodes.footnote_ref
+                    .create({ label: "n" })
+                    .mark([link]),
+                mdxEditorSchema.text(" ", [link]),
+                mdxEditorSchema.nodes.image
+                    .create({ src: "src", alt: "alt" })
+                    .mark([link]),
+            ]),
+        ]);
+        const markdown = serializeMarkdown(emptyParsedDocument(doc));
+        const reparsed = parseMarkdown(markdown);
+
+        expect(markdown).toBe("[see [^n] ![alt](src)](https://x.test)\n");
+        expect(reparsed.doc.child(0).child(0).marks[0]?.type.name).toBe("link");
+        expect(reparsed.doc.child(0).child(1).type.name).toBe("footnote_ref");
+        expect(reparsed.doc.child(0).child(1).marks[0]?.type.name).toBe("link");
+        expect(reparsed.doc.child(0).child(3).type.name).toBe("image");
+        expect(reparsed.doc.child(0).child(3).marks[0]?.type.name).toBe("link");
+    });
+
     it("round-trips math inside wikilink labels", () => {
         const parsed = parseMarkdown("[[Target|eq $x$]]");
         const markdown = serializeMarkdown(emptyParsedDocument(parsed.doc));
@@ -611,6 +638,7 @@ describe("serializeMarkdown", () => {
         const cases = [
             { text: "# not heading", markdown: "\\# not heading\n" },
             { text: "- not list", markdown: "\\- not list\n" },
+            { text: "1. not list", markdown: "\\1. not list\n" },
             { text: "- [x] not task", markdown: "\\- \\[x\\] not task\n" },
             { text: "> not quote", markdown: "\\> not quote\n" },
             { text: "```not fence", markdown: "\\`\\`\\`not fence\n" },

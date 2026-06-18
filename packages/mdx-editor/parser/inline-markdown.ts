@@ -253,7 +253,7 @@ function tryParseLink(text: string, startIndex: number) {
         return null;
     }
 
-    const labelEnd = findUnescaped(text, "]", startIndex + 1);
+    const labelEnd = findLinkLabelEnd(text, startIndex);
     if (labelEnd < 0 || text[labelEnd + 1] !== "(") {
         return null;
     }
@@ -480,6 +480,30 @@ function findUnescaped(
 
         if (text[index] === target) {
             return index;
+        }
+    }
+
+    return -1;
+}
+
+function findLinkLabelEnd(text: string, startIndex: number) {
+    let depth = 0;
+    for (let index = startIndex; index < text.length; index += 1) {
+        if (text[index] === "\\" && index + 1 < text.length) {
+            index += 1;
+            continue;
+        }
+
+        if (text[index] === "[") {
+            depth += 1;
+            continue;
+        }
+
+        if (text[index] === "]") {
+            depth -= 1;
+            if (depth === 0) {
+                return index;
+            }
         }
     }
 

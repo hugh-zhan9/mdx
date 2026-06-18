@@ -393,7 +393,7 @@ function escapeParagraphLineStarts(text: string) {
 }
 
 function blockStartMarkerPattern() {
-    return /^(#{1,6}(?:\s|$)|[-*+](?:\s|$)|[-*+]\s+\[[ xX]\]\s|>(?:\s|$)|```|\|(?=.*\|))/;
+    return /^(#{1,6}(?:\s|$)|\d+\.\s|[-*+](?:\s|$)|[-*+]\s+\[[ xX]\]\s|>(?:\s|$)|```|\|(?=.*\|))/;
 }
 
 function startsWithInlineCodeSpan(line: string) {
