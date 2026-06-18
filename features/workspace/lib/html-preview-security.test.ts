@@ -72,6 +72,52 @@ describe("html preview security", () => {
 		);
 	});
 
+	it("makes image map area links inert and preserves the original URL", () => {
+		const safe = createSafePreviewHtml(`
+			<html><body>
+				<map name="preview-map">
+					<area href="https://example.test/map" ping="https://tracker.example/p" target="_blank" download>
+				</map>
+			</body></html>
+		`);
+
+		const document = new DOMParser().parseFromString(safe, "text/html");
+		const area = document.querySelector("area");
+		expect(area?.hasAttribute("href")).toBe(false);
+		expect(area?.hasAttribute("ping")).toBe(false);
+		expect(area?.hasAttribute("target")).toBe(false);
+		expect(area?.hasAttribute("download")).toBe(false);
+		expect(area?.getAttribute("data-mdx-original-href")).toBe(
+			"https://example.test/map",
+		);
+	});
+
+	it("rewrites srcset and inline style resources while dropping unresolved external URLs", () => {
+		const safe = createSafePreviewHtml(
+			`
+			<html><body>
+				<img srcset="cid:small 1x, https://tracker.example/large.png 2x">
+				<div style="background:url('cid:bg-2'); border-image:url(https://tracker.example/border.png) 1"></div>
+			</body></html>
+			`,
+			{
+				resourceUrls: new Map([
+					["cid:small", "data:image/png;base64,SMALL"],
+					["cid:bg-2", "data:image/png;base64,BG2"],
+				]),
+			},
+		);
+
+		const document = new DOMParser().parseFromString(safe, "text/html");
+		expect(document.querySelector("img")?.getAttribute("srcset")).toBe(
+			"data:image/png;base64,SMALL 1x",
+		);
+		expect(document.querySelector("div")?.getAttribute("style")).toBe(
+			"background:url('data:image/png;base64,BG2'); border-image:none 1",
+		);
+		expect(safe).not.toContain("https://tracker.example");
+	});
+
 	it("rewrites CSS url references through the same resource map", () => {
 		expect(
 			rewriteCssUrls(

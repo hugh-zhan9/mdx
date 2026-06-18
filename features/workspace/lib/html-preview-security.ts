@@ -19,6 +19,8 @@ type HtmlPreviewSecurityOptions = {
 
 const EXECUTABLE_ELEMENT_SELECTOR = "script, iframe, object, embed";
 const FORM_URL_ATTRIBUTES = new Set(["action", "formaction"]);
+const INERT_LINK_ELEMENT_NAMES = new Set(["a", "area"]);
+const INERT_LINK_NAVIGATION_ATTRIBUTES = ["href", "ping", "target", "download"];
 const AUTOMATIC_RESOURCE_ATTRIBUTES = new Set([
 	"src",
 	"poster",
@@ -98,7 +100,7 @@ function rewriteElements(
 	for (const element of document.querySelectorAll("*")) {
 		removeDangerousAttributes(element);
 		rewriteResourceAttributes(element, resourceUrls);
-		rewriteAnchorHref(element);
+		rewriteInertLinkAttributes(element);
 		rewriteLinkHref(element, resourceUrls);
 		rewriteInlineStyle(element, resourceUrls);
 	}
@@ -149,15 +151,18 @@ function rewriteResourceAttributes(
 	}
 }
 
-function rewriteAnchorHref(element: Element): void {
-	if (element.tagName.toLowerCase() !== "a" || !element.hasAttribute("href")) {
+function rewriteInertLinkAttributes(element: Element): void {
+	if (!INERT_LINK_ELEMENT_NAMES.has(element.tagName.toLowerCase())) {
 		return;
 	}
 
-	const href = element.getAttribute("href") ?? "";
-	element.removeAttribute("href");
+	const href = element.getAttribute("href");
 
-	if (!isDangerousUrl(href)) {
+	for (const attributeName of INERT_LINK_NAVIGATION_ATTRIBUTES) {
+		element.removeAttribute(attributeName);
+	}
+
+	if (href !== null && !isDangerousUrl(href)) {
 		element.setAttribute("data-mdx-original-href", href);
 	}
 }
