@@ -103,6 +103,12 @@ describe("markdown line scroll", () => {
             lineNumber: 5,
             beforeTargetNodeTypes: ["paragraph"],
         },
+        {
+            markdown: "# Title\n\n<div>\n  Unsupported\n</div>\n\nAfter\n",
+            nodeType: "source_fallback",
+            tagName: "div",
+            lineNumber: 4,
+        },
     ])(
         "scrolls rendered $nodeType blocks by markdown line",
         ({ markdown, nodeType, tagName, lineNumber, beforeTargetNodeTypes = [] }) => {

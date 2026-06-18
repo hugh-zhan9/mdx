@@ -14,7 +14,7 @@ import { createMdxEditorPlugins } from "../plugins/editor-plugins";
 import { mdxEditorSchema } from "../schema/schema";
 import { serializeMarkdown } from "../serializer/serialize-markdown";
 import { MdxEditorContext } from "./mdx-editor-context";
-import { hydrateRenderedImages } from "./node-views";
+import { createMdxNodeViews, hydrateRenderedImages } from "./node-views";
 
 export interface MdxEditorProviderProps {
     children?: ReactNode;
@@ -146,6 +146,7 @@ export function MdxEditorProvider({
         const view = new EditorView(rootNode, {
             state: initialState,
             editable: () => editable,
+            nodeViews: createMdxNodeViews(),
             dispatchTransaction(transaction) {
                 const nextState = view.state.apply(transaction);
                 view.updateState(nextState);

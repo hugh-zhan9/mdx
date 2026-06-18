@@ -121,6 +121,50 @@ describe("MdxEditorProvider", () => {
         expect(paragraph?.textContent).toBe("Body.");
     });
 
+    it("renders editable source fallback blocks and serializes textarea edits", async () => {
+        const markdown = "<div>\nUnsupported\n</div>\n";
+        const editedMarkdown = "<section>Changed</section>\n";
+        const onMarkdownChange = vi.fn();
+
+        await act(async () => {
+            root.render(
+                <MdxEditorProvider
+                    initialMarkdown={markdown}
+                    onMarkdownChange={onMarkdownChange}
+                >
+                    <MdxEditorView />
+                </MdxEditorProvider>,
+            );
+        });
+
+        const fallback = host.querySelector<HTMLDivElement>(
+            "[data-mdx-node-type='source_fallback']",
+        );
+        const textarea = host.querySelector<HTMLTextAreaElement>(
+            "textarea[aria-label='Markdown source fallback']",
+        );
+
+        expect(fallback).not.toBeNull();
+        expect(textarea?.value).toBe(markdown);
+
+        await act(async () => {
+            if (!textarea) {
+                return;
+            }
+
+            const valueSetter = Object.getOwnPropertyDescriptor(
+                HTMLTextAreaElement.prototype,
+                "value",
+            )?.set;
+
+            valueSetter?.call(textarea, editedMarkdown);
+            textarea.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+
+        expect(onMarkdownChange).toHaveBeenLastCalledWith(editedMarkdown);
+        expect(textarea?.value).toBe(editedMarkdown);
+    });
+
     it("hydrates rendered image nodes through imageLoader", async () => {
         const imageLoader = vi.fn(async (src: string) => `resolved:${src}`);
 
