@@ -120,6 +120,45 @@ describe("mhtml archive parser", () => {
 		expect(decodeURIComponent(safe)).toContain("data:image/png;base64,BBBB");
 	});
 
+	it("resolves root-relative resource references from absolute content locations", () => {
+		const archive = [
+			"Content-Type: multipart/related; boundary=abc",
+			"",
+			"--abc",
+			"Content-Type: text/html; charset=utf-8",
+			"Content-Location: https://example.test/page/index.html",
+			"",
+			'<html><head><link rel="stylesheet" href="/styles/site.css"></head><body><img src="/images/a.png"></body></html>',
+			"--abc",
+			"Content-Type: text/css; charset=utf-8",
+			"Content-Location: https://example.test/styles/site.css",
+			"",
+			"body{background:url(/images/bg.png)}",
+			"--abc",
+			"Content-Type: image/png",
+			"Content-Transfer-Encoding: base64",
+			"Content-Location: https://example.test/images/a.png",
+			"",
+			"AAAA",
+			"--abc",
+			"Content-Type: image/png",
+			"Content-Transfer-Encoding: base64",
+			"Content-Location: https://example.test/images/bg.png",
+			"",
+			"BBBB",
+			"--abc--",
+		].join("\n");
+
+		const parsed = parseMhtmlArchive(archive);
+		const safe = createSafePreviewHtml(parsed.html, {
+			resourceUrls: parsed.resourceUrls,
+		});
+
+		expect(safe).toContain('src="data:image/png;base64,AAAA"');
+		expect(safe).toContain("data:text/css;charset=utf-8,");
+		expect(decodeURIComponent(safe)).toContain("data:image/png;base64,BBBB");
+	});
+
 	it("throws when the archive has no html part", () => {
 		const archive = [
 			"Content-Type: multipart/related; boundary=abc",

@@ -364,6 +364,7 @@ function addAbsoluteLocationAliases(
 
 	const pathnameWithoutLeadingSlash = url.pathname.replace(/^\/+/, "");
 	if (pathnameWithoutLeadingSlash.length > 0) {
+		aliases.add(url.pathname);
 		aliases.add(pathnameWithoutLeadingSlash);
 	}
 

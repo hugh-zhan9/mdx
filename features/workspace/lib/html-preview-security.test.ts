@@ -118,6 +118,28 @@ describe("html preview security", () => {
 		expect(safe).not.toContain("https://tracker.example");
 	});
 
+	it("rewrites svg href resources without restoring active document links", () => {
+		const safe = createSafePreviewHtml(
+			`
+			<html><body>
+				<a href="https://example.test/page">link</a>
+				<svg><image href="cid:svg-image"></image></svg>
+			</body></html>
+			`,
+			{
+				resourceUrls: new Map([
+					["cid:svg-image", "data:image/png;base64,SVG"],
+				]),
+			},
+		);
+
+		const document = new DOMParser().parseFromString(safe, "text/html");
+		expect(document.querySelector("a")?.hasAttribute("href")).toBe(false);
+		expect(document.querySelector("image")?.getAttribute("href")).toBe(
+			"data:image/png;base64,SVG",
+		);
+	});
+
 	it("rewrites CSS url references through the same resource map", () => {
 		expect(
 			rewriteCssUrls(

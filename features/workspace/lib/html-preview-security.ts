@@ -22,6 +22,7 @@ const FORM_URL_ATTRIBUTES = new Set(["action", "formaction"]);
 const INERT_LINK_ELEMENT_NAMES = new Set(["a", "area"]);
 const INERT_LINK_NAVIGATION_ATTRIBUTES = ["href", "ping", "target", "download"];
 const AUTOMATIC_RESOURCE_ATTRIBUTES = new Set([
+	"href",
 	"src",
 	"poster",
 	"data",
@@ -137,8 +138,18 @@ function rewriteResourceAttributes(
 	element: Element,
 	resourceUrls: ReadonlyMap<string, string>,
 ): void {
+	const tagName = element.tagName.toLowerCase();
+
 	for (const attribute of [...element.attributes]) {
 		const attributeName = attribute.name.toLowerCase();
+
+		if (attributeName === "href" && INERT_LINK_ELEMENT_NAMES.has(tagName)) {
+			continue;
+		}
+
+		if (attributeName === "href" && tagName === "link") {
+			continue;
+		}
 
 		if (AUTOMATIC_RESOURCE_ATTRIBUTES.has(attributeName)) {
 			rewriteUrlAttribute(element, attribute.name, resourceUrls);
