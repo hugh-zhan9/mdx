@@ -116,6 +116,18 @@ describe("serializeMarkdown", () => {
         );
     });
 
+    it("serializes source fallback markdown exactly", () => {
+        const markdown = "<div>Unsupported</div>\n";
+        const doc = mdxEditorSchema.nodes.doc.create(null, [
+            mdxEditorSchema.nodes.source_fallback.create({
+                markdown,
+                reason: "unsupported",
+            }),
+        ]);
+
+        expect(serializeMarkdown(emptyParsedDocument(doc))).toBe(markdown);
+    });
+
     it("serializes normal links with titles", () => {
         const doc = mdxEditorSchema.nodes.doc.create(null, [
             mdxEditorSchema.nodes.paragraph.create(null, [

@@ -1,4 +1,13 @@
+import type { Node as ProseMirrorNode } from "prosemirror-model";
+
 const RESOLVED_SOURCE_ATTRIBUTE = "data-mdx-resolved-src";
+
+export interface NodeViewProps {
+    node: ProseMirrorNode;
+    updateAttrs: (attrs: Record<string, unknown>) => void;
+    selected?: boolean;
+    getPos?: () => number;
+}
 
 export async function hydrateRenderedImages(
     root: ParentNode,

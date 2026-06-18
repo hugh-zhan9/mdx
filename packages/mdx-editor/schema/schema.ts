@@ -614,6 +614,7 @@ export const mdxEditorSchema = new Schema({
             marks: "",
             selectable: true,
             attrs: {
+                markdown: { default: "" },
                 reason: { default: "unsupported" },
                 sourceId: { default: null },
             },
@@ -632,6 +633,7 @@ export const mdxEditorSchema = new Schema({
                     priority: 85,
                     preserveWhitespace: "full",
                     getAttrs: (dom) => ({
+                        markdown: (dom as HTMLElement).textContent ?? "",
                         reason:
                             (dom as HTMLElement).getAttribute(
                                 "data-mdx-reason",

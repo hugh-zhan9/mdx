@@ -36,6 +36,8 @@ export function serializeBlockNode(node: ProseMirrorNode): string {
             return `\`\`\`${codeBlockInfo(node)}\n${textBeforeClosingFence(node.textContent)}\`\`\`\n`;
         case "frontmatter":
             return `---\n${textBeforeClosingFence(node.textContent)}---\n`;
+        case "source_fallback":
+            return String(node.attrs.markdown ?? "");
         case "opaque_block":
             return ensureTrailingNewline(node.textContent);
         default:

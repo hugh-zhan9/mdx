@@ -176,23 +176,27 @@ export function parseMarkdownBlocks(
             continue;
         }
 
-        const opaqueRange = tryParseOpaqueBlock(logicalLines, cursor);
-        if (opaqueRange) {
+        const fallbackRange = tryParseSourceFallbackBlock(logicalLines, cursor);
+        if (fallbackRange) {
             const start =
-                logicalLines[opaqueRange.startLine]?.start ?? line.start;
+                logicalLines[fallbackRange.startLine]?.start ?? line.start;
             const end =
-                logicalLines[opaqueRange.endLine]?.end ??
-                logicalLines[opaqueRange.startLine]?.end ??
+                logicalLines[fallbackRange.endLine]?.end ??
+                logicalLines[fallbackRange.startLine]?.end ??
                 line.end;
             const sourceId = addSlice(sourceSlices, markdown, start, end);
-            const text = markdown.slice(start, end).replace(/\r?\n$/, "");
+            const fallbackMarkdown = markdown.slice(start, end);
             blocks.push(
-                mdxEditorSchema.nodes.opaque_block.create(
-                    { reason: "source-preserved", sourceId },
-                    textNode(text),
+                mdxEditorSchema.nodes.source_fallback.create(
+                    {
+                        markdown: fallbackMarkdown,
+                        reason: "unsupported",
+                        sourceId,
+                    },
+                    textNode(fallbackMarkdown),
                 ),
             );
-            cursor = opaqueRange.endLine + 1;
+            cursor = fallbackRange.endLine + 1;
             continue;
         }
 
@@ -788,10 +792,16 @@ function isLineStartingInlineCodeSpan(text: string) {
     return text.indexOf(delimiter, delimiterLength) >= delimiterLength;
 }
 
-function tryParseOpaqueBlock(logicalLines: LogicalLine[], startLine: number) {
+function tryParseSourceFallbackBlock(
+    logicalLines: LogicalLine[],
+    startLine: number,
+) {
     const firstLine = logicalLines[startLine]?.text ?? "";
 
-    if (isTableStart(logicalLines, startLine)) {
+    if (
+        isTableStart(logicalLines, startLine) ||
+        isMalformedTableStart(logicalLines, startLine)
+    ) {
         return consumeUntilBlankLine(logicalLines, startLine);
     }
 
@@ -833,6 +843,10 @@ function tryParseOpaqueBlock(logicalLines: LogicalLine[], startLine: number) {
         }
 
         return { startLine, endLine };
+    }
+
+    if (isUnknownBlockSyntaxStart(firstLine)) {
+        return consumeUntilBlankLine(logicalLines, startLine);
     }
 
     return null;
@@ -925,6 +939,17 @@ function isTableStart(logicalLines: LogicalLine[], startLine: number) {
     return header.trimStart().startsWith("|") && isTableSeparator(separator);
 }
 
+function isMalformedTableStart(logicalLines: LogicalLine[], startLine: number) {
+    const header = logicalLines[startLine]?.text ?? "";
+    const separator = logicalLines[startLine + 1]?.text ?? "";
+
+    return (
+        header.trimStart().startsWith("|") &&
+        separator.trim().length > 0 &&
+        separator.includes("|")
+    );
+}
+
 function isTableSeparator(text: string) {
     return /^[ \t]*\|?(?:[ \t]*:?-{3,}:?[ \t]*\|)+[ \t]*:?-{3,}:?[ \t]*\|?[ \t]*$/.test(
         text,
@@ -953,4 +978,16 @@ function isMathBlockStart(text: string) {
 
 function isHtmlStart(text: string) {
     return /^<[A-Za-z][^>]*>$/.test(text.trim());
+}
+
+function isUnknownBlockSyntaxStart(text: string) {
+    const trimmed = text.trimStart();
+
+    return (
+        /^:{2,}/.test(trimmed) ||
+        /^~{3,}/.test(trimmed) ||
+        /^(?:import|export)\s/.test(trimmed) ||
+        /^<[!/]/.test(trimmed) ||
+        /^{[%#]/.test(trimmed)
+    );
 }

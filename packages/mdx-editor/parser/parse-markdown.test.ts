@@ -332,7 +332,7 @@ describe("parseMarkdown", () => {
         expect(callout.child(0).textContent).toBe("Keep this.");
     });
 
-    it("keeps unsupported block boundaries source-preserved", () => {
+    it("keeps unsupported block boundaries in source_fallback nodes", () => {
         const html = roundTripFixtures.find(
             (fixture) => fixture.name === "html opaque",
         );
@@ -340,15 +340,34 @@ describe("parseMarkdown", () => {
 
         const parsedHtml = parseMarkdown(html!.markdown);
         expect(parsedHtml.doc.childCount).toBe(1);
-        expect(parsedHtml.doc.child(0).type.name).toBe("opaque_block");
-        expect(parsedHtml.doc.child(0).attrs.reason).toBe("source-preserved");
+        expect(parsedHtml.doc.child(0).type.name).toBe("source_fallback");
+        expect(parsedHtml.doc.child(0).attrs.markdown).toBe(html!.markdown);
+        expect(parsedHtml.doc.child(0).attrs.reason).toBe("unsupported");
         expect(parsedHtml.doc.child(0).attrs.sourceId).toBe("source-0");
 
-        const parsedFootnote = parseMarkdown("[^1]: Body\n    Nested body\n");
-        expect(parsedFootnote.doc.childCount).toBe(1);
-        expect(parsedFootnote.doc.child(0).type.name).toBe("opaque_block");
-        expect(parsedFootnote.doc.child(0).attrs.reason).toBe("source-preserved");
-        expect(parsedFootnote.doc.child(0).attrs.sourceId).toBe("source-0");
+        for (const markdown of [
+            "| A | B |\n| bad | separator |\n",
+            "[^1]: Body\n    Nested body\n",
+            ":::warning\nUnsupported directive\n:::\n",
+        ]) {
+            const parsed = parseMarkdown(markdown);
+
+            expect(parsed.doc.childCount).toBe(1);
+            expect(parsed.doc.child(0).type.name).toBe("source_fallback");
+            expect(parsed.doc.child(0).attrs.markdown).toBe(markdown);
+            expect(parsed.doc.child(0).attrs.reason).toBe("unsupported");
+            expect(parsed.doc.child(0).attrs.sourceId).toBe("source-0");
+        }
+    });
+
+    it("uses source_fallback for unsupported html without dropping content", () => {
+        const markdown = "<div data-x=\"1\">\n  <span>HTML</span>\n</div>\n";
+        const parsed = parseMarkdown(markdown);
+
+        expect(parsed.doc.childCount).toBe(1);
+        expect(parsed.doc.child(0).type.name).toBe("source_fallback");
+        expect(parsed.doc.child(0).attrs.markdown).toBe(markdown);
+        expect(parsed.doc.child(0).attrs.reason).toBe("unsupported");
     });
 
     it("parses block math and footnote definition blocks while leaving supported paragraphs intact", () => {
