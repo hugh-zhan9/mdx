@@ -1,0 +1,522 @@
+{
+  "schema_version": 1,
+  "audit_id": "20260618T055611Z-self-owned-markdown-wysiwyg-kernel",
+  "slug": "self-owned-markdown-wysiwyg-kernel",
+  "status": "completed",
+  "updated_at": "2026-06-18T06:18:09.219Z",
+  "inputs": {
+    "scanned": [
+      "slug=self-owned-markdown-wysiwyg-kernel",
+      "worktree=/Users/zhangyukun/project/mdx",
+      "branch=main",
+      "base_branch=main",
+      "head=17df82f",
+      "change_window_source=baseline",
+      "change_range=69eb098..HEAD",
+      "committed_change_count=29",
+      "changed_files_count=59",
+      "uncommitted_change_count=1",
+      "cwd=/Users/zhangyukun/project/mdx",
+      "env.LOOPX_DEVELOPER=unknown"
+    ]
+  },
+  "audit": {
+    "branch": "main",
+    "base_branch": "main",
+    "worktree": "/Users/zhangyukun/project/mdx",
+    "head": "17df82f",
+    "accepted_candidates": [
+      {
+        "id": "spec-review-change-window",
+        "kind": "spec",
+        "status": "accepted",
+        "target": "docs/loopx/specs/editor.md",
+        "summary": "The editor spec now defines the self-owned MDX editor DOM contract: Markdown remains source of truth, integrations use data-mdx-* attributes, and old DOMD/private kernel selectors are not part of the contract.",
+        "evidence": [
+          "change_window.range=69eb098..HEAD",
+          "commit: docs: document self-owned markdown editor kernel",
+          "file: docs/loopx/specs/editor.md",
+          "verification: negative assertions passed for @do-md/react and DOMD selectors"
+        ]
+      }
+    ],
+    "rejected_candidates": [
+      {
+        "id": "memory-local-review-change-window",
+        "kind": "memory",
+        "scope": "local",
+        "status": "rejected",
+        "target": ".loopx/memory/entries/",
+        "rejection_reason": "No machine-local handoff, pitfall, or transient decision needs preservation; the reusable behavior is already captured as a repo-tracked editor spec contract."
+      },
+      {
+        "id": "memory-shared-review-change-window",
+        "kind": "memory",
+        "scope": "shared",
+        "status": "rejected",
+        "target": "docs/loopx/memory/",
+        "rejection_reason": "No lightweight cross-machine memory is needed because the durable editor kernel and DOM-contract rules are stable enough for docs/loopx/specs/editor.md."
+      }
+    ],
+    "extraction_candidates": [
+      {
+        "id": "memory-local-review-change-window",
+        "kind": "memory",
+        "scope": "local",
+        "status": "rejected",
+        "target": ".loopx/memory/entries/",
+        "summary": "Review the committed finish change window for local agent memory worth preserving.",
+        "reason": "Committed code, docs, tests, or workflow files may encode a reusable decision, constraint, pitfall, or handoff that future agents should know.",
+        "evidence": [
+          "change_window.source=baseline",
+          "change_window.range=69eb098..HEAD",
+          "change_window.commit_count=29",
+          "commit: feat: surface empty-editor placeholder state",
+          "commit: feat: support semantic image nodes in editor runtime",
+          "commit: feat: render mdx editor through semantic runtime",
+          "commit: fix: wire mdx editor through prosemirror runtime",
+          "commit: chore: remove closed markdown editor kernel",
+          "file: .packages/@do-md/dist/LICENSE",
+          "file: .packages/@do-md/dist/index.cjs",
+          "file: .packages/@do-md/dist/index.js",
+          "file: .packages/@do-md/dist/style.css",
+          "file: LICENSE"
+        ]
+      },
+      {
+        "id": "memory-shared-review-change-window",
+        "kind": "memory",
+        "scope": "shared",
+        "status": "rejected",
+        "target": "docs/loopx/memory/",
+        "summary": "Review the committed finish change window for git-tracked shared memory worth preserving across machines.",
+        "reason": "A user may need lightweight project memory across multiple machines before it becomes stable enough to promote to a spec.",
+        "evidence": [
+          "change_window.source=baseline",
+          "change_window.range=69eb098..HEAD",
+          "change_window.commit_count=29",
+          "commit: feat: surface empty-editor placeholder state",
+          "commit: feat: support semantic image nodes in editor runtime",
+          "commit: feat: render mdx editor through semantic runtime",
+          "commit: fix: wire mdx editor through prosemirror runtime",
+          "commit: chore: remove closed markdown editor kernel",
+          "file: .packages/@do-md/dist/LICENSE",
+          "file: .packages/@do-md/dist/index.cjs",
+          "file: .packages/@do-md/dist/index.js",
+          "file: .packages/@do-md/dist/style.css",
+          "file: LICENSE"
+        ]
+      },
+      {
+        "id": "spec-review-change-window",
+        "kind": "spec",
+        "status": "accepted",
+        "target": "docs/loopx/specs/inbox.md",
+        "summary": "Review the committed finish change window for a repo-tracked spec candidate.",
+        "reason": "Committed workflow, skill, runtime, documentation, or test changes may define a stable team rule that belongs in specs.",
+        "evidence": [
+          "change_window.source=baseline",
+          "change_window.range=69eb098..HEAD",
+          "change_window.commit_count=29",
+          "commit: feat: surface empty-editor placeholder state",
+          "commit: feat: support semantic image nodes in editor runtime",
+          "commit: feat: render mdx editor through semantic runtime",
+          "commit: fix: wire mdx editor through prosemirror runtime",
+          "commit: chore: remove closed markdown editor kernel",
+          "file: .packages/@do-md/dist/LICENSE",
+          "file: .packages/@do-md/dist/index.cjs",
+          "file: .packages/@do-md/dist/index.js",
+          "file: .packages/@do-md/dist/style.css",
+          "file: LICENSE"
+        ]
+      }
+    ],
+    "no_candidates_reason": "Spec candidate accepted in docs/loopx/specs/editor.md; local and shared memory candidates rejected as duplicate/low-signal.",
+    "change_window": {
+      "source": "baseline",
+      "baseline_ref": "69eb098ad99921137e1ee9c1723915e0e622f142",
+      "baseline_ref_short": "69eb098",
+      "range": "69eb098..HEAD",
+      "commit_count": 29,
+      "commits": [
+        {
+          "sha": "17df82f603eef33ee9b75beb039d9f0a3929f667",
+          "subject": "feat: surface empty-editor placeholder state"
+        },
+        {
+          "sha": "ca27768a1eabc6d50d6907f456980ef38b550021",
+          "subject": "feat: support semantic image nodes in editor runtime"
+        },
+        {
+          "sha": "dd02ef7679aca91c4d99a9d56ccc10f574cb9e1c",
+          "subject": "feat: render mdx editor through semantic runtime"
+        },
+        {
+          "sha": "036396a6f1c4e3dc29784782b8aa93c7bf71f1ae",
+          "subject": "fix: wire mdx editor through prosemirror runtime"
+        },
+        {
+          "sha": "96aadabd5c59026f349b9eefe345523d960994c1",
+          "subject": "chore: remove closed markdown editor kernel"
+        },
+        {
+          "sha": "4103b0f2ac12a6e0011cb004f9cad5ac18d5f9e6",
+          "subject": "docs: document self-owned markdown editor kernel"
+        },
+        {
+          "sha": "6e9ad3a203c87471cb75708d498948c49dec9bcd",
+          "subject": "test: preserve app editor behavior on self-owned kernel"
+        },
+        {
+          "sha": "d451fc848561ce51d68ab7d19f0598136ad018b8",
+          "subject": "fix: narrow opaque markdown fallback boundaries"
+        },
+        {
+          "sha": "80edb1b3f1834f0da4e9a9f41b6ff8277dc5818b",
+          "subject": "fix: guard opaque source-preservation reuse"
+        },
+        {
+          "sha": "3ee88de4b5018168b86cdf504142cd565c82dcc4",
+          "subject": "test: add markdown roundtrip fixture coverage"
+        },
+        {
+          "sha": "3f353097f42be8c886c0578eea5c4f58174e5ca6",
+          "subject": "fix: stabilize editor pane source mode"
+        },
+        {
+          "sha": "6fe42af7d4dd5344e3cc48dc15bb761011346b0c",
+          "subject": "feat: add markdown source mode to editor pane"
+        },
+        {
+          "sha": "ccd1f792778ef14d724e29e5c95632332bf2ff1e",
+          "subject": "feat: migrate editor helpers to mdx dom contract"
+        },
+        {
+          "sha": "f959213dad4230787268a877dd6dcf1a0d435aba",
+          "subject": "fix: preserve editor bridge compatibility"
+        },
+        {
+          "sha": "3c9a36d0c97353e27f483b929e8ff40f0f3afed8",
+          "subject": "feat: route editor adapter through self-owned kernel"
+        },
+        {
+          "sha": "5ebf42f102a7c2a6f86a6338211226a0f7fba698",
+          "subject": "fix: stabilize react adapter commands"
+        },
+        {
+          "sha": "388cf5002c6e3cad63b1b9e0cc9eceb17bcd5457",
+          "subject": "fix: align react adapter contracts"
+        },
+        {
+          "sha": "de67b287aab2e243c24fbf85d2a38e98982627c7",
+          "subject": "feat: add mdx editor react adapter"
+        },
+        {
+          "sha": "0ea9144e29174a8231853ec21c312a9e5cfbb132",
+          "subject": "fix: strengthen markdown command round-trips"
+        },
+        {
+          "sha": "418770a2c9d2db36d0615acb49be0ec2d1867c65",
+          "subject": "fix: escape markdown image alt text"
+        },
+        {
+          "sha": "67f814748b935965c5091a8bb56cd05c67c5adb3",
+          "subject": "fix: escape image urls in markdown commands"
+        },
+        {
+          "sha": "49d5cc3cdaa38c9a8809046a5cd3ed9e9c6b5cad",
+          "subject": "feat: add editor commands and selection snapshots"
+        },
+        {
+          "sha": "a2e4a575f3d5b42e88cd0a223e0cdd452fa27247",
+          "subject": "fix: align markdown escaping in parser and serializer"
+        },
+        {
+          "sha": "07fb7f425c8c48957c57a330fadc66c94054acdd",
+          "subject": "fix: group adjacent link text in serializer"
+        },
+        {
+          "sha": "d58fd5a84bcb78be1b60b665b929e77227cfe5c7",
+          "subject": "feat: serialize markdown with source preservation"
+        },
+        {
+          "sha": "df7ae0e867c7cbd92bd1aedda2f9c3e43d4725ee",
+          "subject": "fix: harden initial markdown parser contracts"
+        },
+        {
+          "sha": "95e3215d4c7f19e90cc36f8af92206aec52e173d",
+          "subject": "feat: add initial markdown parser and schema"
+        },
+        {
+          "sha": "18f7b057841784640c8a03724af2414fc41829ba",
+          "subject": "fix: typecheck mdx editor scaffold helpers"
+        },
+        {
+          "sha": "bde92d2a62eed8552940c900ddbaac98d3b34423",
+          "subject": "feat: scaffold self-owned markdown editor package"
+        }
+      ],
+      "changed_files": [
+        {
+          "status": "D",
+          "path": ".packages/@do-md/dist/LICENSE"
+        },
+        {
+          "status": "D",
+          "path": ".packages/@do-md/dist/index.cjs"
+        },
+        {
+          "status": "D",
+          "path": ".packages/@do-md/dist/index.js"
+        },
+        {
+          "status": "D",
+          "path": ".packages/@do-md/dist/style.css"
+        },
+        {
+          "status": "M",
+          "path": "LICENSE"
+        },
+        {
+          "status": "M",
+          "path": "README.md"
+        },
+        {
+          "status": "M",
+          "path": "README.zh-CN.md"
+        },
+        {
+          "status": "M",
+          "path": "app/globals.css"
+        },
+        {
+          "status": "M",
+          "path": "docs/loopx/specs/editor.md"
+        },
+        {
+          "status": "A",
+          "path": "features/editor/components/editor-kernel-adapter.test.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/components/editor-kernel-adapter.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/components/editor-mermaid-preview-layer.test.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/components/editor-mermaid-preview-layer.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/components/editor-pane.test.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/components/editor-pane.tsx"
+        },
+        {
+          "status": "A",
+          "path": "features/editor/hooks/use-editor-bridge.test.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/hooks/use-editor-bridge.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/hooks/use-editor-find-replace.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "features/editor/lib/editor-dom-contract.ts"
+        },
+        {
+          "status": "A",
+          "path": "features/editor/lib/editor-kernel-removal.test.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/lib/keyboard-selection-scope.test.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/lib/keyboard-selection-scope.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/lib/markdown-line-scroll.test.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/lib/markdown-line-scroll.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/lib/mermaid-dom.test.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/lib/mermaid-dom.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/lib/visible-text-search.test.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/lib/visible-text-search.ts"
+        },
+        {
+          "status": "M",
+          "path": "package-lock.json"
+        },
+        {
+          "status": "M",
+          "path": "package.json"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/commands/editor-commands.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/commands/editor-commands.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/core/markdown-nodes.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/core/selection.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/core/selection.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/core/source-map.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/core/source-map.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/core/types.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/index.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/parser/parse-markdown.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/parser/parse-markdown.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/plugins/editor-plugins.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/editor-toolbar.tsx"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/index.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/mdx-editor-context.tsx"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/mdx-editor-provider.test.tsx"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/mdx-editor-provider.tsx"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/mdx-editor-view.tsx"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/node-views.tsx"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/source-mode-editor.tsx"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/schema/schema.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/schema/schema.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/serializer/markdown-roundtrip-fixtures.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/serializer/serialize-markdown.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/serializer/serialize-markdown.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/test/fixtures.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/test/test-helpers.ts"
+        },
+        {
+          "status": "M",
+          "path": "tsconfig.json"
+        },
+        {
+          "status": "D",
+          "path": "types/do-md-react.d.ts"
+        }
+      ],
+      "diff_stat": ".packages/@do-md/dist/LICENSE                      |  131 --\n .packages/@do-md/dist/index.cjs                    |    1 -\n .packages/@do-md/dist/index.js                     |   15 -\n .packages/@do-md/dist/style.css                    |    1 -\n LICENSE                                            |    7 +-\n README.md                                          |    6 +-\n README.zh-CN.md                                    |    6 +-\n app/globals.css                                    |   26 +\n docs/loopx/specs/editor.md                         |   12 +-\n .../components/editor-kernel-adapter.test.tsx      |   89 ++\n .../editor/components/editor-kernel-adapter.tsx    |  188 ++-\n .../editor-mermaid-preview-layer.test.tsx          |   19 +-\n .../components/editor-mermaid-preview-layer.tsx    |    3 +-\n features/editor/components/editor-pane.test.tsx    |  108 +-\n features/editor/components/editor-pane.tsx         |   72 +-\n features/editor/hooks/use-editor-bridge.test.tsx   |   84 +\n features/editor/hooks/use-editor-bridge.ts         |    5 +-\n .../editor/hooks/use-editor-find-replace.test.ts   |   25 +-\n features/editor/lib/editor-dom-contract.ts         |   10 +\n features/editor/lib/editor-kernel-removal.test.ts  |   12 +\n .../editor/lib/keyboard-selection-scope.test.ts    |   70 +-\n features/editor/lib/keyboard-selection-scope.ts    |    9 +-\n features/editor/lib/markdown-line-scroll.test.ts   |   20 +-\n features/editor/lib/markdown-line-scroll.ts        |   14 +-\n features/editor/lib/mermaid-dom.test.ts            |   13 +-\n features/editor/lib/mermaid-dom.ts                 |    3 +-\n features/editor/lib/visible-text-search.test.ts    |  146 +-\n features/editor/lib/visible-text-search.ts         |   25 +-\n package-lock.json                                  | 1609 +++++++++++++++++++-\n package.json                                       |   24 +\n .../mdx-editor/commands/editor-commands.test.ts    |   50 +\n packages/mdx-editor/commands/editor-commands.ts    |   33 +\n packages/mdx-editor/core/markdown-nodes.ts         |   24 +\n packages/mdx-editor/core/selection.test.ts         |   31 +\n packages/mdx-editor/core/selection.ts              |   26 +\n packages/mdx-editor/core/source-map.test.ts        |   22 +\n packages/mdx-editor/core/source-map.ts             |   19 +\n packages/mdx-editor/core/types.ts                  |   39 +\n packages/mdx-editor/index.ts                       |   23 +\n packages/mdx-editor/parser/parse-markdown.test.ts  |  157 ++\n packages/mdx-editor/parser/parse-markdown.ts       |  601 ++++++++\n packages/mdx-editor/plugins/editor-plugins.ts      |    7 +\n packages/mdx-editor/react/editor-toolbar.tsx       |   11 +\n packages/mdx-editor/react/index.ts                 |   16 +\n packages/mdx-editor/react/mdx-editor-context.tsx   |   32 +\n .../mdx-editor/react/mdx-editor-provider.test.tsx  |  205 +++\n packages/mdx-editor/react/mdx-editor-provider.tsx  |  311 ++++\n packages/mdx-editor/react/mdx-editor-view.tsx      |   28 +\n packages/mdx-editor/react/node-views.tsx           |   35 +\n packages/mdx-editor/react/source-mode-editor.tsx   |   21 +\n packages/mdx-editor/schema/schema.test.ts          |   35 +\n packages/mdx-editor/schema/schema.ts               |  238 +++\n .../serializer/markdown-roundtrip-fixtures.test.ts |   13 +\n .../serializer/serialize-markdown.test.ts          |  243 +++\n .../mdx-editor/serializer/serialize-markdown.ts    |  474 ++++++\n packages/mdx-editor/test/fixtures.ts               |   47 +\n packages/mdx-editor/test/test-helpers.ts           |    9 +\n tsconfig.json                                      |    6 +-\n types/do-md-react.d.ts                             |   70 -\n 59 files changed, 5111 insertions(+), 468 deletions(-)",
+      "uncommitted_status": [
+        "M .loopx/finish/baselines/latest.json"
+      ],
+      "source_artifacts": []
+    },
+    "report_candidates": {
+      "accepted": [
+        {
+          "id": "audit-evidence",
+          "summary": "Finish audit evidence collected from the current worktree."
+        }
+      ],
+      "rejected": []
+    }
+  },
+  "choice": {
+    "action": "pr",
+    "status": "done",
+    "summary": "Committed and pushed the current main branch to origin/main per user request; no PR was created.",
+    "url": null,
+    "recorded_at": "2026-06-18T06:18:09.219Z",
+    "updated_at": "2026-06-18T06:18:09.219Z"
+  },
+  "choice_history": []
+}
