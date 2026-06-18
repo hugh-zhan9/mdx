@@ -121,6 +121,29 @@ describe("MdxEditorProvider", () => {
         expect(paragraph?.textContent).toBe("Body.");
     });
 
+    it("hydrates rendered image nodes through imageLoader", async () => {
+        const imageLoader = vi.fn(async (src: string) => `resolved:${src}`);
+
+        await act(async () => {
+            root.render(
+                <MdxEditorProvider
+                    initialMarkdown={'![Diagram](.assets/a.png)\n'}
+                    imageLoader={imageLoader}
+                >
+                    <MdxEditorView />
+                </MdxEditorProvider>,
+            );
+        });
+
+        await act(async () => {});
+
+        const image = host.querySelector("img[data-mdx-node-type='image']");
+
+        expect(imageLoader).toHaveBeenCalledWith(".assets/a.png");
+        expect(image?.getAttribute("src")).toBe("resolved:.assets/a.png");
+        expect(image?.getAttribute("alt")).toBe("Diagram");
+    });
+
     it("handles sequential mutations and snapshots in one callback", async () => {
         const onMarkdownChange = vi.fn();
 

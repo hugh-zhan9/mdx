@@ -14,6 +14,7 @@ import { createMdxEditorPlugins } from "../plugins/editor-plugins";
 import { mdxEditorSchema } from "../schema/schema";
 import { serializeMarkdown } from "../serializer/serialize-markdown";
 import { MdxEditorContext } from "./mdx-editor-context";
+import { hydrateRenderedImages } from "./node-views";
 
 export interface MdxEditorProviderProps {
     children?: ReactNode;
@@ -29,6 +30,7 @@ export function MdxEditorProvider({
     children,
     editable = true,
     initialMarkdown,
+    imageLoader,
     onMarkdownChange,
 }: MdxEditorProviderProps) {
     const initialParsed = useMemo(
@@ -155,11 +157,13 @@ export function MdxEditorProvider({
 
                 updateMarkdown(nextMarkdown);
                 updateSelectionFromState(nextState);
+                void hydrateRenderedImages(view.dom, imageLoader);
             },
         });
 
         viewRef.current = view;
         updateSelectionFromState(view.state);
+        void hydrateRenderedImages(view.dom, imageLoader);
 
         return () => {
             view.destroy();
@@ -167,7 +171,7 @@ export function MdxEditorProvider({
                 viewRef.current = null;
             }
         };
-    }, [editable, rootNode, updateMarkdown, updateSelectionFromState]);
+    }, [editable, imageLoader, rootNode, updateMarkdown, updateSelectionFromState]);
 
     const value = useMemo(
         () => ({
