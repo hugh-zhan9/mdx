@@ -15,8 +15,8 @@ describe("visible text search", () => {
     });
 
     it("finds visible paragraph text case-insensitively by default", () => {
-        const root = element("div", "DOMD-Root");
-        child(root, "p", "DOMD-P", "Raw material lives here.");
+        const root = editorRoot();
+        paragraph(root, "Raw material lives here.");
 
         const index = buildVisibleTextIndex(root);
         const matches = findVisibleTextMatches(index, "raw", {
@@ -33,8 +33,8 @@ describe("visible text search", () => {
     });
 
     it("honors case-sensitive matching", () => {
-        const root = element("div", "DOMD-Root");
-        child(root, "p", "DOMD-P", "Raw raw RAW");
+        const root = editorRoot();
+        paragraph(root, "Raw raw RAW");
         const index = buildVisibleTextIndex(root);
 
         expect(
@@ -46,8 +46,8 @@ describe("visible text search", () => {
     });
 
     it("preserves original offsets when lowercase changes string length", () => {
-        const root = element("div", "DOMD-Root");
-        child(root, "p", "DOMD-P", "İraw");
+        const root = editorRoot();
+        paragraph(root, "İraw");
         const index = buildVisibleTextIndex(root);
 
         expect(
@@ -56,9 +56,8 @@ describe("visible text search", () => {
     });
 
     it("includes visible code block text", () => {
-        const root = element("div", "DOMD-Root");
-        const pre = child(root, "pre", "DOMD-Pre");
-        child(pre, "code", "DOMD-PreCode", "const raw = true;");
+        const root = editorRoot();
+        codeBlock(root, "const raw = true;");
 
         const index = buildVisibleTextIndex(root);
         const matches = findVisibleTextMatches(index, "raw", {
@@ -70,25 +69,23 @@ describe("visible text search", () => {
     });
 
     it("excludes hidden mermaid source and includes it when revealed", () => {
-        const root = element("div", "DOMD-Root");
-        const pre = child(root, "pre", "DOMD-Pre mdx-mermaid-source-hidden");
+        const root = editorRoot();
+        const pre = codeBlock(root, "graph TD\n  HiddenRaw --> B", "mdx-mermaid-source-hidden");
         pre.hidden = true;
         pre.setAttribute("aria-hidden", "true");
-        child(pre, "code", "DOMD-PreCode", "graph TD\n  HiddenRaw --> B");
 
         expect(buildVisibleTextIndex(root).text).toBe("");
 
         pre.hidden = false;
         pre.removeAttribute("aria-hidden");
-        pre.className = "DOMD-Pre";
+        pre.className = "";
 
         expect(buildVisibleTextIndex(root).text).toContain("HiddenRaw");
     });
 
     it("excludes generated mermaid preview UI", () => {
-        const root = element("div", "DOMD-Root");
-        const pre = child(root, "pre", "DOMD-Pre");
-        child(pre, "code", "DOMD-PreCode", "graph TD\n  SourceRaw --> B");
+        const root = editorRoot();
+        codeBlock(root, "graph TD\n  SourceRaw --> B");
         const preview = child(root, "div", "mdx-mermaid-preview");
         preview.setAttribute("data-mdx-mermaid-preview", "mermaid-0");
         child(preview, "button", "mdx-mermaid-edit-button", "编辑");
@@ -103,11 +100,11 @@ describe("visible text search", () => {
     });
 
     it("excludes data-mdx-syntax marker elements", () => {
-        const root = element("div", "DOMD-Root");
-        const paragraph = child(root, "p", "DOMD-P");
+        const root = editorRoot();
+        const paragraph = paragraphNode(root);
         const openSyntax = child(paragraph, "span", "", "![");
         openSyntax.setAttribute("data-mdx-syntax", "image_open");
-        child(paragraph, "span", "DOMD-Plain", "Visible alt");
+        child(paragraph, "span", "", "Visible alt");
         const closeSyntax = child(paragraph, "span", "", "](assets/raw.png)");
         closeSyntax.setAttribute("data-mdx-syntax", "image_close");
 
@@ -122,10 +119,10 @@ describe("visible text search", () => {
     });
 
     it("excludes link hrefs while keeping visible link labels", () => {
-        const root = element("div", "DOMD-Root");
-        const link = child(root, "a", "DOMD-Link");
+        const root = editorRoot();
+        const link = child(root, "a");
         link.setAttribute("href", "https://example.com/raw-secret");
-        child(link, "span", "DOMD-Plain", "Raw label");
+        child(link, "span", "", "Raw label");
 
         const index = buildVisibleTextIndex(root);
 
@@ -143,9 +140,9 @@ describe("visible text search", () => {
     });
 
     it("excludes display-none nodes", () => {
-        const root = element("div", "DOMD-Root");
-        child(root, "p", "DOMD-P", "Visible");
-        const hidden = child(root, "span", "DOMD-Plain", "Hidden raw");
+        const root = editorRoot();
+        paragraph(root, "Visible");
+        const hidden = child(root, "span", "", "Hidden raw");
         hidden.style.display = "none";
 
         const index = buildVisibleTextIndex(root);
@@ -157,9 +154,9 @@ describe("visible text search", () => {
     });
 
     it("excludes nodes hidden by computed styles", () => {
-        const root = element("div", "DOMD-Root");
-        child(root, "p", "DOMD-P", "Visible");
-        const hidden = child(root, "span", "DOMD-Plain", "Hidden raw");
+        const root = editorRoot();
+        paragraph(root, "Visible");
+        const hidden = child(root, "span", "", "Hidden raw");
         hidden.computedStyle.display = "none";
 
         const index = buildVisibleTextIndex(root);
@@ -171,9 +168,9 @@ describe("visible text search", () => {
     });
 
     it("excludes the whole index when the root is hidden", () => {
-        const root = element("div", "DOMD-Root");
+        const root = editorRoot();
         root.computedStyle.visibility = "hidden";
-        child(root, "p", "DOMD-P", "Hidden raw");
+        paragraph(root, "Hidden raw");
 
         const index = buildVisibleTextIndex(root);
 
@@ -181,8 +178,8 @@ describe("visible text search", () => {
     });
 
     it("creates a DOM range for a single-node match", () => {
-        const root = element("div", "DOMD-Root");
-        const paragraph = child(root, "p", "DOMD-P", "Find raw here");
+        const root = editorRoot();
+        const paragraphElement = paragraph(root, "Find raw here");
         const index = buildVisibleTextIndex(root);
         const [match] = findVisibleTextMatches(index, "raw", {
             caseSensitive: false,
@@ -190,17 +187,17 @@ describe("visible text search", () => {
 
         const range = rangeForVisibleTextMatch(index, match);
 
-        expect(range?.startContainer).toBe(paragraph.firstChild);
+        expect(range?.startContainer).toBe(paragraphElement.firstChild);
         expect(range?.startOffset).toBe(5);
-        expect(range?.endContainer).toBe(paragraph.firstChild);
+        expect(range?.endContainer).toBe(paragraphElement.firstChild);
         expect(range?.endOffset).toBe(8);
     });
 
     it("creates a DOM range for a match spanning text nodes", () => {
-        const root = element("div", "DOMD-Root");
-        const paragraph = child(root, "p", "DOMD-P");
-        const first = child(paragraph, "span", "DOMD-Plain", "Find ra");
-        const second = child(paragraph, "span", "DOMD-Plain", "w here");
+        const root = editorRoot();
+        const paragraph = paragraphNode(root);
+        const first = child(paragraph, "span", "", "Find ra");
+        const second = child(paragraph, "span", "", "w here");
         const index = buildVisibleTextIndex(root);
         const [match] = findVisibleTextMatches(index, "raw", {
             caseSensitive: false,
@@ -215,10 +212,10 @@ describe("visible text search", () => {
     });
 
     it("creates a DOM range for a multi-node match ending at a text node boundary", () => {
-        const root = element("div", "DOMD-Root");
-        const paragraph = child(root, "p", "DOMD-P");
-        const first = child(paragraph, "span", "DOMD-Plain", "Find ra");
-        const second = child(paragraph, "span", "DOMD-Plain", "w");
+        const root = editorRoot();
+        const paragraph = paragraphNode(root);
+        const first = child(paragraph, "span", "", "Find ra");
+        const second = child(paragraph, "span", "", "w");
         const index = buildVisibleTextIndex(root);
         const [match] = findVisibleTextMatches(index, "raw", {
             caseSensitive: false,
@@ -246,6 +243,34 @@ function child(
     const node = element(tagName, className, text);
     parent.appendChild(node);
     return node;
+}
+
+function editorRoot(): TestElement {
+    const root = element("div");
+    root.setAttribute("data-mdx-editor-root", "");
+    return root;
+}
+
+function paragraph(parent: TestElement, text = ""): TestElement {
+    const node = child(parent, "p", "", text);
+    node.setAttribute("data-mdx-node-type", "paragraph");
+    return node;
+}
+
+function paragraphNode(parent: TestElement): TestElement {
+    return paragraph(parent);
+}
+
+function codeBlock(
+    parent: TestElement,
+    text: string,
+    className = "",
+): TestElement {
+    const pre = child(parent, "pre", className);
+    pre.setAttribute("data-mdx-node-type", "code_block");
+    pre.setAttribute("data-mdx-code-block", "");
+    child(pre, "code", "", text);
+    return pre;
 }
 
 const originalGlobals = {

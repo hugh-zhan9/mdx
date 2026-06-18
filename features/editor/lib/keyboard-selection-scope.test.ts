@@ -41,7 +41,7 @@ describe("resolveScopedSelectAllTarget", () => {
         const container = element("section");
         const root = child(container, "div");
         root.setAttribute("data-mdx-editor-root", "");
-        const paragraph = child(root, "p", "DOMD-P");
+        const paragraph = child(root, "p");
         const pre = child(root, "pre");
         pre.setAttribute("data-mdx-code-block", "");
         const code = child(pre, "code");

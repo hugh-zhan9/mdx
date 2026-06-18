@@ -517,7 +517,7 @@ function findClickedWikilink(event: MouseEvent) {
         caret.node instanceof Element
             ? caret.node
             : caret.node.parentElement;
-    const container = parent?.closest("[data-render-id]") ?? parent;
+    const container = parent?.closest("[data-mdx-node-type]") ?? parent;
 
     if (!container) {
         return null;
