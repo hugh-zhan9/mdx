@@ -478,6 +478,7 @@ export const mdxEditorSchema = new Schema({
                 "pre",
                 {
                     "data-mdx-node-type": "mermaid_block",
+                    "data-mdx-code-block": "",
                     "data-mdx-language": "mermaid",
                     "data-mdx-info": node.attrs.info || undefined,
                     "data-mdx-source-id": node.attrs.sourceId ?? undefined,
@@ -487,6 +488,7 @@ export const mdxEditorSchema = new Schema({
             parseDOM: [
                 {
                     tag: "pre[data-mdx-node-type='mermaid_block']",
+                    priority: 90,
                     preserveWhitespace: "full",
                     getAttrs: (dom) => ({
                         info:

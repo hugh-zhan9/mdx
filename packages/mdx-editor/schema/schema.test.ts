@@ -1,6 +1,7 @@
 import { DOMParser, DOMSerializer } from "prosemirror-model";
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vitest";
+import { MDX_CODE_BLOCK_SELECTOR } from "../../../features/editor/lib/editor-dom-contract";
 import { mdxEditorSchema } from "./schema";
 
 describe("mdxEditorSchema DOM contract", () => {
@@ -162,6 +163,33 @@ describe("mdxEditorSchema advanced markdown nodes", () => {
         );
         expect(mermaidDom).not.toContain("data-mdx-mermaid-preview");
         expect(mermaidDom).not.toContain("mdx-mermaid-preview");
+    });
+
+    it("keeps mermaid blocks visible to the existing code block DOM selector", () => {
+        const schema = mdxEditorSchema;
+        const jsdom = new JSDOM("<article></article>");
+        const document = jsdom.window.document;
+        const article = document.querySelector("article")!;
+        const serializer = DOMSerializer.fromSchema(schema);
+        const mermaid = schema.nodes.mermaid_block.create(
+            { info: "mermaid live", sourceId: "source-mermaid" },
+            schema.text("graph TD\nA-->B\n"),
+        );
+        const domNode = serializer.serializeNode(mermaid, { document });
+
+        article.append(domNode);
+
+        const pre = article.querySelector(MDX_CODE_BLOCK_SELECTOR);
+        expect(pre).not.toBeNull();
+        expect(pre?.getAttribute("data-mdx-node-type")).toBe("mermaid_block");
+        expect(pre?.getAttribute("data-mdx-language")).toBe("mermaid");
+        expect(pre?.getAttribute("data-mdx-info")).toBe("mermaid live");
+
+        const parsed = DOMParser.fromSchema(schema).parse(article, {
+            preserveWhitespace: "full",
+        });
+        expect(parsed.child(0).type.name).toBe("mermaid_block");
+        expect(parsed.child(0).attrs.info).toBe("mermaid live");
     });
 
     it("preserves advanced code block payloads through DOM serialization and parsing", () => {
