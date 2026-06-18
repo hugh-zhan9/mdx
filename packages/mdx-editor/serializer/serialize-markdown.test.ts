@@ -392,6 +392,47 @@ describe("serializeMarkdown", () => {
         expect(serializeMarkdown(emptyParsedDocument(doc))).toBe("- **bold**\n");
     });
 
+    it("serializes generated basic block structures", () => {
+        const schema = mdxEditorSchema;
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.bullet_list.create(null, [
+                schema.nodes.list_item.create(null, [
+                    schema.nodes.paragraph.create(null, [schema.text("one")]),
+                ]),
+                schema.nodes.list_item.create(null, [
+                    schema.nodes.paragraph.create(null, [schema.text("two")]),
+                ]),
+            ]),
+            schema.nodes.ordered_list.create({ order: 3 }, [
+                schema.nodes.list_item.create(null, [
+                    schema.nodes.paragraph.create(null, [schema.text("three")]),
+                ]),
+                schema.nodes.list_item.create(null, [
+                    schema.nodes.paragraph.create(null, [schema.text("four")]),
+                ]),
+            ]),
+            schema.nodes.blockquote.create(null, [
+                schema.nodes.paragraph.create(null, [schema.text("quoted")]),
+            ]),
+            schema.nodes.code_block.create(
+                { language: "ts", info: "ts live" },
+                schema.text("const value = 1;\n"),
+            ),
+        ]);
+
+        expect(serializeMarkdown(emptyParsedDocument(doc))).toBe(
+            "- one\n- two\n\n3. three\n4. four\n\n> quoted\n\n```ts live\nconst value = 1;\n```\n",
+        );
+    });
+
+    it("reuses unchanged parsed source for structured basic blocks", () => {
+        const markdown =
+            "- one\n* two\n\n3. three\n4. four\n\n> quoted\n>\n> again\n\n```ts live\nconst value = 1;\n```\n";
+        const parsed = parseMarkdown(markdown);
+
+        expect(serializeMarkdown(parsed)).toBe(markdown);
+    });
+
     it("serializes inline marks inside callout paragraphs", () => {
         const schema = mdxEditorSchema;
         const doc = schema.nodes.doc.create(null, [

@@ -218,6 +218,67 @@ describe("parseMarkdown", () => {
         });
     });
 
+    it("parses contiguous plain bullet list lines as list item structure", () => {
+        const markdown = "- **one**\n* two [site](https://example.com)\n\nAfter.\n";
+        const parsed = parseMarkdown(markdown);
+        const list = parsed.doc.child(0);
+
+        expect(list.type.name).toBe("bullet_list");
+        expect(list.attrs.sourceId).toBe("source-0");
+        expect(list.childCount).toBe(2);
+        expect(list.child(0).type.name).toBe("list_item");
+        expect(list.child(0).child(0).type.name).toBe("paragraph");
+        expect(list.child(0).child(0).child(0).text).toBe("one");
+        expect(list.child(0).child(0).child(0).marks[0]?.type.name).toBe(
+            "strong",
+        );
+        expect(list.child(1).child(0).child(1).marks[0]?.attrs.href).toBe(
+            "https://example.com",
+        );
+        expect(parsed.doc.child(1).type.name).toBe("paragraph");
+        expect(parsed.doc.child(1).textContent).toBe("After.");
+    });
+
+    it("parses contiguous ordered list lines with the first marker order", () => {
+        const parsed = parseMarkdown("3. first\n4. second\n");
+        const list = parsed.doc.child(0);
+
+        expect(list.type.name).toBe("ordered_list");
+        expect(list.attrs.order).toBe(3);
+        expect(list.childCount).toBe(2);
+        expect(list.child(0).type.name).toBe("list_item");
+        expect(list.child(0).child(0).textContent).toBe("first");
+        expect(list.child(1).child(0).textContent).toBe("second");
+    });
+
+    it("parses contiguous blockquote lines into paragraph children", () => {
+        const parsed = parseMarkdown(
+            "> quoted **text**\n>\n> [site](https://example.com)\n",
+        );
+        const quote = parsed.doc.child(0);
+
+        expect(quote.type.name).toBe("blockquote");
+        expect(quote.childCount).toBe(2);
+        expect(quote.child(0).type.name).toBe("paragraph");
+        expect(quote.child(0).child(1).marks[0]?.type.name).toBe("strong");
+        expect(quote.child(1).child(0).marks[0]?.attrs.href).toBe(
+            "https://example.com",
+        );
+    });
+
+    it("parses fenced backtick code blocks with language, info, and source id", () => {
+        const markdown = "```ts live\nconst value = 1;\n```\n";
+        const parsed = parseMarkdown(markdown);
+        const code = parsed.doc.child(0);
+
+        expect(code.type.name).toBe("code_block");
+        expect(code.attrs.language).toBe("ts");
+        expect(code.attrs.info).toBe("ts live");
+        expect(code.attrs.sourceId).toBe("source-0");
+        expect(code.textContent).toBe("const value = 1;\n");
+        expect(parsed.sourceSlices[0]?.text).toBe(markdown);
+    });
+
     it("parses unsupported block features as source-preserved opaque blocks", () => {
         const fixtures = roundTripFixtures.filter((fixture) =>
             [

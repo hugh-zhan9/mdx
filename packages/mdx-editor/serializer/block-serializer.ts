@@ -1,0 +1,235 @@
+import type { Node as ProseMirrorNode } from "prosemirror-model";
+import { serializeInlineContent } from "./inline-serializer";
+
+export function serializeBlockNode(node: ProseMirrorNode): string {
+    switch (node.type.name) {
+        case "heading":
+            return `${"#".repeat(headingLevel(node))} ${serializeInlineContent(node)}\n`;
+        case "paragraph":
+            return `${escapeParagraphLineStarts(serializeInlineContent(node))}\n`;
+        case "bullet_list":
+            return serializeList(node, "-");
+        case "ordered_list":
+            return serializeOrderedList(node);
+        case "list_item":
+            return serializeListItem(node, "-");
+        case "task_item":
+            return serializeTaskItem(node);
+        case "blockquote":
+            return serializeBlockquote(node);
+        case "table":
+            return serializeTable(node);
+        case "table_row":
+            return serializeTableRow(node);
+        case "table_cell":
+        case "table_header":
+            return `${serializeInlineContent(node)}\n`;
+        case "callout":
+            return serializeCallout(node);
+        case "code_block":
+            return `\`\`\`${codeBlockInfo(node)}\n${textBeforeClosingFence(node.textContent)}\`\`\`\n`;
+        case "frontmatter":
+            return `---\n${textBeforeClosingFence(node.textContent)}---\n`;
+        case "opaque_block":
+            return ensureTrailingNewline(node.textContent);
+        default:
+            return ensureTrailingNewline(node.textContent);
+    }
+}
+
+function serializeList(node: ProseMirrorNode, marker: string) {
+    let output = "";
+
+    node.forEach((child) => {
+        output += serializeListItem(child, marker);
+    });
+
+    return output;
+}
+
+function serializeOrderedList(node: ProseMirrorNode) {
+    let output = "";
+    let order = typeof node.attrs.order === "number" ? node.attrs.order : 1;
+
+    node.forEach((child) => {
+        output += serializeListItem(child, `${order}.`);
+        order += 1;
+    });
+
+    return output;
+}
+
+function serializeTaskItem(node: ProseMirrorNode) {
+    return serializeListItem(node, node.attrs.checked ? "- [x]" : "- [ ]");
+}
+
+function serializeListItem(node: ProseMirrorNode, marker: string) {
+    const firstChild = node.firstChild;
+    if (!firstChild) {
+        return `${marker}\n`;
+    }
+
+    const firstLine =
+        firstChild.type.name === "paragraph"
+            ? serializeInlineContent(firstChild)
+            : serializeNestedBlock(firstChild);
+    const lines = [`${marker} ${firstLine}`];
+
+    for (let index = 1; index < node.childCount; index += 1) {
+        const childText = serializeNestedBlock(node.child(index));
+        for (const line of childText.split("\n")) {
+            lines.push(line.length > 0 ? `  ${line}` : "");
+        }
+    }
+
+    return `${lines.join("\n")}\n`;
+}
+
+function serializeBlockquote(node: ProseMirrorNode) {
+    const lines: string[] = [];
+
+    node.forEach((child) => {
+        const childText = serializeNestedBlock(child);
+        for (const line of childText.split("\n")) {
+            lines.push(line.length > 0 ? `> ${line}` : ">");
+        }
+    });
+
+    return `${lines.join("\n")}\n`;
+}
+
+function serializeTable(node: ProseMirrorNode) {
+    let output = "";
+
+    node.forEach((row, _offset, index) => {
+        output += serializeTableRow(row);
+        if (index === 0 && tableRowHasHeader(row)) {
+            output += serializeTableSeparator(row, node.attrs.alignments);
+        }
+    });
+
+    return output;
+}
+
+function serializeTableRow(node: ProseMirrorNode) {
+    const cells: string[] = [];
+
+    node.forEach((cell) => {
+        cells.push(serializeInlineContent(cell));
+    });
+
+    return `| ${cells.join(" | ")} |\n`;
+}
+
+function serializeTableSeparator(row: ProseMirrorNode, alignments: unknown) {
+    const alignmentValues = Array.isArray(alignments) ? alignments : [];
+    const cells: string[] = [];
+
+    row.forEach((_cell, _offset, index) => {
+        const alignment = alignmentValues[index];
+        switch (alignment) {
+            case "left":
+                cells.push(":---");
+                break;
+            case "right":
+                cells.push("---:");
+                break;
+            case "center":
+                cells.push(":---:");
+                break;
+            default:
+                cells.push("---");
+                break;
+        }
+    });
+
+    return `| ${cells.join(" | ")} |\n`;
+}
+
+function tableRowHasHeader(row: ProseMirrorNode) {
+    for (let index = 0; index < row.childCount; index += 1) {
+        if (row.child(index).type.name === "table_header") {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function serializeCallout(node: ProseMirrorNode) {
+    const title =
+        typeof node.attrs.title === "string" && node.attrs.title.length > 0
+            ? ` ${node.attrs.title}`
+            : "";
+    const lines = [`> [!${String(node.attrs.kind ?? "NOTE")}]${title}`];
+
+    node.forEach((child) => {
+        const childText = serializeNestedBlock(child);
+        for (const line of childText.split("\n")) {
+            lines.push(line.length > 0 ? `> ${line}` : ">");
+        }
+    });
+
+    return `${lines.join("\n")}\n`;
+}
+
+function serializeNestedBlock(node: ProseMirrorNode) {
+    return serializeBlockNode(node).replace(/\n$/, "");
+}
+
+function escapeParagraphLineStarts(text: string) {
+    return text
+        .split("\n")
+        .map((line) => {
+            if (startsWithInlineCodeSpan(line)) {
+                return line;
+            }
+
+            return line.replace(blockStartMarkerPattern(), "\\$1");
+        })
+        .join("\n");
+}
+
+function blockStartMarkerPattern() {
+    return /^(#{1,6}(?:\s|$)|\d+\.\s|[-*+](?:\s|$)|[-*+]\s+\[[ xX]\]\s|>(?:\s|$)|```|\|(?=.*\|))/;
+}
+
+function startsWithInlineCodeSpan(line: string) {
+    if (line[0] !== "`") {
+        return false;
+    }
+
+    let delimiterLength = 0;
+    while (line[delimiterLength] === "`") {
+        delimiterLength += 1;
+    }
+
+    const delimiter = "`".repeat(delimiterLength);
+
+    return line.indexOf(delimiter, delimiterLength) >= delimiterLength;
+}
+
+function headingLevel(node: ProseMirrorNode) {
+    const level = node.attrs.level;
+
+    return typeof level === "number" && level >= 1 && level <= 6 ? level : 1;
+}
+
+function codeBlockInfo(node: ProseMirrorNode) {
+    const info = node.attrs.info;
+    const language = node.attrs.language;
+
+    if (typeof info === "string" && info.length > 0) {
+        return info;
+    }
+
+    return typeof language === "string" ? language : "";
+}
+
+function textBeforeClosingFence(text: string) {
+    return text.length === 0 || text.endsWith("\n") ? text : `${text}\n`;
+}
+
+function ensureTrailingNewline(text: string) {
+    return text.endsWith("\n") ? text : `${text}\n`;
+}
