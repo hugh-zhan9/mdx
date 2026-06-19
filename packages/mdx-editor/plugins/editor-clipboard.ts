@@ -94,10 +94,19 @@ function readMarkdownFromClipboard(view: EditorView, event: ClipboardEvent) {
     }
 
     const internalMarkdown = clipboardData.getData(MARKDOWN_CLIPBOARD_MIME);
-    const text = clipboardData.getData("text/plain");
-    const html = clipboardData.getData("text/html");
-    const markdown = internalMarkdown || clipboardTextToMarkdown(text, html);
+    if (internalMarkdown) {
+        event.preventDefault();
+        insertMarkdown(view, internalMarkdown);
+        return true;
+    }
 
+    const html = clipboardData.getData("text/html");
+    if (!html) {
+        return false;
+    }
+
+    const text = clipboardData.getData("text/plain");
+    const markdown = clipboardTextToMarkdown(text, html);
     if (!markdown) {
         return false;
     }
@@ -308,17 +317,50 @@ function sanitizeClipboardHtml(html: string) {
         return document.body.innerHTML;
     }
 
+    return sanitizeHtmlWithoutDom(html);
+}
+
+function sanitizeHtmlWithoutDom(html: string) {
     return html
-        .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
-        .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+        .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, "")
+        .replace(/<script\b[^>]*(?:>|$)[\s\S]*$/gi, "")
         .replace(
-            /\s+(href|src|xlink:href)\s*=\s*(["'])\s*javascript:[\s\S]*?\2/gi,
-            "",
-        )
-        .replace(
-            /\s+(href|src|xlink:href)\s*=\s*javascript:[^\s>]*/gi,
-            "",
+            /<([a-z][\w:-]*)(\s[^<>]*?)?>/gi,
+            (tag, tagName: string, attributes: string | undefined) => {
+                const safeAttributes = sanitizeHtmlAttributes(attributes ?? "");
+
+                return `<${tagName}${safeAttributes}>`;
+            },
         );
+}
+
+function sanitizeHtmlAttributes(attributes: string) {
+    return attributes.replace(
+        /\s+([^\s"'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g,
+        (
+            attribute,
+            name: string,
+            doubleQuotedValue: string | undefined,
+            singleQuotedValue: string | undefined,
+            unquotedValue: string | undefined,
+        ) => {
+            const lowerName = name.toLowerCase();
+            if (lowerName.startsWith("on")) {
+                return "";
+            }
+
+            const value = doubleQuotedValue ?? singleQuotedValue ?? unquotedValue;
+            if (
+                value !== undefined &&
+                ["href", "src", "xlink:href"].includes(lowerName) &&
+                isUnsafeUrl(decodeHtmlAttributeValue(value))
+            ) {
+                return "";
+            }
+
+            return attribute;
+        },
+    );
 }
 
 function htmlToMarkdown(html: string) {
@@ -474,6 +516,19 @@ function escapeInlineCode(text: string) {
 
 function safeUrl(url: string) {
     return isUnsafeUrl(url) ? "" : url;
+}
+
+function decodeHtmlAttributeValue(value: string) {
+    return value
+        .replace(/&#(\d+);?/g, (_match, code: string) =>
+            String.fromCodePoint(Number(code)),
+        )
+        .replace(/&#x([0-9a-f]+);?/gi, (_match, code: string) =>
+            String.fromCodePoint(Number.parseInt(code, 16)),
+        )
+        .replace(/&colon;?/gi, ":")
+        .replace(/&Tab;?/g, "\t")
+        .replace(/&NewLine;?/g, "\n");
 }
 
 function isUnsafeUrl(url: string) {
