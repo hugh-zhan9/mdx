@@ -464,6 +464,44 @@ describe("serializeMarkdown", () => {
         expect(reparsed.child(1).child(1).textContent).toBe("C");
     });
 
+    it("preserves inline syntax pipes inside table cells", () => {
+        const schema = mdxEditorSchema;
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.table.create(
+                { alignments: [] },
+                [
+                    schema.nodes.table_row.create(null, [
+                        schema.nodes.table_header.create(null, schema.text("Link")),
+                        schema.nodes.table_header.create(null, schema.text("Code")),
+                    ]),
+                    schema.nodes.table_row.create(null, [
+                        schema.nodes.table_cell.create(null, [
+                            schema.text("Alias", [
+                                schema.marks.link.create({
+                                    href: "mdx-wikilink:Page%7CAlias",
+                                }),
+                            ]),
+                        ]),
+                        schema.nodes.table_cell.create(null, [
+                            schema.text("a|b", [
+                                schema.marks.inline_code.create(),
+                            ]),
+                        ]),
+                    ]),
+                ],
+            ),
+        ]);
+        const markdown = serializeMarkdown(emptyParsedDocument(doc));
+        const reparsed = parseMarkdown(markdown).doc.child(0);
+
+        expect(markdown).toBe(
+            "| Link | Code |\n|---|---|\n| [[Page|Alias]] | `a|b` |\n",
+        );
+        expect(reparsed.type.name).toBe("table");
+        expect(reparsed.child(1).child(0).textContent).toBe("Alias");
+        expect(reparsed.child(1).child(1).textContent).toBe("a|b");
+    });
+
     it("serializes inline marks inside list item paragraphs", () => {
         const schema = mdxEditorSchema;
         const doc = schema.nodes.doc.create(null, [

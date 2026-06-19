@@ -331,6 +331,20 @@ describe("parseMarkdown", () => {
         expect(escapedPipeTable.child(1).child(0).textContent).toBe("A | B");
         expect(escapedPipeTable.child(1).child(1).textContent).toBe("C");
 
+        const inlinePipeTable = parseMarkdown(
+            "| Link | Code |\n|---|---|\n| [[Page|Alias]] | `a|b` |\n",
+        ).doc.child(0);
+        expect(inlinePipeTable.type.name).toBe("table");
+        expect(inlinePipeTable.child(1).child(0).textContent).toBe("Alias");
+        expect(inlinePipeTable.child(1).child(1).textContent).toBe("a|b");
+
+        const escapedInlinePipeTable = parseMarkdown(
+            "| Link | Code |\n|---|---|\n| [[Page\\|Alias]] | `a\\|b` |\n",
+        ).doc.child(0);
+        expect(escapedInlinePipeTable.type.name).toBe("table");
+        expect(escapedInlinePipeTable.child(1).child(0).textContent).toBe("Alias");
+        expect(escapedInlinePipeTable.child(1).child(1).textContent).toBe("a|b");
+
         const callout = parseMarkdown("> [!tip] Remember\n> Keep this.\n").doc.child(
             0,
         );

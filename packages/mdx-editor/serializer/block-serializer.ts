@@ -133,7 +133,140 @@ function serializeTableRow(node: ProseMirrorNode) {
 }
 
 function escapeTableCellPipes(markdown: string) {
-    return markdown.replace(/(^|[^\\])\|/g, "$1\\|");
+    let output = "";
+
+    for (let index = 0; index < markdown.length;) {
+        const protectedInline = readProtectedInlineSpan(markdown, index);
+        if (protectedInline) {
+            output += protectedInline.value;
+            index = protectedInline.nextIndex;
+            continue;
+        }
+
+        const char = markdown[index];
+        if (char === "\\" && index + 1 < markdown.length) {
+            output += char + markdown[index + 1];
+            index += 2;
+            continue;
+        }
+
+        output += char === "|" ? "\\|" : char;
+        index += 1;
+    }
+
+    return output;
+}
+
+function readProtectedInlineSpan(text: string, startIndex: number) {
+    const codeSpan = readCodeSpan(text, startIndex);
+    if (codeSpan) {
+        return codeSpan;
+    }
+
+    const wikilink = readUntilUnescapedToken(text, startIndex, "[[", "]]");
+    if (wikilink) {
+        return wikilink;
+    }
+
+    const markdownLink = readMarkdownLinkOrImage(text, startIndex);
+    if (markdownLink) {
+        return markdownLink;
+    }
+
+    const inlineMath = readUntilUnescapedToken(text, startIndex, "$", "$");
+    if (inlineMath) {
+        return inlineMath;
+    }
+
+    return null;
+}
+
+function readCodeSpan(text: string, startIndex: number) {
+    if (text[startIndex] !== "`") {
+        return null;
+    }
+
+    let delimiterLength = 0;
+    while (text[startIndex + delimiterLength] === "`") {
+        delimiterLength += 1;
+    }
+
+    const delimiter = "`".repeat(delimiterLength);
+    const closeIndex = text.indexOf(delimiter, startIndex + delimiterLength);
+    if (closeIndex < 0) {
+        return null;
+    }
+
+    const nextIndex = closeIndex + delimiterLength;
+    return {
+        value: text.slice(startIndex, nextIndex),
+        nextIndex,
+    };
+}
+
+function readMarkdownLinkOrImage(text: string, startIndex: number) {
+    const labelStart =
+        text[startIndex] === "!" && text[startIndex + 1] === "["
+            ? startIndex + 1
+            : startIndex;
+    if (text[labelStart] !== "[" || text[labelStart + 1] === "[") {
+        return null;
+    }
+
+    const labelEnd = findUnescapedToken(text, "]", labelStart + 1);
+    if (labelEnd < 0) {
+        return null;
+    }
+
+    let nextIndex = labelEnd + 1;
+    if (text[nextIndex] === "(") {
+        const targetEnd = findUnescapedToken(text, ")", nextIndex + 1);
+        if (targetEnd >= 0) {
+            nextIndex = targetEnd + 1;
+        }
+    }
+
+    return {
+        value: text.slice(startIndex, nextIndex),
+        nextIndex,
+    };
+}
+
+function readUntilUnescapedToken(
+    text: string,
+    startIndex: number,
+    opener: string,
+    closer: string,
+) {
+    if (!text.startsWith(opener, startIndex)) {
+        return null;
+    }
+
+    const closeIndex = findUnescapedToken(text, closer, startIndex + opener.length);
+    if (closeIndex < 0) {
+        return null;
+    }
+
+    const nextIndex = closeIndex + closer.length;
+    return {
+        value: text.slice(startIndex, nextIndex),
+        nextIndex,
+    };
+}
+
+function findUnescapedToken(text: string, token: string, startIndex: number) {
+    for (let index = startIndex; index <= text.length - token.length; index += 1) {
+        if (text[index] === "\\") {
+            index += 1;
+            continue;
+        }
+
+        if (text.startsWith(token, index)) {
+            return index;
+        }
+    }
+
+    return -1;
 }
 
 function serializeTableSeparator(row: ProseMirrorNode, alignments: unknown) {
