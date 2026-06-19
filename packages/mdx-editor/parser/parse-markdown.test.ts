@@ -278,6 +278,19 @@ describe("parseMarkdown", () => {
         expect(parsed.sourceSlices[0]?.text).toBe(markdown);
     });
 
+    it("parses fenced code blocks indented up to three spaces", () => {
+        const markdown =
+            "   ```\n   基本类型：byte、short、int、long、float、double、boolean、char\n   ```\n";
+        const parsed = parseMarkdown(markdown);
+        const code = parsed.doc.child(0);
+
+        expect(code.type.name).toBe("code_block");
+        expect(code.textContent).toBe(
+            "   基本类型：byte、short、int、long、float、double、boolean、char\n",
+        );
+        expect(parsed.sourceSlices[0]?.text).toBe(markdown);
+    });
+
     it("treats a single-line triple-backtick span at block start as a code block", () => {
         const markdown = "```xxxx```\n";
         const parsed = parseMarkdown(markdown);

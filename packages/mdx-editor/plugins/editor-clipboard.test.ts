@@ -169,6 +169,34 @@ describe("markdown clipboard plugin", () => {
             "   1. cookie + redis实现\n",
         );
     });
+
+    it("parses indented plain text Markdown fences on paste", () => {
+        const plugin = createMarkdownClipboardPlugin();
+        const doc = mdxEditorSchema.nodes.doc.create(null, [
+            mdxEditorSchema.nodes.paragraph.create(null, [
+                mdxEditorSchema.text("body"),
+            ]),
+        ]);
+        let state = EditorState.create({
+            doc,
+            schema: mdxEditorSchema,
+            selection: new AllSelection(doc),
+        });
+        const view = fakeEditorView(state, (nextState) => {
+            state = nextState;
+        });
+        const event = pasteEvent({
+            "text/plain":
+                "   ```\n   基本类型：byte、short、int、long、float、double、boolean、char\n   ```\n",
+        });
+
+        expect(handlePaste(plugin, view, event)).toBe(true);
+        expect(event.preventDefault).toHaveBeenCalledTimes(1);
+        expect(state.doc.child(0).type.name).toBe("code_block");
+        expect(state.doc.child(0).textContent).toBe(
+            "   基本类型：byte、short、int、long、float、double、boolean、char\n",
+        );
+    });
 });
 
 function transformPastedHTML(html: string) {

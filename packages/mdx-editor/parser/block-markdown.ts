@@ -48,19 +48,19 @@ export function parseMarkdownBlocks(
             continue;
         }
 
-        const singleLineCode = line.text.match(/^```([^`]*)```[ \t]*$/);
+        const singleLineCode = line.text.match(/^ {0,3}```([^`]*)```[ \t]*$/);
         const fence = singleLineCode
-            ? line.text.match(/^```/)
+            ? line.text.match(/^ {0,3}```/)
             : isLineStartingInlineCodeSpan(line.text)
               ? null
-              : line.text.match(/^```([^\s`]*)?(.*)$/);
+              : line.text.match(/^ {0,3}```([^\s`]*)?(.*)$/);
         if (fence) {
             const startLine = cursor;
             let endLine = -1;
             if (!singleLineCode) {
                 for (let next = cursor + 1; next < logicalLines.length; next += 1) {
                     const closing = logicalLines[next];
-                    if (closing?.text.match(/^```[ \t]*$/)) {
+                    if (closing?.text.match(/^ {0,3}```[ \t]*$/)) {
                         endLine = next;
                         break;
                     }
@@ -75,7 +75,7 @@ export function parseMarkdownBlocks(
             const sourceId = addSlice(sourceSlices, markdown, start, end);
             const contentStart = logicalLines[startLine].end;
             const contentEnd = endLine >= 0 ? logicalLines[endLine].start : end;
-            const info = line.text.slice(3).trim();
+            const info = line.text.replace(/^ {0,3}```/, "").trim();
             const nextCursor = singleLineCode
                 ? startLine + 1
                 : endLine >= 0

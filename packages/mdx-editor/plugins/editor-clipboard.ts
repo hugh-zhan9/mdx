@@ -124,7 +124,7 @@ function readMarkdownFromClipboard(view: EditorView, event: ClipboardEvent) {
 }
 
 function looksLikeBlockMarkdownPaste(text: string) {
-    return /^(?:```|~~~)/m.test(text);
+    return /^ {0,3}(?:```|~~~)/m.test(text);
 }
 
 function insertMarkdown(view: EditorView, markdown: string) {
