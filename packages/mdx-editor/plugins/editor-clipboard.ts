@@ -102,6 +102,13 @@ function readMarkdownFromClipboard(view: EditorView, event: ClipboardEvent) {
 
     const html = clipboardData.getData("text/html");
     if (!html) {
+        const text = clipboardData.getData("text/plain");
+        if (looksLikeBlockMarkdownPaste(text)) {
+            event.preventDefault();
+            insertMarkdown(view, text);
+            return true;
+        }
+
         return false;
     }
 
@@ -114,6 +121,10 @@ function readMarkdownFromClipboard(view: EditorView, event: ClipboardEvent) {
     event.preventDefault();
     insertMarkdown(view, markdown);
     return true;
+}
+
+function looksLikeBlockMarkdownPaste(text: string) {
+    return /^(?:```|~~~)/m.test(text);
 }
 
 function insertMarkdown(view: EditorView, markdown: string) {

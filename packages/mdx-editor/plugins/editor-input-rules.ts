@@ -55,6 +55,10 @@ export function markdownInputRules(schema: Schema = mdxEditorSchema): InputRule[
 
     if (codeBlock) {
         rules.push(
+            textblockTypeInputRule(/^```$/, codeBlock, () => ({
+                info: "",
+                language: "",
+            })),
             textblockTypeInputRule(/^```([A-Za-z0-9_-]+)?\s$/, codeBlock, (match) => ({
                 info: match[1] ?? "",
                 language: match[1] ?? "",

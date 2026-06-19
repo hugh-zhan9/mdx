@@ -46,6 +46,14 @@ describe("markdown input rules", () => {
         expect(table.child(0).child(1).textContent).toBe("B");
         expect(table.child(1).child(0).type.name).toBe("table_cell");
     });
+
+    it("converts typed triple backticks into a code block", () => {
+        const state = typeWithInputRules("```");
+        const codeBlock = state.doc.child(0);
+
+        expect(codeBlock.type.name).toBe("code_block");
+        expect(codeBlock.textContent).toBe("");
+    });
 });
 
 function typeWithInputRules(text: string): EditorState {
