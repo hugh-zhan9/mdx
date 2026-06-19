@@ -26,7 +26,6 @@ import {
 } from "../lib/keyboard-selection-scope";
 import { scrollMarkdownLineIntoView } from "../lib/markdown-line-scroll";
 import { wikilinkTargetFromEditorHref } from "../lib/wikilink-markdown";
-import { SourceModeEditor } from "../../../packages/mdx-editor/react";
 
 interface EditorPaneProps {
     rootPath: string | null;
@@ -153,9 +152,6 @@ function EditorPaneInner({
         onMarkdownChange,
     });
     const { focus, insertImage, insertText } = bridge;
-    const [mode, setMode] = useState<"wysiwyg" | "source">("wysiwyg");
-    const [sourceDraft, setSourceDraft] = useState<string | null>(null);
-    const sourceMarkdown = sourceDraft ?? bridge.currentMarkdown;
     const contentRootRef = useRef<HTMLDivElement | null>(null);
     const [contentRootNode, setContentRootNode] =
         useState<HTMLDivElement | null>(null);
@@ -223,10 +219,6 @@ function EditorPaneInner({
     );
     const handleEditorKeyDownCapture = useCallback(
         (event: React.KeyboardEvent<HTMLDivElement>) => {
-            if (mode === "source") {
-                return;
-            }
-
             if (isEditorFindShortcut(event.nativeEvent)) {
                 event.preventDefault();
                 event.stopPropagation();
@@ -258,14 +250,10 @@ function EditorPaneInner({
             event.stopPropagation();
             selectElementContents(selectTarget as HTMLElement);
         },
-        [mode, openFind, openReplace],
+        [openFind, openReplace],
     );
     const handleEditorClickCapture = useCallback(
         (event: React.MouseEvent<HTMLDivElement>) => {
-            if (mode === "source") {
-                return;
-            }
-
             if (!onOpenWikilink || event.button !== 0) {
                 return;
             }
@@ -298,7 +286,7 @@ function EditorPaneInner({
             event.stopPropagation();
             onOpenWikilink(wikilink, tab.path);
         },
-        [mode, onOpenWikilink, tab.path],
+        [onOpenWikilink, tab.path],
     );
     const handlePasteCapture = useCallback(
         (event: React.ClipboardEvent<HTMLDivElement>) => {
@@ -424,33 +412,6 @@ function EditorPaneInner({
 
     return (
         <div className="flex h-full min-h-0 flex-col">
-            <div className="flex h-9 items-center justify-end border-b border-base-300 bg-base-100 px-2">
-                <div className="join" role="group" aria-label="编辑模式">
-                    <button
-                        type="button"
-                        className={`btn btn-xs join-item ${mode === "wysiwyg" ? "btn-active" : ""}`}
-                        aria-pressed={mode === "wysiwyg"}
-                        onClick={() => {
-                            setMode("wysiwyg");
-                            close();
-                        }}
-                    >
-                        所见即所得
-                    </button>
-                    <button
-                        type="button"
-                        className={`btn btn-xs join-item ${mode === "source" ? "btn-active" : ""}`}
-                        aria-pressed={mode === "source"}
-                        onClick={() => {
-                            setSourceDraft(null);
-                            setMode("source");
-                            close();
-                        }}
-                    >
-                        源码
-                    </button>
-                </div>
-            </div>
             {findReplace.state.isOpen ? (
                 <EditorFindBar
                     caseSensitive={findReplace.state.caseSensitive}
@@ -483,24 +444,12 @@ function EditorPaneInner({
                     onKeyDownCapture={handleEditorKeyDownCapture}
                     onPasteCapture={handlePasteCapture}
                 >
-                    {mode === "source" ? (
-                        <SourceModeEditor
-                            markdown={sourceMarkdown}
-                            onMarkdownChange={(markdown) => {
-                                setSourceDraft(markdown);
-                                onMarkdownChange(tab.tabId, markdown);
-                            }}
-                        />
-                    ) : (
-                        <>
-                            <DOMD />
-                            <EditorMermaidPreviewLayer
-                                editorRoot={editorRoot}
-                                markdown={bridge.currentMarkdown}
-                                onVisibilityChange={handleMermaidVisibilityChange}
-                            />
-                        </>
-                    )}
+                    <DOMD />
+                    <EditorMermaidPreviewLayer
+                        editorRoot={editorRoot}
+                        markdown={bridge.currentMarkdown}
+                        onVisibilityChange={handleMermaidVisibilityChange}
+                    />
                 </div>
             </div>
         </div>

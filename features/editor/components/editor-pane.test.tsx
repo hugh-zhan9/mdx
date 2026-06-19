@@ -150,7 +150,7 @@ describe("editor pane source mode chrome", () => {
         host.remove();
     });
 
-    it("exposes a source mode toggle for the self-owned editor", async () => {
+    it("does not render a global source mode switch", async () => {
         const tab = {
             tabId: "tab-1",
             path: "/tmp/note.md",
@@ -161,6 +161,7 @@ describe("editor pane source mode chrome", () => {
             baseFingerprint: "base",
         };
         const onMarkdownChange = vi.fn();
+        const onPendingCliCommandHandled = vi.fn();
 
         await act(async () => {
             root.render(
@@ -168,40 +169,18 @@ describe("editor pane source mode chrome", () => {
                     rootPath="/tmp"
                     tab={tab}
                     onMarkdownChange={onMarkdownChange}
+                    onPendingCliCommandHandled={onPendingCliCommandHandled}
                 />,
             );
         });
 
-        expect(host.textContent).toContain("源码");
-
-        await act(async () => {
-            host
-                .querySelectorAll<HTMLButtonElement>("button")
-                .item(1)
-                ?.click();
-        });
-
-        const sourceEditor = host.querySelector<HTMLTextAreaElement>(
-            "[data-mdx-source-mode]",
-        );
-
-        expect(sourceEditor).not.toBeNull();
-
-        await act(async () => {
-            if (!sourceEditor) {
-                return;
-            }
-
-            const setValue = Object.getOwnPropertyDescriptor(
-                HTMLTextAreaElement.prototype,
-                "value",
-            )?.set;
-
-            setValue?.call(sourceEditor, "# Changed");
-            sourceEditor.dispatchEvent(new Event("input", { bubbles: true }));
-            sourceEditor.dispatchEvent(new Event("change", { bubbles: true }));
-        });
-
-        expect(onMarkdownChange).toHaveBeenLastCalledWith("tab-1", "# Changed");
+        expect(
+            host.querySelector('[role="group"][aria-label="编辑模式"]'),
+        ).toBeNull();
+        expect(
+            Array.from(host.querySelectorAll("button")).some(
+                (button) => button.textContent?.trim() === "源码",
+            ),
+        ).toBe(false);
     });
 });
