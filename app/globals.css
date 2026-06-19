@@ -149,3 +149,12 @@ html[data-theme="dark"] {
     color: var(--color-error);
     font-size: 0.875rem;
 }
+
+.mdx-source-fallback textarea,
+.mdx-mermaid-node textarea,
+.mdx-math-node textarea {
+    width: 100%;
+    min-height: 6rem;
+    resize: vertical;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}

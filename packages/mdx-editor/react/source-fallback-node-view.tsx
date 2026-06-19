@@ -4,7 +4,7 @@ import type { ChangeEvent } from "react";
 import type { NodeViewProps } from "./node-views";
 
 export function SourceFallbackNodeView({ node, updateAttrs }: NodeViewProps) {
-    const markdown = String(node.attrs.markdown ?? "");
+    const markdown = String(node.attrs.markdown || node.textContent || "");
 
     function handleChange(event: ChangeEvent<HTMLTextAreaElement>) {
         updateAttrs({ markdown: event.currentTarget.value });
