@@ -278,6 +278,18 @@ describe("parseMarkdown", () => {
         expect(parsed.sourceSlices[0]?.text).toBe(markdown);
     });
 
+    it("treats a single-line triple-backtick span at block start as a code block", () => {
+        const markdown = "```xxxx```\n";
+        const parsed = parseMarkdown(markdown);
+        const code = parsed.doc.child(0);
+
+        expect(code.type.name).toBe("code_block");
+        expect(code.attrs.language).toBe("");
+        expect(code.attrs.info).toBe("");
+        expect(code.textContent).toBe("xxxx\n");
+        expect(parsed.sourceSlices[0]?.text).toBe(markdown);
+    });
+
     it("parses advanced markdown blocks as structured nodes", () => {
         const cases = [
             { name: "gfm task list", expected: ["bullet_list"] },

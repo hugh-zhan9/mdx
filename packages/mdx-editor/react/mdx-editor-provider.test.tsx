@@ -126,6 +126,60 @@ describe("MdxEditorProvider", () => {
         expect(paragraph?.textContent).toBe("Body.");
     });
 
+    it("renders fenced code blocks through the editor view", async () => {
+        await act(async () => {
+            root.render(
+                <MdxEditorProvider
+                    initialMarkdown={
+                        "```ts\nconst value = 1;\n```\n\n```inline sample```\n"
+                    }
+                >
+                    <MdxEditorView />
+                </MdxEditorProvider>,
+            );
+        });
+
+        const codeBlocks = host.querySelectorAll(
+            "pre[data-mdx-node-type='code_block']",
+        );
+
+        expect(codeBlocks[0]?.getAttribute("data-mdx-language")).toBe("ts");
+        expect(codeBlocks[0]?.textContent).toBe("const value = 1;\n");
+        expect(codeBlocks[1]?.textContent).toBe("inline sample\n");
+    });
+
+    it("does not recreate the editor view when callback props change identity", async () => {
+        const onMarkdownChange = vi.fn();
+
+        function Harness() {
+            return (
+                <MdxEditorProvider
+                    initialMarkdown={"Body\n"}
+                    imageLoader={async (src) => `resolved:${src}`}
+                    onMarkdownChange={(markdown) => onMarkdownChange(markdown)}
+                >
+                    <MdxEditorView />
+                </MdxEditorProvider>
+            );
+        }
+
+        await act(async () => {
+            root.render(<Harness />);
+        });
+
+        const firstParagraph = host.querySelector(
+            "p[data-mdx-node-type='paragraph']",
+        );
+
+        await act(async () => {
+            root.render(<Harness />);
+        });
+
+        expect(host.querySelector("p[data-mdx-node-type='paragraph']")).toBe(
+            firstParagraph,
+        );
+    });
+
     it("emits markdown when ProseMirror document changes through editable content", async () => {
         const onMarkdownChange = vi.fn();
 

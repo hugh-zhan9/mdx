@@ -48,31 +48,46 @@ export function parseMarkdownBlocks(
             continue;
         }
 
-        const fence = isLineStartingInlineCodeSpan(line.text)
-            ? null
-            : line.text.match(/^```([^\s`]*)?(.*)$/);
+        const singleLineCode = line.text.match(/^```([^`]*)```[ \t]*$/);
+        const fence = singleLineCode
+            ? line.text.match(/^```/)
+            : isLineStartingInlineCodeSpan(line.text)
+              ? null
+              : line.text.match(/^```([^\s`]*)?(.*)$/);
         if (fence) {
             const startLine = cursor;
             let endLine = -1;
-            for (let next = cursor + 1; next < logicalLines.length; next += 1) {
-                const closing = logicalLines[next];
-                if (closing?.text.match(/^```[ \t]*$/)) {
-                    endLine = next;
-                    break;
+            if (!singleLineCode) {
+                for (let next = cursor + 1; next < logicalLines.length; next += 1) {
+                    const closing = logicalLines[next];
+                    if (closing?.text.match(/^```[ \t]*$/)) {
+                        endLine = next;
+                        break;
+                    }
                 }
             }
             const start = logicalLines[startLine].start;
-            const end =
-                endLine >= 0
-                    ? logicalLines[endLine].end
-                    : (logicalLines[logicalLines.length - 1]?.end ?? line.end);
+            const end = singleLineCode
+                ? line.end
+                : endLine >= 0
+                  ? logicalLines[endLine].end
+                  : (logicalLines[logicalLines.length - 1]?.end ?? line.end);
             const sourceId = addSlice(sourceSlices, markdown, start, end);
             const contentStart = logicalLines[startLine].end;
             const contentEnd = endLine >= 0 ? logicalLines[endLine].start : end;
             const info = line.text.slice(3).trim();
-            const content = textNode(markdown.slice(contentStart, contentEnd));
+            const nextCursor = singleLineCode
+                ? startLine + 1
+                : endLine >= 0
+                  ? endLine + 1
+                  : logicalLines.length;
+            const content = textNode(
+                singleLineCode
+                    ? `${singleLineCode[1]}\n`
+                    : markdown.slice(contentStart, contentEnd),
+            );
             blocks.push(
-                firstInfoToken(info).toLowerCase() === "mermaid"
+                !singleLineCode && firstInfoToken(info).toLowerCase() === "mermaid"
                     ? mdxEditorSchema.nodes.mermaid_block.create(
                           {
                               info: info || "mermaid",
@@ -82,14 +97,14 @@ export function parseMarkdownBlocks(
                       )
                     : mdxEditorSchema.nodes.code_block.create(
                           {
-                              language: fence[1] ?? "",
-                              info,
+                              language: singleLineCode ? "" : (fence[1] ?? ""),
+                              info: singleLineCode ? "" : info,
                               sourceId,
                           },
                           content,
                       ),
             );
-            cursor = endLine >= 0 ? endLine + 1 : logicalLines.length;
+            cursor = nextCursor;
             continue;
         }
 

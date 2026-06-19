@@ -50,6 +50,8 @@ export function MdxEditorProvider({
     const viewRef = useRef<EditorView | null>(null);
     const parsedRef = useRef(initialParsed);
     const markdownRef = useRef(initialMarkdown);
+    const imageLoaderRef = useRef(imageLoader);
+    const onMarkdownChangeRef = useRef(onMarkdownChange);
     const selectionOffsetsRef = useRef(
         selectionOffsetsFromDocSelection(
             initialParsed.doc,
@@ -66,15 +68,27 @@ export function MdxEditorProvider({
         );
     }, [initialMarkdown, initialParsed]);
 
+    useEffect(() => {
+        onMarkdownChangeRef.current = onMarkdownChange;
+    }, [onMarkdownChange]);
+
+    useEffect(() => {
+        imageLoaderRef.current = imageLoader;
+
+        if (viewRef.current) {
+            void hydrateRenderedImages(viewRef.current.dom, imageLoader);
+        }
+    }, [imageLoader]);
+
     const updateMarkdown = useCallback(
         (next: string, emitChange = true) => {
             markdownRef.current = next;
             setMarkdown(next);
             if (emitChange) {
-                onMarkdownChange?.(next);
+                onMarkdownChangeRef.current?.(next);
             }
         },
-        [onMarkdownChange],
+        [],
     );
 
     const registerRoot = useCallback((root: HTMLDivElement | null) => {
@@ -162,13 +176,13 @@ export function MdxEditorProvider({
 
                 updateMarkdown(nextMarkdown);
                 updateSelectionFromState(nextState);
-                void hydrateRenderedImages(view.dom, imageLoader);
+                void hydrateRenderedImages(view.dom, imageLoaderRef.current);
             },
         });
 
         viewRef.current = view;
         updateSelectionFromState(view.state);
-        void hydrateRenderedImages(view.dom, imageLoader);
+        void hydrateRenderedImages(view.dom, imageLoaderRef.current);
 
         return () => {
             view.destroy();
@@ -176,7 +190,7 @@ export function MdxEditorProvider({
                 viewRef.current = null;
             }
         };
-    }, [editable, imageLoader, rootNode, updateMarkdown, updateSelectionFromState]);
+    }, [editable, rootNode, updateMarkdown, updateSelectionFromState]);
 
     useEffect(() => {
         if (!rootNode) {
