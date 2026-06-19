@@ -126,6 +126,39 @@ describe("MdxEditorProvider", () => {
         expect(paragraph?.textContent).toBe("Body.");
     });
 
+    it("emits markdown when ProseMirror document changes through editable content", async () => {
+        const onMarkdownChange = vi.fn();
+
+        await act(async () => {
+            root.render(
+                <MdxEditorProvider
+                    initialMarkdown={"# Title\n\nBody\n"}
+                    onMarkdownChange={onMarkdownChange}
+                >
+                    <MdxEditorView />
+                </MdxEditorProvider>,
+            );
+        });
+
+        const paragraph = host.querySelector("p[data-mdx-node-type='paragraph']");
+
+        expect(paragraph).not.toBeNull();
+
+        await act(async () => {
+            paragraph!.textContent = "Changed";
+            paragraph!.dispatchEvent(
+                new InputEvent("input", {
+                    bubbles: true,
+                    inputType: "insertText",
+                    data: "Changed",
+                }),
+            );
+        });
+
+        expect(onMarkdownChange).toHaveBeenCalled();
+        expect(onMarkdownChange.mock.calls.at(-1)?.[0]).toContain("Changed");
+    });
+
     it("renders editable source fallback blocks and serializes textarea edits", async () => {
         const markdown = "<div>\nUnsupported\n</div>\n";
         const editedMarkdown = "<section>Changed</section>\n";

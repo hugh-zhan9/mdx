@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { EditorState, Selection, type EditorSelection } from "prosemirror-state";
+import { EditorState, Selection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import {
     insertImageMarkdown,
@@ -155,7 +155,10 @@ export function MdxEditorProvider({
                     ...parsedRef.current,
                     doc: nextState.doc,
                 });
-                parsedRef.current = parseMarkdown(nextMarkdown);
+                parsedRef.current = {
+                    ...parsedRef.current,
+                    doc: nextState.doc,
+                };
 
                 updateMarkdown(nextMarkdown);
                 updateSelectionFromState(nextState);
@@ -255,7 +258,7 @@ function createEditorState(doc: EditorState["doc"]) {
 
 function selectionOffsetsFromDocSelection(
     doc: EditorState["doc"],
-    selection: EditorSelection,
+    selection: Selection,
 ) {
     return {
         anchor: doc.textBetween(0, selection.anchor, "\n", markdownLeafText).length,
