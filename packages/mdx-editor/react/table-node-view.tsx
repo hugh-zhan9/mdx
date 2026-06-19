@@ -33,9 +33,8 @@ export function TableNodeView({
                     alignments.length > 0 ? alignments.join(",") : undefined
                 }
                 className="mdx-table-node"
-            >
-                <tbody ref={contentRef} />
-            </table>
+                ref={contentRef}
+            />
         </>
     );
 }

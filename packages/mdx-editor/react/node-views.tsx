@@ -46,6 +46,8 @@ export function createMdxNodeViews(
             textBacked: true,
         }),
         math_inline: createReactNodeView(MathNodeView, {
+            className: "mdx-math-node mdx-math-inline",
+            domTag: "span",
             inline: true,
         }),
         mermaid_block: createReactNodeView(MermaidNodeView, {
@@ -75,6 +77,7 @@ interface InternalNodeViewProps extends NodeViewProps {
 }
 
 interface ReactNodeViewOptions {
+    className?: string;
     contentDOMTag?: keyof HTMLElementTagNameMap;
     domTag?: keyof HTMLElementTagNameMap;
     inline?: boolean;
@@ -131,6 +134,9 @@ function createReactNodeView(
 
         const render = () => {
             syncNodeViewAttributes(dom, currentNode);
+            if (options.className) {
+                dom.className = options.className;
+            }
             flushSync(() => {
                 root.render(
                     <Component
