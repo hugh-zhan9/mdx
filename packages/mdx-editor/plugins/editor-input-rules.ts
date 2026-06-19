@@ -62,7 +62,9 @@ export function markdownInputRules(schema: Schema = mdxEditorSchema): InputRule[
         );
     }
 
-    rules.push(new InputRule(/^\|(?:[^|]*\|)+\s$/, () => null));
+    if (schema.nodes.table) {
+        rules.push(tableInputRule(schema));
+    }
 
     return rules;
 }
@@ -143,6 +145,68 @@ function taskItemMarkerInputRule(schema: Schema): InputRule {
             return tr;
         },
     );
+}
+
+function tableInputRule(schema: Schema): InputRule {
+    return new InputRule(/^\|(?:[^|]*\|)+\s$/, (state, match, start, end) => {
+        const {
+            paragraph,
+            table,
+            table_cell: tableCell,
+            table_header: tableHeader,
+            table_row: tableRow,
+        } = schema.nodes;
+
+        if (!paragraph || !table || !tableCell || !tableHeader || !tableRow) {
+            return null;
+        }
+
+        const $start = state.doc.resolve(start);
+
+        if ($start.parent.type !== paragraph) {
+            return null;
+        }
+
+        const cells = tableCells(match[0]);
+
+        if (cells.length < 2) {
+            return null;
+        }
+
+        const headerCells = cells.map((cell) =>
+            tableHeader.create(
+                null,
+                cell.length > 0 ? schema.text(cell) : null,
+            ),
+        );
+        const bodyCells = cells.map(() => tableCell.create());
+        const tableNode = table.create(
+            { alignments: cells.map(() => null) },
+            [
+                tableRow.create(null, headerCells),
+                tableRow.create(null, bodyCells),
+            ],
+        );
+        const blockStart = $start.before();
+        const blockEnd = $start.after();
+        const tr = state.tr.delete(start, end);
+        const mappedBlockStart = tr.mapping.map(blockStart);
+        const mappedBlockEnd = tr.mapping.map(blockEnd);
+
+        tr.replaceWith(mappedBlockStart, mappedBlockEnd, tableNode);
+        tr.setSelection(TextSelection.near(tr.doc.resolve(mappedBlockStart + 3)));
+
+        return tr;
+    });
+}
+
+function tableCells(markdown: string): string[] {
+    const trimmed = markdown.trim();
+    const withoutOuterPipes = trimmed.replace(/^\|/, "").replace(/\|$/, "");
+
+    return withoutOuterPipes
+        .split("|")
+        .map((cell) => cell.trim());
 }
 
 function listItemAncestor($pos: ResolvedPos): ListItemPosition | null {

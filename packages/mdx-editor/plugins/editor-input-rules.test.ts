@@ -34,6 +34,18 @@ describe("markdown input rules", () => {
         expect(item.attrs.checked).toBe(false);
         expect(item.child(0).textContent).toBe("");
     });
+
+    it("converts typed pipe table syntax into a table", () => {
+        const state = typeWithInputRules("| A | B | ");
+        const table = state.doc.child(0);
+
+        expect(table.type.name).toBe("table");
+        expect(table.childCount).toBe(2);
+        expect(table.child(0).child(0).type.name).toBe("table_header");
+        expect(table.child(0).child(0).textContent).toBe("A");
+        expect(table.child(0).child(1).textContent).toBe("B");
+        expect(table.child(1).child(0).type.name).toBe("table_cell");
+    });
 });
 
 function typeWithInputRules(text: string): EditorState {
