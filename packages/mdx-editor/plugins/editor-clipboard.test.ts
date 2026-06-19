@@ -127,7 +127,7 @@ function transformPastedHTML(html: string) {
 
     expect(transform).toBeTypeOf("function");
 
-    return transform?.(html, {} as EditorView) ?? "";
+    return transform?.call(plugin, html, {} as EditorView) ?? "";
 }
 
 function handlePaste(
@@ -135,7 +135,7 @@ function handlePaste(
     view: EditorView,
     event: ClipboardEvent & { preventDefault: ReturnType<typeof vi.fn> },
 ) {
-    return plugin.props.handleDOMEvents?.paste?.(view, event) ?? false;
+    return plugin.props.handleDOMEvents?.paste?.call(plugin, view, event) ?? false;
 }
 
 function fakeEditorView(
