@@ -99,6 +99,21 @@ describe("visible text search", () => {
         expect(index.text).not.toContain("GeneratedLabel");
     });
 
+    it("keeps user-authored advanced node text while excluding generated previews", () => {
+        const root = editorRoot();
+        const callout = child(root, "aside");
+        callout.setAttribute("data-mdx-node-type", "callout");
+        child(callout, "p", "", "User visible note");
+        const preview = child(root, "div");
+        preview.setAttribute("data-mdx-mermaid-preview", "mermaid-1");
+        child(preview, "span", "", "Generated diagram label");
+
+        const index = buildVisibleTextIndex(root);
+
+        expect(index.text).toContain("User visible note");
+        expect(index.text).not.toContain("Generated diagram label");
+    });
+
     it("excludes data-mdx-syntax marker elements", () => {
         const root = editorRoot();
         const paragraph = paragraphNode(root);

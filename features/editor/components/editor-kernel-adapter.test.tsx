@@ -42,6 +42,16 @@ function Probe() {
     );
 }
 
+function AdapterProbe() {
+    const renderData = useRenderData();
+
+    return (
+        <output data-testid="current-markdown">
+            {toMarkdown(renderData) ?? ""}
+        </output>
+    );
+}
+
 describe("editor kernel adapter", () => {
     let host: HTMLDivElement;
     let root: ReturnType<typeof createRoot>;
@@ -79,6 +89,27 @@ describe("editor kernel adapter", () => {
         expect(
             host.querySelector("img[data-mdx-node-type='image']")?.getAttribute("alt"),
         ).toBe("A");
+    });
+
+    it("keeps advanced markdown nodes compatible with the app adapter surface", async () => {
+        await act(async () => {
+            root.render(
+                <DOMDProvider
+                    initMd={"| A | B |\n|---|---|\n| 1 | 2 |\n\n- [x] Done\n"}
+                >
+                    <DOMD />
+                    <AdapterProbe />
+                </DOMDProvider>,
+            );
+        });
+
+        expect(
+            host.querySelector("[data-testid='current-markdown']")?.textContent,
+        ).toContain("| A | B |");
+        expect(host.querySelector("[data-mdx-node-type='table']")).not.toBeNull();
+        expect(
+            host.querySelector("[data-mdx-node-type='task_item']"),
+        ).not.toBeNull();
     });
 });
 
