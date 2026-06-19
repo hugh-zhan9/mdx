@@ -67,6 +67,29 @@ script:alert(2)" onmouseover="alert(3)">link</a><img src='javascript:alert(4)' o
 });
 
 describe("markdown clipboard plugin", () => {
+    it("copies selected heading text with heading markdown", () => {
+        const plugin = createMarkdownClipboardPlugin();
+        const headingText = "Spring Cloud中有用到哪些组件";
+        const doc = mdxEditorSchema.nodes.doc.create(null, [
+            mdxEditorSchema.nodes.heading.create(
+                { level: 2 },
+                mdxEditorSchema.text(headingText),
+            ),
+        ]);
+        const state = EditorState.create({
+            doc,
+            schema: mdxEditorSchema,
+            selection: TextSelection.create(doc, 1, 1 + headingText.length),
+        });
+        const view = fakeEditorView(state, () => {});
+        const event = copyEvent();
+
+        expect(handleCopy(plugin, view, event)).toBe(true);
+        expect(event.clipboardData.getData("text/plain")).toBe(
+            `## ${headingText}\n`,
+        );
+    });
+
     it("does not intercept ordinary plain text paste inside a paragraph", () => {
         const plugin = createMarkdownClipboardPlugin();
         const doc = mdxEditorSchema.nodes.doc.create(null, [
@@ -165,6 +188,14 @@ function handlePaste(
     return plugin.props.handleDOMEvents?.paste?.call(plugin, view, event) ?? false;
 }
 
+function handleCopy(
+    plugin: Plugin,
+    view: EditorView,
+    event: ClipboardEvent & { preventDefault: ReturnType<typeof vi.fn> },
+) {
+    return plugin.props.handleDOMEvents?.copy?.call(plugin, view, event) ?? false;
+}
+
 function fakeEditorView(
     initialState: EditorState,
     setState: (state: EditorState) => void,
@@ -192,5 +223,29 @@ function pasteEvent(data: Record<string, string>) {
         preventDefault: vi.fn(),
     } as unknown as ClipboardEvent & {
         preventDefault: ReturnType<typeof vi.fn>;
+    };
+}
+
+function copyEvent() {
+    const data = new Map<string, string>();
+
+    return {
+        clipboardData: {
+            clearData() {
+                data.clear();
+            },
+            getData(type: string) {
+                return data.get(type) ?? "";
+            },
+            setData(type: string, value: string) {
+                data.set(type, value);
+            },
+        },
+        preventDefault: vi.fn(),
+    } as unknown as ClipboardEvent & {
+        preventDefault: ReturnType<typeof vi.fn>;
+        clipboardData: DataTransfer & {
+            getData(type: string): string;
+        };
     };
 }

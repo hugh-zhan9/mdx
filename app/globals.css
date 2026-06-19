@@ -103,6 +103,42 @@ html[data-theme="dark"] {
     font-family: inherit;
 }
 
+[data-mdx-editor-root] [data-mdx-node-type="bullet_list"],
+[data-mdx-editor-root] [data-mdx-node-type="ordered_list"] {
+    margin: 0.75rem 0;
+    padding-left: 1.5rem;
+}
+
+[data-mdx-editor-root] [data-mdx-node-type="bullet_list"] {
+    list-style: disc;
+}
+
+[data-mdx-editor-root] [data-mdx-node-type="ordered_list"] {
+    list-style: decimal;
+}
+
+[data-mdx-editor-root] [data-mdx-node-type="list_item"] {
+    margin: 0.25rem 0;
+}
+
+[data-mdx-editor-root] [data-mdx-node-type="task_item"] {
+    display: flex;
+    gap: 0.5rem;
+    list-style: none;
+    margin: 0.25rem 0;
+}
+
+[data-mdx-editor-root] .mdx-task-item-control {
+    display: inline-flex;
+    flex: 0 0 auto;
+    padding-top: 0.15rem;
+}
+
+[data-mdx-editor-root] .mdx-task-item-content {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
 [data-mdx-source-mode] {
     min-height: calc(100vh - 12rem);
     border: 0;

@@ -517,6 +517,20 @@ describe("serializeMarkdown", () => {
         expect(serializeMarkdown(emptyParsedDocument(doc))).toBe("- **bold**\n");
     });
 
+    it("keeps markdown headings distinct from ordered list items", () => {
+        const headingText = "Spring Cloud中有用到哪些组件";
+        const heading = parseMarkdown(`## ${headingText}\n`);
+        const orderedList = parseMarkdown(`2. ${headingText}\n`);
+
+        expect(heading.doc.child(0).type.name).toBe("heading");
+        expect(heading.doc.child(0).attrs.level).toBe(2);
+        expect(serializeMarkdown(heading)).toBe(`## ${headingText}\n`);
+
+        expect(orderedList.doc.child(0).type.name).toBe("ordered_list");
+        expect(orderedList.doc.child(0).attrs.order).toBe(2);
+        expect(serializeMarkdown(orderedList)).toBe(`2. ${headingText}\n`);
+    });
+
     it("serializes generated basic block structures", () => {
         const schema = mdxEditorSchema;
         const doc = schema.nodes.doc.create(null, [
