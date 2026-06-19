@@ -14,6 +14,10 @@ For Mermaid live preview:
 - Invalidate find/replace indexes when Mermaid source visibility changes.
 - Initialize Mermaid with strict security and `suppressErrorRendering: true`; the app owns invalid-diagram error UI.
 
+## Unsupported Markdown Fallbacks
+
+Markdown text remains the authoritative document format. If the editor encounters Markdown that cannot be represented by the visual block model, it must preserve that content in an explicit fallback block instead of dropping, normalizing, or silently rewriting it. Saving must round-trip the original Markdown for those fallback blocks until the editor gains structured support for that construct.
+
 ## Recovery And External Change Safety
 
 Unsaved recovery data must stay under explicit user control. If a draft recovery banner is visible, automatic clean reloads from disk may update the editor's clean baseline, but they must not delete the draft; only save success or an explicit discard action may remove it.

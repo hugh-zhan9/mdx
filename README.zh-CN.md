@@ -10,7 +10,7 @@
 
 **MDX 是一个本地优先 Markdown 应用，提供单文档编辑和文件夹工作区两种模式。**
 
-它把 Markdown 原生所见即所得编辑内核，和 Tauri 桌面壳结合起来，用来编辑本机文件夹和单个 Markdown 文档。
+它把 Markdown 原生可视化编辑内核，和 Tauri 桌面壳结合起来，用来编辑本机文件夹和单个 Markdown 文档。
 
 ## 两种模式
 
@@ -45,7 +45,7 @@ MDX 当前优先服务桌面端。当前应用不提供 Web 产品形态、Quick
 
 - 前端：Next.js 16、React 19、TypeScript、Tailwind CSS
 - 桌面壳：Tauri 2、Rust
-- 编辑器内核：`packages/mdx-editor/` 下的自研 Markdown 原生所见即所得内核
+- 编辑器内核：`packages/mdx-editor/` 下的自研 Markdown 原生可视化编辑内核
 - 代码高亮：Prism
 - 测试：前端逻辑使用 Vitest，Tauri 侧工作区行为使用 Rust tests
 

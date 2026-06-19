@@ -10,7 +10,7 @@
 
 **MDX is a local-first Markdown app with two modes: single-document editing and folder workspaces.**
 
-It combines a Markdown-native WYSIWYG editing kernel with a Tauri desktop shell for working with local folders and individual Markdown documents.
+It combines a Markdown-native editing kernel with a Tauri desktop shell for working with local folders and individual Markdown documents.
 
 ## Modes
 
@@ -45,7 +45,7 @@ The editor currently supports `.md` and `.markdown` files. This MVP does not tre
 
 - Frontend: Next.js 16, React 19, TypeScript, Tailwind CSS
 - Desktop shell: Tauri 2 and Rust
-- Editor kernel: self-owned Markdown-native WYSIWYG kernel under `packages/mdx-editor/`
+- Editor kernel: self-owned Markdown-native editing kernel under `packages/mdx-editor/`
 - Syntax highlighting: Prism
 - Tests: Vitest for frontend logic, Rust tests for Tauri-side workspace behavior
 
