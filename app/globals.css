@@ -74,6 +74,16 @@ html[data-theme="dark"] {
     outline: none;
 }
 
+[data-mdx-editor-root]:focus,
+[data-mdx-editor-root]:focus-visible,
+[data-mdx-editor-root] .ProseMirror,
+[data-mdx-editor-root] .ProseMirror:focus,
+[data-mdx-editor-root] .ProseMirror:focus-visible {
+    border-color: transparent;
+    box-shadow: none;
+    outline: none;
+}
+
 [data-mdx-editor-root][data-mdx-empty="true"] {
     position: relative;
 }
