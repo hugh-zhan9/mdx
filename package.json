@@ -14,7 +14,8 @@
         "build:install": "npm run build:app && npm run install:local",
         "lint": "eslint",
         "test": "vitest run",
-        "test:workspace": "vitest run features/workspace/lib/*.test.ts"
+        "test:workspace": "vitest run features/workspace/lib/*.test.ts",
+        "verify:editor:manual": "node scripts/verify-editor-browser.mjs"
     },
     "dependencies": {
         "@codemirror/commands": "^6.10.3",
