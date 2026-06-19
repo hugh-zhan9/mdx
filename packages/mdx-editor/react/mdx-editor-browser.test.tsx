@@ -14,21 +14,23 @@ describe("mdx editor browser behaviors", () => {
         document.body.append(host);
         const root = createRoot(host);
 
-        await act(async () => {
-            root.render(
-                <MdxEditorProvider initialMarkdown={"# Title\n\nA **bold** link.\n"}>
-                    <MdxEditorView />
-                </MdxEditorProvider>,
-            );
-        });
+        try {
+            await act(async () => {
+                root.render(
+                    <MdxEditorProvider initialMarkdown={"# Title\n\nA **bold** link.\n"}>
+                        <MdxEditorView />
+                    </MdxEditorProvider>,
+                );
+            });
 
-        const heading = host.querySelector("h1[data-mdx-node-type='heading']");
-        const strong = host.querySelector("strong");
+            const heading = host.querySelector("h1[data-mdx-node-type='heading']");
+            const strong = host.querySelector("strong");
 
-        expect(heading?.textContent).toBe("Title");
-        expect(strong?.textContent).toBe("bold");
-
-        act(() => root.unmount());
-        host.remove();
+            expect(heading?.textContent).toBe("Title");
+            expect(strong?.textContent).toBe("bold");
+        } finally {
+            act(() => root.unmount());
+            host.remove();
+        }
     });
 });
