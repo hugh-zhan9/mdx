@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Node as ProseMirrorNode } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 import { parseMarkdown, serializeMarkdown } from "..";
 import { mdxEditorSchema } from "../schema/schema";
@@ -7,8 +8,10 @@ import {
     insertImageMarkdown,
     insertPlainTextMarkdown,
     insertTableMarkdown,
+    MAX_TABLE_DIMENSION,
     setHeadingBlock,
     toggleStrongMark,
+    toggleTaskItemChecked,
 } from "./editor-commands";
 
 describe("editor commands", () => {
@@ -103,4 +106,58 @@ describe("editor commands", () => {
             "|  |  |\n|---|---|\n|  |  |\n|  |  |\n",
         );
     });
+
+    it("clamps huge Markdown table dimensions", () => {
+        const markdown = insertTableMarkdown(1e12, 1e12);
+        const lines = markdown.trimEnd().split("\n");
+
+        expect(lines).toHaveLength(MAX_TABLE_DIMENSION + 2);
+        expect(lines[0].match(/\|/g)?.length).toBe(MAX_TABLE_DIMENSION + 1);
+    });
+
+    it("does not toggle a task item from a broad unrelated selection", () => {
+        const doc = mdxEditorSchema.nodes.doc.create(null, [
+            mdxEditorSchema.nodes.paragraph.create(null, [
+                mdxEditorSchema.text("Intro"),
+            ]),
+            mdxEditorSchema.nodes.bullet_list.create(null, [
+                mdxEditorSchema.nodes.task_item.create(
+                    { checked: false },
+                    mdxEditorSchema.nodes.paragraph.create(null, [
+                        mdxEditorSchema.text("Task"),
+                    ]),
+                ),
+            ]),
+        ]);
+        let state = EditorState.create({
+            doc,
+            plugins: createMdxEditorPlugins(),
+            schema: mdxEditorSchema,
+            selection: TextSelection.create(doc, 1, taskTextPosition(doc)),
+        });
+
+        expect(
+            toggleTaskItemChecked(state, (transaction) => {
+                state = state.apply(transaction);
+            }),
+        ).toBe(false);
+        expect(
+            state.doc.child(1).child(0).attrs.checked,
+        ).toBe(false);
+    });
 });
+
+function taskTextPosition(doc: ProseMirrorNode): number {
+    let position = 1;
+
+    doc.descendants((node, pos) => {
+        if (node.isText && node.text === "Task") {
+            position = pos + 1;
+            return false;
+        }
+
+        return true;
+    });
+
+    return position;
+}

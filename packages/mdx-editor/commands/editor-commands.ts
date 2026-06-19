@@ -1,6 +1,12 @@
 import { setBlockType, toggleMark } from "prosemirror-commands";
-import type { Node as ProseMirrorNode } from "prosemirror-model";
-import type { Command, EditorState } from "prosemirror-state";
+import type { Node as ProseMirrorNode, ResolvedPos } from "prosemirror-model";
+import {
+    NodeSelection,
+    type Command,
+    type EditorState,
+} from "prosemirror-state";
+
+export const MAX_TABLE_DIMENSION = 100;
 
 interface TaskItemPosition {
     node: ProseMirrorNode;
@@ -25,8 +31,8 @@ export function setHeadingBlock(level: 1 | 2 | 3 | 4 | 5 | 6): Command {
 }
 
 export function insertTableMarkdown(rows: number, columns: number): string {
-    const rowCount = positiveInteger(rows);
-    const columnCount = positiveInteger(columns);
+    const rowCount = tableDimension(rows);
+    const columnCount = tableDimension(columns);
     const emptyRow = tableRow(columnCount, "  ");
     const separatorRow = tableRow(columnCount, "---");
 
@@ -46,7 +52,7 @@ export function insertMathBlockMarkdown(latex = ""): string {
 }
 
 export const toggleTaskItemChecked: Command = (state, dispatch) => {
-    const taskItem = closestTaskItem(state);
+    const taskItem = selectedTaskItem(state) ?? activeTaskItem(state);
 
     if (!taskItem) {
         return false;
@@ -111,8 +117,11 @@ function toggleMarkByName(markName: string): Command {
     };
 }
 
-function positiveInteger(value: number): number {
-    return Math.max(1, Math.floor(Number.isFinite(value) ? value : 1));
+function tableDimension(value: number): number {
+    return Math.min(
+        MAX_TABLE_DIMENSION,
+        Math.max(1, Math.floor(Number.isFinite(value) ? value : 1)),
+    );
 }
 
 function tableRow(columns: number, cell: string): string {
@@ -127,36 +136,44 @@ function ensureTrailingNewline(text: string): string {
     return text.endsWith("\n") || text.length === 0 ? text : `${text}\n`;
 }
 
-function closestTaskItem(state: EditorState): TaskItemPosition | null {
-    const { $from } = state.selection;
+function selectedTaskItem(state: EditorState): TaskItemPosition | null {
+    const { selection } = state;
 
-    for (let depth = $from.depth; depth > 0; depth -= 1) {
-        const node = $from.node(depth);
+    if (
+        selection instanceof NodeSelection &&
+        selection.node.type.name === "task_item"
+    ) {
+        return { node: selection.node, pos: selection.from };
+    }
+
+    return null;
+}
+
+function activeTaskItem(state: EditorState): TaskItemPosition | null {
+    const { $from, $to } = state.selection;
+    const fromTaskItem = taskItemAncestor($from);
+
+    if (!fromTaskItem) {
+        return null;
+    }
+
+    const toTaskItem = taskItemAncestor($to);
+
+    if (!toTaskItem || fromTaskItem.pos !== toTaskItem.pos) {
+        return null;
+    }
+
+    return fromTaskItem;
+}
+
+function taskItemAncestor($pos: ResolvedPos): TaskItemPosition | null {
+    for (let depth = $pos.depth; depth > 0; depth -= 1) {
+        const node = $pos.node(depth);
 
         if (node.type.name === "task_item") {
-            return { node, pos: $from.before(depth) };
+            return { node, pos: $pos.before(depth) };
         }
     }
 
-    return firstTaskItemInSelection(state);
-}
-
-function firstTaskItemInSelection(state: EditorState): TaskItemPosition | null {
-    let taskItem: TaskItemPosition | null = null;
-
-    state.doc.nodesBetween(
-        state.selection.from,
-        state.selection.to,
-        (node, pos) => {
-            if (node.type.name !== "task_item") {
-                return true;
-            }
-
-            taskItem = { node, pos };
-
-            return false;
-        },
-    );
-
-    return taskItem;
+    return null;
 }
