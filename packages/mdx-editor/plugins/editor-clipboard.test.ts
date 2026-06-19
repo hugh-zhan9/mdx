@@ -1,6 +1,7 @@
 import type { Plugin } from "prosemirror-state";
 import { AllSelection, EditorState, TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
+import { JSDOM } from "jsdom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mdxEditorSchema } from "../schema/schema";
 import {
@@ -17,10 +18,11 @@ describe("markdown clipboard helpers", () => {
 
     it("renders Markdown as rich clipboard HTML", () => {
         const html = markdownToClipboardHtml(
-            "# Title\n\nA **bold** [link](https://example.com).\n",
+            "# Title\n\n---\n\nA **bold** [link](https://example.com).\n",
         );
 
         expect(html).toContain("<h1");
+        expect(html).toContain("<hr");
         expect(html).toContain("<strong>bold</strong>");
         expect(html).toContain('href="https://example.com"');
     });
@@ -37,6 +39,14 @@ describe("markdown clipboard helpers", () => {
 
         expect(markdown).toContain("Safe");
         expect(markdown).not.toContain("script");
+    });
+
+    it("converts pasted horizontal rule HTML to Markdown", () => {
+        vi.stubGlobal("DOMParser", new JSDOM("").window.DOMParser);
+
+        expect(clipboardTextToMarkdown("", "<p>Before</p><hr><p>After</p>")).toBe(
+            "Before\n\n---\n\nAfter",
+        );
     });
 
     it("sanitizes event handler attrs and javascript URLs without DOMParser", () => {

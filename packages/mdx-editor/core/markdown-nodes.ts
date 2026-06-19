@@ -3,6 +3,7 @@ export type MarkdownNodeKind =
     | "paragraph"
     | "heading"
     | "blockquote"
+    | "horizontal_rule"
     | "bullet_list"
     | "ordered_list"
     | "list_item"

@@ -113,16 +113,20 @@ describe("MdxEditorProvider", () => {
     it("renders parsed block structure through the editor view", async () => {
         await act(async () => {
             root.render(
-                <MdxEditorProvider initialMarkdown={"# Title\n\nBody.\n"}>
+                <MdxEditorProvider initialMarkdown={"# Title\n\n---\n\nBody.\n"}>
                     <MdxEditorView />
                 </MdxEditorProvider>,
             );
         });
 
         const heading = host.querySelector("h1[data-mdx-node-type='heading']");
+        const horizontalRule = host.querySelector(
+            "hr[data-mdx-node-type='horizontal_rule']",
+        );
         const paragraph = host.querySelector("p[data-mdx-node-type='paragraph']");
 
         expect(heading?.textContent).toBe("Title");
+        expect(horizontalRule).not.toBeNull();
         expect(paragraph?.textContent).toBe("Body.");
     });
 

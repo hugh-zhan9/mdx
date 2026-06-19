@@ -113,6 +113,12 @@ html[data-theme="dark"] {
     font-family: inherit;
 }
 
+[data-mdx-editor-root] [data-mdx-node-type="horizontal_rule"] {
+    border: 0;
+    border-top: 1px solid var(--color-base-300);
+    margin: 1rem 0;
+}
+
 [data-mdx-editor-root] [data-mdx-node-type="bullet_list"],
 [data-mdx-editor-root] [data-mdx-node-type="ordered_list"] {
     margin: 0.75rem 0;

@@ -24,6 +24,7 @@ export function markdownInputRules(schema: Schema = mdxEditorSchema): InputRule[
         bullet_list: bulletList,
         code_block: codeBlock,
         heading,
+        horizontal_rule: horizontalRule,
         ordered_list: orderedList,
     } = schema.nodes;
 
@@ -53,6 +54,10 @@ export function markdownInputRules(schema: Schema = mdxEditorSchema): InputRule[
         rules.push(wrappingInputRule(/^\s*>\s$/, blockquote));
     }
 
+    if (horizontalRule) {
+        rules.push(horizontalRuleInputRule(schema));
+    }
+
     if (codeBlock) {
         rules.push(
             textblockTypeInputRule(/^ {0,3}```$/, codeBlock, () => ({
@@ -75,6 +80,40 @@ export function markdownInputRules(schema: Schema = mdxEditorSchema): InputRule[
 
 export function markdownInputRulesPlugin(schema: Schema = mdxEditorSchema) {
     return inputRules({ rules: markdownInputRules(schema) });
+}
+
+function horizontalRuleInputRule(schema: Schema): InputRule {
+    return new InputRule(/^ {0,3}(?:[-*_][ \t]*){3,}$/, (state, _match, start, end) => {
+        const { horizontal_rule: horizontalRule, paragraph } = schema.nodes;
+
+        if (!horizontalRule || !paragraph) {
+            return null;
+        }
+
+        const $start = state.doc.resolve(start);
+        if ($start.parent.type !== paragraph) {
+            return null;
+        }
+
+        const blockStart = $start.before();
+        const blockEnd = $start.after();
+        const tr = state.tr.delete(start, end);
+        const mappedBlockStart = tr.mapping.map(blockStart);
+        const mappedBlockEnd = tr.mapping.map(blockEnd);
+        const nextParagraph = paragraph.create();
+
+        tr.replaceWith(mappedBlockStart, mappedBlockEnd, [
+            horizontalRule.create(),
+            nextParagraph,
+        ]);
+        tr.setSelection(
+            TextSelection.near(
+                tr.doc.resolve(mappedBlockStart + horizontalRule.create().nodeSize),
+            ),
+        );
+
+        return tr;
+    });
 }
 
 function taskListInputRule(schema: Schema): InputRule {

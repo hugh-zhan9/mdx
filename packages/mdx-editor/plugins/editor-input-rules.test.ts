@@ -22,6 +22,9 @@ describe("markdown input rules", () => {
         expect(patterns.some((pattern) => pattern.includes(">"))).toBe(true);
         expect(patterns.some((pattern) => pattern.includes("```"))).toBe(true);
         expect(patterns.some((pattern) => pattern.includes("\\|"))).toBe(true);
+        expect(patterns.some((pattern) => pattern.includes("[-*_]"))).toBe(
+            true,
+        );
     });
 
     it("converts typed Markdown task syntax into a task item", () => {
@@ -61,6 +64,13 @@ describe("markdown input rules", () => {
 
         expect(codeBlock.type.name).toBe("code_block");
         expect(codeBlock.textContent).toBe("");
+    });
+
+    it("converts typed thematic break syntax into a horizontal rule", () => {
+        const state = typeWithInputRules("---");
+
+        expect(state.doc.child(0).type.name).toBe("horizontal_rule");
+        expect(state.doc.child(1).type.name).toBe("paragraph");
     });
 });
 

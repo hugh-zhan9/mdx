@@ -553,6 +553,7 @@ describe("serializeMarkdown", () => {
             schema.nodes.blockquote.create(null, [
                 schema.nodes.paragraph.create(null, [schema.text("quoted")]),
             ]),
+            schema.nodes.horizontal_rule.create(),
             schema.nodes.code_block.create(
                 { language: "ts", info: "ts live" },
                 schema.text("const value = 1;\n"),
@@ -560,7 +561,7 @@ describe("serializeMarkdown", () => {
         ]);
 
         expect(serializeMarkdown(emptyParsedDocument(doc))).toBe(
-            "- one\n- two\n\n3. three\n4. four\n\n> quoted\n\n```ts live\nconst value = 1;\n```\n",
+            "- one\n- two\n\n3. three\n4. four\n\n> quoted\n\n---\n\n```ts live\nconst value = 1;\n```\n",
         );
     });
 
@@ -822,6 +823,7 @@ describe("serializeMarkdown", () => {
             { text: "- [x] not task", markdown: "\\- \\[x\\] not task\n" },
             { text: "> not quote", markdown: "\\> not quote\n" },
             { text: "```not fence", markdown: "\\`\\`\\`not fence\n" },
+            { text: "---", markdown: "\\---\n" },
             { text: "| not | table |", markdown: "\\| not | table |\n" },
         ];
 

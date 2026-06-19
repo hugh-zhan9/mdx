@@ -17,6 +17,8 @@ export function serializeBlockNode(node: ProseMirrorNode): string {
             return serializeTaskItem(node);
         case "blockquote":
             return serializeBlockquote(node);
+        case "horizontal_rule":
+            return "---\n";
         case "table":
             return serializeTable(node);
         case "table_row":
@@ -362,7 +364,7 @@ function escapeParagraphLineStarts(text: string) {
 }
 
 function blockStartMarkerPattern() {
-    return /^(#{1,6}(?:\s|$)|\d+\.\s|[-*+](?:\s|$)|[-*+]\s+\[[ xX]\]\s|>(?:\s|$)|```|\|(?=.*\|))/;
+    return /^(#{1,6}(?:\s|$)|\d+\.\s|(?:[-*_][ \t]*){3,}$|[-*+](?:\s|$)|[-*+]\s+\[[ xX]\]\s|>(?:\s|$)|```|\|(?=.*\|))/;
 }
 
 function startsWithInlineCodeSpan(line: string) {

@@ -265,6 +265,17 @@ describe("parseMarkdown", () => {
         );
     });
 
+    it("parses thematic breaks as horizontal rule nodes", () => {
+        const markdown = "Before\n\n---\n\nAfter\n";
+        const parsed = parseMarkdown(markdown);
+
+        expect(parsed.doc.child(0).type.name).toBe("paragraph");
+        expect(parsed.doc.child(1).type.name).toBe("horizontal_rule");
+        expect(parsed.doc.child(1).attrs.sourceId).toBe("source-1");
+        expect(parsed.doc.child(2).type.name).toBe("paragraph");
+        expect(parsed.sourceSlices[1]?.text).toBe("---\n");
+    });
+
     it("parses fenced backtick code blocks with language, info, and source id", () => {
         const markdown = "```ts live\nconst value = 1;\n```\n";
         const parsed = parseMarkdown(markdown);

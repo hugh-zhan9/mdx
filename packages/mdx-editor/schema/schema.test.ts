@@ -61,6 +61,9 @@ describe("mdxEditorSchema advanced markdown nodes", () => {
         expect(schema.nodes.blockquote.create(null, paragraph).type.name).toBe(
             "blockquote",
         );
+        expect(schema.nodes.horizontal_rule.create().type.name).toBe(
+            "horizontal_rule",
+        );
         expect(table.attrs.alignments).toEqual(["left", "right"]);
         expect(
             schema.nodes.footnote_ref.create({ label: "1" }).attrs.label,
@@ -130,6 +133,7 @@ describe("mdxEditorSchema advanced markdown nodes", () => {
         ]);
         const advancedBlocks = [
             schema.nodes.blockquote.create(null, paragraph),
+            schema.nodes.horizontal_rule.create(),
             schema.nodes.bullet_list.create(null, listItem),
             schema.nodes.ordered_list.create({ order: 3 }, listItem),
             listItem,

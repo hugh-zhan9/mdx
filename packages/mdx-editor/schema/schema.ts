@@ -109,6 +109,28 @@ export const mdxEditorSchema = new Schema({
                 },
             ],
         },
+        horizontal_rule: {
+            group: "block",
+            atom: true,
+            attrs: { sourceId: { default: null } },
+            toDOM: (node) => [
+                "hr",
+                {
+                    "data-mdx-node-type": "horizontal_rule",
+                    "data-mdx-source-id": node.attrs.sourceId ?? undefined,
+                },
+            ],
+            parseDOM: [
+                {
+                    tag: "hr",
+                    getAttrs: (dom) => ({
+                        sourceId: (dom as HTMLElement).getAttribute(
+                            "data-mdx-source-id",
+                        ),
+                    }),
+                },
+            ],
+        },
         bullet_list: {
             group: "block",
             content: "listItem+",

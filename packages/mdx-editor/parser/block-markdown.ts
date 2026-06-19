@@ -108,6 +108,20 @@ export function parseMarkdownBlocks(
             continue;
         }
 
+        if (isThematicBreakLine(line.text)) {
+            const sourceId = addSlice(
+                sourceSlices,
+                markdown,
+                line.start,
+                line.end,
+            );
+            blocks.push(
+                mdxEditorSchema.nodes.horizontal_rule.create({ sourceId }),
+            );
+            cursor += 1;
+            continue;
+        }
+
         const heading = line.text.match(/^(#{1,6})\s+(.*)$/);
         if (heading) {
             const sourceId = addSlice(
@@ -1153,6 +1167,10 @@ function isFootnoteDefinitionStart(text: string) {
 
 function isMathBlockStart(text: string) {
     return text.trim() === "$$";
+}
+
+function isThematicBreakLine(text: string) {
+    return /^ {0,3}(?:[-*_][ \t]*){3,}$/.test(text);
 }
 
 function isHtmlStart(text: string) {

@@ -191,6 +191,8 @@ function renderBlockNode(node: ProseMirrorNode): string {
             return `<p>${renderInlineContent(node)}</p>`;
         case "blockquote":
             return `<blockquote>${renderChildBlocks(node)}</blockquote>`;
+        case "horizontal_rule":
+            return `<hr data-mdx-node-type="horizontal_rule">`;
         case "bullet_list":
             return `<ul>${renderChildBlocks(node)}</ul>`;
         case "ordered_list": {
@@ -458,6 +460,8 @@ function renderHtmlNodeAsMarkdown(node: Node): string {
                 .split("\n")
                 .map((line) => `> ${line}`)
                 .join("\n")}\n\n`;
+        case "hr":
+            return "---\n\n";
         case "ul":
             return renderListElement(element, false);
         case "ol":
