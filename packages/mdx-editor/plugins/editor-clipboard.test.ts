@@ -197,6 +197,60 @@ describe("markdown clipboard plugin", () => {
             "   基本类型：byte、short、int、long、float、double、boolean、char\n",
         );
     });
+
+    it("prefers plain text Markdown fences over clipboard HTML", () => {
+        const plugin = createMarkdownClipboardPlugin();
+        const doc = mdxEditorSchema.nodes.doc.create(null, [
+            mdxEditorSchema.nodes.paragraph.create(null, [
+                mdxEditorSchema.text("body"),
+            ]),
+        ]);
+        let state = EditorState.create({
+            doc,
+            schema: mdxEditorSchema,
+            selection: new AllSelection(doc),
+        });
+        const view = fakeEditorView(state, (nextState) => {
+            state = nextState;
+        });
+        const event = pasteEvent({
+            "text/html": "<p>```<br>html path would lose this<br>```</p>",
+            "text/plain": "```\nplain path wins\n```\n",
+        });
+
+        expect(handlePaste(plugin, view, event)).toBe(true);
+        expect(event.preventDefault).toHaveBeenCalledTimes(1);
+        expect(state.doc.child(0).type.name).toBe("code_block");
+        expect(state.doc.child(0).textContent).toBe("plain path wins\n");
+    });
+
+    it("normalizes escaped Markdown fences on paste", () => {
+        const plugin = createMarkdownClipboardPlugin();
+        const doc = mdxEditorSchema.nodes.doc.create(null, [
+            mdxEditorSchema.nodes.paragraph.create(null, [
+                mdxEditorSchema.text("body"),
+            ]),
+        ]);
+        let state = EditorState.create({
+            doc,
+            schema: mdxEditorSchema,
+            selection: new AllSelection(doc),
+        });
+        const view = fakeEditorView(state, (nextState) => {
+            state = nextState;
+        });
+        const event = pasteEvent({
+            "text/plain":
+                "\\```\n    分库分表是把一个库的数据分散到多个库中\n    \\```\n",
+        });
+
+        expect(handlePaste(plugin, view, event)).toBe(true);
+        expect(event.preventDefault).toHaveBeenCalledTimes(1);
+        expect(state.doc.child(0).type.name).toBe("code_block");
+        expect(state.doc.child(0).textContent).toBe(
+            "    分库分表是把一个库的数据分散到多个库中\n",
+        );
+    });
 });
 
 function transformPastedHTML(html: string) {

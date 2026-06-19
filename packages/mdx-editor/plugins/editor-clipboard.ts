@@ -100,19 +100,18 @@ function readMarkdownFromClipboard(view: EditorView, event: ClipboardEvent) {
         return true;
     }
 
+    const text = clipboardData.getData("text/plain");
+    if (looksLikeBlockMarkdownPaste(text)) {
+        event.preventDefault();
+        insertMarkdown(view, normalizePastedMarkdown(text));
+        return true;
+    }
+
     const html = clipboardData.getData("text/html");
     if (!html) {
-        const text = clipboardData.getData("text/plain");
-        if (looksLikeBlockMarkdownPaste(text)) {
-            event.preventDefault();
-            insertMarkdown(view, text);
-            return true;
-        }
-
         return false;
     }
 
-    const text = clipboardData.getData("text/plain");
     const markdown = clipboardTextToMarkdown(text, html);
     if (!markdown) {
         return false;
@@ -124,7 +123,15 @@ function readMarkdownFromClipboard(view: EditorView, event: ClipboardEvent) {
 }
 
 function looksLikeBlockMarkdownPaste(text: string) {
-    return /^ {0,3}(?:```|~~~)/m.test(text);
+    return /^[ \t]*\\?(?:```|~~~)/m.test(text);
+}
+
+function normalizePastedMarkdown(markdown: string) {
+    return markdown.replace(
+        /^([ \t]*)\\?(```|~~~)/gm,
+        (_match, indent: string, marker: string) =>
+            `${indent.replace(/\t/g, "   ").slice(0, 3)}${marker}`,
+    );
 }
 
 function insertMarkdown(view: EditorView, markdown: string) {
