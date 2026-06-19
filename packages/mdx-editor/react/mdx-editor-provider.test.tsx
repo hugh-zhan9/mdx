@@ -159,6 +159,24 @@ describe("MdxEditorProvider", () => {
         expect(onMarkdownChange.mock.calls.at(-1)?.[0]).toContain("Changed");
     });
 
+    it("renders escaped table pipe cells as structured table text", async () => {
+        await act(async () => {
+            root.render(
+                <MdxEditorProvider
+                    initialMarkdown={"| A | B |\n|---|---|\n| A \\| B | C |\n"}
+                >
+                    <MdxEditorView />
+                </MdxEditorProvider>,
+            );
+        });
+
+        const table = host.querySelector("[data-mdx-node-type='table']");
+        const firstBodyCell = table?.querySelectorAll("td")[0];
+
+        expect(table).not.toBeNull();
+        expect(firstBodyCell?.textContent).toBe("A | B");
+    });
+
     it("renders editable source fallback blocks and serializes textarea edits", async () => {
         const markdown = "<div>\nUnsupported\n</div>\n";
         const editedMarkdown = "<section>Changed</section>\n";

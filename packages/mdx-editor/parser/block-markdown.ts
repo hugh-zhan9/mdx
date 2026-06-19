@@ -710,11 +710,45 @@ function parseTableRow(text: string) {
     const withoutLeadingPipe = trimmed.startsWith("|")
         ? trimmed.slice(1)
         : trimmed;
-    const withoutOuterPipes = withoutLeadingPipe.endsWith("|")
+    const withoutOuterPipes = endsWithUnescapedPipe(withoutLeadingPipe)
         ? withoutLeadingPipe.slice(0, -1)
         : withoutLeadingPipe;
+    const cells: string[] = [];
+    let cell = "";
 
-    return withoutOuterPipes.split("|").map((cell) => cell.trim());
+    for (let index = 0; index < withoutOuterPipes.length; index += 1) {
+        const char = withoutOuterPipes[index];
+        if (char === "\\" && index + 1 < withoutOuterPipes.length) {
+            cell += char + withoutOuterPipes[index + 1];
+            index += 1;
+            continue;
+        }
+
+        if (char === "|") {
+            cells.push(cell.trim());
+            cell = "";
+            continue;
+        }
+
+        cell += char;
+    }
+
+    cells.push(cell.trim());
+    return cells;
+}
+
+function endsWithUnescapedPipe(text: string) {
+    const pipeIndex = text.length - 1;
+    if (text[pipeIndex] !== "|") {
+        return false;
+    }
+
+    let slashCount = 0;
+    for (let index = pipeIndex - 1; index >= 0 && text[index] === "\\"; index -= 1) {
+        slashCount += 1;
+    }
+
+    return slashCount % 2 === 0;
 }
 
 function parseTableAlignments(text: string) {
@@ -977,7 +1011,11 @@ function isMathBlockStart(text: string) {
 }
 
 function isHtmlStart(text: string) {
-    return /^<[A-Za-z][^>]*>$/.test(text.trim());
+    const trimmed = text.trim();
+    return (
+        /^<[A-Za-z][^>]*>$/.test(trimmed) ||
+        /^<([A-Za-z][A-Za-z0-9:-]*)(?:\s[^>]*)?>[\s\S]*<\/\1>$/.test(trimmed)
+    );
 }
 
 function isUnknownBlockSyntaxStart(text: string) {

@@ -126,10 +126,14 @@ function serializeTableRow(node: ProseMirrorNode) {
     const cells: string[] = [];
 
     node.forEach((cell) => {
-        cells.push(serializeInlineContent(cell));
+        cells.push(escapeTableCellPipes(serializeInlineContent(cell)));
     });
 
     return `| ${cells.join(" | ")} |\n`;
+}
+
+function escapeTableCellPipes(markdown: string) {
+    return markdown.replace(/(^|[^\\])\|/g, "$1\\|");
 }
 
 function serializeTableSeparator(row: ProseMirrorNode, alignments: unknown) {

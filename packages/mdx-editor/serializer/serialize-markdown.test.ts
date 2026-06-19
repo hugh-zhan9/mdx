@@ -438,6 +438,32 @@ describe("serializeMarkdown", () => {
         );
     });
 
+    it("escapes table cell pipes so edited cells remain structured after reload", () => {
+        const schema = mdxEditorSchema;
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.table.create(
+                { alignments: [] },
+                [
+                    schema.nodes.table_row.create(null, [
+                        schema.nodes.table_header.create(null, schema.text("A")),
+                        schema.nodes.table_header.create(null, schema.text("B")),
+                    ]),
+                    schema.nodes.table_row.create(null, [
+                        schema.nodes.table_cell.create(null, schema.text("A | B")),
+                        schema.nodes.table_cell.create(null, schema.text("C")),
+                    ]),
+                ],
+            ),
+        ]);
+        const markdown = serializeMarkdown(emptyParsedDocument(doc));
+        const reparsed = parseMarkdown(markdown).doc.child(0);
+
+        expect(markdown).toBe("| A | B |\n|---|---|\n| A \\| B | C |\n");
+        expect(reparsed.type.name).toBe("table");
+        expect(reparsed.child(1).child(0).textContent).toBe("A | B");
+        expect(reparsed.child(1).child(1).textContent).toBe("C");
+    });
+
     it("serializes inline marks inside list item paragraphs", () => {
         const schema = mdxEditorSchema;
         const doc = schema.nodes.doc.create(null, [

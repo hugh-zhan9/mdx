@@ -324,6 +324,13 @@ describe("parseMarkdown", () => {
         expect(table.child(0).child(0).type.name).toBe("table_header");
         expect(table.child(1).child(0).type.name).toBe("table_cell");
 
+        const escapedPipeTable = parseMarkdown(
+            "| A | B |\n|---|---|\n| A \\| B | C |\n",
+        ).doc.child(0);
+        expect(escapedPipeTable.type.name).toBe("table");
+        expect(escapedPipeTable.child(1).child(0).textContent).toBe("A | B");
+        expect(escapedPipeTable.child(1).child(1).textContent).toBe("C");
+
         const callout = parseMarkdown("> [!tip] Remember\n> Keep this.\n").doc.child(
             0,
         );
@@ -368,6 +375,14 @@ describe("parseMarkdown", () => {
         expect(parsed.doc.child(0).type.name).toBe("source_fallback");
         expect(parsed.doc.child(0).attrs.markdown).toBe(markdown);
         expect(parsed.doc.child(0).attrs.reason).toBe("unsupported");
+
+        const singleLineMarkdown = "<div>Unsupported</div>\n";
+        const parsedSingleLine = parseMarkdown(singleLineMarkdown);
+
+        expect(parsedSingleLine.doc.childCount).toBe(1);
+        expect(parsedSingleLine.doc.child(0).type.name).toBe("source_fallback");
+        expect(parsedSingleLine.doc.child(0).attrs.markdown).toBe(singleLineMarkdown);
+        expect(parsedSingleLine.doc.child(0).attrs.reason).toBe("unsupported");
     });
 
     it("parses block math and footnote definition blocks while leaving supported paragraphs intact", () => {
