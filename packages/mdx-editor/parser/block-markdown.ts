@@ -459,14 +459,38 @@ function tryParseCallout(
 
     const contentLines: string[] = [];
     let cursor = startLine + 1;
+    let hasNonBlankContent = false;
     while (cursor < logicalLines.length) {
         const line = logicalLines[cursor];
         const match = blockquoteLine(line?.text ?? "");
-        if (!line || line.text.trim() === "" || !match) {
+        if (!line) {
             break;
         }
 
-        contentLines.push(match[1] ?? "");
+        if (match) {
+            const content = match[1] ?? "";
+            contentLines.push(content);
+            hasNonBlankContent ||= content.trim().length > 0;
+            cursor += 1;
+            continue;
+        }
+
+        if (line.text.trim() === "") {
+            if (hasNonBlankContent) {
+                break;
+            }
+
+            contentLines.push("");
+            cursor += 1;
+            continue;
+        }
+
+        if (isCalloutLazyContinuationBoundary(logicalLines, cursor)) {
+            break;
+        }
+
+        contentLines.push(line.text);
+        hasNonBlankContent = true;
         cursor += 1;
     }
 
@@ -491,6 +515,27 @@ function tryParseCallout(
         ),
         nextCursor: cursor,
     };
+}
+
+function isCalloutLazyContinuationBoundary(
+    logicalLines: LogicalLine[],
+    cursor: number,
+) {
+    const text = logicalLines[cursor]?.text ?? "";
+
+    return (
+        /^ {0,3}```/.test(text) ||
+        /^#{1,6}\s/.test(text.trimStart()) ||
+        isListLikeStart(text) ||
+        isCalloutStart(text) ||
+        isTableStart(logicalLines, cursor) ||
+        isMalformedTableStart(logicalLines, cursor) ||
+        isFootnoteDefinitionStart(text) ||
+        isMathBlockStart(text) ||
+        isThematicBreakLine(text) ||
+        isHtmlStart(text) ||
+        isUnknownBlockSyntaxStart(text)
+    );
 }
 
 function tryParseMathBlock(

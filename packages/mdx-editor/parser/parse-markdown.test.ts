@@ -389,6 +389,21 @@ describe("parseMarkdown", () => {
         expect(callout.child(0).textContent).toBe("Keep this.");
     });
 
+    it("parses lazy continuation paragraphs after empty callout markers", () => {
+        const markdown =
+            "> [!WARNING]\n>\n\n这并不是一篇零基础上手指南，需要您有一点点 Codex 使用经验。\n";
+        const parsed = parseMarkdown(markdown);
+        const callout = parsed.doc.child(0);
+
+        expect(parsed.doc.childCount).toBe(1);
+        expect(callout.type.name).toBe("callout");
+        expect(callout.attrs.kind).toBe("WARNING");
+        expect(callout.child(0).textContent).toBe(
+            "这并不是一篇零基础上手指南，需要您有一点点 Codex 使用经验。",
+        );
+        expect(parsed.sourceSlices[0]?.text).toBe(markdown);
+    });
+
     it("keeps unsupported block boundaries in source_fallback nodes", () => {
         const html = roundTripFixtures.find(
             (fixture) => fixture.name === "html opaque",
@@ -467,6 +482,16 @@ describe("parseMarkdown", () => {
 
         expect(parsed.doc.childCount).toBe(2);
         expect(parsed.doc.child(0).type.name).toBe("callout");
+        expect(parsed.doc.child(1).type.name).toBe("heading");
+        expect(parsed.doc.child(1).textContent).toBe("Title");
+    });
+
+    it("does not let lazy callout continuations swallow following headings", () => {
+        const parsed = parseMarkdown("> [!WARNING]\n>\n\nBody\n# Title\n");
+
+        expect(parsed.doc.childCount).toBe(2);
+        expect(parsed.doc.child(0).type.name).toBe("callout");
+        expect(parsed.doc.child(0).textContent).toBe("Body");
         expect(parsed.doc.child(1).type.name).toBe("heading");
         expect(parsed.doc.child(1).textContent).toBe("Title");
     });
