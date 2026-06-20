@@ -256,6 +256,17 @@ describe("parseMarkdown", () => {
         expect(list.child(1).child(0).textContent).toBe("four");
     });
 
+    it("parses indented list continuation lines into the current list item paragraph", () => {
+        const parsed = parseMarkdown("- item\n  continuation\n- next\n");
+        const list = parsed.doc.child(0);
+
+        expect(parsed.doc.childCount).toBe(1);
+        expect(list.type.name).toBe("bullet_list");
+        expect(list.childCount).toBe(2);
+        expect(list.child(0).child(0).textContent).toBe("item\ncontinuation");
+        expect(list.child(1).child(0).textContent).toBe("next");
+    });
+
     it("parses contiguous ordered list lines with the first marker order", () => {
         const parsed = parseMarkdown("3. first\n4. second\n");
         const list = parsed.doc.child(0);
@@ -299,6 +310,17 @@ describe("parseMarkdown", () => {
         expect(quote.child(1).child(0).marks[0]?.attrs.href).toBe(
             "https://example.com",
         );
+    });
+
+    it("parses lazy blockquote continuation lines into the blockquote paragraph", () => {
+        const parsed = parseMarkdown("> quote\ncontinued\n\n# After\n");
+        const quote = parsed.doc.child(0);
+
+        expect(parsed.doc.childCount).toBe(2);
+        expect(quote.type.name).toBe("blockquote");
+        expect(quote.child(0).textContent).toBe("quote\ncontinued");
+        expect(parsed.doc.child(1).type.name).toBe("heading");
+        expect(parsed.doc.child(1).textContent).toBe("After");
     });
 
     it("parses thematic breaks as horizontal rule nodes", () => {

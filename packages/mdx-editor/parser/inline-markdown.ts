@@ -30,7 +30,7 @@ export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
                 children,
                 parseInlineMarkdown(wikilink.rawLabel),
                 mdxEditorSchema.marks.link.create({
-                    href: `mdx-wikilink:${encodeURIComponent(wikilink.payload)}`,
+                    href: `mdx-wikilink:${encodeWikilinkPayload(wikilink.payload)}`,
                 }),
             );
             cursor = wikilink.nextIndex;
@@ -146,6 +146,12 @@ export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
 
     pushText(children, buffer);
     return children;
+}
+
+function encodeWikilinkPayload(payload: string): string {
+    return encodeURIComponent(payload).replace(/[()]/g, (char) =>
+        `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+    );
 }
 
 function pushMarkedText(

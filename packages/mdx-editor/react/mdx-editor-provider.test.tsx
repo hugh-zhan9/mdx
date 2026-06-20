@@ -181,6 +181,54 @@ describe("MdxEditorProvider", () => {
         expect(number?.textContent).toBe("1");
     });
 
+    it("inserts text at the ProseMirror cursor instead of visible-text markdown offsets", async () => {
+        const onMarkdownChange = vi.fn();
+
+        await act(async () => {
+            root.render(
+                <MdxEditorProvider
+                    initialMarkdown={"A $x$ B\n"}
+                    onMarkdownChange={onMarkdownChange}
+                >
+                    <MdxEditorView />
+                    <Probe />
+                </MdxEditorProvider>,
+            );
+        });
+
+        await act(async () => {
+            host
+                .querySelector<HTMLButtonElement>("[data-testid='insert-x']")
+                ?.click();
+        });
+
+        expect(onMarkdownChange).toHaveBeenLastCalledWith("A $x$ BX\n");
+    });
+
+    it("inserts text after footnote refs without corrupting the label", async () => {
+        const onMarkdownChange = vi.fn();
+
+        await act(async () => {
+            root.render(
+                <MdxEditorProvider
+                    initialMarkdown={"A [^n] B\n"}
+                    onMarkdownChange={onMarkdownChange}
+                >
+                    <MdxEditorView />
+                    <Probe />
+                </MdxEditorProvider>,
+            );
+        });
+
+        await act(async () => {
+            host
+                .querySelector<HTMLButtonElement>("[data-testid='insert-x']")
+                ?.click();
+        });
+
+        expect(onMarkdownChange).toHaveBeenLastCalledWith("A [^n] BX\n");
+    });
+
     it("does not recreate the editor view when callback props change identity", async () => {
         const onMarkdownChange = vi.fn();
 

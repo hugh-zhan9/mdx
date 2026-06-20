@@ -623,7 +623,27 @@ function parseListAt(
     while (cursor < logicalLines.length) {
         const line = logicalLines[cursor];
         const marker = parseListMarker(line?.text ?? "");
-        if (!line || !marker || marker.indent < indent) {
+        if (!line) {
+            break;
+        }
+
+        if (!marker) {
+            if (
+                items.length > 0 &&
+                isListContinuationLine(line.text, indent)
+            ) {
+                items[items.length - 1] = appendListItemContinuation(
+                    items[items.length - 1],
+                    line.text.trimStart(),
+                );
+                cursor += 1;
+                continue;
+            }
+
+            break;
+        }
+
+        if (marker.indent < indent) {
             break;
         }
 
@@ -687,12 +707,27 @@ function tryParseBlockquote(
     while (cursor < logicalLines.length) {
         const line = logicalLines[cursor];
         const match = blockquoteLine(line?.text ?? "");
-        if (!line || !match) {
+        if (!line) {
             break;
         }
 
-        quoteLines.push(match[1] ?? "");
-        cursor += 1;
+        if (match) {
+            quoteLines.push(match[1] ?? "");
+            cursor += 1;
+            continue;
+        }
+
+        if (
+            quoteLines.length > 0 &&
+            line.text.trim() !== "" &&
+            !isBlockBoundaryStart(line.text)
+        ) {
+            quoteLines.push(line.text);
+            cursor += 1;
+            continue;
+        }
+
+        break;
     }
 
     const children: ProseMirrorNode[] = [];
@@ -760,6 +795,26 @@ function appendListItemChild(item: ProseMirrorNode, child: ProseMirrorNode) {
         children.push(existing);
     });
     children.push(child);
+
+    return item.type.create(item.attrs, children);
+}
+
+function appendListItemContinuation(item: ProseMirrorNode, content: string) {
+    const children: ProseMirrorNode[] = [];
+    item.forEach((existing, _offset, index) => {
+        if (index === 0 && existing.type.name === "paragraph") {
+            const paragraphChildren: ProseMirrorNode[] = [];
+            existing.forEach((inline) => {
+                paragraphChildren.push(inline);
+            });
+            paragraphChildren.push(mdxEditorSchema.text("\n"));
+            paragraphChildren.push(...parseInlineMarkdown(content));
+            children.push(existing.type.create(existing.attrs, paragraphChildren));
+            return;
+        }
+
+        children.push(existing);
+    });
 
     return item.type.create(item.attrs, children);
 }
@@ -1042,6 +1097,16 @@ function parseListMarker(text: string): ListMarker | null {
     return null;
 }
 
+function isListContinuationLine(text: string, parentIndent: number) {
+    const indent = indentationWidth(text.match(/^[ \t]*/)?.[0] ?? "");
+
+    return (
+        text.trim().length > 0 &&
+        indent > parentIndent &&
+        !isBlockBoundaryStart(text)
+    );
+}
+
 function indentationWidth(indent: string) {
     let width = 0;
     for (const char of indent) {
@@ -1263,6 +1328,22 @@ function isTaskListStart(text: string) {
 
 function isListLikeStart(text: string) {
     return /^([*-]\s|\d+\.\s)/.test(text);
+}
+
+function isBlockBoundaryStart(text: string) {
+    const trimmed = text.trimStart();
+
+    return (
+        /^#{1,6}\s/.test(trimmed) ||
+        /^ {0,3}(?:```|~~~)/.test(text) ||
+        isThematicBreakLine(text) ||
+        parseListMarker(text) !== null ||
+        isCalloutStart(trimmed) ||
+        isMathBlockStart(text) ||
+        isFootnoteDefinitionStart(trimmed) ||
+        isHtmlStart(text) ||
+        isUnknownBlockSyntaxStart(text)
+    );
 }
 
 function isFootnoteDefinitionStart(text: string) {

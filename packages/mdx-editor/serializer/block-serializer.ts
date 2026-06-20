@@ -86,7 +86,12 @@ function serializeListItem(node: ProseMirrorNode, marker: string) {
         firstChild.type.name === "paragraph"
             ? serializeInlineContent(firstChild)
             : serializeNestedBlock(firstChild);
-    const lines = [`${marker} ${firstLine}`];
+    const firstLines = firstLine.split("\n");
+    const lines = [`${marker} ${firstLines[0] ?? ""}`];
+
+    for (const line of firstLines.slice(1)) {
+        lines.push(line.length > 0 ? `  ${line}` : "");
+    }
 
     for (let index = 1; index < node.childCount; index += 1) {
         const childText = serializeNestedBlock(node.child(index));

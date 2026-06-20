@@ -23,4 +23,13 @@ describe("Markdown round-trip fixtures", () => {
         );
         expect(serializeMarkdown(reparsed)).toBe(markdown);
     });
+
+    it("round-trips list and blockquote lazy continuation structure", () => {
+        for (const markdown of [
+            "- item\n  continuation\n- next\n",
+            "> quote\ncontinued\n",
+        ]) {
+            expect(serializeMarkdown(parseMarkdown(markdown))).toBe(markdown);
+        }
+    });
 });

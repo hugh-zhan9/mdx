@@ -312,6 +312,19 @@ function createSelectionSnapshot(
 }
 
 function markdownLeafText(node: EditorState["doc"]) {
+    if (node.type.name === "math_inline") {
+        return `$${String(node.attrs.latex ?? "")
+            .replaceAll("\\", "\\\\")
+            .replaceAll("$", "\\$")}$`;
+    }
+
+    if (node.type.name === "footnote_ref") {
+        return `[^${String(node.attrs.label ?? "")
+            .replaceAll("\\", "\\\\")
+            .replaceAll("[", "\\[")
+            .replaceAll("]", "\\]")}]`;
+    }
+
     if (node.type.name !== "image") {
         return "";
     }

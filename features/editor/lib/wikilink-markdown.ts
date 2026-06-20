@@ -33,8 +33,14 @@ function renderWikilinksInSegment(segment: string): string {
         }
 
         const label = wikilinkLabel(target);
-        return `[${label}](${WIKILINK_URL_PREFIX}${encodeURIComponent(target)})`;
+        return `[${label}](${WIKILINK_URL_PREFIX}${encodeWikilinkTarget(target)})`;
     });
+}
+
+function encodeWikilinkTarget(target: string): string {
+    return encodeURIComponent(target).replace(/[()]/g, (char) =>
+        `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+    );
 }
 
 function wikilinkLabel(target: string): string {
