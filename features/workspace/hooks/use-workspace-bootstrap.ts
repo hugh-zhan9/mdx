@@ -305,10 +305,23 @@ export function useWorkspaceBootstrap() {
                 const currentWindow = getCurrentWindow();
                 const nextUnlisten = await currentWindow.onResized(
                     ({ payload }) => {
-                        scheduleWindowSizeSave({
-                            width: payload.width,
-                            height: payload.height,
-                        });
+                        void currentWindow
+                            .scaleFactor()
+                            .then((scaleFactor) =>
+                                payload.toLogical(scaleFactor),
+                            )
+                            .then((logicalSize) => {
+                                scheduleWindowSizeSave({
+                                    width: logicalSize.width,
+                                    height: logicalSize.height,
+                                });
+                            })
+                            .catch((error) => {
+                                console.warn(
+                                    "Failed to convert resized window size.",
+                                    error,
+                                );
+                            });
                     },
                 );
 
@@ -690,13 +703,13 @@ async function restoreTauriWindowSize(windowSize: PersistedWindowSize) {
 }
 
 async function setTauriWindowSize(windowSize: PersistedWindowSize) {
-    const { getCurrentWindow, PhysicalSize } = await import(
+    const { getCurrentWindow, LogicalSize } = await import(
         "@tauri-apps/api/window"
     );
     const normalizedWindowSize = normalizePersistedWindowSize(windowSize);
 
     await getCurrentWindow().setSize(
-        new PhysicalSize(
+        new LogicalSize(
             normalizedWindowSize.width,
             normalizedWindowSize.height,
         ),
@@ -706,11 +719,16 @@ async function setTauriWindowSize(windowSize: PersistedWindowSize) {
 async function getCurrentTauriWindowSize(fallback: PersistedWindowSize) {
     try {
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
-        const size = await getCurrentWindow().innerSize();
+        const currentWindow = getCurrentWindow();
+        const [size, scaleFactor] = await Promise.all([
+            currentWindow.innerSize(),
+            currentWindow.scaleFactor(),
+        ]);
+        const logicalSize = size.toLogical(scaleFactor);
 
         return normalizePersistedWindowSize({
-            width: size.width,
-            height: size.height,
+            width: logicalSize.width,
+            height: logicalSize.height,
         });
     } catch (error) {
         console.warn("Failed to read current Tauri window size.", error);

@@ -506,7 +506,7 @@ fn new_workspace_window_with_route(app: &AppHandle, route: &str) -> tauri::Resul
 
     let window = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(route.into()))
         .title("MDX")
-        .inner_size(1280.0, 820.0)
+        .inner_size(1600.0, 1000.0)
         .min_inner_size(1100.0, 640.0)
         .resizable(true)
         .build()?;
