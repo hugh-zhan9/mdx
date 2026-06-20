@@ -113,6 +113,37 @@ html[data-theme="dark"] {
     font-family: inherit;
 }
 
+[data-mdx-editor-root] [data-mdx-node-type="heading"] {
+    font-weight: 700;
+    line-height: 1.25;
+    margin: 1rem 0 0.5rem;
+}
+
+[data-mdx-editor-root] [data-mdx-heading-level="1"] {
+    font-size: 1.875rem;
+}
+
+[data-mdx-editor-root] [data-mdx-heading-level="2"] {
+    font-size: 1.5rem;
+}
+
+[data-mdx-editor-root] [data-mdx-heading-level="3"] {
+    font-size: 1.25rem;
+}
+
+[data-mdx-editor-root] [data-mdx-heading-level="4"] {
+    font-size: 1.125rem;
+}
+
+[data-mdx-editor-root] [data-mdx-heading-level="5"] {
+    font-size: 1rem;
+}
+
+[data-mdx-editor-root] [data-mdx-heading-level="6"] {
+    color: color-mix(in srgb, var(--color-base-content) 78%, transparent);
+    font-size: 0.875rem;
+}
+
 [data-mdx-editor-root] [data-mdx-node-type="horizontal_rule"] {
     border: 0;
     border-top: 1px solid var(--color-base-300);
