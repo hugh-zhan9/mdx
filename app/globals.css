@@ -144,6 +144,99 @@ html[data-theme="dark"] {
     font-size: 0.875rem;
 }
 
+[data-mdx-editor-root] [data-mdx-node-type="blockquote"] {
+    border-left: 3px solid var(--color-base-300);
+    color: color-mix(in srgb, var(--color-base-content) 82%, transparent);
+    margin: 0.75rem 0;
+    padding: 0.25rem 0 0.25rem 1rem;
+}
+
+[data-mdx-editor-root] [data-mdx-node-type="blockquote"] > :first-child {
+    margin-top: 0;
+}
+
+[data-mdx-editor-root] [data-mdx-node-type="blockquote"] > :last-child {
+    margin-bottom: 0;
+}
+
+[data-mdx-editor-root] [data-mdx-node-type="callout"] {
+    --mdx-callout-color: var(--color-info);
+    background: color-mix(in srgb, var(--mdx-callout-color) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--mdx-callout-color) 28%, transparent);
+    border-left: 4px solid var(--mdx-callout-color);
+    margin: 0.875rem 0;
+    padding: 0.75rem 0.875rem;
+    position: relative;
+}
+
+[data-mdx-editor-root] [data-mdx-callout-kind="TIP"] {
+    --mdx-callout-color: #0f766e;
+}
+
+[data-mdx-editor-root] [data-mdx-callout-kind="IMPORTANT"] {
+    --mdx-callout-color: var(--color-primary);
+}
+
+[data-mdx-editor-root] [data-mdx-callout-kind="WARNING"] {
+    --mdx-callout-color: var(--color-warning);
+}
+
+[data-mdx-editor-root] [data-mdx-callout-kind="CAUTION"] {
+    --mdx-callout-color: var(--color-error);
+}
+
+[data-mdx-editor-root] .mdx-callout-header {
+    align-items: baseline;
+    color: var(--mdx-callout-color);
+    display: flex;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    gap: 0.5rem;
+    letter-spacing: 0;
+    line-height: 1.35;
+    margin-bottom: 0.45rem;
+}
+
+[data-mdx-editor-root] .mdx-callout-title {
+    color: var(--color-base-content);
+    font-weight: 600;
+}
+
+[data-mdx-editor-root] .mdx-callout-content > :first-child {
+    margin-top: 0;
+}
+
+[data-mdx-editor-root] .mdx-callout-content > :last-child {
+    margin-bottom: 0;
+}
+
+[data-mdx-editor-root] .mdx-callout-controls {
+    display: flex;
+    gap: 0.25rem;
+    opacity: 0;
+    pointer-events: none;
+    position: absolute;
+    right: 0.5rem;
+    top: 0.5rem;
+    transition: opacity 120ms ease;
+}
+
+[data-mdx-editor-root] [data-mdx-node-type="callout"]:hover .mdx-callout-controls,
+[data-mdx-editor-root] [data-mdx-node-type="callout"]:focus-within .mdx-callout-controls {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+[data-mdx-editor-root] .mdx-callout-controls select,
+[data-mdx-editor-root] .mdx-callout-controls input {
+    background: var(--color-base-100);
+    border: 1px solid var(--color-base-300);
+    color: var(--color-base-content);
+    font-size: 0.75rem;
+    height: 1.75rem;
+    padding: 0 0.4rem;
+}
+
 [data-mdx-editor-root] [data-mdx-node-type="horizontal_rule"] {
     border: 0;
     border-top: 1px solid var(--color-base-300);

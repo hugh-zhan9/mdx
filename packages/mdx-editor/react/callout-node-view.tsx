@@ -14,6 +14,9 @@ export function CalloutNodeView({
     node,
     updateAttrs,
 }: CalloutNodeViewProps) {
+    const kind = String(node.attrs.kind ?? "NOTE").toUpperCase();
+    const title = String(node.attrs.title ?? "");
+
     function handleKindChange(event: ChangeEvent<HTMLSelectElement>) {
         updateAttrs({ kind: event.currentTarget.value });
     }
@@ -24,10 +27,16 @@ export function CalloutNodeView({
 
     return (
         <>
+            <div className="mdx-callout-header" contentEditable={false}>
+                <span className="mdx-callout-kind">{kind}</span>
+                {title.length > 0 ? (
+                    <span className="mdx-callout-title">{title}</span>
+                ) : null}
+            </div>
             <div className="mdx-callout-controls" contentEditable={false}>
                 <select
                     aria-label="Callout type"
-                    value={String(node.attrs.kind ?? "NOTE")}
+                    value={kind}
                     onChange={handleKindChange}
                 >
                     {CALLOUT_KINDS.map((kind) => (
@@ -38,7 +47,8 @@ export function CalloutNodeView({
                 </select>
                 <input
                     aria-label="Callout title"
-                    value={String(node.attrs.title ?? "")}
+                    placeholder="Title"
+                    value={title}
                     onChange={handleTitleChange}
                     type="text"
                 />

@@ -126,6 +126,11 @@ describe("createMdxNodeViews", () => {
             "select[aria-label='Callout type']",
         );
 
+        expect(nodeView?.dom.querySelector(".mdx-callout-header")?.textContent).toContain(
+            "NOTE",
+        );
+        expect(nodeView?.dom.textContent).not.toContain("[!NOTE]");
+
         act(() => {
             if (!select) {
                 return;
