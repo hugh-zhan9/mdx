@@ -6,6 +6,7 @@ import {
     splitListItem,
 } from "prosemirror-schema-list";
 import type { Command } from "prosemirror-state";
+import { canSplit } from "prosemirror-transform";
 import {
     toggleEmphasisMark,
     toggleStrikeMark,
@@ -38,9 +39,66 @@ export function markdownKeymap(): Record<string, Command> {
         "Mod-z": undo,
         "Mod-y": redo,
         "Shift-Mod-z": redo,
-        Enter: splitListCommand,
-        Backspace: liftListCommand,
+        Enter: chainCommands(
+            exitHeadingAtEndCommand,
+            splitListCommand,
+            baseKeymap.Enter,
+        ),
+        Backspace: chainCommands(
+            removeCodeBlockStyleAtStartCommand,
+            liftListCommand,
+            baseKeymap.Backspace,
+        ),
+        Delete: removeCodeBlockStyleAtStartCommand,
         Tab: sinkListCommand,
         "Shift-Tab": liftListCommand,
     };
 }
+
+const exitHeadingAtEndCommand: Command = (state, dispatch) => {
+    const { $from, empty } = state.selection;
+    const paragraph = state.schema.nodes.paragraph;
+
+    if (
+        !empty ||
+        !paragraph ||
+        $from.parent.type.name !== "heading" ||
+        $from.parentOffset !== $from.parent.content.size
+    ) {
+        return false;
+    }
+
+    const typesAfter = [{ type: paragraph, attrs: { sourceId: null } }];
+
+    if (!canSplit(state.doc, $from.pos, 1, typesAfter)) {
+        return false;
+    }
+
+    dispatch?.(
+        state.tr
+            .split($from.pos, 1, typesAfter)
+            .scrollIntoView(),
+    );
+    return true;
+};
+
+const removeCodeBlockStyleAtStartCommand: Command = (state, dispatch) => {
+    const { $from, empty } = state.selection;
+    const paragraph = state.schema.nodes.paragraph;
+
+    if (
+        !empty ||
+        !paragraph ||
+        $from.parent.type.name !== "code_block" ||
+        $from.parentOffset !== 0
+    ) {
+        return false;
+    }
+
+    dispatch?.(
+        state.tr
+            .setNodeMarkup($from.before(), paragraph, { sourceId: null })
+            .scrollIntoView(),
+    );
+    return true;
+};
