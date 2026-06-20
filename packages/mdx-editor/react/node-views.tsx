@@ -55,6 +55,7 @@ export function createMdxNodeViews(
         }),
         source_fallback: createSourceFallbackNodeView,
         table: createReactNodeView(TableNodeView, {
+            className: "mdx-table-wrapper",
             contentDOMTag: "tbody",
             domTag: "div",
             tableControls: true,

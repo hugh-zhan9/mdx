@@ -1,5 +1,6 @@
 "use client";
 
+import { Columns3, Rows3 } from "lucide-react";
 import type { Node as ProseMirrorNode } from "prosemirror-model";
 import type { NodeViewProps } from "./node-views";
 
@@ -20,11 +21,23 @@ export function TableNodeView({
     return (
         <>
             <div className="mdx-table-controls" contentEditable={false}>
-                <button type="button" onClick={onAddRow}>
-                    Add row
+                <button
+                    type="button"
+                    aria-label="Add row"
+                    className="mdx-table-control-button"
+                    onClick={onAddRow}
+                    title="Add row"
+                >
+                    <Rows3 aria-hidden="true" />
                 </button>
-                <button type="button" onClick={onAddColumn}>
-                    Add column
+                <button
+                    type="button"
+                    aria-label="Add column"
+                    className="mdx-table-control-button"
+                    onClick={onAddColumn}
+                    title="Add column"
+                >
+                    <Columns3 aria-hidden="true" />
                 </button>
             </div>
             <table

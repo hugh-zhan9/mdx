@@ -84,9 +84,18 @@ describe("createMdxNodeViews", () => {
 
         const renderedTable = nodeView?.dom.querySelector("table");
 
+        expect(nodeView?.dom.classList.contains("mdx-table-wrapper")).toBe(true);
         expect(nodeView?.contentDOM?.tagName).toBe("TBODY");
         expect(renderedTable?.firstElementChild).toBe(nodeView?.contentDOM);
         expect(renderedTable?.querySelector("tbody tbody")).toBeNull();
+        expect(nodeView?.dom.textContent).not.toContain("Add row");
+        expect(nodeView?.dom.textContent).not.toContain("Add column");
+        expect(
+            nodeView?.dom.querySelector("button[aria-label='Add row']"),
+        ).not.toBeNull();
+        expect(
+            nodeView?.dom.querySelector("button[aria-label='Add column']"),
+        ).not.toBeNull();
 
         act(() => nodeView?.destroy?.());
     });
