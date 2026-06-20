@@ -45,11 +45,11 @@ export function markdownKeymap(): Record<string, Command> {
             baseKeymap.Enter,
         ),
         Backspace: chainCommands(
-            removeCodeBlockStyleAtStartCommand,
+            removeStyledTextBlockAtStartCommand,
             liftListCommand,
             baseKeymap.Backspace,
         ),
-        Delete: removeCodeBlockStyleAtStartCommand,
+        Delete: removeStyledTextBlockAtStartCommand,
         Tab: sinkListCommand,
         "Shift-Tab": liftListCommand,
     };
@@ -82,14 +82,14 @@ const exitHeadingAtEndCommand: Command = (state, dispatch) => {
     return true;
 };
 
-const removeCodeBlockStyleAtStartCommand: Command = (state, dispatch) => {
+const removeStyledTextBlockAtStartCommand: Command = (state, dispatch) => {
     const { $from, empty } = state.selection;
     const paragraph = state.schema.nodes.paragraph;
 
     if (
         !empty ||
         !paragraph ||
-        $from.parent.type.name !== "code_block" ||
+        !removableTextBlockTypes.has($from.parent.type.name) ||
         $from.parentOffset !== 0
     ) {
         return false;
@@ -102,3 +102,5 @@ const removeCodeBlockStyleAtStartCommand: Command = (state, dispatch) => {
     );
     return true;
 };
+
+const removableTextBlockTypes = new Set(["code_block", "heading"]);

@@ -51,6 +51,50 @@ describe("markdown keymap", () => {
         expect(nextState.doc.child(0).textContent).toBe(code);
         expect(nextState.selection.$from.parent.type.name).toBe("paragraph");
     });
+
+    it("removes heading styling when pressing Backspace at its start", () => {
+        const title = "qBittorrent + PostgreSQL + Bark 操作文档";
+        const doc = mdxEditorSchema.nodes.doc.create(null, [
+            mdxEditorSchema.nodes.heading.create(
+                { level: 2 },
+                mdxEditorSchema.text(title),
+            ),
+        ]);
+        const state = EditorState.create({
+            doc,
+            schema: mdxEditorSchema,
+            selection: TextSelection.create(doc, 1),
+        });
+
+        const nextState = runCommand(markdownKeymap().Backspace, state);
+
+        expect(nextState.doc.childCount).toBe(1);
+        expect(nextState.doc.child(0).type.name).toBe("paragraph");
+        expect(nextState.doc.child(0).textContent).toBe(title);
+        expect(nextState.selection.$from.parent.type.name).toBe("paragraph");
+    });
+
+    it("removes heading styling when pressing Delete at its start", () => {
+        const title = "qBittorrent + PostgreSQL + Bark 操作文档";
+        const doc = mdxEditorSchema.nodes.doc.create(null, [
+            mdxEditorSchema.nodes.heading.create(
+                { level: 2 },
+                mdxEditorSchema.text(title),
+            ),
+        ]);
+        const state = EditorState.create({
+            doc,
+            schema: mdxEditorSchema,
+            selection: TextSelection.create(doc, 1),
+        });
+
+        const nextState = runCommand(markdownKeymap().Delete, state);
+
+        expect(nextState.doc.childCount).toBe(1);
+        expect(nextState.doc.child(0).type.name).toBe("paragraph");
+        expect(nextState.doc.child(0).textContent).toBe(title);
+        expect(nextState.selection.$from.parent.type.name).toBe("paragraph");
+    });
 });
 
 function runCommand(command: Command | undefined, state: EditorState) {
