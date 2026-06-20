@@ -14,8 +14,8 @@ fn loads_empty_state_when_state_file_is_missing() {
     assert_eq!(state.state_version, 1);
     assert!(state.recent_workspace_root.is_none());
     assert!(state.workspaces.is_empty());
-    assert_eq!(state.window_size.width, 1600.0);
-    assert_eq!(state.window_size.height, 1000.0);
+    assert_eq!(state.window_size.width, 1520.0);
+    assert_eq!(state.window_size.height, 940.0);
 }
 
 #[test]
@@ -115,8 +115,8 @@ fn saves_and_reloads_workspace_state() {
             },
         }],
         window_size: PersistedWindowSize {
-            width: 1600.0,
-            height: 1000.0,
+            width: 1520.0,
+            height: 940.0,
         },
     };
 
@@ -133,7 +133,7 @@ fn saves_and_reloads_workspace_state() {
     assert_eq!(raw_json["preferences"]["searchMaxMatchesPerFile"], 10);
     assert_eq!(raw_json["workspaces"][0]["activeTabId"], "tab-2");
     assert_eq!(raw_json["workspaces"][0]["panels"]["leftCollapsed"], true);
-    assert_eq!(raw_json["windowSize"]["width"], 1600.0);
+    assert_eq!(raw_json["windowSize"]["width"], 1520.0);
 
     let reloaded = load_state_from_path(&path).unwrap();
     assert_eq!(reloaded.recent_workspace_root.as_deref(), Some("/tmp/ws"));
@@ -160,8 +160,8 @@ fn saves_and_reloads_workspace_state() {
     assert_eq!(workspace.panels.left_width, 320);
     assert!(!workspace.panels.right_collapsed);
     assert_eq!(workspace.panels.right_width, 360);
-    assert_eq!(reloaded.window_size.width, 1600.0);
-    assert_eq!(reloaded.window_size.height, 1000.0);
+    assert_eq!(reloaded.window_size.width, 1520.0);
+    assert_eq!(reloaded.window_size.height, 940.0);
 }
 
 #[test]
@@ -236,6 +236,6 @@ fn save_normalizes_invalid_app_state_values() {
     assert_eq!(saved.workspaces[0].tabs[0].title, "Untitled");
     assert_eq!(saved.workspaces[0].panels.left_width, 160);
     assert_eq!(saved.workspaces[0].panels.right_width, 640);
-    assert_eq!(saved.window_size.width, 1600.0);
+    assert_eq!(saved.window_size.width, 1520.0);
     assert_eq!(saved.window_size.height, 640.0);
 }

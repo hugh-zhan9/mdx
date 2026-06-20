@@ -129,8 +129,8 @@ pub struct PersistedWindowSize {
 impl Default for PersistedWindowSize {
     fn default() -> Self {
         Self {
-            width: 1600.0,
-            height: 1000.0,
+            width: 1520.0,
+            height: 940.0,
         }
     }
 }
@@ -375,8 +375,8 @@ fn normalize_panel_state(panel: &PersistedPanelState) -> PersistedPanelState {
 
 fn normalize_window_size(window_size: &PersistedWindowSize) -> PersistedWindowSize {
     PersistedWindowSize {
-        width: normalize_window_dimension(window_size.width, 1600.0, 1100.0),
-        height: normalize_window_dimension(window_size.height, 1000.0, 640.0),
+        width: normalize_window_dimension(window_size.width, 1520.0, 1100.0),
+        height: normalize_window_dimension(window_size.height, 940.0, 640.0),
     }
 }
 
