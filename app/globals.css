@@ -325,6 +325,14 @@ html[data-theme="dark"] {
     list-style: disc;
 }
 
+[data-mdx-editor-root] [data-mdx-node-type="bullet_list"] [data-mdx-node-type="bullet_list"] {
+    list-style: circle;
+}
+
+[data-mdx-editor-root] [data-mdx-node-type="bullet_list"] [data-mdx-node-type="bullet_list"] [data-mdx-node-type="bullet_list"] {
+    list-style: square;
+}
+
 [data-mdx-editor-root] [data-mdx-node-type="ordered_list"] {
     list-style: decimal;
 }
