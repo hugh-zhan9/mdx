@@ -74,6 +74,7 @@ export function useWorkspaceBootstrap() {
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const windowResizeSaveTimerRef =
         useRef<ReturnType<typeof setTimeout> | null>(null);
+    const windowSizePersistenceReadyRef = useRef(false);
 
     const dispatch = useCallback((action: WorkspaceAction) => {
         setWorkspace((current) =>
@@ -167,12 +168,14 @@ export function useWorkspaceBootstrap() {
                     return;
                 }
 
+                windowSizePersistenceReadyRef.current = false;
                 await restoreTauriWindowSize(appState.windowSize);
 
                 if (cancelled) {
                     return;
                 }
 
+                windowSizePersistenceReadyRef.current = true;
                 appStateRef.current = appState;
                 setPreferences(appState.preferences);
 
@@ -201,6 +204,7 @@ export function useWorkspaceBootstrap() {
                     return;
                 }
 
+                windowSizePersistenceReadyRef.current = true;
                 appStateRef.current = createDefaultAppState();
                 setStatus("error");
                 setMessage(formatError(error, "加载应用状态失败。"));
@@ -231,7 +235,7 @@ export function useWorkspaceBootstrap() {
             const nextAppState = upsertWorkspaceState(
                 appStateRef.current,
                 workspace,
-                getCurrentWindowSize(appStateRef.current.windowSize),
+                appStateRef.current.windowSize,
             );
             appStateRef.current = nextAppState;
             void saveAppState(nextAppState).catch((error) => {
@@ -276,6 +280,10 @@ export function useWorkspaceBootstrap() {
         };
 
         const scheduleWindowSizeSave = (windowSize: PersistedWindowSize) => {
+            if (!windowSizePersistenceReadyRef.current) {
+                return;
+            }
+
             clearResizeTimer();
             windowResizeSaveTimerRef.current = setTimeout(() => {
                 persistWindowSize(windowSize);
@@ -349,7 +357,7 @@ export function useWorkspaceBootstrap() {
         const nextAppState = withWindowSize(
             appStateRef.current,
             workspaceRef.current,
-            getCurrentWindowSize(appStateRef.current.windowSize),
+            await getCurrentTauriWindowSize(appStateRef.current.windowSize),
         );
         appStateRef.current = nextAppState;
         await saveAppState(nextAppState);
@@ -693,6 +701,21 @@ async function setTauriWindowSize(windowSize: PersistedWindowSize) {
             normalizedWindowSize.height,
         ),
     );
+}
+
+async function getCurrentTauriWindowSize(fallback: PersistedWindowSize) {
+    try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        const size = await getCurrentWindow().innerSize();
+
+        return normalizePersistedWindowSize({
+            width: size.width,
+            height: size.height,
+        });
+    } catch (error) {
+        console.warn("Failed to read current Tauri window size.", error);
+        return getCurrentWindowSize(fallback);
+    }
 }
 
 function normalizeAppState(state: PersistedAppState | null): PersistedAppState {
