@@ -208,6 +208,33 @@ describe("markdown clipboard plugin", () => {
         );
     });
 
+    it("parses plain text Markdown block structures on paste", () => {
+        const plugin = createMarkdownClipboardPlugin();
+        const doc = mdxEditorSchema.nodes.doc.create(null, [
+            mdxEditorSchema.nodes.paragraph.create(null, [
+                mdxEditorSchema.text("body"),
+            ]),
+        ]);
+        let state = EditorState.create({
+            doc,
+            schema: mdxEditorSchema,
+            selection: new AllSelection(doc),
+        });
+        const view = fakeEditorView(state, (nextState) => {
+            state = nextState;
+        });
+        const event = pasteEvent({
+            "text/plain": "## Title\n\n- one\n  - two\n\n| A | B |\n|---|---|\n| 1 | 2 |\n",
+        });
+
+        expect(handlePaste(plugin, view, event)).toBe(true);
+        expect(event.preventDefault).toHaveBeenCalledTimes(1);
+        expect(state.doc.child(0).type.name).toBe("heading");
+        expect(state.doc.child(1).type.name).toBe("bullet_list");
+        expect(state.doc.child(1).child(0).child(1).type.name).toBe("bullet_list");
+        expect(state.doc.child(2).type.name).toBe("table");
+    });
+
     it("prefers plain text Markdown fences over clipboard HTML", () => {
         const plugin = createMarkdownClipboardPlugin();
         const doc = mdxEditorSchema.nodes.doc.create(null, [

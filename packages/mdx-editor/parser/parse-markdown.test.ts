@@ -238,6 +238,24 @@ describe("parseMarkdown", () => {
         expect(parsed.doc.child(1).textContent).toBe("After.");
     });
 
+    it("parses indented bullet list lines as nested list item children", () => {
+        const parsed = parseMarkdown("- one\n  - two\n    - three\n- four\n");
+        const list = parsed.doc.child(0);
+        const firstItem = list.child(0);
+        const nestedList = firstItem.child(1);
+        const nestedItem = nestedList.child(0);
+        const thirdLevelList = nestedItem.child(1);
+
+        expect(list.type.name).toBe("bullet_list");
+        expect(list.childCount).toBe(2);
+        expect(firstItem.child(0).textContent).toBe("one");
+        expect(nestedList.type.name).toBe("bullet_list");
+        expect(nestedItem.child(0).textContent).toBe("two");
+        expect(thirdLevelList.type.name).toBe("bullet_list");
+        expect(thirdLevelList.child(0).child(0).textContent).toBe("three");
+        expect(list.child(1).child(0).textContent).toBe("four");
+    });
+
     it("parses contiguous ordered list lines with the first marker order", () => {
         const parsed = parseMarkdown("3. first\n4. second\n");
         const list = parsed.doc.child(0);
@@ -248,6 +266,24 @@ describe("parseMarkdown", () => {
         expect(list.child(0).type.name).toBe("list_item");
         expect(list.child(0).child(0).textContent).toBe("first");
         expect(list.child(1).child(0).textContent).toBe("second");
+    });
+
+    it("parses indented ordered and task list lines as nested list children", () => {
+        const parsed = parseMarkdown("1. first\n   1. child\n2. second\n\n- [ ] todo\n  - [x] done\n");
+        const orderedList = parsed.doc.child(0);
+        const nestedOrderedList = orderedList.child(0).child(1);
+        const taskList = parsed.doc.child(1);
+        const nestedTaskList = taskList.child(0).child(1);
+
+        expect(orderedList.type.name).toBe("ordered_list");
+        expect(orderedList.childCount).toBe(2);
+        expect(nestedOrderedList.type.name).toBe("ordered_list");
+        expect(nestedOrderedList.child(0).child(0).textContent).toBe("child");
+        expect(taskList.type.name).toBe("bullet_list");
+        expect(taskList.child(0).type.name).toBe("task_item");
+        expect(nestedTaskList.type.name).toBe("bullet_list");
+        expect(nestedTaskList.child(0).type.name).toBe("task_item");
+        expect(nestedTaskList.child(0).attrs.checked).toBe(true);
     });
 
     it("parses contiguous blockquote lines into paragraph children", () => {

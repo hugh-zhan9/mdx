@@ -152,6 +152,35 @@ describe("MdxEditorProvider", () => {
         expect(codeBlocks[1]?.textContent).toBe("inline sample\n");
     });
 
+    it("renders code tokenizer output as inline token spans", async () => {
+        await act(async () => {
+            root.render(
+                <MdxEditorProvider
+                    initialMarkdown={"```ts\nconst value = 1;\n```\n"}
+                    codeTokenizer={() => [
+                        { type: "keyword", content: "const" },
+                        " value = ",
+                        { type: "number", content: "1" },
+                        ";\n",
+                    ]}
+                >
+                    <MdxEditorView />
+                </MdxEditorProvider>,
+            );
+        });
+
+        const codeBlock = host.querySelector(
+            "pre[data-mdx-node-type='code_block']",
+        );
+        const keyword = codeBlock?.querySelector("[data-mdx-token-type='keyword']");
+        const number = codeBlock?.querySelector("[data-mdx-token-type='number']");
+
+        expect(keyword?.textContent).toBe("const");
+        expect(keyword?.classList.contains("token")).toBe(true);
+        expect(keyword?.classList.contains("keyword")).toBe(true);
+        expect(number?.textContent).toBe("1");
+    });
+
     it("does not recreate the editor view when callback props change identity", async () => {
         const onMarkdownChange = vi.fn();
 

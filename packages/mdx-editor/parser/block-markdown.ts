@@ -10,6 +10,15 @@ interface LogicalLine {
     end: number;
 }
 
+interface ListMarker {
+    indent: number;
+    kind: "bullet" | "ordered";
+    checked?: boolean;
+    content: string;
+    order?: number;
+    task: boolean;
+}
+
 export function parseMarkdownBlocks(
     markdown: string,
     sourceSlices: SourceSlice[],
@@ -321,34 +330,19 @@ function tryParseBulletList(
     markdown: string,
     sourceSlices: SourceSlice[],
 ) {
-    if (!plainBulletListItem(logicalLines[startLine]?.text ?? "")) {
+    const marker = parseListMarker(logicalLines[startLine]?.text ?? "");
+    if (!marker || marker.kind !== "bullet" || marker.task) {
         return null;
     }
 
-    const items: ProseMirrorNode[] = [];
-    let cursor = startLine;
-    while (cursor < logicalLines.length) {
-        const line = logicalLines[cursor];
-        const match = plainBulletListItem(line?.text ?? "");
-        if (!line || !match) {
-            break;
-        }
-
-        items.push(createListItem(match[1]));
-        cursor += 1;
-    }
-
-    const sourceId = addSlice(
-        sourceSlices,
+    return parseListAt(
+        logicalLines,
+        startLine,
+        marker.indent,
+        marker.kind,
         markdown,
-        logicalLines[startLine].start,
-        logicalLines[cursor - 1]?.end ?? logicalLines[startLine].end,
+        sourceSlices,
     );
-
-    return {
-        node: mdxEditorSchema.nodes.bullet_list.create({ sourceId }, items),
-        nextCursor: cursor,
-    };
 }
 
 function tryParseTaskList(
@@ -357,34 +351,19 @@ function tryParseTaskList(
     markdown: string,
     sourceSlices: SourceSlice[],
 ) {
-    if (!taskListItem(logicalLines[startLine]?.text ?? "")) {
+    const marker = parseListMarker(logicalLines[startLine]?.text ?? "");
+    if (!marker || !marker.task) {
         return null;
     }
 
-    const items: ProseMirrorNode[] = [];
-    let cursor = startLine;
-    while (cursor < logicalLines.length) {
-        const line = logicalLines[cursor];
-        const match = taskListItem(line?.text ?? "");
-        if (!line || !match) {
-            break;
-        }
-
-        items.push(createTaskItem(match[1].toLowerCase() === "x", match[2]));
-        cursor += 1;
-    }
-
-    const sourceId = addSlice(
-        sourceSlices,
+    return parseListAt(
+        logicalLines,
+        startLine,
+        marker.indent,
+        marker.kind,
         markdown,
-        logicalLines[startLine].start,
-        logicalLines[cursor - 1]?.end ?? logicalLines[startLine].end,
+        sourceSlices,
     );
-
-    return {
-        node: mdxEditorSchema.nodes.bullet_list.create({ sourceId }, items),
-        nextCursor: cursor,
-    };
 }
 
 function tryParseTable(
@@ -614,21 +593,65 @@ function tryParseOrderedList(
     markdown: string,
     sourceSlices: SourceSlice[],
 ) {
-    const firstMatch = orderedListItem(logicalLines[startLine]?.text ?? "");
-    if (!firstMatch) {
+    const marker = parseListMarker(logicalLines[startLine]?.text ?? "");
+    if (!marker || marker.kind !== "ordered") {
         return null;
     }
 
+    return parseListAt(
+        logicalLines,
+        startLine,
+        marker.indent,
+        marker.kind,
+        markdown,
+        sourceSlices,
+    );
+}
+
+function parseListAt(
+    logicalLines: LogicalLine[],
+    startLine: number,
+    indent: number,
+    kind: ListMarker["kind"],
+    markdown: string,
+    sourceSlices: SourceSlice[],
+) {
     const items: ProseMirrorNode[] = [];
     let cursor = startLine;
+    const firstMarker = parseListMarker(logicalLines[startLine]?.text ?? "");
+
     while (cursor < logicalLines.length) {
         const line = logicalLines[cursor];
-        const match = orderedListItem(line?.text ?? "");
-        if (!line || !match) {
+        const marker = parseListMarker(line?.text ?? "");
+        if (!line || !marker || marker.indent < indent) {
             break;
         }
 
-        items.push(createListItem(match[2]));
+        if (marker.indent > indent) {
+            if (items.length === 0) {
+                break;
+            }
+            const nested = parseListAt(
+                logicalLines,
+                cursor,
+                marker.indent,
+                marker.kind,
+                markdown,
+                sourceSlices,
+            );
+            items[items.length - 1] = appendListItemChild(
+                items[items.length - 1],
+                nested.node,
+            );
+            cursor = nested.nextCursor;
+            continue;
+        }
+
+        if (marker.kind !== kind) {
+            break;
+        }
+
+        items.push(createListItem(marker));
         cursor += 1;
     }
 
@@ -639,13 +662,14 @@ function tryParseOrderedList(
         logicalLines[cursor - 1]?.end ?? logicalLines[startLine].end,
     );
 
-    return {
-        node: mdxEditorSchema.nodes.ordered_list.create(
-            { order: Number(firstMatch[1]), sourceId },
-            items,
-        ),
-        nextCursor: cursor,
-    };
+    const node = kind === "ordered"
+        ? mdxEditorSchema.nodes.ordered_list.create(
+              { order: firstMarker?.order ?? 1, sourceId },
+              items,
+          )
+        : mdxEditorSchema.nodes.bullet_list.create({ sourceId }, items);
+
+    return { node, nextCursor: cursor };
 }
 
 function tryParseBlockquote(
@@ -713,24 +737,31 @@ function tryParseBlockquote(
     };
 }
 
-function createListItem(content: string) {
-    return mdxEditorSchema.nodes.list_item.create(
+function createListItem(marker: ListMarker) {
+    const paragraph = mdxEditorSchema.nodes.paragraph.create(
         { sourceId: null },
-        mdxEditorSchema.nodes.paragraph.create(
-            { sourceId: null },
-            parseInlineMarkdown(content),
-        ),
+        parseInlineMarkdown(marker.content),
     );
+
+    return marker.task
+        ? mdxEditorSchema.nodes.task_item.create(
+              { checked: marker.checked, sourceId: null },
+              paragraph,
+          )
+        : mdxEditorSchema.nodes.list_item.create(
+              { sourceId: null },
+              paragraph,
+          );
 }
 
-function createTaskItem(checked: boolean, content: string) {
-    return mdxEditorSchema.nodes.task_item.create(
-        { checked, sourceId: null },
-        mdxEditorSchema.nodes.paragraph.create(
-            { sourceId: null },
-            parseInlineMarkdown(content),
-        ),
-    );
+function appendListItemChild(item: ProseMirrorNode, child: ProseMirrorNode) {
+    const children: ProseMirrorNode[] = [];
+    item.forEach((existing) => {
+        children.push(existing);
+    });
+    children.push(child);
+
+    return item.type.create(item.attrs, children);
 }
 
 function createParagraphBlocks(lines: string[]) {
@@ -975,21 +1006,49 @@ function parseTableAlignments(text: string) {
     });
 }
 
-function plainBulletListItem(text: string) {
-    const match = text.match(/^[-*]\s+(.*)$/);
-    if (!match || /^\[[ xX]\]\s/.test(match[1])) {
-        return null;
+function parseListMarker(text: string): ListMarker | null {
+    const task = text.match(/^([ \t]*)([-*])\s+\[([ xX])\]\s+(.*)$/);
+    if (task) {
+        return {
+            indent: indentationWidth(task[1]),
+            kind: "bullet",
+            checked: task[3].toLowerCase() === "x",
+            content: task[4],
+            task: true,
+        };
     }
 
-    return match;
+    const bullet = text.match(/^([ \t]*)([-*])\s+(.*)$/);
+    if (bullet) {
+        return {
+            indent: indentationWidth(bullet[1]),
+            kind: "bullet",
+            content: bullet[3],
+            task: false,
+        };
+    }
+
+    const ordered = text.match(/^([ \t]*)(\d+)\.\s+(.*)$/);
+    if (ordered) {
+        return {
+            indent: indentationWidth(ordered[1]),
+            kind: "ordered",
+            content: ordered[3],
+            order: Number(ordered[2]),
+            task: false,
+        };
+    }
+
+    return null;
 }
 
-function taskListItem(text: string) {
-    return text.match(/^[-*]\s+\[([ xX])\]\s+(.*)$/);
-}
+function indentationWidth(indent: string) {
+    let width = 0;
+    for (const char of indent) {
+        width += char === "\t" ? 4 : 1;
+    }
 
-function orderedListItem(text: string) {
-    return text.match(/^(\d+)\.\s+(.*)$/);
+    return width;
 }
 
 function blockquoteLine(text: string) {

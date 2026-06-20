@@ -10,6 +10,7 @@ import {
 import { selectionSnapshotFromMarkdownOffsets } from "../core/selection";
 import type { SelectionState } from "../core/types";
 import { parseMarkdown } from "../parser/parse-markdown";
+import type { CodeTokenizer } from "../plugins/editor-code-highlight";
 import { createMdxEditorPlugins } from "../plugins/editor-plugins";
 import { mdxEditorSchema } from "../schema/schema";
 import { serializeMarkdown } from "../serializer/serialize-markdown";
@@ -32,6 +33,7 @@ export function MdxEditorProvider({
     initialMarkdown,
     placeholder,
     imageLoader,
+    codeTokenizer,
     onMarkdownChange,
 }: MdxEditorProviderProps) {
     const initialParsed = useMemo(
@@ -51,6 +53,7 @@ export function MdxEditorProvider({
     const parsedRef = useRef(initialParsed);
     const markdownRef = useRef(initialMarkdown);
     const imageLoaderRef = useRef(imageLoader);
+    const codeTokenizerRef = useRef(codeTokenizer);
     const onMarkdownChangeRef = useRef(onMarkdownChange);
     const selectionOffsetsRef = useRef(
         selectionOffsetsFromDocSelection(
@@ -79,6 +82,15 @@ export function MdxEditorProvider({
             void hydrateRenderedImages(viewRef.current.dom, imageLoader);
         }
     }, [imageLoader]);
+
+    useEffect(() => {
+        codeTokenizerRef.current = codeTokenizer;
+        viewRef.current?.dispatch(viewRef.current.state.tr);
+    }, [codeTokenizer]);
+
+    const tokenizeCode = useCallback<CodeTokenizer>((code, lang) => {
+        return codeTokenizerRef.current?.(code, lang) ?? [];
+    }, []);
 
     const updateMarkdown = useCallback(
         (next: string, emitChange = true) => {
@@ -124,7 +136,7 @@ export function MdxEditorProvider({
         );
 
         if (viewRef.current) {
-            let nextState = createEditorState(parsed.doc);
+            let nextState = createEditorState(parsed.doc, tokenizeCode);
                 nextState = nextState.apply(
                     nextState.tr.setSelection(Selection.atEnd(nextState.doc)),
                 );
@@ -139,7 +151,7 @@ export function MdxEditorProvider({
                 );
             }
         },
-        [updateMarkdown, updateSelectionFromState],
+        [tokenizeCode, updateMarkdown, updateSelectionFromState],
     );
 
     useEffect(() => {
@@ -153,7 +165,7 @@ export function MdxEditorProvider({
 
         const parsed = parseMarkdown(markdownRef.current);
         parsedRef.current = parsed;
-        let initialState = createEditorState(parsed.doc);
+        let initialState = createEditorState(parsed.doc, tokenizeCode);
         initialState = initialState.apply(
             initialState.tr.setSelection(Selection.atEnd(initialState.doc)),
         );
@@ -190,7 +202,7 @@ export function MdxEditorProvider({
                 viewRef.current = null;
             }
         };
-    }, [editable, rootNode, updateMarkdown, updateSelectionFromState]);
+    }, [editable, rootNode, tokenizeCode, updateMarkdown, updateSelectionFromState]);
 
     useEffect(() => {
         if (!rootNode) {
@@ -262,11 +274,14 @@ export function MdxEditorProvider({
     );
 }
 
-function createEditorState(doc: EditorState["doc"]) {
+function createEditorState(
+    doc: EditorState["doc"],
+    codeTokenizer?: CodeTokenizer,
+) {
     return EditorState.create({
         schema: mdxEditorSchema,
         doc,
-        plugins: createMdxEditorPlugins(),
+        plugins: createMdxEditorPlugins({ codeTokenizer }),
     });
 }
 

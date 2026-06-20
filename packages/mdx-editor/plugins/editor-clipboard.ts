@@ -123,7 +123,14 @@ function readMarkdownFromClipboard(view: EditorView, event: ClipboardEvent) {
 }
 
 function looksLikeBlockMarkdownPaste(text: string) {
-    return /^[ \t]*\\?(?:```|~~~)/m.test(text);
+    return (
+        /^[ \t]*\\?(?:```|~~~)/m.test(text) ||
+        /^ {0,3}#{1,6}\s+\S/m.test(text) ||
+        /^ {0,3}(?:[-*]\s+(?:\[[ xX]\]\s+)?|\d+\.\s+)\S/m.test(text) ||
+        /^ {0,3}>/m.test(text) ||
+        /^ {0,3}(?:[-*_][ \t]*){3,}$/m.test(text) ||
+        looksLikeMarkdownTable(text)
+    );
 }
 
 function normalizePastedMarkdown(markdown: string) {
@@ -132,6 +139,22 @@ function normalizePastedMarkdown(markdown: string) {
         (_match, indent: string, marker: string) =>
             `${indent.replace(/\t/g, "   ").slice(0, 3)}${marker}`,
     );
+}
+
+function looksLikeMarkdownTable(text: string) {
+    const lines = text.split(/\r?\n/);
+    for (let index = 0; index < lines.length - 1; index += 1) {
+        if (
+            lines[index]?.trimStart().startsWith("|") &&
+            /^[ \t]*\|?(?:[ \t]*:?-{3,}:?[ \t]*\|)+[ \t]*:?-{3,}:?[ \t]*\|?[ \t]*$/.test(
+                lines[index + 1] ?? "",
+            )
+        ) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function insertMarkdown(view: EditorView, markdown: string) {
