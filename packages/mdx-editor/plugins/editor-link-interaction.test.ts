@@ -1,14 +1,15 @@
 // @vitest-environment jsdom
 
 import type { EditorView } from "prosemirror-view";
-import { EditorState } from "prosemirror-state";
-import { EditorView as ProseMirrorEditorView } from "prosemirror-view";
-import { describe, expect, it, vi } from "vitest";
-import { mdxEditorSchema } from "../schema/schema";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createEditableLinkPlugin } from "./editor-link-interaction";
 
 describe("createEditableLinkPlugin", () => {
-    it("prevents editor links from navigating so their text remains editable", () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it("prevents plain editor link clicks from navigating so their text remains editable", () => {
         const plugin = createEditableLinkPlugin();
         const editorRoot = document.createElement("div");
         const link = document.createElement("a");
@@ -31,54 +32,40 @@ describe("createEditableLinkPlugin", () => {
         expect(preventDefault).toHaveBeenCalledOnce();
     });
 
-    it("shows a hover editor that can update the link href", () => {
-        const host = document.createElement("div");
-        const linkMark = mdxEditorSchema.marks.link.create({
-            href: "www.baidu.com",
-        });
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [
-                mdxEditorSchema.text("百度", [linkMark]),
-            ]),
-        ]);
-        document.body.append(host);
-        const view = new ProseMirrorEditorView(host, {
-            state: EditorState.create({
-                doc,
-                schema: mdxEditorSchema,
-                plugins: [createEditableLinkPlugin()],
-            }),
-            dispatchTransaction(transaction) {
-                view.updateState(view.state.apply(transaction));
-            },
-        });
+    it("opens editor links with a command click", () => {
+        const plugin = createEditableLinkPlugin();
+        const editorRoot = document.createElement("div");
+        const link = document.createElement("a");
+        const preventDefault = vi.fn();
+        const open = vi.spyOn(window, "open").mockImplementation(() => null);
 
-        const link = host.querySelector<HTMLAnchorElement>(
-            'a[data-mdx-node-type="link"]',
-        );
-        expect(link).not.toBeNull();
+        link.href = "www.baidu.com";
+        link.setAttribute("href", "www.baidu.com");
+        link.dataset.mdxNodeType = "link";
+        link.textContent = "百度";
+        editorRoot.append(link);
 
-        link?.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
-        const input = document.querySelector<HTMLInputElement>(
-            "input[data-mdx-link-editor-input]",
+        const handled = plugin.props.handleDOMEvents?.click?.(
+            { dom: editorRoot } as EditorView,
+            {
+                metaKey: true,
+                target: link,
+                preventDefault,
+            } as unknown as MouseEvent,
         );
 
-        expect(input?.value).toBe("www.baidu.com");
-
-        input!.value = "https://baidu.com";
-        input!.dispatchEvent(
-            new KeyboardEvent("keydown", {
-                bubbles: true,
-                key: "Enter",
-            }),
+        expect(handled).toBe(true);
+        expect(preventDefault).toHaveBeenCalledOnce();
+        expect(open).toHaveBeenCalledWith(
+            "https://www.baidu.com",
+            "_blank",
+            "noopener",
         );
+    });
 
-        expect(
-            view.state.doc.child(0).child(0).marks[0]?.attrs.href,
-        ).toBe("https://baidu.com");
+    it("does not show a hover popup for editor links", () => {
+        const plugin = createEditableLinkPlugin();
 
-        view.destroy();
-        host.remove();
-        document.querySelector("[data-mdx-link-editor]")?.remove();
+        expect(plugin.props.handleDOMEvents?.mouseover).toBeUndefined();
     });
 });
