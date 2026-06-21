@@ -122,7 +122,7 @@ function horizontalRuleInputRule(schema: Schema): InputRule {
 
 function inlineMarkdownInputRule(): InputRule {
     return new InputRule(
-        /((?:!?\[[^\]\r\n]*\]|\\\[\\\])\((?:<[^>\r\n]*>|[^)\s\r\n]*)?(?:\s+"[^"\r\n]*")?\))$/,
+        /(!?\[[^\]\r\n]*\]\((?:<[^>\r\n]*>|[^)\s\r\n]*)?(?:\s+"[^"\r\n]*")?\))$/,
         (state, match, start, end) => {
             const source = match[1] ?? "";
             const nodes = parseInlineMarkdown(source);

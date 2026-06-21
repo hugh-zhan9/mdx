@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode, RefObject } from "react";
+import { storeImageForWorkspace } from "@/common/lib/image-storage";
 import { tauriCore } from "@/common/lib/tauri";
 import { EditorPane } from "@/features/editor/components/editor-pane";
 import { documentFingerprint } from "@/features/file-watch/lib/external-change";
@@ -191,6 +192,12 @@ export function EditorStage({
             rootPath={rootPath}
             tab={activeTab}
             onMarkdownChange={handleMarkdownChange}
+            storeImage={(file) =>
+              storeImageForWorkspace(file, {
+                rootPath,
+                currentFilePath: activeTab.path,
+              })
+            }
             editorViewportRef={editorViewportRef}
             pendingCliCommand={activePendingCliCommand}
             onPendingCliCommandHandled={onPendingCliCommandHandled}

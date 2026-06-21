@@ -243,7 +243,7 @@ function escapePlainText(text: string) {
     let escaped = "";
 
     for (const char of text) {
-        if ("\\[]*~`$".includes(char)) {
+        if ("\\*~`$".includes(char)) {
             escaped += `\\${char}`;
         } else {
             escaped += char;

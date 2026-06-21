@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     EditorPane,
     assignEditorViewportRef,
+    imageFilesFromDataTransfer,
     isEditorFindShortcut,
     isEditorReplaceShortcut,
     resolveEditorRootFromContent,
@@ -14,8 +15,24 @@ import {
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
     .IS_REACT_ACT_ENVIRONMENT = true;
 
+const bridgeMocks = vi.hoisted(() => ({
+    focus: vi.fn(),
+    insertImage: vi.fn(),
+    insertText: vi.fn(),
+}));
+
+vi.mock("../hooks/use-editor-bridge", () => ({
+    useEditorBridge: () => ({
+        currentMarkdown: "",
+        focus: bridgeMocks.focus,
+        insertImage: bridgeMocks.insertImage,
+        insertText: bridgeMocks.insertText,
+        selection: null,
+    }),
+}));
+
 vi.mock("./editor-kernel-adapter", () => ({
-    DOMD: () => null,
+    DOMD: () => <div data-testid="domd" />,
     DOMDProvider: ({ children }: { children: React.ReactNode }) => children,
     toMarkdown: () => "",
     useEditor: () => null,
@@ -135,6 +152,102 @@ describe("editor pane root helpers", () => {
 
 });
 
+describe("editor pane image paste", () => {
+    let host: HTMLDivElement;
+    let root: ReturnType<typeof createRoot>;
+
+    beforeEach(() => {
+        bridgeMocks.focus.mockReset();
+        bridgeMocks.insertImage.mockReset();
+        bridgeMocks.insertText.mockReset();
+        host = document.createElement("div");
+        document.body.append(host);
+        root = createRoot(host);
+    });
+
+    afterEach(() => {
+        act(() => root.unmount());
+        host.remove();
+    });
+
+    it("extracts pasted images from clipboard items when files is empty", () => {
+        const image = new File(["image"], "clip.png", { type: "image/png" });
+
+        expect(
+            imageFilesFromDataTransfer({
+                files: [] as unknown as FileList,
+                items: [
+                    {
+                        getAsFile: () => image,
+                        kind: "file",
+                        type: "image/png",
+                    },
+                ] as unknown as DataTransferItemList,
+            } as DataTransfer),
+        ).toEqual([image]);
+    });
+
+    it("stores pasted clipboard images and inserts markdown image syntax", async () => {
+        const image = new File(["image"], "clip.png", { type: "image/png" });
+        const storeImage = vi.fn(async () => ({
+            altText: "clip.png",
+            url: ".assets/clip.png",
+        }));
+        const tab = {
+            tabId: "tab-1",
+            path: "/tmp/note.md",
+            title: "note.md",
+            dirty: false,
+            needsRenameOnFirstSave: false,
+            markdown: "",
+            baseFingerprint: "base",
+        };
+
+        await act(async () => {
+            root.render(
+                <EditorPane
+                    rootPath="/tmp"
+                    tab={tab}
+                    onMarkdownChange={vi.fn()}
+                    storeImage={storeImage}
+                />,
+            );
+        });
+
+        const target = host.querySelector("[data-testid='domd']")?.parentElement;
+        expect(target).not.toBeNull();
+
+        const event = new Event("paste", {
+            bubbles: true,
+            cancelable: true,
+        }) as ClipboardEvent;
+        Object.defineProperty(event, "clipboardData", {
+            value: {
+                files: [] as unknown as FileList,
+                items: [
+                    {
+                        getAsFile: () => image,
+                        kind: "file",
+                        type: "image/png",
+                    },
+                ] as unknown as DataTransferItemList,
+            } as DataTransfer,
+        });
+
+        await act(async () => {
+            target?.dispatchEvent(event);
+            await flushPromises();
+        });
+
+        expect(storeImage).toHaveBeenCalledWith(image);
+        expect(bridgeMocks.insertImage).toHaveBeenCalledWith(
+            ".assets/clip.png",
+            "clip.png",
+        );
+        expect(event.defaultPrevented).toBe(true);
+    });
+});
+
 describe("editor pane source mode chrome", () => {
     let host: HTMLDivElement;
     let root: ReturnType<typeof createRoot>;
@@ -184,3 +297,7 @@ describe("editor pane source mode chrome", () => {
         ).toBe(false);
     });
 });
+
+async function flushPromises() {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+}

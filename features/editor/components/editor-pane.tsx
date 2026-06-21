@@ -294,7 +294,7 @@ function EditorPaneInner({
                 return;
             }
 
-            const imageFiles = imageFilesFromList(event.clipboardData.files);
+            const imageFiles = imageFilesFromDataTransfer(event.clipboardData);
             if (imageFiles.length === 0) {
                 return;
             }
@@ -323,7 +323,7 @@ function EditorPaneInner({
                 return;
             }
 
-            const imageFiles = imageFilesFromList(event.dataTransfer.files);
+            const imageFiles = imageFilesFromDataTransfer(event.dataTransfer);
             if (imageFiles.length === 0) {
                 return;
             }
@@ -513,13 +513,28 @@ function caretAtPoint(x: number, y: number) {
     return null;
 }
 
+export function imageFilesFromDataTransfer(dataTransfer: DataTransfer) {
+    const files = imageFilesFromList(dataTransfer.files);
+    if (files.length > 0) {
+        return files;
+    }
+
+    return Array.from(dataTransfer.items)
+        .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+        .map((item) => item.getAsFile())
+        .filter((file): file is File => file !== null);
+}
+
 function imageFilesFromList(files: FileList) {
     return Array.from(files).filter((file) => file.type.startsWith("image/"));
 }
 
 function dataTransferHasImage(dataTransfer: DataTransfer) {
-    return Array.from(dataTransfer.items).some(
-        (item) => item.kind === "file" && item.type.startsWith("image/"),
+    return (
+        imageFilesFromList(dataTransfer.files).length > 0 ||
+        Array.from(dataTransfer.items).some(
+            (item) => item.kind === "file" && item.type.startsWith("image/"),
+        )
     );
 }
 

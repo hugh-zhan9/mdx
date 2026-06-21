@@ -10,9 +10,19 @@ import type { WorkspaceTab } from "../lib/types";
   .IS_REACT_ACT_ENVIRONMENT = true;
 
 const invoke = vi.fn();
+const imageStorageMocks = vi.hoisted(() => ({
+  storeImageForWorkspace: vi.fn(),
+}));
+const editorPaneMock = vi.hoisted(() => ({
+  props: [] as Array<Record<string, unknown>>,
+}));
 
 vi.mock("@/common/lib/tauri", () => ({
   tauriCore: async () => ({ invoke }),
+}));
+
+vi.mock("@/common/lib/image-storage", () => ({
+  storeImageForWorkspace: imageStorageMocks.storeImageForWorkspace,
 }));
 
 vi.mock("./html-preview", () => ({
@@ -22,7 +32,10 @@ vi.mock("./html-preview", () => ({
 }));
 
 vi.mock("@/features/editor/components/editor-pane", () => ({
-  EditorPane: () => <div data-testid="markdown-editor" />,
+  EditorPane: (props: Record<string, unknown>) => {
+    editorPaneMock.props.push(props);
+    return <div data-testid="markdown-editor" />;
+  },
 }));
 
 describe("EditorStage preview routing", () => {
@@ -34,6 +47,13 @@ describe("EditorStage preview routing", () => {
     document.body.append(host);
     root = createRoot(host);
     invoke.mockResolvedValue("plain text");
+    imageStorageMocks.storeImageForWorkspace.mockResolvedValue({
+      altText: "clip.png",
+      storedPath: "/tmp/ws/.assets/clip.png",
+      url: ".assets/clip.png",
+      usedFallback: false,
+    });
+    editorPaneMock.props = [];
   });
 
   afterEach(() => {
@@ -70,6 +90,34 @@ describe("EditorStage preview routing", () => {
 
     expect(host.querySelector("[data-testid='html-preview']")).toBeNull();
     expect(host.querySelector("pre")?.textContent).toBe("plain text");
+  });
+
+  it("enables workspace image paste storage for markdown tabs", async () => {
+    await renderStage({
+      tabId: "tab-3",
+      path: "/tmp/ws/Purpose.md",
+      title: "Purpose.md",
+      dirty: false,
+      needsRenameOnFirstSave: false,
+      markdown: "",
+    });
+
+    const props = editorPaneMock.props.at(-1);
+    const storeImage = props?.storeImage as
+      | ((file: File) => Promise<unknown>)
+      | undefined;
+    const file = new File(["image"], "clip.png", { type: "image/png" });
+
+    expect(storeImage).toBeTypeOf("function");
+    await storeImage?.(file);
+
+    expect(imageStorageMocks.storeImageForWorkspace).toHaveBeenCalledWith(
+      file,
+      {
+        currentFilePath: "/tmp/ws/Purpose.md",
+        rootPath: "/tmp/ws",
+      },
+    );
   });
 
   async function renderStage(activeTab: WorkspaceTab) {

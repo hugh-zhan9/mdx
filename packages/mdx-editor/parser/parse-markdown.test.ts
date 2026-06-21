@@ -71,16 +71,11 @@ describe("parseMarkdown", () => {
         });
     });
 
-    it("parses empty markdown image syntax into an image node", () => {
+    it("keeps empty markdown image syntax editable as text", () => {
         const parsed = parseMarkdown("![]()\n");
-        const image = parsed.doc.child(0).child(0);
 
-        expect(image.type.name).toBe("image");
-        expect(image.attrs).toEqual({
-            src: "",
-            alt: "",
-            title: null,
-        });
+        expect(parsed.doc.child(0).textContent).toBe("![]()");
+        expect(parsed.doc.child(0).child(0).type.name).toBe("text");
     });
 
     it("uses the image src as the visible fallback for an empty image alt", () => {
@@ -106,16 +101,6 @@ describe("parseMarkdown", () => {
 
     it("uses the href as the visible fallback for an empty link label", () => {
         const parsed = parseMarkdown("[](www.baidu.com)\n");
-        const paragraph = parsed.doc.child(0);
-        const link = paragraph.child(0).marks[0];
-
-        expect(paragraph.textContent).toBe("www.baidu.com");
-        expect(link.type.name).toBe("link");
-        expect(link.attrs.href).toBe("www.baidu.com");
-    });
-
-    it("treats escaped empty-label links as visible links", () => {
-        const parsed = parseMarkdown(String.raw`\[\](www.baidu.com)` + "\n");
         const paragraph = parsed.doc.child(0);
         const link = paragraph.child(0).marks[0];
 

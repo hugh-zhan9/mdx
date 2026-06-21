@@ -208,6 +208,15 @@ describe("serializeMarkdown", () => {
         expect(reparsed.doc.child(0).textContent).toBe(plainText);
     });
 
+    it("does not bracket-escape editable image placeholders", () => {
+        const schema = mdxEditorSchema;
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [schema.text("![]()")]),
+        ]);
+
+        expect(serializeMarkdown(emptyParsedDocument(doc))).toBe("![]()\n");
+    });
+
     it("round-trips backslashes inside inline code and math", () => {
         const schema = mdxEditorSchema;
         const doc = schema.nodes.doc.create(null, [
@@ -820,7 +829,7 @@ describe("serializeMarkdown", () => {
             { text: "# not heading", markdown: "\\# not heading\n" },
             { text: "- not list", markdown: "\\- not list\n" },
             { text: "1. not list", markdown: "\\1. not list\n" },
-            { text: "- [x] not task", markdown: "\\- \\[x\\] not task\n" },
+            { text: "- [x] not task", markdown: "\\- [x] not task\n" },
             { text: "> not quote", markdown: "\\> not quote\n" },
             { text: "```not fence", markdown: "\\`\\`\\`not fence\n" },
             { text: "---", markdown: "\\---\n" },

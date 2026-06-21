@@ -556,7 +556,7 @@ function escapeMarkdownText(text: string) {
     let escaped = "";
 
     for (const char of text) {
-        escaped += "\\[]*~`".includes(char) ? `\\${char}` : char;
+        escaped += "\\*~`".includes(char) ? `\\${char}` : char;
     }
 
     return escaped;

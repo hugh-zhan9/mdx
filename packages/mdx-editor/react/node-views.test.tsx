@@ -58,26 +58,6 @@ describe("createMdxNodeViews", () => {
         nodeView.destroy?.();
     });
 
-    it("renders empty image nodes as visible markdown fallback text", () => {
-        const image = mdxEditorSchema.nodes.image.create({
-            src: "",
-            alt: "",
-        });
-        const view = createView(mdxEditorSchema.nodes.doc.create(null, image));
-        const nodeView = createMdxNodeViews().image(
-            image,
-            view,
-            () => 0,
-            [],
-            DecorationSet.empty,
-        );
-
-        expect(nodeView.dom.getAttribute("data-mdx-image-error")).toBe("true");
-        expect(nodeView.dom.textContent).toBe("![]()");
-
-        nodeView.destroy?.();
-    });
-
     it("creates inline math with an inline span wrapper", () => {
         const node = mdxEditorSchema.nodes.math_inline.create({
             latex: "x + y",

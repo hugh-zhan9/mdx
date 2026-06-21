@@ -252,6 +252,10 @@ function tryParseImage(text: string, startIndex: number) {
         return null;
     }
 
+    if (link.href.length === 0) {
+        return null;
+    }
+
     return {
         alt: link.label.length > 0 ? link.label : link.href,
         src: link.href,
@@ -261,23 +265,17 @@ function tryParseImage(text: string, startIndex: number) {
 }
 
 function tryParseLink(text: string, startIndex: number) {
-    const escapedEmptyLabel = text.startsWith(String.raw`\[\](`, startIndex);
-    let rawLabel = "";
-    let cursor = startIndex + String.raw`\[\](`.length;
-
-    if (!escapedEmptyLabel) {
-        if (text[startIndex] !== "[" || text[startIndex + 1] === "[") {
-            return null;
-        }
-
-        const labelEnd = findLinkLabelEnd(text, startIndex);
-        if (labelEnd < 0 || text[labelEnd + 1] !== "(") {
-            return null;
-        }
-
-        rawLabel = text.slice(startIndex + 1, labelEnd);
-        cursor = labelEnd + 2;
+    if (text[startIndex] !== "[" || text[startIndex + 1] === "[") {
+        return null;
     }
+
+    const labelEnd = findLinkLabelEnd(text, startIndex);
+    if (labelEnd < 0 || text[labelEnd + 1] !== "(") {
+        return null;
+    }
+
+    const rawLabel = text.slice(startIndex + 1, labelEnd);
+    let cursor = labelEnd + 2;
     let href = "";
 
     if (text[cursor] === "<") {
@@ -308,6 +306,10 @@ function tryParseLink(text: string, startIndex: number) {
         }
 
         if (text[cursor] === ")") {
+            if (href.length === 0) {
+                return null;
+            }
+
             return {
                 label: decodeEscapes(rawLabel),
                 rawLabel,
@@ -326,6 +328,10 @@ function tryParseLink(text: string, startIndex: number) {
             }
 
             if (current === ")") {
+                if (href.length === 0) {
+                    return null;
+                }
+
                 return {
                     label: decodeEscapes(rawLabel),
                     rawLabel,
@@ -376,6 +382,10 @@ function tryParseLink(text: string, startIndex: number) {
     }
 
     if (text[cursor] !== ")") {
+        return null;
+    }
+
+    if (href.length === 0) {
         return null;
     }
 
