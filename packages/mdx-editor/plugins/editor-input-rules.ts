@@ -4,12 +4,14 @@ import {
     textblockTypeInputRule,
     wrappingInputRule,
 } from "prosemirror-inputrules";
+import { Fragment } from "prosemirror-model";
 import { TextSelection } from "prosemirror-state";
 import type {
     Node as ProseMirrorNode,
     ResolvedPos,
     Schema,
 } from "prosemirror-model";
+import { parseInlineMarkdown } from "../parser/inline-markdown";
 import { mdxEditorSchema } from "../schema/schema";
 
 interface ListItemPosition {
@@ -75,6 +77,8 @@ export function markdownInputRules(schema: Schema = mdxEditorSchema): InputRule[
         rules.push(tableInputRule(schema));
     }
 
+    rules.push(inlineMarkdownInputRule());
+
     return rules;
 }
 
@@ -114,6 +118,35 @@ function horizontalRuleInputRule(schema: Schema): InputRule {
 
         return tr;
     });
+}
+
+function inlineMarkdownInputRule(): InputRule {
+    return new InputRule(
+        /(!?\[[^\]\r\n]*\]\((?:<[^>\r\n]*>|[^)\s\r\n]*)?(?:\s+"[^"\r\n]*")?\))$/,
+        (state, match, start, end) => {
+            const source = match[1] ?? "";
+            const nodes = parseInlineMarkdown(source);
+
+            if (!nodes.some(isParsedInlineMarkdownNode)) {
+                return null;
+            }
+
+            const fragment = Fragment.fromArray(nodes);
+            const tr = state.tr.replaceWith(start, end, fragment);
+            tr.setSelection(
+                TextSelection.near(tr.doc.resolve(start + fragment.size)),
+            );
+
+            return tr;
+        },
+    );
+}
+
+function isParsedInlineMarkdownNode(node: ProseMirrorNode) {
+    return (
+        node.type.name === "image" ||
+        node.marks.some((mark) => mark.type.name === "link")
+    );
 }
 
 function taskListInputRule(schema: Schema): InputRule {

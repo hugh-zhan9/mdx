@@ -72,6 +72,25 @@ describe("markdown input rules", () => {
         expect(state.doc.child(0).type.name).toBe("horizontal_rule");
         expect(state.doc.child(1).type.name).toBe("paragraph");
     });
+
+    it("converts typed inline markdown links into link marks", () => {
+        const state = typeWithInputRules("[百度](www.baidu.com)");
+        const paragraph = state.doc.child(0);
+        const link = paragraph.child(0).marks[0];
+
+        expect(paragraph.textContent).toBe("百度");
+        expect(link.type.name).toBe("link");
+        expect(link.attrs.href).toBe("www.baidu.com");
+    });
+
+    it("converts typed inline markdown images into image nodes", () => {
+        const state = typeWithInputRules("![]()");
+        const image = state.doc.child(0).child(0);
+
+        expect(image.type.name).toBe("image");
+        expect(image.attrs.src).toBe("");
+        expect(image.attrs.alt).toBe("");
+    });
 });
 
 function typeWithInputRules(text: string): EditorState {

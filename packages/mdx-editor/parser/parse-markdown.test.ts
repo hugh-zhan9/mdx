@@ -71,6 +71,27 @@ describe("parseMarkdown", () => {
         });
     });
 
+    it("parses empty markdown image syntax into an image node", () => {
+        const parsed = parseMarkdown("![]()\n");
+        const image = parsed.doc.child(0).child(0);
+
+        expect(image.type.name).toBe("image");
+        expect(image.attrs).toEqual({
+            src: "",
+            alt: "",
+            title: null,
+        });
+    });
+
+    it("parses bare href markdown links", () => {
+        const parsed = parseMarkdown("[百度](www.baidu.com)\n");
+        const link = parsed.doc.child(0).child(0).marks[0];
+
+        expect(parsed.doc.child(0).textContent).toBe("百度");
+        expect(link.type.name).toBe("link");
+        expect(link.attrs.href).toBe("www.baidu.com");
+    });
+
     it("parses inline markdown marks, footnote refs, and math into structured nodes", () => {
         const parsed = parseMarkdown("A **bold** *em* ~~gone~~ `code` $x+1$ [^note].\n");
         const paragraph = parsed.doc.child(0);

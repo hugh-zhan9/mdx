@@ -235,6 +235,33 @@ describe("markdown clipboard plugin", () => {
         expect(state.doc.child(2).type.name).toBe("table");
     });
 
+    it("parses plain text inline markdown links and images on paste", () => {
+        const plugin = createMarkdownClipboardPlugin();
+        const doc = mdxEditorSchema.nodes.doc.create(null, [
+            mdxEditorSchema.nodes.paragraph.create(null, [
+                mdxEditorSchema.text("body"),
+            ]),
+        ]);
+        let state = EditorState.create({
+            doc,
+            schema: mdxEditorSchema,
+            selection: new AllSelection(doc),
+        });
+        const view = fakeEditorView(state, (nextState) => {
+            state = nextState;
+        });
+        const event = pasteEvent({
+            "text/plain": "![Alt](img.png)\n\n[百度](www.baidu.com)\n",
+        });
+
+        expect(handlePaste(plugin, view, event)).toBe(true);
+        expect(event.preventDefault).toHaveBeenCalledTimes(1);
+        expect(state.doc.child(0).child(0).type.name).toBe("image");
+        expect(state.doc.child(1).child(0).marks[0]?.attrs.href).toBe(
+            "www.baidu.com",
+        );
+    });
+
     it("prefers plain text Markdown fences over clipboard HTML", () => {
         const plugin = createMarkdownClipboardPlugin();
         const doc = mdxEditorSchema.nodes.doc.create(null, [

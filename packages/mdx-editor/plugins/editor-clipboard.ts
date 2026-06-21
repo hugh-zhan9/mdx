@@ -129,6 +129,7 @@ function looksLikeBlockMarkdownPaste(text: string) {
         /^ {0,3}(?:[-*]\s+(?:\[[ xX]\]\s+)?|\d+\.\s+)\S/m.test(text) ||
         /^ {0,3}>/m.test(text) ||
         /^ {0,3}(?:[-*_][ \t]*){3,}$/m.test(text) ||
+        looksLikeInlineMarkdownPaste(text) ||
         looksLikeMarkdownTable(text)
     );
 }
@@ -138,6 +139,12 @@ function normalizePastedMarkdown(markdown: string) {
         /^([ \t]*)\\?(```|~~~)/gm,
         (_match, indent: string, marker: string) =>
             `${indent.replace(/\t/g, "   ").slice(0, 3)}${marker}`,
+    );
+}
+
+function looksLikeInlineMarkdownPaste(text: string) {
+    return /!?\[[^\]\r\n]*\]\((?:<[^>\r\n]*>|[^)\s\r\n]*)?(?:\s+"[^"\r\n]*")?\)/.test(
+        text,
     );
 }
 
