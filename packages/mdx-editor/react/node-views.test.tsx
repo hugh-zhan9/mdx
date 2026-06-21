@@ -20,6 +20,7 @@ describe("createMdxNodeViews", () => {
             expect.arrayContaining([
                 "callout",
                 "footnote_definition",
+                "image",
                 "math_block",
                 "math_inline",
                 "mermaid_block",
@@ -29,6 +30,52 @@ describe("createMdxNodeViews", () => {
             ]),
         );
         expect(mdxEditorSchema.nodes.mermaid_block).toBeDefined();
+    });
+
+    it("renders failed image nodes as markdown fallback text", () => {
+        const image = mdxEditorSchema.nodes.image.create({
+            src: "www.baidu.com",
+            alt: "www.baidu.com",
+        });
+        const view = createView(mdxEditorSchema.nodes.doc.create(null, image));
+        const nodeView = createMdxNodeViews().image(
+            image,
+            view,
+            () => 0,
+            [],
+            DecorationSet.empty,
+        );
+
+        nodeView.dom
+            .querySelector("img")
+            ?.dispatchEvent(new Event("error"));
+
+        expect(nodeView.dom.getAttribute("data-mdx-image-error")).toBe("true");
+        expect(nodeView.dom.textContent).toBe(
+            "![www.baidu.com](www.baidu.com)",
+        );
+
+        nodeView.destroy?.();
+    });
+
+    it("renders empty image nodes as visible markdown fallback text", () => {
+        const image = mdxEditorSchema.nodes.image.create({
+            src: "",
+            alt: "",
+        });
+        const view = createView(mdxEditorSchema.nodes.doc.create(null, image));
+        const nodeView = createMdxNodeViews().image(
+            image,
+            view,
+            () => 0,
+            [],
+            DecorationSet.empty,
+        );
+
+        expect(nodeView.dom.getAttribute("data-mdx-image-error")).toBe("true");
+        expect(nodeView.dom.textContent).toBe("![]()");
+
+        nodeView.destroy?.();
     });
 
     it("creates inline math with an inline span wrapper", () => {

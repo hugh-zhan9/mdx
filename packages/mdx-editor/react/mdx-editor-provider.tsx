@@ -172,7 +172,9 @@ export function MdxEditorProvider({
         const view = new EditorView(rootNode, {
             state: initialState,
             editable: () => editable,
-            nodeViews: createMdxNodeViews(),
+            nodeViews: createMdxNodeViews({
+                imageLoader: imageLoaderRef.current,
+            }),
             dispatchTransaction(transaction) {
                 const nextState = view.state.apply(transaction);
                 view.updateState(nextState);

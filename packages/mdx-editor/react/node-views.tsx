@@ -31,8 +31,6 @@ export interface MdxNodeViewOptions {
 export function createMdxNodeViews(
     options: MdxNodeViewOptions = {},
 ): Record<string, NodeViewConstructor> {
-    void options;
-
     return {
         callout: createReactNodeView(CalloutNodeView, {
             contentDOMTag: "div",
@@ -42,6 +40,7 @@ export function createMdxNodeViews(
             contentDOMTag: "div",
             domTag: "section",
         }),
+        image: createImageNodeView(options.imageLoader),
         math_block: createReactNodeView(MathNodeView, {
             textBacked: true,
         }),
@@ -65,6 +64,113 @@ export function createMdxNodeViews(
             domTag: "li",
         }),
     };
+}
+
+function createImageNodeView(
+    imageLoader?: (src: string) => Promise<string>,
+): NodeViewConstructor {
+    return (node: ProseMirrorNode): NodeView => {
+        const dom = document.createElement("span");
+        const image = document.createElement("img");
+        const fallback = document.createElement("span");
+        let currentNode = node;
+        let loadToken = 0;
+
+        dom.dataset.mdxNodeType = "image";
+        dom.dataset.mdxImageNode = "true";
+        dom.contentEditable = "false";
+
+        image.dataset.mdxNodeType = "image";
+        fallback.dataset.mdxImageFallback = "true";
+
+        image.addEventListener("load", () => {
+            dom.dataset.mdxImageError = "false";
+        });
+        image.addEventListener("error", () => {
+            dom.dataset.mdxImageError = "true";
+        });
+
+        const render = () => {
+            loadToken += 1;
+            renderImageNode(currentNode, image, fallback, dom);
+            void resolveImageNodeSource(
+                currentNode,
+                image,
+                dom,
+                imageLoader,
+                loadToken,
+                () => loadToken,
+            );
+        };
+
+        dom.append(image, fallback);
+        render();
+
+        return {
+            dom,
+            update(nextNode) {
+                if (nextNode.type !== currentNode.type) {
+                    return false;
+                }
+
+                currentNode = nextNode;
+                render();
+
+                return true;
+            },
+            ignoreMutation() {
+                return true;
+            },
+        };
+    };
+}
+
+function renderImageNode(
+    node: ProseMirrorNode,
+    image: HTMLImageElement,
+    fallback: HTMLSpanElement,
+    dom: HTMLElement,
+) {
+    const src = String(node.attrs.src ?? "");
+    const alt = String(node.attrs.alt ?? "");
+    const title =
+        typeof node.attrs.title === "string" ? node.attrs.title : undefined;
+
+    image.src = src;
+    image.alt = alt;
+    image.title = title ?? "";
+    fallback.textContent = `![${alt || src}](${src})`;
+    dom.dataset.mdxImageError = src ? "false" : "true";
+}
+
+async function resolveImageNodeSource(
+    node: ProseMirrorNode,
+    image: HTMLImageElement,
+    dom: HTMLElement,
+    imageLoader: ((src: string) => Promise<string>) | undefined,
+    token: number,
+    currentToken: () => number,
+) {
+    const src = String(node.attrs.src ?? "");
+    if (!src || !imageLoader) {
+        return;
+    }
+
+    try {
+        const resolved = await imageLoader(src);
+        if (token !== currentToken()) {
+            return;
+        }
+
+        image.src = resolved;
+        image.setAttribute(RESOLVED_SOURCE_ATTRIBUTE, src);
+        dom.dataset.mdxImageError = "false";
+    } catch {
+        if (token === currentToken()) {
+            image.setAttribute(RESOLVED_SOURCE_ATTRIBUTE, src);
+            dom.dataset.mdxImageError = "true";
+        }
+    }
 }
 
 type ContentRef = (element: HTMLElement | null) => void;
