@@ -83,11 +83,33 @@ describe("parseMarkdown", () => {
         });
     });
 
+    it("uses the image src as the visible fallback for an empty image alt", () => {
+        const parsed = parseMarkdown("![](www.baidu.com)\n");
+        const image = parsed.doc.child(0).child(0);
+
+        expect(image.type.name).toBe("image");
+        expect(image.attrs).toEqual({
+            src: "www.baidu.com",
+            alt: "www.baidu.com",
+            title: null,
+        });
+    });
+
     it("parses bare href markdown links", () => {
         const parsed = parseMarkdown("[百度](www.baidu.com)\n");
         const link = parsed.doc.child(0).child(0).marks[0];
 
         expect(parsed.doc.child(0).textContent).toBe("百度");
+        expect(link.type.name).toBe("link");
+        expect(link.attrs.href).toBe("www.baidu.com");
+    });
+
+    it("uses the href as the visible fallback for an empty link label", () => {
+        const parsed = parseMarkdown("[](www.baidu.com)\n");
+        const paragraph = parsed.doc.child(0);
+        const link = paragraph.child(0).marks[0];
+
+        expect(paragraph.textContent).toBe("www.baidu.com");
         expect(link.type.name).toBe("link");
         expect(link.attrs.href).toBe("www.baidu.com");
     });

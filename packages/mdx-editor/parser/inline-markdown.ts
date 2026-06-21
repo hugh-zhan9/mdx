@@ -41,14 +41,20 @@ export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
         if (link) {
             pushText(children, buffer);
             buffer = "";
-            pushInlineNodesWithMark(
-                children,
-                parseInlineMarkdown(link.rawLabel),
-                mdxEditorSchema.marks.link.create({
-                    href: link.href,
-                    title: link.title,
-                }),
-            );
+            const linkMark = mdxEditorSchema.marks.link.create({
+                href: link.href,
+                title: link.title,
+            });
+
+            if (link.rawLabel.length > 0) {
+                pushInlineNodesWithMark(
+                    children,
+                    parseInlineMarkdown(link.rawLabel),
+                    linkMark,
+                );
+            } else {
+                pushText(children, link.href, [linkMark]);
+            }
             cursor = link.nextIndex;
             continue;
         }
@@ -247,7 +253,7 @@ function tryParseImage(text: string, startIndex: number) {
     }
 
     return {
-        alt: link.label,
+        alt: link.label.length > 0 ? link.label : link.href,
         src: link.href,
         title: link.title,
         nextIndex: link.nextIndex,

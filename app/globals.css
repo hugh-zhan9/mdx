@@ -121,6 +121,31 @@ html[data-theme="dark"] {
     text-underline-offset: 0.14em;
 }
 
+[data-mdx-link-editor] {
+    align-items: center;
+    background: var(--color-base-100);
+    border: 1px solid var(--color-base-300);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--color-base-content) 18%, transparent);
+    display: flex;
+    padding: 0.35rem;
+    position: fixed;
+    z-index: 60;
+}
+
+[data-mdx-link-editor][hidden] {
+    display: none;
+}
+
+[data-mdx-link-editor-input] {
+    background: transparent;
+    border: 0;
+    color: var(--color-base-content);
+    font-size: 0.8125rem;
+    min-width: 16rem;
+    outline: 0;
+}
+
 [data-mdx-editor-root] [data-mdx-node-type="heading"] {
     font-weight: 700;
     line-height: 1.25;
