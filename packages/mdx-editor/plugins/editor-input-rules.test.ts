@@ -93,6 +93,16 @@ describe("markdown input rules", () => {
         expect(link.attrs.href).toBe("www.baidu.com");
     });
 
+    it("converts typed escaped empty-label links into visible link marks", () => {
+        const state = typeWithInputRules(String.raw`\[\](www.baidu.com)`);
+        const paragraph = state.doc.child(0);
+        const link = paragraph.child(0).marks[0];
+
+        expect(paragraph.textContent).toBe("www.baidu.com");
+        expect(link.type.name).toBe("link");
+        expect(link.attrs.href).toBe("www.baidu.com");
+    });
+
     it("converts typed inline markdown images into image nodes", () => {
         const state = typeWithInputRules("![]()");
         const image = state.doc.child(0).child(0);

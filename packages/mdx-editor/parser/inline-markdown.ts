@@ -261,17 +261,23 @@ function tryParseImage(text: string, startIndex: number) {
 }
 
 function tryParseLink(text: string, startIndex: number) {
-    if (text[startIndex] !== "[" || text[startIndex + 1] === "[") {
-        return null;
-    }
+    const escapedEmptyLabel = text.startsWith(String.raw`\[\](`, startIndex);
+    let rawLabel = "";
+    let cursor = startIndex + String.raw`\[\](`.length;
 
-    const labelEnd = findLinkLabelEnd(text, startIndex);
-    if (labelEnd < 0 || text[labelEnd + 1] !== "(") {
-        return null;
-    }
+    if (!escapedEmptyLabel) {
+        if (text[startIndex] !== "[" || text[startIndex + 1] === "[") {
+            return null;
+        }
 
-    const rawLabel = text.slice(startIndex + 1, labelEnd);
-    let cursor = labelEnd + 2;
+        const labelEnd = findLinkLabelEnd(text, startIndex);
+        if (labelEnd < 0 || text[labelEnd + 1] !== "(") {
+            return null;
+        }
+
+        rawLabel = text.slice(startIndex + 1, labelEnd);
+        cursor = labelEnd + 2;
+    }
     let href = "";
 
     if (text[cursor] === "<") {

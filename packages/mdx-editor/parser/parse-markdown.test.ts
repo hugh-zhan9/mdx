@@ -114,6 +114,16 @@ describe("parseMarkdown", () => {
         expect(link.attrs.href).toBe("www.baidu.com");
     });
 
+    it("treats escaped empty-label links as visible links", () => {
+        const parsed = parseMarkdown(String.raw`\[\](www.baidu.com)` + "\n");
+        const paragraph = parsed.doc.child(0);
+        const link = paragraph.child(0).marks[0];
+
+        expect(paragraph.textContent).toBe("www.baidu.com");
+        expect(link.type.name).toBe("link");
+        expect(link.attrs.href).toBe("www.baidu.com");
+    });
+
     it("parses inline markdown marks, footnote refs, and math into structured nodes", () => {
         const parsed = parseMarkdown("A **bold** *em* ~~gone~~ `code` $x+1$ [^note].\n");
         const paragraph = parsed.doc.child(0);
