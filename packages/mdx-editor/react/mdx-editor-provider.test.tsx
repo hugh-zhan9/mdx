@@ -34,6 +34,16 @@ function Probe() {
             />
             <button
                 type="button"
+                data-testid="insert-image-at-offset"
+                onClick={() =>
+                    editor.insertImage(".assets/mid.png", "Mid", undefined, {
+                        anchor: 6,
+                        head: 6,
+                    })
+                }
+            />
+            <button
+                type="button"
                 data-testid="compound"
                 onClick={() => {
                     editor.insertText(" world");
@@ -203,6 +213,34 @@ describe("MdxEditorProvider", () => {
         });
 
         expect(onMarkdownChange).toHaveBeenLastCalledWith("A $x$ BX\n");
+    });
+
+    it("inserts images at pinned markdown selection offsets", async () => {
+        const onMarkdownChange = vi.fn();
+
+        await act(async () => {
+            root.render(
+                <MdxEditorProvider
+                    initialMarkdown="Hello world"
+                    onMarkdownChange={onMarkdownChange}
+                >
+                    <MdxEditorView />
+                    <Probe />
+                </MdxEditorProvider>,
+            );
+        });
+
+        await act(async () => {
+            host
+                .querySelector<HTMLButtonElement>(
+                    "[data-testid='insert-image-at-offset']",
+                )
+                ?.click();
+        });
+
+        expect(onMarkdownChange).toHaveBeenLastCalledWith(
+            "Hello ![Mid](.assets/mid.png)world",
+        );
     });
 
     it("inserts text after footnote refs without corrupting the label", async () => {

@@ -8,7 +8,7 @@ import {
     insertImageMarkdown,
 } from "../commands/editor-commands";
 import { selectionSnapshotFromMarkdownOffsets } from "../core/selection";
-import type { SelectionState } from "../core/types";
+import type { MarkdownSelectionOffsets, SelectionState } from "../core/types";
 import { parseMarkdown } from "../parser/parse-markdown";
 import type { CodeTokenizer } from "../plugins/editor-code-highlight";
 import { createMdxEditorPlugins } from "../plugins/editor-plugins";
@@ -229,17 +229,29 @@ export function MdxEditorProvider({
             resetMarkdown: (nextMarkdown: string) => {
                 rebuildEditorFromMarkdown(nextMarkdown, false);
             },
-            insertText: (text: string) => {
+            insertText: (
+                text: string,
+                selectionOffsets?: MarkdownSelectionOffsets | null,
+            ) => {
+                const targetSelection =
+                    selectionOffsets ?? selectionOffsetsRef.current;
                 rebuildEditorFromMarkdown(
                     replaceMarkdownRange(
                         markdownRef.current,
-                        selectionOffsetsRef.current.anchor,
-                        selectionOffsetsRef.current.head,
+                        targetSelection.anchor,
+                        targetSelection.head,
                         text,
                     ),
                 );
             },
-            insertImage: (url: string, altText = "", title?: string) => {
+            insertImage: (
+                url: string,
+                altText = "",
+                title?: string,
+                selectionOffsets?: MarkdownSelectionOffsets | null,
+            ) => {
+                const targetSelection =
+                    selectionOffsets ?? selectionOffsetsRef.current;
                 const imageMarkdown = insertImageMarkdown(
                     "",
                     0,
@@ -252,8 +264,8 @@ export function MdxEditorProvider({
                 rebuildEditorFromMarkdown(
                     replaceMarkdownRange(
                         markdownRef.current,
-                        selectionOffsetsRef.current.anchor,
-                        selectionOffsetsRef.current.head,
+                        targetSelection.anchor,
+                        targetSelection.head,
                         imageMarkdown,
                     ),
                 );
@@ -266,6 +278,13 @@ export function MdxEditorProvider({
                           contextChars,
                       )
                     : selection,
+            getMarkdownSelectionOffsets: () =>
+                viewRef.current
+                    ? selectionOffsetsFromDocSelection(
+                          viewRef.current.state.doc,
+                          viewRef.current.state.selection,
+                      )
+                    : selectionOffsetsRef.current,
             registerRoot,
         }),
         [markdown, rebuildEditorFromMarkdown, registerRoot, selection],

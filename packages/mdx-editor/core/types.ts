@@ -39,6 +39,11 @@ export interface SelectionState {
     after_truncated: boolean;
 }
 
+export interface MarkdownSelectionOffsets {
+    anchor: number;
+    head: number;
+}
+
 export interface MdxEditorSnapshot {
     markdown: string;
     selection: SelectionState | null;

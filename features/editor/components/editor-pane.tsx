@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
+import type { MarkdownSelectionOffsets } from "../../../packages/mdx-editor";
+import { insertImageMarkdown } from "../../../packages/mdx-editor/commands/editor-commands";
 import { loadImage } from "../../../common/lib/image-storage";
 import { tokenize } from "../../../common/lib/prism";
 import type {
@@ -151,7 +153,7 @@ function EditorPaneInner({
         markdown: tab.markdown,
         onMarkdownChange,
     });
-    const { focus, insertImage, insertText } = bridge;
+    const { focus, getMarkdownSelectionOffsets, insertImage, insertText } = bridge;
     const contentRootRef = useRef<HTMLDivElement | null>(null);
     const [contentRootNode, setContentRootNode] =
         useState<HTMLDivElement | null>(null);
@@ -210,12 +212,18 @@ function EditorPaneInner({
                 return;
             }
 
+            let insertionSelection = getMarkdownSelectionOffsets();
             for (const file of files) {
                 const stored = await storeImage(file);
-                insertImage(stored.url, stored.altText);
+                insertImage(stored.url, stored.altText, insertionSelection);
+                insertionSelection = nextImageInsertionSelection(
+                    insertionSelection,
+                    stored.url,
+                    stored.altText,
+                );
             }
         },
-        [insertImage, storeImage],
+        [getMarkdownSelectionOffsets, insertImage, storeImage],
     );
     const handleEditorKeyDownCapture = useCallback(
         (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -536,6 +544,25 @@ function dataTransferHasImage(dataTransfer: DataTransfer) {
             (item) => item.kind === "file" && item.type.startsWith("image/"),
         )
     );
+}
+
+function nextImageInsertionSelection(
+    selection: MarkdownSelectionOffsets | null,
+    url: string,
+    altText: string,
+): MarkdownSelectionOffsets | null {
+    if (!selection) {
+        return null;
+    }
+
+    const start = Math.min(selection.anchor, selection.head);
+    const insertedMarkdown = insertImageMarkdown("", 0, url, altText);
+    const nextOffset = start + insertedMarkdown.length;
+
+    return {
+        anchor: nextOffset,
+        head: nextOffset,
+    };
 }
 
 function textOffsetWithin(

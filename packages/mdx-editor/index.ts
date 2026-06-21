@@ -10,6 +10,7 @@ export { selectionSnapshotFromMarkdownOffsets } from "./core/selection";
 export * from "./react";
 export type {
     EditorDiagnostic,
+    MarkdownSelectionOffsets,
     MdxEditorSnapshot,
     ParsedMarkdownDocument,
     SelectionState,
