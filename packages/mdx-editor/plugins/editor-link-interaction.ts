@@ -5,7 +5,11 @@ import {
     TextSelection,
     type EditorState,
 } from "prosemirror-state";
-import type { EditorView } from "prosemirror-view";
+import {
+    Decoration,
+    DecorationSet,
+    type EditorView,
+} from "prosemirror-view";
 import { parseInlineMarkdown } from "../parser/inline-markdown";
 
 const EDITABLE_LINK_SELECTOR =
@@ -88,10 +92,23 @@ export function createEditableLinkPlugin() {
             return startMarkdownLinkEdit(newState, link);
         },
         props: {
+            decorations(state) {
+                const active = editableLinkPluginKey.getState(state);
+                if (!active) {
+                    return DecorationSet.empty;
+                }
+
+                return DecorationSet.create(state.doc, [
+                    Decoration.inline(active.from, active.to, {
+                        "data-mdx-editing-link": "true",
+                    }),
+                ]);
+            },
             handleDOMEvents: {
                 click: handleEditableLinkClick,
                 auxclick: handleEditableLinkClick,
                 blur: handleEditorBlur,
+                keydown: handleEditorKeyDown,
             },
         },
     });
@@ -199,6 +216,20 @@ function handleEditableLinkClick(view: EditorView, event: MouseEvent) {
 }
 
 function handleEditorBlur(view: EditorView) {
+    const active = editableLinkPluginKey.getState(view.state);
+    if (!active) {
+        return false;
+    }
+
+    view.dispatch(finishMarkdownLinkEdit(view.state, active));
+    return false;
+}
+
+function handleEditorKeyDown(view: EditorView, event: KeyboardEvent) {
+    if (event.key !== "Enter") {
+        return false;
+    }
+
     const active = editableLinkPluginKey.getState(view.state);
     if (!active) {
         return false;

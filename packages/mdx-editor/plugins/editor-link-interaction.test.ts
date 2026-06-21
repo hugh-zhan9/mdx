@@ -107,6 +107,7 @@ describe("createEditableLinkPlugin", () => {
             "[百度](www.baidu.com) tail",
         );
         expect(state.doc.child(0).child(0).marks).toHaveLength(0);
+        expect(host.querySelector("[data-mdx-editing-link='true']")).not.toBeNull();
 
         view.dispatch(
             state.tr.insertText(
@@ -128,6 +129,56 @@ describe("createEditableLinkPlugin", () => {
         expect(paragraph.textContent).toBe("百度 tail");
         expect(paragraph.child(0).marks[0]?.attrs.href).toBe(
             "http://www.baidu.com",
+        );
+
+        view.destroy();
+        host.remove();
+    });
+
+    it("restores an expanded markdown link before handling Enter", () => {
+        const host = document.createElement("div");
+        const linkMark = mdxEditorSchema.marks.link.create({
+            href: "www.baidu.com",
+        });
+        const doc = mdxEditorSchema.nodes.doc.create(null, [
+            mdxEditorSchema.nodes.paragraph.create(null, [
+                mdxEditorSchema.text("百度", [linkMark]),
+            ]),
+        ]);
+        const initialState = EditorState.create({
+            doc,
+            schema: mdxEditorSchema,
+            plugins: [createEditableLinkPlugin()],
+        });
+        let state = initialState.apply(
+            initialState.tr.setSelection(
+                TextSelection.create(initialState.doc, 2),
+            ),
+        );
+
+        document.body.append(host);
+        const view = new ProseMirrorEditorView(host, {
+            state,
+            dispatchTransaction(transaction) {
+                state = state.apply(transaction);
+                view.updateState(state);
+            },
+        });
+
+        expect(state.doc.child(0).textContent).toBe("[百度](www.baidu.com)");
+
+        view.someProp("handleDOMEvents", (handlers) =>
+            handlers.keydown?.(
+                view,
+                new KeyboardEvent("keydown", {
+                    key: "Enter",
+                }),
+            ),
+        );
+
+        expect(state.doc.child(0).textContent).toBe("百度");
+        expect(state.doc.child(0).child(0).marks[0]?.attrs.href).toBe(
+            "www.baidu.com",
         );
 
         view.destroy();

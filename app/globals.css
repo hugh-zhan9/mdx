@@ -121,6 +121,10 @@ html[data-theme="dark"] {
     text-underline-offset: 0.14em;
 }
 
+[data-mdx-editor-root] [data-mdx-editing-link="true"] {
+    color: var(--color-info);
+}
+
 [data-mdx-editor-root] [data-mdx-node-type="heading"] {
     font-weight: 700;
     line-height: 1.25;
