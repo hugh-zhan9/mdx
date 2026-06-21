@@ -155,7 +155,7 @@ function handleMarkdownHrefEditorEvent(_view: EditorView, event: Event) {
 }
 
 function sizeHrefInput(input: HTMLInputElement) {
-    input.style.width = `${Math.min(Math.max(input.value.length + 1, 8), 64)}ch`;
+    input.style.width = `${Math.min(Math.max(input.value.length, 8), 64)}ch`;
 }
 
 function commitLinkHref(view: EditorView, activeLink: ActiveLink, nextHref: string) {
