@@ -91,6 +91,7 @@ export function createEditableLinkPlugin() {
             handleDOMEvents: {
                 click: handleEditableLinkClick,
                 auxclick: handleEditableLinkClick,
+                blur: handleEditorBlur,
             },
         },
     });
@@ -194,6 +195,16 @@ function handleEditableLinkClick(view: EditorView, event: MouseEvent) {
         }
     }
 
+    return false;
+}
+
+function handleEditorBlur(view: EditorView) {
+    const active = editableLinkPluginKey.getState(view.state);
+    if (!active) {
+        return false;
+    }
+
+    view.dispatch(finishMarkdownLinkEdit(view.state, active));
     return false;
 }
 
