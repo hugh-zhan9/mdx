@@ -72,7 +72,7 @@ describe("createEditableLinkPlugin", () => {
         expect(plugin.props.handleDOMEvents?.mouseover).toBeUndefined();
     });
 
-    it("shows an inline markdown href editor only when the cursor is inside a link", () => {
+    it("expands a selected link into editable markdown text and restores it after leaving", () => {
         const host = document.createElement("div");
         const linkMark = mdxEditorSchema.marks.link.create({
             href: "www.baidu.com",
@@ -103,40 +103,79 @@ describe("createEditableLinkPlugin", () => {
             },
         });
 
-        const input = host.querySelector<HTMLInputElement>(
-            "input[data-mdx-link-href-input]",
+        expect(state.doc.child(0).textContent).toBe(
+            "[百度](www.baidu.com) tail",
         );
-        expect(input?.value).toBe("www.baidu.com");
-        expect(host.textContent).toContain("[百度](");
-        expect(
-            view.someProp("handleDOMEvents", (handlers) =>
-                handlers.mousedown?.(
-                    view,
-                    {
-                        target: input,
-                    } as unknown as MouseEvent,
-                ),
+        expect(state.doc.child(0).child(0).marks).toHaveLength(0);
+
+        view.dispatch(
+            state.tr.insertText(
+                "http://",
+                6,
+                6,
             ),
-        ).toBe(true);
-
-        input!.value = "https://baidu.com";
-        input!.dispatchEvent(
-            new KeyboardEvent("keydown", {
-                bubbles: true,
-                key: "Enter",
-            }),
         );
 
-        expect(state.doc.child(0).child(0).marks[0]?.attrs.href).toBe(
-            "https://baidu.com",
+        expect(state.doc.child(0).textContent).toBe(
+            "[百度](http://www.baidu.com) tail",
         );
 
         view.dispatch(
-            state.tr.setSelection(TextSelection.create(state.doc, 6)),
+            state.tr.setSelection(TextSelection.create(state.doc, 31)),
         );
+
+        const paragraph = state.doc.child(0);
+        expect(paragraph.textContent).toBe("百度 tail");
+        expect(paragraph.child(0).marks[0]?.attrs.href).toBe(
+            "http://www.baidu.com",
+        );
+
+        view.destroy();
+        host.remove();
+    });
+
+    it("keeps edited markdown as plain text when the link syntax is no longer valid", () => {
+        const host = document.createElement("div");
+        const linkMark = mdxEditorSchema.marks.link.create({
+            href: "www.baidu.com",
+        });
+        const doc = mdxEditorSchema.nodes.doc.create(null, [
+            mdxEditorSchema.nodes.paragraph.create(null, [
+                mdxEditorSchema.text("百度", [linkMark]),
+                mdxEditorSchema.text(" tail"),
+            ]),
+        ]);
+        const initialState = EditorState.create({
+            doc,
+            schema: mdxEditorSchema,
+            plugins: [createEditableLinkPlugin()],
+        });
+        let state = initialState.apply(
+            initialState.tr.setSelection(
+                TextSelection.create(initialState.doc, 2),
+            ),
+        );
+
+        document.body.append(host);
+        const view = new ProseMirrorEditorView(host, {
+            state,
+            dispatchTransaction(transaction) {
+                state = state.apply(transaction);
+                view.updateState(state);
+            },
+        });
+
+        view.dispatch(state.tr.delete(1, 2));
+        view.dispatch(
+            state.tr.setSelection(TextSelection.create(state.doc, 20)),
+        );
+
+        expect(state.doc.child(0).textContent).toBe("百度](www.baidu.com) tail");
         expect(
-            host.querySelector("input[data-mdx-link-href-input]"),
-        ).toBeNull();
+            state.doc.child(0).child(0).marks.some(
+                (mark) => mark.type.name === "link",
+            ),
+        ).toBe(false);
 
         view.destroy();
         host.remove();

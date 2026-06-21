@@ -1,15 +1,27 @@
-import { Plugin, PluginKey, type EditorState } from "prosemirror-state";
+import { Fragment } from "prosemirror-model";
 import {
-    Decoration,
-    DecorationSet,
-    type EditorView,
-} from "prosemirror-view";
+    Plugin,
+    PluginKey,
+    TextSelection,
+    type EditorState,
+} from "prosemirror-state";
+import type { EditorView } from "prosemirror-view";
+import { parseInlineMarkdown } from "../parser/inline-markdown";
 
 const EDITABLE_LINK_SELECTOR =
     'a[data-mdx-node-type="link"],a[data-mdx-node-type="wikilink"]';
-const LINK_MARKDOWN_EDITOR_SELECTOR = "[data-mdx-link-markdown-editor]";
 
 type ActiveLink = {
+    from: number;
+    to: number;
+};
+
+type EditableLinkMeta = {
+    active: ActiveLink | null;
+    skip?: boolean;
+};
+
+type LinkRange = {
     from: number;
     href: string;
     title: string | null;
@@ -21,164 +33,144 @@ const editableLinkPluginKey = new PluginKey<ActiveLink | null>(
 );
 
 export function createEditableLinkPlugin() {
-    return new Plugin({
+    return new Plugin<ActiveLink | null>({
         key: editableLinkPluginKey,
         state: {
-            init(_, state) {
-                return findActiveLink(state);
+            init() {
+                return null;
             },
-            apply(transaction, previous, _oldState, newState) {
-                if (
-                    !transaction.docChanged &&
-                    !transaction.selectionSet &&
-                    transaction.getMeta(editableLinkPluginKey) === undefined
-                ) {
+            apply(transaction, previous) {
+                const meta = transaction.getMeta(editableLinkPluginKey) as
+                    | EditableLinkMeta
+                    | undefined;
+                if (meta) {
+                    return meta.active;
+                }
+
+                if (!previous || !transaction.docChanged) {
                     return previous;
                 }
 
-                return findActiveLink(newState);
+                return {
+                    from: transaction.mapping.map(previous.from, -1),
+                    to: transaction.mapping.map(previous.to, 1),
+                };
             },
         },
-        props: {
-            decorations(state) {
-                const activeLink = editableLinkPluginKey.getState(state);
-                if (!activeLink) {
-                    return DecorationSet.empty;
+        appendTransaction(transactions, _oldState, newState) {
+            if (
+                transactions.some(
+                    (transaction) =>
+                        (
+                            transaction.getMeta(
+                                editableLinkPluginKey,
+                            ) as EditableLinkMeta | undefined
+                        )?.skip,
+                )
+            ) {
+                return null;
+            }
+
+            const active = editableLinkPluginKey.getState(newState);
+            if (active) {
+                if (selectionInsideActiveLink(newState, active)) {
+                    return null;
                 }
 
-                return DecorationSet.create(state.doc, [
-                    Decoration.widget(
-                        activeLink.from,
-                        () => createMarkdownToken("["),
-                        {
-                            key: `link-open-${activeLink.from}-${activeLink.to}`,
-                            side: -1,
-                        },
-                    ),
-                    Decoration.widget(
-                        activeLink.to,
-                        (view) => createHrefEditor(view, activeLink),
-                        {
-                            key: `link-href-${activeLink.from}-${activeLink.to}-${activeLink.href}`,
-                            side: 1,
-                            stopEvent: (event) =>
-                                event.target instanceof Element &&
-                                Boolean(
-                                    event.target.closest(
-                                        LINK_MARKDOWN_EDITOR_SELECTOR,
-                                    ),
-                                ),
-                        },
-                    ),
-                ]);
-            },
+                return finishMarkdownLinkEdit(newState, active);
+            }
+
+            const link = findActiveLink(newState);
+            if (!link) {
+                return null;
+            }
+
+            return startMarkdownLinkEdit(newState, link);
+        },
+        props: {
             handleDOMEvents: {
                 click: handleEditableLinkClick,
                 auxclick: handleEditableLinkClick,
-                mousedown: handleMarkdownHrefEditorEvent,
-                keydown: handleMarkdownHrefEditorEvent,
-                beforeinput: handleMarkdownHrefEditorEvent,
-                input: handleMarkdownHrefEditorEvent,
             },
         },
     });
 }
 
-function createMarkdownToken(text: string) {
-    const token = document.createElement("span");
-    token.dataset.mdxLinkMarkdownToken = "true";
-    token.contentEditable = "false";
-    token.textContent = text;
-    return token;
-}
-
-function createHrefEditor(view: EditorView, activeLink: ActiveLink) {
-    const wrapper = document.createElement("span");
-    wrapper.dataset.mdxLinkMarkdownEditor = "true";
-    wrapper.contentEditable = "false";
-
-    const closeLabel = document.createElement("span");
-    closeLabel.dataset.mdxLinkMarkdownToken = "true";
-    closeLabel.contentEditable = "false";
-    closeLabel.textContent = "](";
-
-    const input = document.createElement("input");
-    input.dataset.mdxLinkHrefInput = "true";
-    input.type = "text";
-    input.contentEditable = "true";
-    input.value = activeLink.href;
-    input.setAttribute("aria-label", "Link URL");
-    sizeHrefInput(input);
-
-    const closeHref = document.createElement("span");
-    closeHref.dataset.mdxLinkMarkdownToken = "true";
-    closeHref.contentEditable = "false";
-    closeHref.textContent = ")";
-
-    input.addEventListener("mousedown", (event) => {
-        event.stopPropagation();
-    });
-    input.addEventListener("click", (event) => {
-        event.stopPropagation();
-    });
-    input.addEventListener("input", () => {
-        sizeHrefInput(input);
-    });
-    input.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") {
-            event.preventDefault();
-            commitLinkHref(view, activeLink, input.value);
-            view.focus();
-        }
-
-        if (event.key === "Escape") {
-            event.preventDefault();
-            input.value = activeLink.href;
-            view.focus();
-        }
-    });
-    input.addEventListener("blur", () => {
-        if (input.value !== activeLink.href) {
-            commitLinkHref(view, activeLink, input.value);
-        }
-    });
-
-    wrapper.append(closeLabel, input, closeHref);
-    return wrapper;
-}
-
-function handleMarkdownHrefEditorEvent(_view: EditorView, event: Event) {
-    return (
-        event.target instanceof Element &&
-        Boolean(event.target.closest(LINK_MARKDOWN_EDITOR_SELECTOR))
+function startMarkdownLinkEdit(state: EditorState, link: LinkRange) {
+    const label = state.doc.textBetween(link.from, link.to, "", "");
+    const markdown = markdownLink(label, link.href, link.title);
+    const labelOffset = state.selection.from - link.from;
+    const selectionPosition = link.from + 1 + Math.max(0, labelOffset);
+    const transaction = state.tr.replaceWith(
+        link.from,
+        link.to,
+        state.schema.text(markdown),
     );
-}
+    const active = {
+        from: link.from,
+        to: link.from + markdown.length,
+    };
 
-function sizeHrefInput(input: HTMLInputElement) {
-    input.style.width = `${Math.min(Math.max(input.value.length, 8), 64)}ch`;
-}
-
-function commitLinkHref(view: EditorView, activeLink: ActiveLink, nextHref: string) {
-    const href = nextHref.trim();
-    const linkType = view.state.schema.marks.link;
-    let transaction = view.state.tr.removeMark(
-        activeLink.from,
-        activeLink.to,
-        linkType,
+    transaction.setSelection(
+        TextSelection.create(
+            transaction.doc,
+            Math.min(selectionPosition, active.to),
+        ),
     );
+    transaction.setStoredMarks([]);
+    transaction.setMeta(editableLinkPluginKey, {
+        active,
+        skip: true,
+    } satisfies EditableLinkMeta);
 
-    if (href) {
-        transaction = transaction.addMark(
-            activeLink.from,
-            activeLink.to,
-            linkType.create({
-                href,
-                title: activeLink.title,
-            }),
-        );
+    return transaction;
+}
+
+function finishMarkdownLinkEdit(state: EditorState, active: ActiveLink) {
+    const from = Math.max(0, Math.min(active.from, state.doc.content.size));
+    const to = Math.max(from, Math.min(active.to, state.doc.content.size));
+    const markdown = state.doc.textBetween(from, to, "\n", "\n");
+    const nodes = parseInlineMarkdown(markdown);
+    const transaction = state.tr;
+
+    if (nodes.some(hasLinkMark)) {
+        transaction.replaceWith(from, to, Fragment.fromArray(nodes));
     }
 
-    view.dispatch(transaction);
+    transaction.setMeta(editableLinkPluginKey, {
+        active: null,
+        skip: true,
+    } satisfies EditableLinkMeta);
+
+    return transaction;
+}
+
+function selectionInsideActiveLink(state: EditorState, active: ActiveLink) {
+    const { from, to } = state.selection;
+    return from >= active.from && to <= active.to;
+}
+
+function hasLinkMark(node: Parameters<typeof Fragment.fromArray>[0][number]) {
+    if (node.marks.some((mark) => mark.type.name === "link")) {
+        return true;
+    }
+
+    for (let index = 0; index < node.childCount; index += 1) {
+        if (hasLinkMark(node.child(index))) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function markdownLink(label: string, href: string, title: string | null) {
+    const titlePart =
+        typeof title === "string" && title.length > 0
+            ? ` "${title.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`
+            : "";
+
+    return `[${label.replaceAll("]", "\\]")}](${href.replaceAll(")", "\\)")}${titlePart})`;
 }
 
 function handleEditableLinkClick(view: EditorView, event: MouseEvent) {
@@ -222,8 +214,8 @@ function normalizeLinkHref(href: string) {
     return `https://${trimmed}`;
 }
 
-function findActiveLink(state: EditorState): ActiveLink | null {
-    const { empty, from, to } = state.selection;
+function findActiveLink(state: EditorState): LinkRange | null {
+    const { empty, from } = state.selection;
     if (!empty) {
         return null;
     }
@@ -244,16 +236,17 @@ function findActiveLink(state: EditorState): ActiveLink | null {
         return null;
     }
 
+    const href = String(linkMark.attrs.href ?? "");
+    if (href.startsWith("mdx-wikilink:")) {
+        return null;
+    }
+
     let rangeFrom = from;
-    let rangeTo = to;
+    let rangeTo = from;
     let offset = 0;
 
     parent.forEach((node, nodeOffset) => {
-        if (!node.isText) {
-            return;
-        }
-
-        if (!node.marks.some((mark) => mark.eq(linkMark))) {
+        if (!node.isText || !node.marks.some((mark) => mark.eq(linkMark))) {
             return;
         }
 
@@ -293,11 +286,6 @@ function findActiveLink(state: EditorState): ActiveLink | null {
 
         rangeTo = parentStart + next.offset + next.node.nodeSize;
         offset = next.offset + next.node.nodeSize;
-    }
-
-    const href = String(linkMark.attrs.href ?? "");
-    if (href.startsWith("mdx-wikilink:")) {
-        return null;
     }
 
     return {
