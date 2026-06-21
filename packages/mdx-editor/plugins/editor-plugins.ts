@@ -8,6 +8,7 @@ import {
 import { createMarkdownClipboardPlugin } from "./editor-clipboard";
 import { markdownInputRulesPlugin } from "./editor-input-rules";
 import { markdownKeymap } from "./editor-keymap";
+import { createEditableLinkPlugin } from "./editor-link-interaction";
 import { createSourceFallbackPlugin } from "./source-fallback-plugin";
 
 export interface MdxEditorPluginOptions {
@@ -21,6 +22,7 @@ export function createMdxEditorPlugins(options: MdxEditorPluginOptions = {}) {
         createCodeHighlightPlugin({ codeTokenizer: options.codeTokenizer }),
         markdownInputRulesPlugin(),
         createMarkdownClipboardPlugin(),
+        createEditableLinkPlugin(),
         keymap(markdownKeymap()),
         keymap(baseKeymap),
     ];

@@ -113,6 +113,14 @@ html[data-theme="dark"] {
     font-family: inherit;
 }
 
+[data-mdx-editor-root] a[data-mdx-node-type="link"],
+[data-mdx-editor-root] a[data-mdx-node-type="wikilink"] {
+    color: var(--color-info);
+    cursor: text;
+    text-decoration: underline;
+    text-underline-offset: 0.14em;
+}
+
 [data-mdx-editor-root] [data-mdx-node-type="heading"] {
     font-weight: 700;
     line-height: 1.25;
