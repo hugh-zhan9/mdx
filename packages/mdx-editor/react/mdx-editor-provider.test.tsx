@@ -37,8 +37,8 @@ function Probe() {
                 data-testid="insert-image-at-offset"
                 onClick={() =>
                     editor.insertImage(".assets/mid.png", "Mid", undefined, {
-                        anchor: 6,
-                        head: 6,
+                        anchor: 23,
+                        head: 23,
                     })
                 }
             />
@@ -215,13 +215,13 @@ describe("MdxEditorProvider", () => {
         expect(onMarkdownChange).toHaveBeenLastCalledWith("A $x$ BX\n");
     });
 
-    it("inserts images at pinned markdown selection offsets", async () => {
+    it("inserts images at pinned document selection positions after links", async () => {
         const onMarkdownChange = vi.fn();
 
         await act(async () => {
             root.render(
                 <MdxEditorProvider
-                    initialMarkdown="Hello world"
+                    initialMarkdown="[百度](http://baidu.com)"
                     onMarkdownChange={onMarkdownChange}
                 >
                     <MdxEditorView />
@@ -239,7 +239,7 @@ describe("MdxEditorProvider", () => {
         });
 
         expect(onMarkdownChange).toHaveBeenLastCalledWith(
-            "Hello ![Mid](.assets/mid.png)world",
+            "[百度](http://baidu.com)![Mid](.assets/mid.png)",
         );
     });
 

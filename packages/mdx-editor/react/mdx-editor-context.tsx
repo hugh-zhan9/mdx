@@ -1,7 +1,11 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import type { MarkdownSelectionOffsets, SelectionState } from "../core/types";
+import type {
+    DocumentSelectionRange,
+    MarkdownSelectionOffsets,
+    SelectionState,
+} from "../core/types";
 
 export interface MdxEditorContextValue {
     currentMarkdown: string;
@@ -16,10 +20,10 @@ export interface MdxEditorContextValue {
         url: string,
         altText?: string,
         title?: string,
-        selectionOffsets?: MarkdownSelectionOffsets | null,
+        selectionRange?: DocumentSelectionRange | null,
     ) => void;
     getSelectionSnapshot: (contextChars?: number) => SelectionState | null;
-    getMarkdownSelectionOffsets: () => MarkdownSelectionOffsets | null;
+    getDocumentSelectionRange: () => DocumentSelectionRange | null;
     registerRoot: (root: HTMLDivElement | null) => void;
 }
 
@@ -31,7 +35,7 @@ const noopContext: MdxEditorContextValue = {
     insertText: () => {},
     insertImage: () => {},
     getSelectionSnapshot: () => null,
-    getMarkdownSelectionOffsets: () => null,
+    getDocumentSelectionRange: () => null,
     registerRoot: () => {},
 };
 

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     getSelectionState,
-    getMarkdownSelectionOffsets,
+    getDocumentSelectionRange,
     insertImage,
     insertText,
     resetMD,
@@ -13,7 +13,10 @@ import {
     useRenderData,
 } from "../components/editor-kernel-adapter";
 import type { EditorBridgeState } from "../lib/editor-types";
-import type { MarkdownSelectionOffsets } from "../../../packages/mdx-editor";
+import type {
+    DocumentSelectionRange,
+    MarkdownSelectionOffsets,
+} from "../../../packages/mdx-editor";
 import {
     renderWikilinksForEditor,
     restoreWikilinksFromEditor,
@@ -130,15 +133,15 @@ export function useEditorBridge({
         (
             url: string,
             altText?: string,
-            selectionOffsets?: MarkdownSelectionOffsets | null,
+            selectionRange?: DocumentSelectionRange | null,
         ) => {
-            insertImage(editorStore, url, altText, selectionOffsets);
+            insertImage(editorStore, url, altText, selectionRange);
         },
         [editorStore],
     );
 
-    const getCurrentMarkdownSelectionOffsets = useCallback(
-        () => getMarkdownSelectionOffsets(editorStore),
+    const getCurrentDocumentSelectionRange = useCallback(
+        () => getDocumentSelectionRange(editorStore),
         [editorStore],
     );
 
@@ -148,7 +151,7 @@ export function useEditorBridge({
         currentMarkdown,
         selection,
         focus,
-        getMarkdownSelectionOffsets: getCurrentMarkdownSelectionOffsets,
+        getDocumentSelectionRange: getCurrentDocumentSelectionRange,
         insertText: insertPlainText,
         insertImage: insertImageAtCursor,
     };

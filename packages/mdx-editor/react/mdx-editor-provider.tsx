@@ -5,10 +5,15 @@ import type { ReactNode } from "react";
 import { EditorState, Selection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import {
+    insertImageNode,
     insertImageMarkdown,
 } from "../commands/editor-commands";
 import { selectionSnapshotFromMarkdownOffsets } from "../core/selection";
-import type { MarkdownSelectionOffsets, SelectionState } from "../core/types";
+import type {
+    DocumentSelectionRange,
+    MarkdownSelectionOffsets,
+    SelectionState,
+} from "../core/types";
 import { parseMarkdown } from "../parser/parse-markdown";
 import type { CodeTokenizer } from "../plugins/editor-code-highlight";
 import { createMdxEditorPlugins } from "../plugins/editor-plugins";
@@ -179,10 +184,14 @@ export function MdxEditorProvider({
                 const nextState = view.state.apply(transaction);
                 view.updateState(nextState);
 
-                const nextMarkdown = serializeMarkdown({
+                const serializedMarkdown = serializeMarkdown({
                     ...parsedRef.current,
                     doc: nextState.doc,
                 });
+                const nextMarkdown = alignTerminalNewline(
+                    markdownRef.current,
+                    serializedMarkdown,
+                );
                 parsedRef.current = {
                     ...parsedRef.current,
                     doc: nextState.doc,
@@ -248,10 +257,17 @@ export function MdxEditorProvider({
                 url: string,
                 altText = "",
                 title?: string,
-                selectionOffsets?: MarkdownSelectionOffsets | null,
+                selectionRange?: DocumentSelectionRange | null,
             ) => {
-                const targetSelection =
-                    selectionOffsets ?? selectionOffsetsRef.current;
+                if (viewRef.current) {
+                    insertImageNode(url, altText, title, selectionRange)(
+                        viewRef.current.state,
+                        viewRef.current.dispatch,
+                        viewRef.current,
+                    );
+                    return;
+                }
+
                 const imageMarkdown = insertImageMarkdown(
                     "",
                     0,
@@ -264,8 +280,8 @@ export function MdxEditorProvider({
                 rebuildEditorFromMarkdown(
                     replaceMarkdownRange(
                         markdownRef.current,
-                        targetSelection.anchor,
-                        targetSelection.head,
+                        selectionOffsetsRef.current.anchor,
+                        selectionOffsetsRef.current.head,
                         imageMarkdown,
                     ),
                 );
@@ -278,13 +294,12 @@ export function MdxEditorProvider({
                           contextChars,
                       )
                     : selection,
-            getMarkdownSelectionOffsets: () =>
+            getDocumentSelectionRange: () =>
                 viewRef.current
-                    ? selectionOffsetsFromDocSelection(
-                          viewRef.current.state.doc,
+                    ? documentSelectionRangeFromSelection(
                           viewRef.current.state.selection,
                       )
-                    : selectionOffsetsRef.current,
+                    : null,
             registerRoot,
         }),
         [markdown, rebuildEditorFromMarkdown, registerRoot, selection],
@@ -293,6 +308,21 @@ export function MdxEditorProvider({
     return (
         <MdxEditorContext.Provider value={value}>{children}</MdxEditorContext.Provider>
     );
+}
+
+function documentSelectionRangeFromSelection(selection: Selection) {
+    return {
+        anchor: selection.anchor,
+        head: selection.head,
+    };
+}
+
+function alignTerminalNewline(previousMarkdown: string, nextMarkdown: string) {
+    if (!previousMarkdown.endsWith("\n") && nextMarkdown.endsWith("\n")) {
+        return nextMarkdown.slice(0, -1);
+    }
+
+    return nextMarkdown;
 }
 
 function createEditorState(

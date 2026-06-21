@@ -11,6 +11,7 @@ import type {
     MdxEditorProviderProps,
 } from "../../../packages/mdx-editor/react";
 import type {
+    DocumentSelectionRange,
     MarkdownSelectionOffsets,
     SelectionState,
 } from "../../../packages/mdx-editor";
@@ -38,11 +39,11 @@ export interface EditorStoreApi {
     insertImage(
         url: string,
         altText?: string,
-        selectionOffsets?: MarkdownSelectionOffsets | null,
+        selectionRange?: DocumentSelectionRange | null,
     ): void;
     getTitle(): string;
     getSelectionState(contextChars?: number): SelectionState | null;
-    getMarkdownSelectionOffsets(): MarkdownSelectionOffsets | null;
+    getDocumentSelectionRange(): DocumentSelectionRange | null;
     subscribe(listener: StoreListener): () => void;
 }
 
@@ -116,9 +117,9 @@ export function insertImage(
     store: EditorStoreApi | null,
     url: string,
     altText?: string,
-    selectionOffsets?: MarkdownSelectionOffsets | null,
+    selectionRange?: DocumentSelectionRange | null,
 ) {
-    store?.insertImage(url, altText, selectionOffsets);
+    store?.insertImage(url, altText, selectionRange);
 }
 
 export function getSelectionState(
@@ -128,10 +129,10 @@ export function getSelectionState(
     return store?.getSelectionState(contextChars) ?? null;
 }
 
-export function getMarkdownSelectionOffsets(
+export function getDocumentSelectionRange(
     store: EditorStoreApi | null,
-): MarkdownSelectionOffsets | null {
-    return store?.getMarkdownSelectionOffsets() ?? null;
+): DocumentSelectionRange | null {
+    return store?.getDocumentSelectionRange() ?? null;
 }
 
 function useCompatStoreApi(): EditorStoreApi {
@@ -182,13 +183,13 @@ function useCompatStoreApi(): EditorStoreApi {
             insertImage(
                 url: string,
                 altText?: string,
-                selectionOffsets?: MarkdownSelectionOffsets | null,
+                selectionRange?: DocumentSelectionRange | null,
             ) {
                 editorRef.current.insertImage(
                     url,
                     altText,
                     undefined,
-                    selectionOffsets,
+                    selectionRange,
                 );
             },
             getTitle() {
@@ -197,8 +198,8 @@ function useCompatStoreApi(): EditorStoreApi {
             getSelectionState(contextChars?: number) {
                 return editorRef.current.getSelectionSnapshot(contextChars);
             },
-            getMarkdownSelectionOffsets() {
-                return editorRef.current.getMarkdownSelectionOffsets();
+            getDocumentSelectionRange() {
+                return editorRef.current.getDocumentSelectionRange();
             },
             subscribe(listener: StoreListener) {
                 listenersRef.current.add(listener);

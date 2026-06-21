@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Node as ProseMirrorNode } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
+import { undo } from "prosemirror-history";
 import { parseMarkdown, serializeMarkdown } from "..";
 import { mdxEditorSchema } from "../schema/schema";
 import { createMdxEditorPlugins } from "../plugins/editor-plugins";
 import {
     insertImageMarkdown,
+    insertImageNode,
     insertPlainTextMarkdown,
     insertTableMarkdown,
     MAX_TABLE_DIMENSION,
@@ -51,6 +53,66 @@ describe("editor commands", () => {
         expect(serializeMarkdown({ ...parsed, sourceSlices: [] })).toBe(
             `${markdown}\n`,
         );
+    });
+
+    it("inserts image nodes at document positions after editable link text", () => {
+        const markdown = "[百度](http://baidu.com)";
+        let state = EditorState.create({
+            doc: mdxEditorSchema.nodes.doc.create(null, [
+                mdxEditorSchema.nodes.paragraph.create(null, [
+                    mdxEditorSchema.text(markdown),
+                ]),
+            ]),
+            plugins: createMdxEditorPlugins(),
+            schema: mdxEditorSchema,
+        });
+
+        expect(
+            insertImageNode(".assets/a.png", "A", undefined, {
+                anchor: markdown.length + 1,
+                head: markdown.length + 1,
+            })(state, (transaction) => {
+                state = state.apply(transaction);
+            }),
+        ).toBe(true);
+        expect(
+            serializeMarkdown({
+                diagnostics: [],
+                doc: state.doc,
+                originalMarkdown: markdown,
+                sourceSlices: [],
+            }),
+        ).toBe("[百度](http://baidu.com)![A](.assets/a.png)\n");
+    });
+
+    it("makes inserted image nodes undoable", () => {
+        const doc = mdxEditorSchema.nodes.doc.create(null, [
+            mdxEditorSchema.nodes.paragraph.create(null, [
+                mdxEditorSchema.text("Hello"),
+            ]),
+        ]);
+        let state = EditorState.create({
+            doc,
+            plugins: createMdxEditorPlugins(),
+            schema: mdxEditorSchema,
+            selection: TextSelection.create(doc, 6),
+        });
+
+        expect(
+            insertImageNode(".assets/a.png", "A")(state, (transaction) => {
+                state = state.apply(transaction);
+            }),
+        ).toBe(true);
+        expect(state.doc.textContent).toBe("Hello");
+        expect(state.doc.firstChild?.childCount).toBe(2);
+
+        expect(
+            undo(state, (transaction) => {
+                state = state.apply(transaction);
+            }),
+        ).toBe(true);
+        expect(state.doc.firstChild?.childCount).toBe(1);
+        expect(state.doc.textContent).toBe("Hello");
     });
 
     it("produces serializable Markdown after command-style mutation", () => {

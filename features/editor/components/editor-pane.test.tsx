@@ -17,7 +17,7 @@ import {
 
 const bridgeMocks = vi.hoisted(() => ({
     focus: vi.fn(),
-    getMarkdownSelectionOffsets: vi.fn(),
+    getDocumentSelectionRange: vi.fn(),
     insertImage: vi.fn(),
     insertText: vi.fn(),
 }));
@@ -26,7 +26,7 @@ vi.mock("../hooks/use-editor-bridge", () => ({
     useEditorBridge: () => ({
         currentMarkdown: "",
         focus: bridgeMocks.focus,
-        getMarkdownSelectionOffsets: bridgeMocks.getMarkdownSelectionOffsets,
+        getDocumentSelectionRange: bridgeMocks.getDocumentSelectionRange,
         insertImage: bridgeMocks.insertImage,
         insertText: bridgeMocks.insertText,
         selection: null,
@@ -160,8 +160,8 @@ describe("editor pane image paste", () => {
 
     beforeEach(() => {
         bridgeMocks.focus.mockReset();
-        bridgeMocks.getMarkdownSelectionOffsets.mockReset();
-        bridgeMocks.getMarkdownSelectionOffsets.mockReturnValue({
+        bridgeMocks.getDocumentSelectionRange.mockReset();
+        bridgeMocks.getDocumentSelectionRange.mockReturnValue({
             anchor: 6,
             head: 6,
         });
@@ -247,7 +247,7 @@ describe("editor pane image paste", () => {
         });
 
         expect(storeImage).toHaveBeenCalledWith(image);
-        expect(bridgeMocks.getMarkdownSelectionOffsets).toHaveBeenCalledBefore(
+        expect(bridgeMocks.getDocumentSelectionRange).toHaveBeenCalledBefore(
             storeImage,
         );
         expect(bridgeMocks.insertImage).toHaveBeenCalledWith(

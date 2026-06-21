@@ -1,5 +1,6 @@
 export { parseMarkdown } from "./parser/parse-markdown";
 export {
+    insertImageNode,
     insertImageMarkdown,
     insertPlainTextMarkdown,
 } from "./commands/editor-commands";
@@ -10,6 +11,7 @@ export { selectionSnapshotFromMarkdownOffsets } from "./core/selection";
 export * from "./react";
 export type {
     EditorDiagnostic,
+    DocumentSelectionRange,
     MarkdownSelectionOffsets,
     MdxEditorSnapshot,
     ParsedMarkdownDocument,

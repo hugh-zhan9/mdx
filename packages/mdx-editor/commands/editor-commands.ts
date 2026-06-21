@@ -2,9 +2,12 @@ import { setBlockType, toggleMark } from "prosemirror-commands";
 import type { Node as ProseMirrorNode, ResolvedPos } from "prosemirror-model";
 import {
     NodeSelection,
+    Selection,
+    TextSelection,
     type Command,
     type EditorState,
 } from "prosemirror-state";
+import type { DocumentSelectionRange } from "../core/types";
 
 export const MAX_TABLE_DIMENSION = 100;
 
@@ -17,6 +20,44 @@ export const toggleStrongMark: Command = toggleMarkByName("strong");
 export const toggleEmphasisMark: Command = toggleMarkByName("emphasis");
 export const toggleStrikeMark: Command = toggleMarkByName("strike");
 export const toggleInlineCodeMark: Command = toggleMarkByName("inline_code");
+
+export function insertImageNode(
+    url: string,
+    altText = "",
+    title?: string,
+    selectionRange?: DocumentSelectionRange | null,
+): Command {
+    return (state, dispatch) => {
+        const image = state.schema.nodes.image;
+        if (!image) {
+            return false;
+        }
+
+        if (dispatch) {
+            let transaction = state.tr;
+            if (selectionRange) {
+                transaction = transaction.setSelection(
+                    selectionFromDocumentRange(transaction.doc, selectionRange),
+                );
+            }
+
+            dispatch(
+                transaction
+                    .replaceSelectionWith(
+                        image.create({
+                            alt: altText,
+                            src: url,
+                            title: title ?? null,
+                        }),
+                        false,
+                    )
+                    .scrollIntoView(),
+            );
+        }
+
+        return true;
+    };
+}
 
 export function setHeadingBlock(level: 1 | 2 | 3 | 4 | 5 | 6): Command {
     return (state, dispatch, view) => {
@@ -103,6 +144,24 @@ function escapeImageAlt(text: string): string {
 
 function escapeImageUrl(url: string): string {
     return url.replaceAll("\\", "\\\\").replaceAll(")", "\\)");
+}
+
+function selectionFromDocumentRange(
+    doc: EditorState["doc"],
+    selectionRange: DocumentSelectionRange,
+) {
+    const anchor = clampPosition(selectionRange.anchor, doc);
+    const head = clampPosition(selectionRange.head, doc);
+
+    try {
+        return TextSelection.create(doc, anchor, head);
+    } catch {
+        return Selection.near(doc.resolve(anchor), 1);
+    }
+}
+
+function clampPosition(position: number, doc: EditorState["doc"]) {
+    return Math.max(0, Math.min(position, doc.content.size));
 }
 
 function toggleMarkByName(markName: string): Command {

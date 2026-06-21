@@ -44,6 +44,11 @@ export interface MarkdownSelectionOffsets {
     head: number;
 }
 
+export interface DocumentSelectionRange {
+    anchor: number;
+    head: number;
+}
+
 export interface MdxEditorSnapshot {
     markdown: string;
     selection: SelectionState | null;
