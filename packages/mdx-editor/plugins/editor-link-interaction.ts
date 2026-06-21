@@ -75,6 +75,10 @@ export function createEditableLinkPlugin() {
             handleDOMEvents: {
                 click: handleEditableLinkClick,
                 auxclick: handleEditableLinkClick,
+                mousedown: handleMarkdownHrefEditorEvent,
+                keydown: handleMarkdownHrefEditorEvent,
+                beforeinput: handleMarkdownHrefEditorEvent,
+                input: handleMarkdownHrefEditorEvent,
             },
         },
     });
@@ -95,19 +99,28 @@ function createHrefEditor(view: EditorView, activeLink: ActiveLink) {
 
     const closeLabel = document.createElement("span");
     closeLabel.dataset.mdxLinkMarkdownToken = "true";
+    closeLabel.contentEditable = "false";
     closeLabel.textContent = "](";
 
     const input = document.createElement("input");
     input.dataset.mdxLinkHrefInput = "true";
     input.type = "text";
+    input.contentEditable = "true";
     input.value = activeLink.href;
     input.setAttribute("aria-label", "Link URL");
     sizeHrefInput(input);
 
     const closeHref = document.createElement("span");
     closeHref.dataset.mdxLinkMarkdownToken = "true";
+    closeHref.contentEditable = "false";
     closeHref.textContent = ")";
 
+    input.addEventListener("mousedown", (event) => {
+        event.stopPropagation();
+    });
+    input.addEventListener("click", (event) => {
+        event.stopPropagation();
+    });
     input.addEventListener("input", () => {
         sizeHrefInput(input);
     });
@@ -132,6 +145,13 @@ function createHrefEditor(view: EditorView, activeLink: ActiveLink) {
 
     wrapper.append(closeLabel, input, closeHref);
     return wrapper;
+}
+
+function handleMarkdownHrefEditorEvent(_view: EditorView, event: Event) {
+    return (
+        event.target instanceof Element &&
+        Boolean(event.target.closest(LINK_MARKDOWN_EDITOR_SELECTOR))
+    );
 }
 
 function sizeHrefInput(input: HTMLInputElement) {

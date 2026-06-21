@@ -108,6 +108,16 @@ describe("createEditableLinkPlugin", () => {
         );
         expect(input?.value).toBe("www.baidu.com");
         expect(host.textContent).toContain("[百度](");
+        expect(
+            view.someProp("handleDOMEvents", (handlers) =>
+                handlers.mousedown?.(
+                    view,
+                    {
+                        target: input,
+                    } as unknown as MouseEvent,
+                ),
+            ),
+        ).toBe(true);
 
         input!.value = "https://baidu.com";
         input!.dispatchEvent(
