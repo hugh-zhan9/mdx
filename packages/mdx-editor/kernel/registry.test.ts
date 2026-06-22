@@ -63,6 +63,44 @@ describe("syntax registry", () => {
         ).toThrow("Duplicate schema node: paragraph");
     });
 
+    it("throws on invalid parser phase", () => {
+        expect(() =>
+            createSyntaxRegistry([
+                {
+                    id: "broken-phase",
+                    blockParsers: [
+                        {
+                            phase: "unknown" as never,
+                            priority: 10,
+                            parse: () => ({ status: "notMatched" }),
+                        },
+                    ],
+                },
+            ]),
+        ).toThrow(
+            "Invalid parser phase for syntax plugin broken-phase: unknown",
+        );
+    });
+
+    it("throws on invalid parser priority", () => {
+        expect(() =>
+            createSyntaxRegistry([
+                {
+                    id: "broken-priority",
+                    inlineParsers: [
+                        {
+                            phase: "inline",
+                            priority: Number.NaN,
+                            parse: () => ({ status: "notMatched" }),
+                        },
+                    ],
+                },
+            ]),
+        ).toThrow(
+            "Invalid parser priority for syntax plugin broken-priority: expected a finite number",
+        );
+    });
+
     it("builds a ProseMirror schema from plugin node and mark specs", () => {
         const registry = createSyntaxRegistry([basePlugin]);
         const schema = buildSchemaFromRegistry(registry);

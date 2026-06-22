@@ -1,4 +1,6 @@
 import type {
+    BlockParserContribution,
+    InlineParserContribution,
     RegisteredBlockParser,
     RegisteredInlineParser,
     SyntaxPhase,
@@ -12,6 +14,13 @@ const syntaxPhaseOrder: Record<SyntaxPhase, number> = {
     fallback: 2,
     clipboard: 3,
 };
+
+const allowedSyntaxPhases = new Set<SyntaxPhase>([
+    "block",
+    "inline",
+    "fallback",
+    "clipboard",
+]);
 
 export function createSyntaxRegistry(plugins: SyntaxPlugin[]): SyntaxRegistry {
     const seenPlugins = new Set<string>();
@@ -45,16 +54,14 @@ export function createSyntaxRegistry(plugins: SyntaxPlugin[]): SyntaxRegistry {
         }
 
         blockParsers.push(
-            ...(plugin.blockParsers ?? []).map((parser) => ({
-                ...parser,
-                pluginId: plugin.id,
-            })),
+            ...(plugin.blockParsers ?? []).map((parser) =>
+                registerParserContribution(plugin.id, parser),
+            ),
         );
         inlineParsers.push(
-            ...(plugin.inlineParsers ?? []).map((parser) => ({
-                ...parser,
-                pluginId: plugin.id,
-            })),
+            ...(plugin.inlineParsers ?? []).map((parser) =>
+                registerParserContribution(plugin.id, parser),
+            ),
         );
 
         if (plugin.serializers) {
@@ -81,6 +88,33 @@ export function createSyntaxRegistry(plugins: SyntaxPlugin[]): SyntaxRegistry {
         editorPlugins,
         clipboard,
     };
+}
+
+function registerParserContribution<
+    T extends BlockParserContribution | InlineParserContribution,
+>(pluginId: string, parser: T): T & { pluginId: string } {
+    validateParserContribution(pluginId, parser);
+    return {
+        ...parser,
+        pluginId,
+    };
+}
+
+function validateParserContribution(
+    pluginId: string,
+    parser: BlockParserContribution | InlineParserContribution,
+) {
+    if (!allowedSyntaxPhases.has(parser.phase)) {
+        throw new Error(
+            `Invalid parser phase for syntax plugin ${pluginId}: ${String(parser.phase)}`,
+        );
+    }
+
+    if (typeof parser.priority !== "number" || !Number.isFinite(parser.priority)) {
+        throw new Error(
+            `Invalid parser priority for syntax plugin ${pluginId}: expected a finite number`,
+        );
+    }
 }
 
 function compareContributions(
