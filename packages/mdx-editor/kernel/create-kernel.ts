@@ -61,8 +61,7 @@ export function createMdxEditorKernel(
     nodeSerializers = mergeNodeSerializers(registry, serializerContext);
 
     const parseMarkdown = (markdown: string) =>
-        parseMarkdownWithSchema(markdown, schema);
-    const serializeInline = serializerContext.serializeInline;
+        parseMarkdownWithSchema(markdown, schema, registry.blockParsers);
     const serializeNode = serializerContext.serializeNode;
     const serializeMarkdown = (doc: ProseMirrorNode | ParsedMarkdownDocument) =>
         serializeParsedMarkdown(

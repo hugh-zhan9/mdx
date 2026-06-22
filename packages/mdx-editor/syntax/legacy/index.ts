@@ -11,7 +11,6 @@ const legacyNodeNames = [
     "ordered_list",
     "list_item",
     "task_item",
-    "code_block",
     "table",
     "table_row",
     "table_cell",
@@ -19,8 +18,6 @@ const legacyNodeNames = [
     "math_inline",
     "math_block",
     "callout",
-    "mermaid_block",
-    "frontmatter",
 ] as const;
 
 export function legacyMarkdownSyntax(): SyntaxPlugin {

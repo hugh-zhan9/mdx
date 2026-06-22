@@ -1,6 +1,10 @@
 import type { Node as ProseMirrorNode, Schema } from "prosemirror-model";
 import { sourceRange } from "../core/source-map";
 import type { SourceSlice } from "../core/types";
+import type {
+    BlockParserContribution,
+    MarkdownParseContext,
+} from "../kernel/types";
 import { mdxEditorSchema } from "../schema/schema";
 import { tryParseFootnoteDefinition } from "../syntax/footnote/parse";
 import { parseInlineMarkdown } from "./inline-markdown";
@@ -24,35 +28,17 @@ export function parseMarkdownBlocks(
     markdown: string,
     sourceSlices: SourceSlice[],
     schema: Schema = mdxEditorSchema,
+    blockParsers: BlockParserContribution[] = [],
 ): ProseMirrorNode[] {
     const blocks: ProseMirrorNode[] = [];
     const logicalLines = splitLogicalLines(markdown);
+    const parserContext = createMarkdownParseContext(
+        markdown,
+        sourceSlices,
+        schema,
+    );
 
     let cursor = 0;
-    if (logicalLines[0]?.text === "---") {
-        const closing = logicalLines.findIndex(
-            (line, index) => index > 0 && line.text === "---",
-        );
-        if (closing > 0) {
-            const start = logicalLines[0].start;
-            const end = logicalLines[closing].end;
-            const sourceId = addSlice(sourceSlices, markdown, start, end);
-            blocks.push(
-                schema.nodes.frontmatter.create(
-                    { sourceId },
-                    textNode(
-                        markdown.slice(
-                            logicalLines[0].end,
-                            logicalLines[closing].start,
-                        ),
-                        schema,
-                    ),
-                ),
-            );
-            cursor = closing + 1;
-        }
-    }
-
     while (cursor < logicalLines.length) {
         const line = logicalLines[cursor];
         if (!line || line.text.trim() === "") {
@@ -60,69 +46,14 @@ export function parseMarkdownBlocks(
             continue;
         }
 
-        const singleLineCode = parseSingleLineBacktickFence(line.text);
-        const fence = singleLineCode
-            ? singleLineCode
-            : isLineStartingInlineCodeSpan(line.text)
-              ? null
-              : parseOpeningBacktickFence(line.text);
-        if (fence) {
-            const startLine = cursor;
-            let endLine = -1;
-            if (!singleLineCode) {
-                for (let next = cursor + 1; next < logicalLines.length; next += 1) {
-                    const closing = logicalLines[next];
-                    if (
-                        closing &&
-                        isClosingBacktickFence(closing.text, fence.markerLength)
-                    ) {
-                        endLine = next;
-                        break;
-                    }
-                }
-            }
-            const start = logicalLines[startLine].start;
-            const end = singleLineCode
-                ? line.end
-                : endLine >= 0
-                  ? logicalLines[endLine].end
-                  : (logicalLines[logicalLines.length - 1]?.end ?? line.end);
-            const sourceId = addSlice(sourceSlices, markdown, start, end);
-            const contentStart = logicalLines[startLine].end;
-            const contentEnd = endLine >= 0 ? logicalLines[endLine].start : end;
-            const info = singleLineCode ? "" : fence.info;
-            const nextCursor = singleLineCode
-                ? startLine + 1
-                : endLine >= 0
-                  ? endLine + 1
-                  : logicalLines.length;
-            const content = textNode(
-                singleLineCode
-                    ? `${singleLineCode.content}\n`
-                    : markdown.slice(contentStart, contentEnd),
-                schema,
-            );
-            blocks.push(
-                !singleLineCode && firstInfoToken(info).toLowerCase() === "mermaid"
-                    ? schema.nodes.mermaid_block.create(
-                          {
-                              info: info || "mermaid",
-                              sourceId,
-                          },
-                          content,
-                      )
-                    : schema.nodes.code_block.create(
-                          {
-                              language: singleLineCode
-                                  ? ""
-                                  : firstInfoToken(info),
-                              info: singleLineCode ? "" : info,
-                              sourceId,
-                          },
-                          content,
-                      ),
-            );
-            cursor = nextCursor;
+        const contributedBlock = tryParseContributedBlock(
+            blockParsers,
+            parserContext,
+            line.start,
+        );
+        if (contributedBlock) {
+            blocks.push(contributedBlock.node);
+            cursor = findNextLogicalLine(logicalLines, contributedBlock.nextIndex);
             continue;
         }
 
@@ -333,40 +264,6 @@ export function parseMarkdownBlocks(
     return blocks;
 }
 
-function parseOpeningBacktickFence(text: string) {
-    const match = text.match(/^ {0,3}(`{3,})([^`]*)$/);
-    if (!match) {
-        return null;
-    }
-
-    return {
-        info: match[2].trim(),
-        markerLength: match[1].length,
-    };
-}
-
-function parseSingleLineBacktickFence(text: string) {
-    const match = text.match(/^ {0,3}(`{3,})([^`]*)\1[ \t]*$/);
-    if (!match) {
-        return null;
-    }
-
-    return {
-        content: match[2],
-        info: "",
-        markerLength: match[1].length,
-    };
-}
-
-function isClosingBacktickFence(text: string, markerLength: number) {
-    const match = text.match(/^ {0,3}(`+)[ \t]*$/);
-    return Boolean(match && match[1].length >= markerLength);
-}
-
-function firstInfoToken(info: string) {
-    return info.trim().split(/\s+/, 1)[0] ?? "";
-}
-
 function splitLogicalLines(markdown: string): LogicalLine[] {
     const lines = markdown.split(/(\r?\n)/);
     const logicalLines: LogicalLine[] = [];
@@ -384,6 +281,72 @@ function splitLogicalLines(markdown: string): LogicalLine[] {
     }
 
     return logicalLines;
+}
+
+function createMarkdownParseContext(
+    markdown: string,
+    sourceSlices: SourceSlice[],
+    schema: Schema,
+): MarkdownParseContext {
+    return {
+        markdown,
+        schema,
+        sourceSlices,
+        allocateSourceSlice: (start, end) =>
+            addSlice(sourceSlices, markdown, start, end),
+        parseInline: (text) => parseInlineMarkdown(text, schema),
+        emitFallback: (start, end, reason) => {
+            const sourceId = addSlice(sourceSlices, markdown, start, end);
+            const fallbackMarkdown = markdown.slice(start, end);
+
+            return schema.nodes.source_fallback.create(
+                {
+                    markdown: fallbackMarkdown,
+                    reason,
+                    sourceId,
+                },
+                textNode(fallbackMarkdown, schema),
+            );
+        },
+    };
+}
+
+function tryParseContributedBlock(
+    blockParsers: BlockParserContribution[],
+    context: MarkdownParseContext,
+    index: number,
+) {
+    for (const parser of blockParsers) {
+        if (parser.phase !== "block") {
+            continue;
+        }
+
+        const result = parser.parse(context, index);
+        if (result.status === "matched") {
+            return {
+                node: result.node,
+                nextIndex: result.nextIndex,
+            };
+        }
+
+        if (result.status === "fallback") {
+            return {
+                node: context.emitFallback(
+                    result.start,
+                    result.end,
+                    result.reason,
+                ),
+                nextIndex: result.end,
+            };
+        }
+    }
+
+    return null;
+}
+
+function findNextLogicalLine(logicalLines: LogicalLine[], nextIndex: number) {
+    const nextLine = logicalLines.findIndex((line) => line.start >= nextIndex);
+    return nextLine >= 0 ? nextLine : logicalLines.length;
 }
 
 function tryParseBulletList(
@@ -1186,21 +1149,6 @@ function addSlice(
         text: markdown.slice(start, end),
     });
     return id;
-}
-
-function isLineStartingInlineCodeSpan(text: string) {
-    if (text[0] !== "`") {
-        return false;
-    }
-
-    let delimiterLength = 0;
-    while (text[delimiterLength] === "`") {
-        delimiterLength += 1;
-    }
-
-    const delimiter = "`".repeat(delimiterLength);
-
-    return text.indexOf(delimiter, delimiterLength) >= delimiterLength;
 }
 
 function tryParseSourceFallbackBlock(
