@@ -18,7 +18,7 @@ export function tryParseFootnoteDefinition(
 ) {
     const line = logicalLines[startLine];
     const match = (line?.text ?? "").match(/^\[\^([^\]]+)\]:[ \t]*(.*)$/);
-    if (!line || !match) {
+    if (!line || !match || !schema.nodes.footnote_definition) {
         return null;
     }
 

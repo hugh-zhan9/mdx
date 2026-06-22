@@ -84,7 +84,9 @@ export function parseInlineMarkdown(
             continue;
         }
 
-        const footnoteRef = tryParseFootnoteRef(text, cursor);
+        const footnoteRef = schema.nodes.footnote_ref
+            ? tryParseFootnoteRef(text, cursor)
+            : null;
         if (footnoteRef) {
             pushText(schema, children, buffer);
             buffer = "";

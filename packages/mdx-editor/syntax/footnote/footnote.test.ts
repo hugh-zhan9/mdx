@@ -5,6 +5,30 @@ import { fallbackSyntax } from "../fallback";
 import { footnoteSyntax } from "./index";
 
 describe("footnote syntax", () => {
+    it("keeps footnote refs as text when footnote syntax is not registered", () => {
+        const kernel = createMdxEditorKernel({
+            syntax: [coreMarkdownSyntax(), fallbackSyntax()],
+        });
+        const parsed = kernel.parseMarkdown("A note[^n].\n");
+
+        expect(parsed.doc.child(0).type.name).toBe("paragraph");
+        expect(parsed.doc.child(0).childCount).toBe(1);
+        expect(parsed.doc.child(0).textContent).toBe("A note[^n].");
+        expect(kernel.serializeMarkdown(parsed.doc)).toBe("A note[^n].\n");
+    });
+
+    it("keeps footnote definitions as source fallback when footnote syntax is not registered", () => {
+        const kernel = createMdxEditorKernel({
+            syntax: [coreMarkdownSyntax(), fallbackSyntax()],
+        });
+        const markdown = "[^n]: Body\n";
+        const parsed = kernel.parseMarkdown(markdown);
+
+        expect(parsed.doc.child(0).type.name).toBe("source_fallback");
+        expect(parsed.doc.child(0).attrs.markdown).toBe(markdown);
+        expect(kernel.serializeMarkdown(parsed.doc)).toBe(markdown);
+    });
+
     it("parses footnote refs and multi-line definitions", () => {
         const kernel = createMdxEditorKernel({
             syntax: [coreMarkdownSyntax(), fallbackSyntax(), footnoteSyntax()],
