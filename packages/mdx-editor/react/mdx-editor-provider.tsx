@@ -14,13 +14,14 @@ import type {
     MarkdownSelectionOffsets,
     SelectionState,
 } from "../core/types";
-import { parseMarkdown } from "../parser/parse-markdown";
+import {
+    createMdxEditorKernel,
+    type MdxEditorKernel,
+} from "../kernel";
 import type { CodeTokenizer } from "../plugins/editor-code-highlight";
-import { createMdxEditorPlugins } from "../plugins/editor-plugins";
-import { mdxEditorSchema } from "../schema/schema";
-import { serializeMarkdown } from "../serializer/serialize-markdown";
+import { defaultMarkdownSyntax } from "../syntax/default";
 import { MdxEditorContext } from "./mdx-editor-context";
-import { createMdxNodeViews, hydrateRenderedImages } from "./node-views";
+import { hydrateRenderedImages } from "./node-views";
 
 export interface MdxEditorProviderProps {
     children?: ReactNode;
@@ -29,7 +30,9 @@ export interface MdxEditorProviderProps {
     placeholder?: string;
     imageLoader?: (src: string) => Promise<string>;
     codeTokenizer?: (code: string, lang?: string) => unknown[];
+    kernel?: MdxEditorKernel;
     onMarkdownChange?: (markdown: string) => void;
+    onSelectionChange?: (selection: DocumentSelectionRange | null) => void;
 }
 
 export function MdxEditorProvider({
@@ -39,46 +42,74 @@ export function MdxEditorProvider({
     placeholder,
     imageLoader,
     codeTokenizer,
+    kernel,
     onMarkdownChange,
+    onSelectionChange,
 }: MdxEditorProviderProps) {
-    const initialParsed = useMemo(
-        () => parseMarkdown(initialMarkdown),
-        [initialMarkdown],
-    );
-    const [markdown, setMarkdown] = useState(initialMarkdown);
-    const [selection, setSelection] = useState<SelectionState>(() =>
-        createSelectionSnapshot(
-            initialParsed.doc,
-            Selection.atEnd(initialParsed.doc),
-        ),
-    );
-    const [rootNode, setRootNode] = useState<HTMLDivElement | null>(null);
     const rootRef = useRef<HTMLDivElement | null>(null);
     const viewRef = useRef<EditorView | null>(null);
-    const parsedRef = useRef(initialParsed);
-    const markdownRef = useRef(initialMarkdown);
     const imageLoaderRef = useRef(imageLoader);
     const codeTokenizerRef = useRef(codeTokenizer);
     const onMarkdownChangeRef = useRef(onMarkdownChange);
+    const onSelectionChangeRef = useRef(onSelectionChange);
+    const tokenizeCode = useCallback<CodeTokenizer>((code, lang) => {
+        return codeTokenizerRef.current?.(code, lang) ?? [];
+    }, []);
+    const resolveImageSource = useCallback((src: string) => {
+        const currentImageLoader = imageLoaderRef.current;
+
+        if (!currentImageLoader) {
+            return Promise.resolve(src);
+        }
+
+        return currentImageLoader(src);
+    }, []);
+    const runtimeKernel = useMemo(
+        () =>
+            kernel ??
+            createMdxEditorKernel({
+                syntax: defaultMarkdownSyntax(),
+                services: {
+                    codeTokenizer: tokenizeCode,
+                    imageLoader: resolveImageSource,
+                },
+            }),
+        [kernel, resolveImageSource, tokenizeCode],
+    );
+    const initialDocument = useMemo(
+        () => runtimeKernel.parseMarkdown(initialMarkdown),
+        [initialMarkdown, runtimeKernel],
+    );
+    const [markdown, setMarkdown] = useState(initialMarkdown);
+    const [selection, setSelection] = useState<SelectionState>(() =>
+        createSelectionSnapshot(initialDocument.doc, Selection.atEnd(initialDocument.doc)),
+    );
+    const [rootNode, setRootNode] = useState<HTMLDivElement | null>(null);
+    const parsedRef = useRef(initialDocument);
+    const markdownRef = useRef(initialMarkdown);
     const selectionOffsetsRef = useRef(
         selectionOffsetsFromDocSelection(
-            initialParsed.doc,
-            Selection.atEnd(initialParsed.doc),
+            initialDocument.doc,
+            Selection.atEnd(initialDocument.doc),
         ),
     );
 
     useEffect(() => {
-        parsedRef.current = initialParsed;
+        parsedRef.current = initialDocument;
         markdownRef.current = initialMarkdown;
         selectionOffsetsRef.current = selectionOffsetsFromDocSelection(
-            initialParsed.doc,
-            Selection.atEnd(initialParsed.doc),
+            initialDocument.doc,
+            Selection.atEnd(initialDocument.doc),
         );
-    }, [initialMarkdown, initialParsed]);
+    }, [initialDocument, initialMarkdown]);
 
     useEffect(() => {
         onMarkdownChangeRef.current = onMarkdownChange;
     }, [onMarkdownChange]);
+
+    useEffect(() => {
+        onSelectionChangeRef.current = onSelectionChange;
+    }, [onSelectionChange]);
 
     useEffect(() => {
         imageLoaderRef.current = imageLoader;
@@ -92,10 +123,6 @@ export function MdxEditorProvider({
         codeTokenizerRef.current = codeTokenizer;
         viewRef.current?.dispatch(viewRef.current.state.tr);
     }, [codeTokenizer]);
-
-    const tokenizeCode = useCallback<CodeTokenizer>((code, lang) => {
-        return codeTokenizerRef.current?.(code, lang) ?? [];
-    }, []);
 
     const updateMarkdown = useCallback(
         (next: string, emitChange = true) => {
@@ -119,6 +146,9 @@ export function MdxEditorProvider({
                 state.doc,
                 state.selection,
             );
+            onSelectionChangeRef.current?.(
+                documentSelectionRangeFromSelection(state.selection),
+            );
             setSelection(
                 createSelectionSnapshot(
                     state.doc,
@@ -132,22 +162,27 @@ export function MdxEditorProvider({
 
     const rebuildEditorFromMarkdown = useCallback(
         (nextMarkdown: string, emitChange = true) => {
-        const parsed = parseMarkdown(nextMarkdown);
-        parsedRef.current = parsed;
-        updateMarkdown(nextMarkdown, emitChange);
-        selectionOffsetsRef.current = selectionOffsetsFromDocSelection(
-            parsed.doc,
-            Selection.atEnd(parsed.doc),
-        );
+            const parsed = runtimeKernel.parseMarkdown(nextMarkdown);
+            parsedRef.current = parsed;
+            updateMarkdown(nextMarkdown, emitChange);
+            selectionOffsetsRef.current = selectionOffsetsFromDocSelection(
+                parsed.doc,
+                Selection.atEnd(parsed.doc),
+            );
 
-        if (viewRef.current) {
-            let nextState = createEditorState(parsed.doc, tokenizeCode);
+            if (viewRef.current) {
+                let nextState = createEditorState(parsed.doc, runtimeKernel);
                 nextState = nextState.apply(
                     nextState.tr.setSelection(Selection.atEnd(nextState.doc)),
                 );
                 viewRef.current.updateState(nextState);
                 updateSelectionFromState(nextState);
             } else {
+                onSelectionChangeRef.current?.(
+                    documentSelectionRangeFromSelection(
+                        Selection.atEnd(parsed.doc),
+                    ),
+                );
                 setSelection(
                     createSelectionSnapshot(
                         parsed.doc,
@@ -156,7 +191,7 @@ export function MdxEditorProvider({
                 );
             }
         },
-        [tokenizeCode, updateMarkdown, updateSelectionFromState],
+        [runtimeKernel, updateMarkdown, updateSelectionFromState],
     );
 
     useEffect(() => {
@@ -168,23 +203,21 @@ export function MdxEditorProvider({
             return;
         }
 
-        const parsed = parseMarkdown(markdownRef.current);
+        const parsed = runtimeKernel.parseMarkdown(markdownRef.current);
         parsedRef.current = parsed;
-        let initialState = createEditorState(parsed.doc, tokenizeCode);
+        let initialState = createEditorState(parsed.doc, runtimeKernel);
         initialState = initialState.apply(
             initialState.tr.setSelection(Selection.atEnd(initialState.doc)),
         );
         const view = new EditorView(rootNode, {
             state: initialState,
             editable: () => editable,
-            nodeViews: createMdxNodeViews({
-                imageLoader: imageLoaderRef.current,
-            }),
+            nodeViews: runtimeKernel.createNodeViews(),
             dispatchTransaction(transaction) {
                 const nextState = view.state.apply(transaction);
                 view.updateState(nextState);
 
-                const serializedMarkdown = serializeMarkdown({
+                const serializedMarkdown = runtimeKernel.serializeMarkdown({
                     ...parsedRef.current,
                     doc: nextState.doc,
                 });
@@ -213,7 +246,7 @@ export function MdxEditorProvider({
                 viewRef.current = null;
             }
         };
-    }, [editable, rootNode, tokenizeCode, updateMarkdown, updateSelectionFromState]);
+    }, [editable, rootNode, runtimeKernel, updateMarkdown, updateSelectionFromState]);
 
     useEffect(() => {
         if (!rootNode) {
@@ -327,12 +360,12 @@ function alignTerminalNewline(previousMarkdown: string, nextMarkdown: string) {
 
 function createEditorState(
     doc: EditorState["doc"],
-    codeTokenizer?: CodeTokenizer,
+    runtimeKernel: MdxEditorKernel,
 ) {
     return EditorState.create({
-        schema: mdxEditorSchema,
+        schema: runtimeKernel.schema,
         doc,
-        plugins: createMdxEditorPlugins({ codeTokenizer }),
+        plugins: runtimeKernel.createEditorPlugins(),
     });
 }
 

@@ -2,14 +2,16 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import {
+    createMdxEditorKernel,
+    defaultMarkdownSyntax,
     MdxEditorProvider,
     MdxEditorView,
     useMdxEditor,
-} from "../../../packages/mdx-editor/react";
+} from "../../../packages/mdx-editor";
 import type {
     MdxEditorContextValue,
     MdxEditorProviderProps,
-} from "../../../packages/mdx-editor/react";
+} from "../../../packages/mdx-editor";
 import type {
     DocumentSelectionRange,
     MarkdownSelectionOffsets,
@@ -60,6 +62,18 @@ export function DOMDProvider({
     imageLoader,
     codeTokenizer,
 }: DOMDProviderProps) {
+    const kernel = useMemo(
+        () =>
+            createMdxEditorKernel({
+                syntax: defaultMarkdownSyntax(),
+                services: {
+                    imageLoader,
+                    codeTokenizer,
+                },
+            }),
+        [codeTokenizer, imageLoader],
+    );
+
     return (
         <MdxEditorProvider
             editable={editable}
@@ -67,6 +81,7 @@ export function DOMDProvider({
             placeholder={placeholder}
             imageLoader={imageLoader}
             codeTokenizer={codeTokenizer}
+            kernel={kernel}
         >
             {children}
         </MdxEditorProvider>

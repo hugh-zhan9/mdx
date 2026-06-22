@@ -3,6 +3,8 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createMdxEditorKernel } from "../kernel";
+import { defaultMarkdownSyntax } from "../syntax/default";
 import { MdxEditorProvider, MdxEditorView, useMdxEditor } from "./index";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
@@ -138,6 +140,29 @@ describe("MdxEditorProvider", () => {
         expect(heading?.textContent).toBe("Title");
         expect(horizontalRule).not.toBeNull();
         expect(paragraph?.textContent).toBe("Body.");
+    });
+
+    it("uses an explicit kernel instance for parse, serialize, plugins, and node views", async () => {
+        const onMarkdownChange = vi.fn();
+        const kernel = createMdxEditorKernel({
+            syntax: defaultMarkdownSyntax(),
+        });
+
+        await act(async () => {
+            root.render(
+                <MdxEditorProvider
+                    initialMarkdown={"# Kernel\n\nBody.\n"}
+                    kernel={kernel}
+                    onMarkdownChange={onMarkdownChange}
+                >
+                    <MdxEditorView />
+                </MdxEditorProvider>,
+            );
+        });
+
+        expect(host.querySelector("[data-mdx-node-type='heading']")?.textContent).toBe(
+            "Kernel",
+        );
     });
 
     it("renders fenced code blocks through the editor view", async () => {

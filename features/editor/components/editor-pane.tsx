@@ -97,6 +97,18 @@ export function EditorPane({
     onSelectionChange,
 }: EditorPaneProps) {
     const initMd = tab.markdown ?? "";
+    const handleImageLoad = useCallback(
+        (src: string) =>
+            loadImage(src, {
+                rootPath,
+                currentFilePath: tab.path,
+            }),
+        [rootPath, tab.path],
+    );
+    const handleCodeTokenize = useCallback(
+        (code: string, lang?: string) => tokenize(code, lang),
+        [],
+    );
 
     return (
         <DOMDProvider
@@ -104,13 +116,8 @@ export function EditorPane({
             editable
             initMd={initMd}
             placeholder="开始编写 Markdown"
-            imageLoader={(src) =>
-                loadImage(src, {
-                    rootPath,
-                    currentFilePath: tab.path,
-                })
-            }
-            codeTokenizer={(code, lang) => tokenize(code, lang)}
+            imageLoader={handleImageLoad}
+            codeTokenizer={handleCodeTokenize}
         >
             <EditorPaneInner
                 tab={tab}

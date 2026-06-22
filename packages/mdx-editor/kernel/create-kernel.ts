@@ -5,6 +5,7 @@ import type { ParsedMarkdownDocument } from "../core/types";
 import type { CodeTokenizer } from "../plugins/editor-code-highlight";
 import { createMdxEditorPlugins } from "../plugins/editor-plugins";
 import { parseMarkdown as parseMarkdownWithSchema } from "../parser/parse-markdown";
+import { createMdxNodeViews } from "../react/node-views";
 import { serializeMarkdown as serializeParsedMarkdown } from "../serializer/serialize-markdown";
 import { createSyntaxRegistry } from "./registry";
 import { buildSchemaFromRegistry } from "./schema";
@@ -50,7 +51,12 @@ export function createMdxEditorKernel(
         registry,
         parseMarkdown,
         serializeMarkdown,
-        createNodeViews: () => registry.nodeViews,
+        createNodeViews: () => ({
+            ...registry.nodeViews,
+            image: createMdxNodeViews({
+                imageLoader: options.services?.imageLoader,
+            }).image,
+        }),
         createEditorPlugins: () =>
             createMdxEditorPlugins({
                 schema,
