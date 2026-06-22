@@ -27,7 +27,7 @@ export function createMdxEditorPlugins(options: MdxEditorPluginOptions = {}) {
         createCodeHighlightPlugin({ codeTokenizer: options.codeTokenizer }),
         markdownInputRulesPlugin(schema),
         createMarkdownClipboardPlugin({ schema }),
-        createEditableLinkPlugin(),
+        createEditableLinkPlugin(schema),
         keymap(markdownKeymap(schema)),
         keymap(baseKeymap),
     ];

@@ -1,4 +1,4 @@
-import { Fragment } from "prosemirror-model";
+import { Fragment, type Schema } from "prosemirror-model";
 import {
     Plugin,
     PluginKey,
@@ -11,6 +11,7 @@ import {
     type EditorView,
 } from "prosemirror-view";
 import { parseInlineMarkdown } from "../parser/inline-markdown";
+import { mdxEditorSchema } from "../schema/schema";
 
 const EDITABLE_LINK_SELECTOR =
     'a[data-mdx-node-type="link"],a[data-mdx-node-type="wikilink"]';
@@ -36,7 +37,7 @@ const editableLinkPluginKey = new PluginKey<ActiveLink | null>(
     "editableLink",
 );
 
-export function createEditableLinkPlugin() {
+export function createEditableLinkPlugin(schema: Schema = mdxEditorSchema) {
     return new Plugin<ActiveLink | null>({
         key: editableLinkPluginKey,
         state: {
@@ -81,7 +82,7 @@ export function createEditableLinkPlugin() {
                     return null;
                 }
 
-                return finishMarkdownLinkEdit(newState, active);
+                return finishMarkdownLinkEdit(newState, active, schema);
             }
 
             const link = findActiveLink(newState);
@@ -144,11 +145,15 @@ function startMarkdownLinkEdit(state: EditorState, link: LinkRange) {
     return transaction;
 }
 
-function finishMarkdownLinkEdit(state: EditorState, active: ActiveLink) {
+function finishMarkdownLinkEdit(
+    state: EditorState,
+    active: ActiveLink,
+    schema: Schema,
+) {
     const from = Math.max(0, Math.min(active.from, state.doc.content.size));
     const to = Math.max(from, Math.min(active.to, state.doc.content.size));
     const markdown = state.doc.textBetween(from, to, "\n", "\n");
-    const nodes = parseInlineMarkdown(markdown);
+    const nodes = parseInlineMarkdown(markdown, schema);
     const transaction = state.tr;
 
     if (nodes.some(hasLinkMark)) {
@@ -221,7 +226,7 @@ function handleEditorBlur(view: EditorView) {
         return false;
     }
 
-    view.dispatch(finishMarkdownLinkEdit(view.state, active));
+    view.dispatch(finishMarkdownLinkEdit(view.state, active, view.state.schema));
     return false;
 }
 
@@ -235,7 +240,7 @@ function handleEditorKeyDown(view: EditorView, event: KeyboardEvent) {
         return false;
     }
 
-    view.dispatch(finishMarkdownLinkEdit(view.state, active));
+    view.dispatch(finishMarkdownLinkEdit(view.state, active, view.state.schema));
     return false;
 }
 

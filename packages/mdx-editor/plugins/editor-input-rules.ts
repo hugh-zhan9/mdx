@@ -77,7 +77,7 @@ export function markdownInputRules(schema: Schema = mdxEditorSchema): InputRule[
         rules.push(tableInputRule(schema));
     }
 
-    rules.push(inlineMarkdownInputRule());
+    rules.push(inlineMarkdownInputRule(schema));
 
     return rules;
 }
@@ -120,12 +120,12 @@ function horizontalRuleInputRule(schema: Schema): InputRule {
     });
 }
 
-function inlineMarkdownInputRule(): InputRule {
+function inlineMarkdownInputRule(schema: Schema): InputRule {
     return new InputRule(
         /(!?\[[^\]\r\n]*\]\((?:<[^>\r\n]*>|[^)\s\r\n]*)?(?:\s+"[^"\r\n]*")?\))$/,
         (state, match, start, end) => {
             const source = match[1] ?? "";
-            const nodes = parseInlineMarkdown(source);
+            const nodes = parseInlineMarkdown(source, schema);
 
             if (!nodes.some(isParsedInlineMarkdownNode)) {
                 return null;

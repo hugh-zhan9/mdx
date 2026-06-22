@@ -4,7 +4,9 @@ import { EditorState, TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { EditorView as ProseMirrorEditorView } from "prosemirror-view";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createMdxEditorKernel } from "../kernel";
 import { mdxEditorSchema } from "../schema/schema";
+import { defaultMarkdownSyntax } from "../syntax/default";
 import { createEditableLinkPlugin } from "./editor-link-interaction";
 
 describe("createEditableLinkPlugin", () => {
@@ -180,6 +182,59 @@ describe("createEditableLinkPlugin", () => {
         expect(state.doc.child(0).child(0).marks[0]?.attrs.href).toBe(
             "www.baidu.com",
         );
+
+        view.destroy();
+        host.remove();
+    });
+
+    it("restores edited markdown links with the active kernel schema", () => {
+        const kernel = createMdxEditorKernel({
+            syntax: defaultMarkdownSyntax(),
+        });
+        const host = document.createElement("div");
+        const linkMark = kernel.schema.marks.link.create({
+            href: "www.baidu.com",
+        });
+        const doc = kernel.schema.nodes.doc.create(null, [
+            kernel.schema.nodes.paragraph.create(null, [
+                kernel.schema.text("kernel", [linkMark]),
+                kernel.schema.text(" tail"),
+            ]),
+        ]);
+        const initialState = EditorState.create({
+            doc,
+            schema: kernel.schema,
+            plugins: kernel.createEditorPlugins(),
+        });
+        let state = initialState.apply(
+            initialState.tr.setSelection(
+                TextSelection.create(initialState.doc, 2),
+            ),
+        );
+
+        document.body.append(host);
+        const view = new ProseMirrorEditorView(host, {
+            state,
+            dispatchTransaction(transaction) {
+                state = state.apply(transaction);
+                view.updateState(state);
+            },
+        });
+
+        view.dispatch(
+            state.tr.insertText(
+                "http://",
+                10,
+                10,
+            ),
+        );
+        view.dispatch(state.tr.setSelection(TextSelection.atEnd(state.doc)));
+
+        const restoredLink = state.doc.child(0).child(0).marks[0];
+        expect(kernel.schema).not.toBe(mdxEditorSchema);
+        expect(restoredLink.type).toBe(kernel.schema.marks.link);
+        expect(restoredLink.type).not.toBe(mdxEditorSchema.marks.link);
+        expect(restoredLink.attrs.href).toBe("http://www.baidu.com");
 
         view.destroy();
         host.remove();

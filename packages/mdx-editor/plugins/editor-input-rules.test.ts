@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import type { Schema } from "prosemirror-model";
 import { EditorState, type Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
+import { createMdxEditorKernel } from "../kernel";
+import { defaultMarkdownSyntax } from "../syntax/default";
 import { mdxEditorSchema } from "../schema/schema";
 import {
     markdownInputRules,
@@ -109,16 +112,30 @@ describe("markdown input rules", () => {
         expect(image.attrs.alt).toBe("www.baidu.com");
     });
 
+    it("uses the active kernel schema when inline markdown input rules create link marks", () => {
+        const kernel = createMdxEditorKernel({
+            syntax: defaultMarkdownSyntax(),
+        });
+        const state = typeWithInputRules("[kernel](example.com)", kernel.schema);
+        const link = state.doc.child(0).child(0).marks[0];
+
+        expect(kernel.schema).not.toBe(mdxEditorSchema);
+        expect(link.type).toBe(kernel.schema.marks.link);
+        expect(link.type).not.toBe(mdxEditorSchema.marks.link);
+    });
 });
 
-function typeWithInputRules(text: string): EditorState {
-    const plugin = markdownInputRulesPlugin();
+function typeWithInputRules(
+    text: string,
+    schema: Schema = mdxEditorSchema,
+): EditorState {
+    const plugin = markdownInputRulesPlugin(schema);
     let state = EditorState.create({
-        doc: mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(),
+        doc: schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(),
         ]),
         plugins: [plugin],
-        schema: mdxEditorSchema,
+        schema,
     });
     const view = {
         get state() {
