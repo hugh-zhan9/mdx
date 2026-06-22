@@ -26,6 +26,7 @@ export interface MdxEditorKernel {
     registry: SyntaxRegistry;
     parseMarkdown(markdown: string): ParsedMarkdownDocument;
     serializeMarkdown(doc: ProseMirrorNode | ParsedMarkdownDocument): string;
+    resolveImageSource?: (src: string) => Promise<string>;
     createNodeViews(): Record<string, NodeViewConstructor>;
     createEditorPlugins(): Plugin[];
     clipboard: {
@@ -51,6 +52,7 @@ export function createMdxEditorKernel(
         registry,
         parseMarkdown,
         serializeMarkdown,
+        resolveImageSource: options.services?.imageLoader,
         createNodeViews: () => ({
             ...registry.nodeViews,
             image: createMdxNodeViews({

@@ -110,9 +110,12 @@ export function MdxEditorProvider({
         imageLoaderRef.current = imageLoader;
 
         if (viewRef.current) {
-            void hydrateRenderedImages(viewRef.current.dom, imageLoader);
+            void hydrateRenderedImages(
+                viewRef.current.dom,
+                runtimeKernel.resolveImageSource,
+            );
         }
-    }, [imageLoader]);
+    }, [imageLoader, runtimeKernel]);
 
     useEffect(() => {
         codeTokenizerRef.current = codeTokenizer;
@@ -236,13 +239,16 @@ export function MdxEditorProvider({
 
                 updateMarkdown(nextMarkdown);
                 updateSelectionFromState(nextState);
-                void hydrateRenderedImages(view.dom, imageLoaderRef.current);
+                void hydrateRenderedImages(
+                    view.dom,
+                    runtimeKernel.resolveImageSource,
+                );
             },
         });
 
         viewRef.current = view;
         updateSelectionFromState(view.state);
-        void hydrateRenderedImages(view.dom, imageLoaderRef.current);
+        void hydrateRenderedImages(view.dom, runtimeKernel.resolveImageSource);
 
         return () => {
             view.destroy();

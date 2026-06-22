@@ -194,6 +194,37 @@ describe("MdxEditorProvider", () => {
         expect(image?.getAttribute("alt")).toBe("Kernel");
     });
 
+    it("uses the explicit kernel image service instead of the provider prop", async () => {
+        const kernelImageLoader = vi.fn(async (src: string) => `kernel:${src}`);
+        const propImageLoader = vi.fn(async (src: string) => `prop:${src}`);
+        const kernel = createMdxEditorKernel({
+            syntax: defaultMarkdownSyntax(),
+            services: {
+                imageLoader: kernelImageLoader,
+            },
+        });
+
+        await act(async () => {
+            root.render(
+                <MdxEditorProvider
+                    initialMarkdown={'![Kernel](.assets/a.png)\n'}
+                    imageLoader={propImageLoader}
+                    kernel={kernel}
+                >
+                    <MdxEditorView />
+                </MdxEditorProvider>,
+            );
+        });
+
+        await act(async () => {});
+
+        const image = host.querySelector("img[data-mdx-node-type='image']");
+
+        expect(kernelImageLoader).toHaveBeenCalledWith(".assets/a.png");
+        expect(propImageLoader).not.toHaveBeenCalled();
+        expect(image?.getAttribute("src")).toBe("kernel:.assets/a.png");
+    });
+
     it("renders fenced code blocks through the editor view", async () => {
         await act(async () => {
             root.render(

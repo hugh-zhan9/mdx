@@ -111,6 +111,25 @@ describe("editor kernel adapter", () => {
             host.querySelector("[data-mdx-node-type='task_item']"),
         ).not.toBeNull();
     });
+
+    it("routes image loading through the adapter kernel", async () => {
+        await act(async () => {
+            root.render(
+                <DOMDProvider
+                    initMd={'![Diagram](.assets/a.png)\n'}
+                    imageLoader={async (src) => `loaded:${src}`}
+                >
+                    <DOMD />
+                </DOMDProvider>,
+            );
+        });
+
+        await act(async () => {});
+
+        expect(
+            host.querySelector("img[data-mdx-node-type='image']")?.getAttribute("src"),
+        ).toBe("loaded:.assets/a.png");
+    });
 });
 
 declare global {

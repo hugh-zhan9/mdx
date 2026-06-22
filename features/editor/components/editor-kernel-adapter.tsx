@@ -79,8 +79,6 @@ export function DOMDProvider({
             editable={editable}
             initialMarkdown={initMd}
             placeholder={placeholder}
-            imageLoader={imageLoader}
-            codeTokenizer={codeTokenizer}
             kernel={kernel}
         >
             {children}
