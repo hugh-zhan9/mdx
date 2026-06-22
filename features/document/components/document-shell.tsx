@@ -955,7 +955,7 @@ export function DocumentShell({
       </header>
 
       <div
-        className="flex h-full min-h-0 flex-col"
+        className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)]"
         data-document-editor-body=""
       >
         <div className="shrink-0">
@@ -1066,14 +1066,14 @@ export function DocumentShell({
         </div>
 
         <div
-          className="grid min-h-0 min-w-0 flex-1"
+          className="grid min-h-0 min-w-0"
           style={{
             gridTemplateColumns: state.outlineCollapsed
               ? "minmax(0,1fr) 0px"
               : "minmax(0,1fr) 280px",
           }}
         >
-          <section className="min-h-0 overflow-hidden">
+          <section className="min-h-0 min-w-0 overflow-hidden">
             <EditorPane
               rootPath={null}
               tab={{
