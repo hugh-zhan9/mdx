@@ -109,7 +109,33 @@ html[data-theme="dark"] {
     white-space: pre;
 }
 
+[data-mdx-code-block-toolbar] {
+    display: flex;
+    margin-bottom: 0.55rem;
+}
+
+[data-mdx-code-block-language-input] {
+    background: color-mix(in srgb, var(--color-base-100) 78%, transparent);
+    border: 1px solid var(--color-base-300);
+    border-radius: 5px;
+    color: color-mix(in srgb, var(--color-base-content) 78%, transparent);
+    font: inherit;
+    font-size: 0.78rem;
+    line-height: 1.4;
+    max-width: 12rem;
+    min-width: 5.5rem;
+    outline: none;
+    padding: 0.12rem 0.4rem;
+    white-space: normal;
+}
+
+[data-mdx-code-block-language-input]:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+
 [data-mdx-code-block] code {
+    display: block;
     font-family: inherit;
 }
 

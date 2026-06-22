@@ -167,6 +167,19 @@ describe("DocumentShell draft recovery", () => {
     expect(host.textContent).toContain("# Crash draft");
   });
 
+  it("stretches the standalone editor body to the available document height", async () => {
+    readDocumentFile.mockResolvedValueOnce(
+      documentFile("# Disk", "fingerprint-disk"),
+    );
+    draftGet.mockResolvedValueOnce(null);
+
+    await renderDocumentShell(root);
+
+    expect(
+      host.querySelector("[data-document-editor-body]")?.className,
+    ).toContain("h-full");
+  });
+
   it("destroys clean document windows explicitly on close request", async () => {
     readDocumentFile.mockResolvedValueOnce(
       documentFile("# Disk", "fingerprint-disk"),

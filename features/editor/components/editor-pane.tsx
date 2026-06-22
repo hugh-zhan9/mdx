@@ -441,7 +441,7 @@ function EditorPaneInner({
             >
                 <div
                     ref={handleEditorContentRef}
-                    className="mx-auto min-h-full w-full max-w-4xl px-6 py-6 sm:px-8 sm:py-8"
+                    className="mx-auto min-h-full w-full max-w-4xl px-6 pb-[35vh] pt-6 sm:px-8 sm:pb-[35vh] sm:pt-8"
                     onClickCapture={handleEditorClickCapture}
                     onDragOverCapture={handleDragOverCapture}
                     onDropCapture={handleDropCapture}

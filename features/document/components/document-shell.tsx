@@ -954,7 +954,10 @@ export function DocumentShell({
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-col">
+      <div
+        className="flex h-full min-h-0 flex-col"
+        data-document-editor-body=""
+      >
         <div className="shrink-0">
           {draftRecovery ? (
             <RecoveryBanner
@@ -1063,7 +1066,7 @@ export function DocumentShell({
         </div>
 
         <div
-          className="grid min-h-0 flex-1"
+          className="grid min-h-0 min-w-0 flex-1"
           style={{
             gridTemplateColumns: state.outlineCollapsed
               ? "minmax(0,1fr) 0px"

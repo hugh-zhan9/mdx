@@ -19,6 +19,7 @@ describe("createMdxNodeViews", () => {
         expect(keys).toEqual(
             expect.arrayContaining([
                 "callout",
+                "code_block",
                 "footnote_definition",
                 "image",
                 "math_block",
@@ -171,6 +172,40 @@ describe("createMdxNodeViews", () => {
         expect(dispatched[0].doc.child(0).attrs.kind).toBe("WARNING");
 
         act(() => nodeView?.destroy?.());
+    });
+
+    it("updates code block language from its language control", () => {
+        const schema = mdxEditorSchema;
+        const codeBlock = schema.nodes.code_block.create(
+            { language: "ts", info: "ts", sourceId: null },
+            schema.text("const value = 1;\n"),
+        );
+        const dispatched: Transaction[] = [];
+        const view = createView(schema.nodes.doc.create(null, codeBlock), (tr) => {
+            dispatched.push(tr);
+        });
+        const nodeView = createMdxNodeViews().code_block(
+            codeBlock,
+            view,
+            () => 0,
+            [],
+            DecorationSet.empty,
+        );
+        const input = nodeView.dom.querySelector<HTMLInputElement>(
+            "input[aria-label='Code block language']",
+        );
+
+        expect(input?.value).toBe("ts");
+        expect(nodeView.contentDOM?.tagName).toBe("CODE");
+
+        if (input) {
+            input.value = "python";
+            input.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+
+        expect(dispatched).toHaveLength(1);
+        expect(dispatched[0].doc.child(0).attrs.language).toBe("python");
+        expect(dispatched[0].doc.child(0).attrs.info).toBe("python");
     });
 });
 

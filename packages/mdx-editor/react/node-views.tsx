@@ -36,6 +36,7 @@ export function createMdxNodeViews(
             contentDOMTag: "div",
             domTag: "aside",
         }),
+        code_block: createCodeBlockNodeView,
         footnote_definition: createReactNodeView(FootnoteNodeView, {
             contentDOMTag: "div",
             domTag: "section",
@@ -63,6 +64,93 @@ export function createMdxNodeViews(
             contentDOMTag: "div",
             domTag: "li",
         }),
+    };
+}
+
+function createCodeBlockNodeView(
+    node: ProseMirrorNode,
+    view: EditorView,
+    getPos: () => number | undefined,
+): NodeView {
+    const dom = document.createElement("pre");
+    const toolbar = document.createElement("div");
+    const languageInput = document.createElement("input");
+    const contentDOM = document.createElement("code");
+    let currentNode = node;
+
+    toolbar.dataset.mdxCodeBlockToolbar = "true";
+    toolbar.contentEditable = "false";
+
+    languageInput.type = "text";
+    languageInput.autocapitalize = "off";
+    languageInput.autocomplete = "off";
+    languageInput.spellcheck = false;
+    languageInput.setAttribute("aria-label", "Code block language");
+    languageInput.placeholder = "language";
+    languageInput.dataset.mdxCodeBlockLanguageInput = "true";
+
+    toolbar.append(languageInput);
+    dom.append(toolbar, contentDOM);
+
+    const updateAttrs = () => {
+        const pos = getPos();
+        if (pos === undefined) {
+            return;
+        }
+
+        const info = languageInput.value.trim();
+        view.dispatch(
+            view.state.tr.setNodeMarkup(pos, undefined, {
+                ...currentNode.attrs,
+                info,
+                language: firstInfoToken(info),
+            }),
+        );
+    };
+
+    languageInput.addEventListener("change", updateAttrs);
+    languageInput.addEventListener("keydown", (event) => {
+        event.stopPropagation();
+        if (event.key === "Enter") {
+            event.preventDefault();
+            updateAttrs();
+            languageInput.blur();
+        }
+    });
+    languageInput.addEventListener("mousedown", (event) => {
+        event.stopPropagation();
+    });
+
+    const render = () => {
+        syncNodeViewAttributes(dom, currentNode);
+        dom.setAttribute("data-mdx-code-block", "");
+        languageInput.value = codeBlockInfo(currentNode);
+    };
+
+    render();
+
+    return {
+        contentDOM,
+        dom,
+        update(nextNode) {
+            if (nextNode.type !== currentNode.type) {
+                return false;
+            }
+
+            currentNode = nextNode;
+            render();
+
+            return true;
+        },
+        ignoreMutation(mutation) {
+            return (
+                mutation.target === languageInput ||
+                toolbar.contains(mutation.target)
+            );
+        },
+        stopEvent(event) {
+            return event.target === languageInput;
+        },
     };
 }
 
@@ -171,6 +259,21 @@ async function resolveImageNodeSource(
             dom.dataset.mdxImageError = "true";
         }
     }
+}
+
+function codeBlockInfo(node: ProseMirrorNode) {
+    const info = node.attrs.info;
+    const language = node.attrs.language;
+
+    if (typeof info === "string" && info.length > 0) {
+        return info;
+    }
+
+    return typeof language === "string" ? language : "";
+}
+
+function firstInfoToken(info: string) {
+    return info.trim().split(/\s+/, 1)[0] ?? "";
 }
 
 type ContentRef = (element: HTMLElement | null) => void;
@@ -495,6 +598,15 @@ function syncNodeViewAttributes(dom: HTMLElement, node: ProseMirrorNode) {
             dom.setAttribute("data-mdx-callout-kind", String(node.attrs.kind));
             if (node.attrs.title) {
                 dom.setAttribute("data-mdx-title", String(node.attrs.title));
+            }
+            break;
+        case "code_block":
+            dom.setAttribute("data-mdx-code-block", "");
+            if (node.attrs.language) {
+                dom.setAttribute("data-mdx-language", String(node.attrs.language));
+            }
+            if (node.attrs.info) {
+                dom.setAttribute("data-mdx-info", String(node.attrs.info));
             }
             break;
         case "footnote_definition":
