@@ -16,8 +16,9 @@ export function htmlSyntax(): SyntaxPlugin {
         },
         serializers: {
             nodeSerializers: {
-                inline_html: (node) => String(node.attrs.html ?? node.textContent),
-                html_block: (node) =>
+                inline_html: (node, _context) =>
+                    String(node.attrs.html ?? node.textContent),
+                html_block: (node, _context) =>
                     String(node.attrs.html ?? node.textContent ?? ""),
             },
         },

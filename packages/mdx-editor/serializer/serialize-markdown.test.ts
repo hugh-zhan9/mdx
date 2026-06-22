@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { createMdxEditorKernel } from "../kernel";
 import { mdxEditorSchema } from "../schema/schema";
 import { parseMarkdown } from "../parser/parse-markdown";
+import { defaultMarkdownSyntax } from "../syntax/default";
 import { sourceRange } from "../core/source-map";
 import { roundTripFixtures } from "../test/fixtures";
 import { serializeMarkdown } from "./serialize-markdown";
@@ -118,6 +120,9 @@ describe("serializeMarkdown", () => {
 
     it("serializes source fallback markdown exactly", () => {
         const markdown = "<div>Unsupported</div>\n";
+        const kernel = createMdxEditorKernel({
+            syntax: defaultMarkdownSyntax(),
+        });
         const doc = mdxEditorSchema.nodes.doc.create(null, [
             mdxEditorSchema.nodes.source_fallback.create({
                 markdown,
@@ -125,7 +130,7 @@ describe("serializeMarkdown", () => {
             }),
         ]);
 
-        expect(serializeMarkdown(emptyParsedDocument(doc))).toBe(markdown);
+        expect(kernel.serializeMarkdown(doc)).toBe(markdown);
     });
 
     it("serializes normal links with titles", () => {
@@ -155,6 +160,9 @@ describe("serializeMarkdown", () => {
 
     it("serializes inline marks, math, and footnote refs", () => {
         const schema = mdxEditorSchema;
+        const kernel = createMdxEditorKernel({
+            syntax: defaultMarkdownSyntax(),
+        });
         const doc = schema.nodes.doc.create(null, [
             schema.nodes.paragraph.create(null, [
                 schema.text("A "),
@@ -178,7 +186,7 @@ describe("serializeMarkdown", () => {
             ]),
         ]);
 
-        expect(serializeMarkdown(emptyParsedDocument(doc))).toBe(
+        expect(kernel.serializeMarkdown(doc)).toBe(
             "A **bold** *em* ~~gone~~ `code` <kbd>Command</kbd> $x+1$ [^note]\n",
         );
     });

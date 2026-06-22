@@ -11,7 +11,11 @@ import { serializeInlineContent } from "../serializer/inline-serializer";
 import { serializeMarkdown as serializeParsedMarkdown } from "../serializer/serialize-markdown";
 import { createSyntaxRegistry } from "./registry";
 import { buildSchemaFromRegistry } from "./schema";
-import type { SyntaxPlugin, SyntaxRegistry } from "./types";
+import type {
+    SerializerContext,
+    SyntaxPlugin,
+    SyntaxRegistry,
+} from "./types";
 
 export interface MdxEditorKernelServices {
     codeTokenizer?: CodeTokenizer;
@@ -41,18 +45,25 @@ export function createMdxEditorKernel(
 ): MdxEditorKernel {
     const registry = createSyntaxRegistry(options.syntax);
     const schema = buildSchemaFromRegistry(registry);
-    const nodeSerializers = mergeNodeSerializers(registry);
+    let nodeSerializers: Record<string, (node: ProseMirrorNode) => string> = {};
+    const serializerContext: SerializerContext = {
+        serializeInline: (node) =>
+            serializeInlineContent(node, {
+                nodeSerializers,
+            }),
+        serializeNode: (node) =>
+            serializeBlockNode(node, {
+                nodeSerializers,
+                serializeInline: serializerContext.serializeInline,
+                serializeNode: serializerContext.serializeNode,
+            }),
+    };
+    nodeSerializers = mergeNodeSerializers(registry, serializerContext);
 
     const parseMarkdown = (markdown: string) =>
         parseMarkdownWithSchema(markdown, schema);
-    const serializeInline = (node: ProseMirrorNode) =>
-        serializeInlineContent(node, { nodeSerializers });
-    const serializeNode = (node: ProseMirrorNode) =>
-        serializeBlockNode(node, {
-            nodeSerializers,
-            serializeInline,
-            serializeNode,
-        });
+    const serializeInline = serializerContext.serializeInline;
+    const serializeNode = serializerContext.serializeNode;
     const serializeMarkdown = (doc: ProseMirrorNode | ParsedMarkdownDocument) =>
         serializeParsedMarkdown(
             isParsedDocument(doc) ? doc : emptyParsedDocument(doc),
@@ -100,11 +111,18 @@ function emptyParsedDocument(doc: ProseMirrorNode): ParsedMarkdownDocument {
     };
 }
 
-function mergeNodeSerializers(registry: SyntaxRegistry) {
+function mergeNodeSerializers(
+    registry: SyntaxRegistry,
+    context: SerializerContext,
+) {
     const nodeSerializers: Record<string, (node: ProseMirrorNode) => string> = {};
 
     for (const contribution of registry.serializers) {
-        Object.assign(nodeSerializers, contribution.nodeSerializers);
+        for (const [name, serializer] of Object.entries(
+            contribution.nodeSerializers ?? {},
+        )) {
+            nodeSerializers[name] = (node) => serializer(node, context);
+        }
     }
 
     return nodeSerializers;

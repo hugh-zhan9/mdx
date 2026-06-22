@@ -11,7 +11,8 @@ export function fallbackSyntax(): SyntaxPlugin {
         },
         serializers: {
             nodeSerializers: {
-                source_fallback: (node) => String(node.attrs.markdown ?? ""),
+                source_fallback: (node, _context) =>
+                    String(node.attrs.markdown ?? ""),
             },
         },
         nodeViews: {
