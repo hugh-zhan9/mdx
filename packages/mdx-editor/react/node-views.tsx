@@ -1165,8 +1165,16 @@ export async function hydrateRenderedImages(
 
     await Promise.all(
         Array.from(images).map(async (image) => {
-            const source = image.getAttribute("src");
-            if (!source || image.getAttribute(RESOLVED_SOURCE_ATTRIBUTE) === source) {
+            const source =
+                image.getAttribute(RESOLVED_SOURCE_ATTRIBUTE) ??
+                image.getAttribute("src");
+            const currentSource = image.getAttribute("src");
+
+            if (
+                !source ||
+                (currentSource === source &&
+                    image.getAttribute(RESOLVED_SOURCE_ATTRIBUTE) === source)
+            ) {
                 return;
             }
 

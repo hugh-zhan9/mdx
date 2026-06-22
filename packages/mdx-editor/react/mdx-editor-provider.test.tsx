@@ -650,6 +650,51 @@ describe("MdxEditorProvider", () => {
         );
     });
 
+    it("rehydrates images from the markdown source when imageLoader changes", async () => {
+        const firstLoader = vi.fn(async (src: string) => `A:${src}`);
+        const secondLoader = vi.fn(async (src: string) => `B:${src}`);
+
+        await act(async () => {
+            root.render(
+                <MdxEditorProvider
+                    initialMarkdown={'![Diagram](.assets/a.png)\n'}
+                    imageLoader={firstLoader}
+                >
+                    <MdxEditorView />
+                </MdxEditorProvider>,
+            );
+        });
+
+        await act(async () => {});
+
+        expect(firstLoader).toHaveBeenCalledWith(".assets/a.png");
+        expect(
+            host.querySelector("img[data-mdx-node-type='image']")?.getAttribute("src"),
+        ).toBe("A:.assets/a.png");
+
+        await act(async () => {
+            root.render(
+                <MdxEditorProvider
+                    initialMarkdown={'![Diagram](.assets/a.png)\n'}
+                    imageLoader={secondLoader}
+                >
+                    <MdxEditorView />
+                </MdxEditorProvider>,
+            );
+        });
+
+        await act(async () => {});
+
+        const image = host.querySelector("img[data-mdx-node-type='image']");
+
+        expect(secondLoader).toHaveBeenCalledWith(".assets/a.png");
+        expect(secondLoader).not.toHaveBeenCalledWith("A:.assets/a.png");
+        expect(image?.getAttribute("src")).toBe("B:.assets/a.png");
+        expect(image?.getAttribute("data-mdx-resolved-src")).toBe(
+            ".assets/a.png",
+        );
+    });
+
     it("exposes placeholder state on an empty editor root", async () => {
         await act(async () => {
             root.render(
