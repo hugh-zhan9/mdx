@@ -12,4 +12,7 @@ when touching parser, serializer, document-window layout, or preview layers.
   `data-mdx-language` is `mermaid`; never hide or decorate ordinary code blocks.
 - The Mermaid preview layer may only remove preview nodes it created itself; it
   must not clean up previews owned by React node views.
+- Mermaid blocks must use one preview path only; do not render both a React node
+  view preview and the global preview layer for the same block.
+- Bare `http://`, `https://`, and email text should render as editable links.
 - Outline heading clicks should jump immediately, not smooth-scroll slowly.

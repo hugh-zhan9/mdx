@@ -24,7 +24,6 @@ describe("createMdxNodeViews", () => {
                 "image",
                 "math_block",
                 "math_inline",
-                "mermaid_block",
                 "source_fallback",
                 "table",
                 "task_item",

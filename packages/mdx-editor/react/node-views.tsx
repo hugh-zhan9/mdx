@@ -10,7 +10,6 @@ import type {
 import { CalloutNodeView } from "./callout-node-view";
 import { FootnoteNodeView } from "./footnote-node-view";
 import { MathNodeView } from "./math-node-view";
-import { MermaidNodeView } from "./mermaid-node-view";
 import { SourceFallbackNodeView } from "./source-fallback-node-view";
 import { TableNodeView } from "./table-node-view";
 import { TaskListNodeView } from "./task-list-node-view";
@@ -49,9 +48,6 @@ export function createMdxNodeViews(
             className: "mdx-math-node mdx-math-inline",
             domTag: "span",
             inline: true,
-        }),
-        mermaid_block: createReactNodeView(MermaidNodeView, {
-            textBacked: true,
         }),
         source_fallback: createSourceFallbackNodeView,
         table: createReactNodeView(TableNodeView, {

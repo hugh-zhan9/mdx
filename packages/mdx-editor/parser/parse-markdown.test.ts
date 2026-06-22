@@ -109,6 +109,35 @@ describe("parseMarkdown", () => {
         expect(link.attrs.href).toBe("www.baidu.com");
     });
 
+    it("parses bare URLs and email addresses as links", () => {
+        const parsed = parseMarkdown(
+            "Visit https://example.com, http://baidu.com/path?q=1 and user@example.com.\n",
+        );
+        const paragraph = parsed.doc.child(0);
+        const links: Array<{ text: string; href: string }> = [];
+
+        paragraph.forEach((node) => {
+            const link = node.marks.find((mark) => mark.type.name === "link");
+            if (node.isText && link) {
+                links.push({
+                    href: String(link.attrs.href),
+                    text: node.text ?? "",
+                });
+            }
+        });
+
+        expect(links).toEqual([
+            { text: "https://example.com", href: "https://example.com" },
+            {
+                text: "http://baidu.com/path?q=1",
+                href: "http://baidu.com/path?q=1",
+            },
+            { text: "user@example.com", href: "mailto:user@example.com" },
+        ]);
+        expect(paragraph.textContent).toContain("https://example.com,");
+        expect(paragraph.textContent).toContain("user@example.com.");
+    });
+
     it("parses inline markdown marks, footnote refs, and math into structured nodes", () => {
         const parsed = parseMarkdown("A **bold** *em* ~~gone~~ `code` $x+1$ [^note].\n");
         const paragraph = parsed.doc.child(0);

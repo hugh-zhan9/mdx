@@ -59,6 +59,24 @@ export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
             continue;
         }
 
+        const autolink = tryParseAutolink(text, cursor);
+        if (autolink) {
+            pushText(children, buffer);
+            buffer = "";
+            pushText(
+                children,
+                autolink.text,
+                [
+                    mdxEditorSchema.marks.link.create({
+                        href: autolink.href,
+                        title: null,
+                    }),
+                ],
+            );
+            cursor = autolink.nextIndex;
+            continue;
+        }
+
         const footnoteRef = tryParseFootnoteRef(text, cursor);
         if (footnoteRef) {
             pushText(children, buffer);
@@ -262,6 +280,91 @@ function tryParseImage(text: string, startIndex: number) {
         title: link.title,
         nextIndex: link.nextIndex,
     };
+}
+
+function tryParseAutolink(text: string, startIndex: number) {
+    if (startIndex > 0 && !isAutolinkBoundary(text[startIndex - 1])) {
+        return null;
+    }
+
+    const url = tryParseBareUrl(text, startIndex);
+    if (url) {
+        return url;
+    }
+
+    return tryParseBareEmail(text, startIndex);
+}
+
+function tryParseBareUrl(text: string, startIndex: number) {
+    const scheme = text.slice(startIndex).match(/^(https?:\/\/)/i);
+    if (!scheme) {
+        return null;
+    }
+
+    let cursor = startIndex + scheme[1].length;
+    while (cursor < text.length && !/\s/.test(text[cursor])) {
+        cursor += 1;
+    }
+
+    const end = trimAutolinkEnd(text, startIndex, cursor);
+    if (end <= startIndex + scheme[1].length) {
+        return null;
+    }
+
+    const href = text.slice(startIndex, end);
+    return {
+        href,
+        nextIndex: end,
+        text: href,
+    };
+}
+
+function tryParseBareEmail(text: string, startIndex: number) {
+    const match = text
+        .slice(startIndex)
+        .match(/^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/);
+    if (!match) {
+        return null;
+    }
+
+    const email = match[0];
+    return {
+        href: `mailto:${email}`,
+        nextIndex: startIndex + email.length,
+        text: email,
+    };
+}
+
+function isAutolinkBoundary(char: string) {
+    return /\s|[(<[{]/.test(char);
+}
+
+function trimAutolinkEnd(text: string, startIndex: number, endIndex: number) {
+    let end = endIndex;
+    while (end > startIndex && /[.,!?;:]/.test(text[end - 1])) {
+        end -= 1;
+    }
+
+    while (
+        end > startIndex &&
+        text[end - 1] === ")" &&
+        countChar(text.slice(startIndex, end), ")") >
+            countChar(text.slice(startIndex, end), "(")
+    ) {
+        end -= 1;
+    }
+
+    return end;
+}
+
+function countChar(text: string, char: string) {
+    let count = 0;
+    for (const current of text) {
+        if (current === char) {
+            count += 1;
+        }
+    }
+    return count;
 }
 
 function tryParseLink(text: string, startIndex: number) {
