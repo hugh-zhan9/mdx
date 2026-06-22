@@ -756,7 +756,6 @@ export function DocumentShell({
         const current = stateRef.current;
 
         if (confirmedCloseRef.current) {
-          event.preventDefault();
           return;
         }
 
@@ -913,7 +912,7 @@ export function DocumentShell({
 
   if (error) {
     return (
-      <main className="flex h-screen items-center justify-center bg-base-100 px-6 text-sm text-error">
+      <main className="flex h-dvh items-center justify-center bg-base-100 px-6 text-sm text-error">
         {error}
       </main>
     );
@@ -921,14 +920,14 @@ export function DocumentShell({
 
   if (!state) {
     return (
-      <main className="flex h-screen items-center justify-center bg-base-100 text-sm text-base-content/70">
+      <main className="flex h-dvh items-center justify-center bg-base-100 text-sm text-base-content/70">
         正在加载文档...
       </main>
     );
   }
 
   return (
-    <main className="grid h-screen min-h-0 grid-rows-[44px_minmax(0,1fr)] bg-base-100 text-base-content">
+    <main className="grid h-dvh min-h-0 overflow-hidden grid-rows-[44px_minmax(0,1fr)] bg-base-100 text-base-content">
       <header className="flex min-w-0 items-center justify-between border-b border-base-300 bg-base-200 px-3">
         <div
           className="min-w-0 truncate text-sm font-medium"
@@ -955,10 +954,10 @@ export function DocumentShell({
       </header>
 
       <div
-        className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)]"
+        className="flex min-h-0 min-w-0 flex-col overflow-hidden"
         data-document-editor-body=""
       >
-        <div className="shrink-0">
+        <div className="relative z-10 shrink-0">
           {draftRecovery ? (
             <RecoveryBanner
               title="发现未保存草稿"
@@ -1066,7 +1065,7 @@ export function DocumentShell({
         </div>
 
         <div
-          className="grid h-full min-h-0 min-w-0"
+          className="grid min-h-0 min-w-0 flex-1 overflow-hidden"
           data-document-editor-grid=""
           style={{
             gridTemplateColumns: state.outlineCollapsed
@@ -1075,7 +1074,7 @@ export function DocumentShell({
           }}
         >
           <section
-            className="flex h-full min-h-0 min-w-0 overflow-hidden"
+            className="flex min-h-0 min-w-0 overflow-hidden"
             data-document-editor-stage=""
           >
             <EditorPane

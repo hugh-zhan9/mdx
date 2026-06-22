@@ -40,6 +40,25 @@ describe("mermaid dom helpers", () => {
         ]);
     });
 
+    it("does not map mermaid fences to non-mermaid code blocks", () => {
+        const root = document.createElement("div");
+        const plainPre = pre("text");
+        root.append(plainPre);
+
+        const fences: MermaidCodeFence[] = [
+            {
+                code: "graph TD\n  A --> B",
+                codeBlockIndex: 0,
+                fenceChar: "`",
+                fenceLength: 3,
+                info: "mermaid",
+                language: "mermaid",
+            },
+        ];
+
+        expect(mapMermaidFencesToPreElements(root, fences)).toEqual([]);
+    });
+
     it("hides preview-mode sources and reveals editing sources", () => {
         const source = pre("mermaid");
 
@@ -63,7 +82,7 @@ function pre(language: string): HTMLPreElement {
     const element = document.createElement("pre");
     element.setAttribute("data-mdx-code-block", "");
     element.setAttribute("data-mdx-node-type", "code_block");
-    element.dataset.testLanguage = language;
+    element.setAttribute("data-mdx-language", language);
     const code = document.createElement("code");
     code.textContent = language;
     element.append(code);

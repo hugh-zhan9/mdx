@@ -57,19 +57,22 @@ export function parseMarkdownBlocks(
             continue;
         }
 
-        const singleLineCode = line.text.match(/^ {0,3}```([^`]*)```[ \t]*$/);
+        const singleLineCode = parseSingleLineBacktickFence(line.text);
         const fence = singleLineCode
-            ? line.text.match(/^ {0,3}```/)
+            ? singleLineCode
             : isLineStartingInlineCodeSpan(line.text)
               ? null
-              : line.text.match(/^ {0,3}```([^\s`]*)?(.*)$/);
+              : parseOpeningBacktickFence(line.text);
         if (fence) {
             const startLine = cursor;
             let endLine = -1;
             if (!singleLineCode) {
                 for (let next = cursor + 1; next < logicalLines.length; next += 1) {
                     const closing = logicalLines[next];
-                    if (closing?.text.match(/^ {0,3}```[ \t]*$/)) {
+                    if (
+                        closing &&
+                        isClosingBacktickFence(closing.text, fence.markerLength)
+                    ) {
                         endLine = next;
                         break;
                     }
@@ -84,7 +87,7 @@ export function parseMarkdownBlocks(
             const sourceId = addSlice(sourceSlices, markdown, start, end);
             const contentStart = logicalLines[startLine].end;
             const contentEnd = endLine >= 0 ? logicalLines[endLine].start : end;
-            const info = line.text.replace(/^ {0,3}```/, "").trim();
+            const info = singleLineCode ? "" : fence.info;
             const nextCursor = singleLineCode
                 ? startLine + 1
                 : endLine >= 0
@@ -92,7 +95,7 @@ export function parseMarkdownBlocks(
                   : logicalLines.length;
             const content = textNode(
                 singleLineCode
-                    ? `${singleLineCode[1]}\n`
+                    ? `${singleLineCode.content}\n`
                     : markdown.slice(contentStart, contentEnd),
             );
             blocks.push(
@@ -106,7 +109,9 @@ export function parseMarkdownBlocks(
                       )
                     : mdxEditorSchema.nodes.code_block.create(
                           {
-                              language: singleLineCode ? "" : (fence[1] ?? ""),
+                              language: singleLineCode
+                                  ? ""
+                                  : firstInfoToken(info),
                               info: singleLineCode ? "" : info,
                               sourceId,
                           },
@@ -299,6 +304,36 @@ export function parseMarkdownBlocks(
     }
 
     return blocks;
+}
+
+function parseOpeningBacktickFence(text: string) {
+    const match = text.match(/^ {0,3}(`{3,})([^`]*)$/);
+    if (!match) {
+        return null;
+    }
+
+    return {
+        info: match[2].trim(),
+        markerLength: match[1].length,
+    };
+}
+
+function parseSingleLineBacktickFence(text: string) {
+    const match = text.match(/^ {0,3}(`{3,})([^`]*)\1[ \t]*$/);
+    if (!match) {
+        return null;
+    }
+
+    return {
+        content: match[2],
+        info: "",
+        markerLength: match[1].length,
+    };
+}
+
+function isClosingBacktickFence(text: string, markerLength: number) {
+    const match = text.match(/^ {0,3}(`+)[ \t]*$/);
+    return Boolean(match && match[1].length >= markerLength);
 }
 
 function firstInfoToken(info: string) {

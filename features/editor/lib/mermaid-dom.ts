@@ -19,7 +19,7 @@ export function mapMermaidFencesToPreElements(
 
     return fences.flatMap((fence) => {
         const pre = preElements[fence.codeBlockIndex];
-        if (!pre) {
+        if (!pre || !isMermaidPreElement(pre)) {
             return [];
         }
 
@@ -31,6 +31,10 @@ export function mapMermaidFencesToPreElements(
             },
         ];
     });
+}
+
+function isMermaidPreElement(pre: HTMLPreElement): boolean {
+    return pre.getAttribute("data-mdx-language")?.toLowerCase() === "mermaid";
 }
 
 export function applyMermaidSourceVisibility(

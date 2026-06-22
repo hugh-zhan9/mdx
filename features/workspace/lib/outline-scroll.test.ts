@@ -31,6 +31,7 @@ describe("outline scroll helpers", () => {
         expect(scrollRenderedHeadingIntoView(root, 1)).toBe(true);
         expect(firstHeading.scrollIntoView).not.toHaveBeenCalled();
         expect(secondHeading.scrollIntoView).toHaveBeenCalledWith({
+            behavior: "instant",
             block: "start",
             inline: "nearest",
         });

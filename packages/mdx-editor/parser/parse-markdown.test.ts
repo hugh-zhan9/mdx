@@ -410,6 +410,35 @@ describe("parseMarkdown", () => {
         expect(parsed.sourceSlices[0]?.text).toBe(markdown);
     });
 
+    it("parses four-backtick fences without closing on nested triple backticks", () => {
+        const markdown = [
+            "````",
+            "```js",
+            'console.log("nested fence");',
+            "```",
+            "````",
+            "",
+            "## After",
+            "",
+            "```mermaid",
+            "graph TD",
+            "  A --> B",
+            "```",
+            "",
+        ].join("\n");
+        const parsed = parseMarkdown(markdown);
+
+        expect(parsed.doc.childCount).toBe(3);
+        expect(parsed.doc.child(0).type.name).toBe("code_block");
+        expect(parsed.doc.child(0).textContent).toBe(
+            '```js\nconsole.log("nested fence");\n```\n',
+        );
+        expect(parsed.doc.child(1).type.name).toBe("heading");
+        expect(parsed.doc.child(1).textContent).toBe("After");
+        expect(parsed.doc.child(2).type.name).toBe("mermaid_block");
+        expect(parsed.doc.child(2).textContent).toBe("graph TD\n  A --> B\n");
+    });
+
     it("parses advanced markdown blocks as structured nodes", () => {
         const cases = [
             { name: "gfm task list", expected: ["bullet_list"] },

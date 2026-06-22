@@ -182,11 +182,13 @@ describe("DocumentShell draft recovery", () => {
     const stageClassName =
       host.querySelector("[data-document-editor-stage]")?.className ?? "";
 
-    expect(bodyClassName).toContain("grid-rows-[auto_minmax(0,1fr)]");
+    expect(bodyClassName).toContain("flex-col");
+    expect(bodyClassName).toContain("overflow-hidden");
     expect(bodyClassName).toContain("min-h-0");
     expect(bodyClassName).not.toContain("h-full");
-    expect(gridClassName).toContain("h-full");
-    expect(stageClassName).toContain("h-full");
+    expect(gridClassName).toContain("flex-1");
+    expect(gridClassName).toContain("overflow-hidden");
+    expect(stageClassName).not.toContain("h-full");
     expect(stageClassName).toContain("overflow-hidden");
   });
 
@@ -208,6 +210,29 @@ describe("DocumentShell draft recovery", () => {
     expect(preventDefault).toHaveBeenCalledOnce();
     expect(destroy).toHaveBeenCalledOnce();
     expect(close).not.toHaveBeenCalled();
+  });
+
+  it("allows the confirmed close event after destroying a clean document window", async () => {
+    readDocumentFile.mockResolvedValueOnce(
+      documentFile("# Disk", "fingerprint-disk"),
+    );
+    draftGet.mockResolvedValueOnce(null);
+
+    await renderDocumentShell(root);
+    const closeHandler = onCloseRequested.mock.calls[0]?.[0];
+    const firstPreventDefault = vi.fn();
+    const secondPreventDefault = vi.fn();
+
+    await act(async () => {
+      closeHandler?.({ preventDefault: firstPreventDefault });
+      await flushPromises();
+      closeHandler?.({ preventDefault: secondPreventDefault });
+      await flushPromises();
+    });
+
+    expect(firstPreventDefault).toHaveBeenCalledOnce();
+    expect(destroy).toHaveBeenCalledOnce();
+    expect(secondPreventDefault).not.toHaveBeenCalled();
   });
 
   function getButton(label: string) {
