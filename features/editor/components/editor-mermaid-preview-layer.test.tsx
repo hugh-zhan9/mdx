@@ -157,6 +157,7 @@ describe("EditorMermaidPreviewLayer", () => {
     it("removes stale previews that are no longer next to the mapped source", async () => {
         const stalePreview = document.createElement("div");
         stalePreview.dataset.mdxMermaidPreview = "mermaid-0";
+        stalePreview.dataset.mdxMermaidPreviewLayer = "true";
         editorRoot.prepend(stalePreview);
 
         await renderLayer("```mermaid\ngraph TD\n  A --> B\n```");
@@ -257,6 +258,18 @@ describe("EditorMermaidPreviewLayer", () => {
         expect(unrelated.getAttribute("aria-hidden")).toBe("true");
     });
 
+    it("does not remove mermaid previews owned by node views", async () => {
+        const nodeViewPreview = document.createElement("div");
+        nodeViewPreview.dataset.mdxMermaidPreview = "source-1";
+        nodeViewPreview.textContent = "node view preview";
+        editorRoot.append(nodeViewPreview);
+
+        await renderLayer("No mermaid fences here.");
+
+        expect(editorRoot.contains(nodeViewPreview)).toBe(true);
+        expect(nodeViewPreview.textContent).toBe("node view preview");
+    });
+
     it("does not show cached svg when mermaid source changes at the same index", async () => {
         await renderLayer("```mermaid\ngraph TD\n  A --> B\n```");
 
@@ -291,7 +304,7 @@ describe("EditorMermaidPreviewLayer", () => {
         );
         expect(previousPreview).not.toBeNull();
 
-        const nextSource = pre("graph TD\n  A --> B");
+        const nextSource = codeBlock("mermaid", "graph TD\n  A --> B");
         act(() => {
             editorRoot.replaceChildren(nextSource);
         });
@@ -410,6 +423,10 @@ function pre(text: string): HTMLPreElement {
 
 function codeBlock(language: string, text: string): HTMLPreElement {
     const element = pre(text);
+    element.setAttribute(
+        "data-mdx-node-type",
+        language === "mermaid" ? "mermaid_block" : "code_block",
+    );
     element.setAttribute("data-mdx-language", language);
     return element;
 }

@@ -34,7 +34,11 @@ export function mapMermaidFencesToPreElements(
 }
 
 function isMermaidPreElement(pre: HTMLPreElement): boolean {
-    return pre.getAttribute("data-mdx-language")?.toLowerCase() === "mermaid";
+    return (
+        pre.tagName.toLowerCase() === "pre" &&
+        pre.getAttribute("data-mdx-node-type") === "mermaid_block" &&
+        pre.getAttribute("data-mdx-language")?.toLowerCase() === "mermaid"
+    );
 }
 
 export function applyMermaidSourceVisibility(

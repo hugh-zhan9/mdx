@@ -286,6 +286,7 @@ function ensurePreviewNode(pre: HTMLPreElement, stableId: string): HTMLElement {
 
     const node = document.createElement("div");
     node.dataset.mdxMermaidPreview = stableId;
+    node.dataset.mdxMermaidPreviewLayer = "true";
     node.className = "mdx-mermaid-preview";
     node.contentEditable = "false";
     pre.after(node);
@@ -361,7 +362,9 @@ function cleanupStalePreviewNodes(
     mappings: MermaidPreMapping[],
 ): void {
     for (const node of Array.from(
-        editorRoot.querySelectorAll<HTMLElement>("[data-mdx-mermaid-preview]"),
+        editorRoot.querySelectorAll<HTMLElement>(
+            "[data-mdx-mermaid-preview-layer='true']",
+        ),
     )) {
         const id = node.dataset.mdxMermaidPreview;
         const mapping = mappings.find(

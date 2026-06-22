@@ -10,4 +10,6 @@ when touching parser, serializer, document-window layout, or preview layers.
   swallow following Markdown sections.
 - Mermaid previews must only attach to code block DOM nodes whose
   `data-mdx-language` is `mermaid`; never hide or decorate ordinary code blocks.
+- The Mermaid preview layer may only remove preview nodes it created itself; it
+  must not clean up previews owned by React node views.
 - Outline heading clicks should jump immediately, not smooth-scroll slowly.
