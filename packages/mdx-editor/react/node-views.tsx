@@ -46,11 +46,7 @@ export function createMdxNodeViews(
             contentDOMTag: "div",
             domTag: "section",
         }),
-        html_block: createReactNodeView(HtmlBlockNodeView, {
-            className: "mdx-html-block-wrapper",
-            domTag: "div",
-            textBacked: true,
-        }),
+        html_block: createHtmlBlockNodeView,
         image: createImageNodeView(options.imageLoader),
         inline_html: createReactNodeView(InlineHtmlNodeView, {
             className: "mdx-inline-html-node",
@@ -723,6 +719,180 @@ function createSourceFallbackNodeView(
             root.unmount();
         },
     };
+}
+
+function createHtmlBlockNodeView(
+    node: ProseMirrorNode,
+    view: EditorView,
+    getPos: () => number | undefined,
+): NodeView {
+    const dom = document.createElement("div");
+    const root = createRoot(dom);
+    let currentNode = node;
+    let editingRequest = 0;
+    let selected = false;
+
+    const updateAttrs = (attrs: Record<string, unknown>) => {
+        const pos = getPos();
+        if (pos === undefined) {
+            return;
+        }
+
+        const nextAttrs = {
+            ...currentNode.attrs,
+            ...attrs,
+        };
+        const html = String(nextAttrs.html ?? "");
+        const content = html.length > 0 ? currentNode.type.schema.text(html) : null;
+
+        view.dispatch(
+            view.state.tr.replaceWith(
+                pos,
+                pos + currentNode.nodeSize,
+                currentNode.type.create(nextAttrs, content),
+            ),
+        );
+    };
+
+    const render = () => {
+        syncNodeViewAttributes(dom, currentNode);
+        dom.className = "mdx-html-block-wrapper";
+        flushSync(() => {
+            root.render(
+                <HtmlBlockNodeView
+                    editingRequest={editingRequest}
+                    node={currentNode}
+                    updateAttrs={updateAttrs}
+                    selected={selected}
+                    getPos={getPosForProps(getPos)}
+                />,
+            );
+        });
+    };
+
+    const requestEditing = () => {
+        editingRequest += 1;
+        render();
+    };
+
+    const handlePreviewMouseDown = (event: MouseEvent) => {
+        if (
+            isInteractiveHtmlBlockTarget(event.target, dom) ||
+            !isInsideHtmlBlockPreview(event.target, dom)
+        ) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        requestEditing();
+    };
+
+    const handlePreviewClick = (event: MouseEvent) => {
+        if (
+            isInteractiveHtmlBlockTarget(event.target, dom) ||
+            !isInsideHtmlBlockPreview(event.target, dom)
+        ) {
+            return;
+        }
+
+        requestEditing();
+    };
+
+    const handlePreviewDoubleClick = (event: MouseEvent) => {
+        if (
+            !isInsideHtmlBlockPreview(event.target, dom) ||
+            !isHtmlBlockSummaryTarget(event.target, dom)
+        ) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        requestEditing();
+    };
+
+    dom.addEventListener("mousedown", handlePreviewMouseDown, true);
+    dom.addEventListener("click", handlePreviewClick, true);
+    dom.addEventListener("dblclick", handlePreviewDoubleClick, true);
+    render();
+
+    return {
+        dom,
+        update(nextNode) {
+            if (nextNode.type.name !== "html_block") {
+                return false;
+            }
+
+            currentNode = nextNode;
+            render();
+
+            return true;
+        },
+        selectNode() {
+            selected = true;
+            render();
+        },
+        deselectNode() {
+            selected = false;
+            render();
+        },
+        stopEvent(event) {
+            if (!(event.target instanceof Node) || !dom.contains(event.target)) {
+                return false;
+            }
+
+            return (
+                event.type === "mousedown" ||
+                event.type === "dblclick" ||
+                event.target instanceof HTMLTextAreaElement
+            );
+        },
+        ignoreMutation() {
+            return true;
+        },
+        destroy() {
+            dom.removeEventListener("mousedown", handlePreviewMouseDown, true);
+            dom.removeEventListener("click", handlePreviewClick, true);
+            dom.removeEventListener("dblclick", handlePreviewDoubleClick, true);
+            root.unmount();
+        },
+    };
+}
+
+function isInsideHtmlBlockPreview(target: EventTarget | null, root: HTMLElement) {
+    const element = eventTargetElement(target, root);
+
+    return Boolean(element?.closest(".mdx-html-block-preview"));
+}
+
+function isInteractiveHtmlBlockTarget(
+    target: EventTarget | null,
+    root: HTMLElement,
+) {
+    const element = eventTargetElement(target, root);
+    if (!element) {
+        return false;
+    }
+
+    return Boolean(
+        element.closest(
+            [
+                "a",
+                "button",
+                "summary",
+                "input",
+                "select",
+                "textarea",
+                "label",
+                "[contenteditable='true']",
+            ].join(","),
+        ),
+    );
+}
+
+function isHtmlBlockSummaryTarget(target: EventTarget | null, root: HTMLElement) {
+    return Boolean(eventTargetElement(target, root)?.closest("summary"));
 }
 
 function isInsideSourceFallbackPreview(target: EventTarget | null, root: HTMLElement) {

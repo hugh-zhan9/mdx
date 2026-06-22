@@ -4,19 +4,34 @@ import type { ChangeEvent, FocusEvent, KeyboardEvent, MouseEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { NodeViewProps } from "./node-views";
 
-export function HtmlBlockNodeView({ node, updateAttrs }: NodeViewProps) {
+export function HtmlBlockNodeView({
+    editingRequest,
+    node,
+    updateAttrs,
+}: NodeViewProps) {
     const html = String(node.attrs.html || node.textContent || "");
     const tag = String(node.attrs.tag || "");
     const [editing, setEditing] = useState(false);
     const [collapsed, setCollapsed] = useState(Boolean(node.attrs.collapsed));
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     const rootRef = useRef<HTMLDivElement | null>(null);
+    const lastEditingRequestRef = useRef(editingRequest ?? 0);
 
     useEffect(() => {
         if (editing) {
             textareaRef.current?.focus();
         }
     }, [editing]);
+
+    useEffect(() => {
+        const nextRequest = editingRequest ?? 0;
+        if (nextRequest === lastEditingRequestRef.current) {
+            return;
+        }
+
+        lastEditingRequestRef.current = nextRequest;
+        setEditing(true);
+    }, [editingRequest]);
 
     function handleChange(event: ChangeEvent<HTMLTextAreaElement>) {
         const nextHtml = event.currentTarget.value;
@@ -40,7 +55,7 @@ export function HtmlBlockNodeView({ node, updateAttrs }: NodeViewProps) {
     }
 
     function handlePreviewClick(event: MouseEvent<HTMLDivElement>) {
-        // 如果点击的是交互元素（如 details/summary），不进入编辑模式
+        // summary keeps its native details toggle; the rest of details opens source.
         if (isInteractiveHtmlTarget(event.target, event.currentTarget)) {
             return;
         }
@@ -64,6 +79,16 @@ export function HtmlBlockNodeView({ node, updateAttrs }: NodeViewProps) {
         }
 
         event.preventDefault();
+        openEditor();
+    }
+
+    function handlePreviewDoubleClick(event: MouseEvent<HTMLDivElement>) {
+        if (!isSummaryTarget(event.target, event.currentTarget)) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
         openEditor();
     }
 
@@ -99,6 +124,7 @@ export function HtmlBlockNodeView({ node, updateAttrs }: NodeViewProps) {
                     className="mdx-html-block-preview"
                     contentEditable={false}
                     onClick={handlePreviewClick}
+                    onDoubleClickCapture={handlePreviewDoubleClick}
                     onMouseDownCapture={handlePreviewMouseDown}
                     onKeyDown={handlePreviewKeyDown}
                     role="button"
@@ -112,13 +138,19 @@ export function HtmlBlockNodeView({ node, updateAttrs }: NodeViewProps) {
     );
 }
 
+function isSummaryTarget(target: EventTarget, root: HTMLElement) {
+    return Boolean(getEventTargetElement(target, root)?.closest("summary"));
+}
+
 function isInteractiveHtmlTarget(target: EventTarget, root: HTMLElement) {
-    if (!(target instanceof Element) || target === root) {
+    const element = getEventTargetElement(target, root);
+
+    if (!element || element === root) {
         return false;
     }
 
     return Boolean(
-        target.closest(
+        element.closest(
             [
                 "a",
                 "button",
@@ -127,11 +159,22 @@ function isInteractiveHtmlTarget(target: EventTarget, root: HTMLElement) {
                 "select",
                 "textarea",
                 "label",
-                "details",
                 "[contenteditable='true']",
             ].join(","),
         ),
     );
+}
+
+function getEventTargetElement(target: EventTarget, root: HTMLElement) {
+    if (target instanceof Element) {
+        return target;
+    }
+
+    if (target instanceof Node && root.contains(target)) {
+        return target.parentElement;
+    }
+
+    return null;
 }
 
 function sanitizeBlockHtml(html: string, tag: string, collapsed: boolean): string {

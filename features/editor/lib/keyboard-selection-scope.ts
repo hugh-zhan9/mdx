@@ -18,8 +18,18 @@ interface DomElementLike<TContainsTarget> {
     querySelector(selector: string): DomElementLike<TContainsTarget> | null;
 }
 
-const CODE_BLOCK_SELECTOR = MDX_CODE_BLOCK_SELECTOR;
 const EDITOR_ROOT_SELECTOR = MDX_EDITOR_ROOT_SELECTOR;
+const SCOPED_SELECT_ALL_SELECTOR = [
+    MDX_CODE_BLOCK_SELECTOR,
+    "[data-mdx-node-type='blockquote']",
+    "[data-mdx-node-type='callout']",
+    "[data-mdx-node-type='frontmatter']",
+    "[data-mdx-node-type='html_block']",
+    "[data-mdx-node-type='math_block']",
+    "[data-mdx-node-type='mermaid_block']",
+    "[data-mdx-node-type='source_fallback']",
+].join(",");
+const NATIVE_TEXT_EDITING_SELECTOR = "input,textarea,[role='textbox']";
 
 export function isSelectAllShortcut(event: KeyboardShortcutState) {
     return (
@@ -27,6 +37,12 @@ export function isSelectAllShortcut(event: KeyboardShortcutState) {
         !event.altKey &&
         (event.code === "KeyA" || event.key.toLowerCase() === "a")
     );
+}
+
+export function shouldUseNativeSelectAllTarget(
+    eventTarget: DomElementLike<unknown> | null,
+) {
+    return Boolean(eventTarget?.closest(NATIVE_TEXT_EDITING_SELECTOR));
 }
 
 export function resolveScopedSelectAllTarget<TContainsTarget>(
@@ -43,9 +59,9 @@ export function resolveScopedSelectAllTarget<TContainsTarget>(
         return null;
     }
 
-    const codeBlock = selectionAnchor?.closest(CODE_BLOCK_SELECTOR);
-    if (codeBlock && editorRoot.contains(codeBlock as TContainsTarget)) {
-        return codeBlock;
+    const scopedBlock = selectionAnchor?.closest(SCOPED_SELECT_ALL_SELECTOR);
+    if (scopedBlock && editorRoot.contains(scopedBlock as TContainsTarget)) {
+        return scopedBlock;
     }
 
     return editorRoot;

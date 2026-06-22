@@ -644,6 +644,125 @@ describe("createMdxNodeViews", () => {
         act(() => nodeView?.destroy?.());
     });
 
+    it("lets html block details summary toggle while details content enters source editing", () => {
+        const schema = mdxEditorSchema;
+        const html =
+            "<details>\n  <summary>展开详情</summary>\n  <p>详情内容。</p>\n</details>\n";
+        const htmlBlock = schema.nodes.html_block.create(
+            {
+                collapsed: true,
+                html,
+                sourceId: "source-1",
+                tag: "details",
+            },
+            schema.text(html),
+        );
+        const view = createView(schema.nodes.doc.create(null, htmlBlock));
+        let nodeView: NodeView | undefined;
+
+        act(() => {
+            nodeView = createMdxNodeViews().html_block(
+                htmlBlock,
+                view,
+                () => 0,
+                [],
+                DecorationSet.empty,
+            );
+        });
+
+        const details = nodeView?.dom.querySelector<HTMLDetailsElement>("details");
+        const summary = nodeView?.dom.querySelector<HTMLElement>("summary");
+        const paragraph = nodeView?.dom.querySelector<HTMLElement>("p");
+
+        expect(details).not.toBeNull();
+        expect(summary?.textContent).toBe("展开详情");
+        expect(paragraph?.textContent).toBe("详情内容。");
+
+        act(() => {
+            summary?.dispatchEvent(
+                new MouseEvent("mousedown", {
+                    bubbles: true,
+                    cancelable: true,
+                }),
+            );
+        });
+
+        expect(
+            nodeView?.dom.querySelector("textarea[aria-label='HTML block source']"),
+        ).toBeNull();
+
+        act(() => {
+            summary?.firstChild?.dispatchEvent(
+                new MouseEvent("mousedown", {
+                    bubbles: true,
+                    cancelable: true,
+                }),
+            );
+        });
+
+        expect(
+            nodeView?.dom.querySelector("textarea[aria-label='HTML block source']"),
+        ).toBeNull();
+
+        act(() => {
+            summary?.dispatchEvent(
+                new MouseEvent("dblclick", {
+                    bubbles: true,
+                    cancelable: true,
+                }),
+            );
+        });
+
+        let textarea = nodeView?.dom.querySelector<HTMLTextAreaElement>(
+            "textarea[aria-label='HTML block source']",
+        );
+
+        expect(textarea?.value).toBe(html);
+
+        act(() => nodeView?.destroy?.());
+
+        act(() => {
+            nodeView = createMdxNodeViews().html_block(
+                htmlBlock,
+                view,
+                () => 0,
+                [],
+                DecorationSet.empty,
+            );
+        });
+
+        const nextDetails =
+            nodeView?.dom.querySelector<HTMLDetailsElement>("details");
+        const nextSummary = nodeView?.dom.querySelector<HTMLElement>("summary");
+        const nextParagraph = nodeView?.dom.querySelector<HTMLElement>("p");
+
+        expect(nextDetails).not.toBeNull();
+        expect(nextSummary?.textContent).toBe("展开详情");
+
+        act(() => {
+            nextSummary?.click();
+        });
+
+        expect(nextDetails?.open).toBe(true);
+
+        act(() => {
+            nextParagraph?.dispatchEvent(
+                new MouseEvent("mousedown", {
+                    bubbles: true,
+                    cancelable: true,
+                }),
+            );
+        });
+
+        textarea = nodeView?.dom.querySelector<HTMLTextAreaElement>(
+            "textarea[aria-label='HTML block source']",
+        );
+
+        expect(textarea?.value).toBe(html);
+
+        act(() => nodeView?.destroy?.());
+    });
+
     it("edits inline html as raw source instead of only text content", () => {
         const schema = mdxEditorSchema;
         const inlineHtml = schema.nodes.inline_html.create({

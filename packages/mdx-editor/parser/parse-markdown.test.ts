@@ -589,7 +589,6 @@ describe("parseMarkdown", () => {
 
         for (const markdown of [
             "| A | B |\n| bad | separator |\n",
-            "[^1]: Body\n    Nested body\n",
             ":::warning\nUnsupported directive\n:::\n",
         ]) {
             const parsed = parseMarkdown(markdown);
@@ -600,6 +599,15 @@ describe("parseMarkdown", () => {
             expect(parsed.doc.child(0).attrs.reason).toBe("unsupported");
             expect(parsed.doc.child(0).attrs.sourceId).toBe("source-0");
         }
+
+        const parsedFootnote = parseMarkdown("[^1]: Body\n    Nested body\n");
+        expect(parsedFootnote.doc.childCount).toBe(1);
+        expect(parsedFootnote.doc.child(0).type.name).toBe("footnote_definition");
+        expect(parsedFootnote.doc.child(0).attrs.label).toBe("1");
+        expect(parsedFootnote.doc.child(0).child(0).textContent).toBe("Body");
+        expect(parsedFootnote.doc.child(0).child(1).textContent).toBe(
+            "Nested body",
+        );
     });
 
     it("uses source_fallback for unsupported html without dropping content", () => {
@@ -669,6 +677,24 @@ describe("parseMarkdown", () => {
         expect(parsedFootnote.doc.child(1).type.name).toBe("footnote_definition");
         expect(parsedFootnote.doc.child(1).attrs.label).toBe("1");
         expect(parsedFootnote.doc.child(1).child(0).textContent).toBe("Footnote body.");
+
+        const parsedLongFootnote = parseMarkdown(
+            [
+                "A note[^long-note].",
+                "",
+                "[^long-note]: First line.",
+                "    Second line.",
+                "    Third line.",
+                "",
+            ].join("\n"),
+        );
+        const longFootnote = parsedLongFootnote.doc.child(1);
+        expect(longFootnote.type.name).toBe("footnote_definition");
+        expect(longFootnote.attrs.label).toBe("long-note");
+        expect(longFootnote.childCount).toBe(3);
+        expect(longFootnote.child(0).textContent).toBe("First line.");
+        expect(longFootnote.child(1).textContent).toBe("Second line.");
+        expect(longFootnote.child(2).textContent).toBe("Third line.");
     });
 
     it("does not let callouts swallow following headings", () => {

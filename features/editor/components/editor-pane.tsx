@@ -24,6 +24,7 @@ import {
     isSelectAllShortcut,
     resolveScopedSelectAllTarget,
     selectElementContents,
+    shouldUseNativeSelectAllTarget,
 } from "../lib/keyboard-selection-scope";
 import { scrollMarkdownLineIntoView } from "../lib/markdown-line-scroll";
 import { wikilinkTargetFromEditorHref } from "../lib/wikilink-markdown";
@@ -259,8 +260,14 @@ function EditorPaneInner({
                 return;
             }
 
+            const eventTarget =
+                event.target instanceof HTMLElement ? event.target : null;
+            if (shouldUseNativeSelectAllTarget(eventTarget)) {
+                return;
+            }
+
             const selectTarget = resolveScopedSelectAllTarget(
-                event.target instanceof HTMLElement ? event.target : null,
+                eventTarget,
                 event.currentTarget,
                 elementFromNode(window.getSelection()?.anchorNode ?? null),
             );

@@ -371,17 +371,19 @@ export const mdxEditorSchema = new Schema({
                 sourceId: { default: null },
             },
             toDOM: (node) => [
-                "span",
+                "sup",
                 {
                     "data-mdx-node-type": "footnote_ref",
                     "data-mdx-label": node.attrs.label,
                     "data-mdx-source-id": node.attrs.sourceId ?? undefined,
+                    class: "mdx-footnote-ref",
+                    title: `Footnote ${node.attrs.label}`,
                 },
-                `[^${node.attrs.label}]`,
+                String(node.attrs.label ?? ""),
             ],
             parseDOM: [
                 {
-                    tag: "span[data-mdx-node-type='footnote_ref']",
+                    tag: "[data-mdx-node-type='footnote_ref']",
                     getAttrs: (dom) => ({
                         label: (dom as HTMLElement).getAttribute(
                             "data-mdx-label",

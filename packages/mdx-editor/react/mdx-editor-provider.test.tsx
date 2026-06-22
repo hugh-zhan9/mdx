@@ -191,6 +191,42 @@ describe("MdxEditorProvider", () => {
         expect(number?.textContent).toBe("1");
     });
 
+    it("renders footnote refs and multi-line footnote definitions without source markers", async () => {
+        await act(async () => {
+            root.render(
+                <MdxEditorProvider
+                    initialMarkdown={
+                        [
+                            "A note[^long-note].",
+                            "",
+                            "[^long-note]: First line.",
+                            "    Second line.",
+                            "    Third line.",
+                            "",
+                        ].join("\n")
+                    }
+                >
+                    <MdxEditorView />
+                </MdxEditorProvider>,
+            );
+        });
+
+        const footnoteRef = host.querySelector(
+            "[data-mdx-node-type='footnote_ref']",
+        );
+        const footnoteDefinition = host.querySelector(
+            "[data-mdx-node-type='footnote_definition']",
+        );
+
+        expect(footnoteRef?.tagName).toBe("SUP");
+        expect(footnoteRef?.textContent).toBe("long-note");
+        expect(footnoteRef?.textContent).not.toContain("[^");
+        expect(footnoteDefinition?.textContent).not.toContain("[^long-note]:");
+        expect(footnoteDefinition?.textContent).toContain("First line.");
+        expect(footnoteDefinition?.textContent).toContain("Second line.");
+        expect(footnoteDefinition?.textContent).toContain("Third line.");
+    });
+
     it("inserts text at the ProseMirror cursor instead of visible-text markdown offsets", async () => {
         const onMarkdownChange = vi.fn();
 

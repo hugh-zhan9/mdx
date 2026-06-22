@@ -616,23 +616,51 @@ function tryParseFootnoteDefinition(
         return null;
     }
 
-    const nextLine = logicalLines[startLine + 1];
-    if (nextLine && nextLine.text.trim() !== "" && /^[ \t]+/.test(nextLine.text)) {
-        return null;
+    const contentLines = [match[2]];
+    let endLine = startLine;
+
+    while (endLine + 1 < logicalLines.length) {
+        const nextLine = logicalLines[endLine + 1];
+        if (!nextLine || nextLine.text.trim() === "") {
+            break;
+        }
+
+        if (!/^[ \t]+/.test(nextLine.text)) {
+            break;
+        }
+
+        contentLines.push(stripFootnoteContinuationIndent(nextLine.text));
+        endLine += 1;
     }
 
-    const sourceId = addSlice(sourceSlices, markdown, line.start, line.end);
+    const sourceId = addSlice(
+        sourceSlices,
+        markdown,
+        line.start,
+        logicalLines[endLine]?.end ?? line.end,
+    );
+    const content = contentLines.map((contentLine) =>
+        mdxEditorSchema.nodes.paragraph.create(
+            { sourceId: null },
+            parseInlineMarkdown(contentLine),
+        ),
+    );
 
     return {
         node: mdxEditorSchema.nodes.footnote_definition.create(
             { label: match[1], sourceId },
-            mdxEditorSchema.nodes.paragraph.create(
-                { sourceId: null },
-                parseInlineMarkdown(match[2]),
-            ),
+            content,
         ),
-        nextCursor: startLine + 1,
+        nextCursor: endLine + 1,
     };
+}
+
+function stripFootnoteContinuationIndent(text: string) {
+    if (text.startsWith("\t")) {
+        return text.slice(1);
+    }
+
+    return text.replace(/^ {1,4}/, "");
 }
 
 function tryParseOrderedList(

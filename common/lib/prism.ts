@@ -16,7 +16,6 @@ import "prismjs/components/prism-rust";
 import "prismjs/components/prism-php";
 import "prismjs/components/prism-bash";
 import "prismjs/components/prism-json";
-import "prismjs/components/prism-markdown";
 
 // Common shorthands users write in fenced code blocks.
 const ALIAS: Record<string, string> = {
@@ -34,6 +33,7 @@ const ALIAS: Record<string, string> = {
     "c++": "cpp",
     kt: "kotlin",
 };
+const PLAIN_TEXT_CODE_LANGUAGES = new Set(["markdown", "md"]);
 
 const inflight = new Map<string, Promise<boolean>>();
 const known404 = new Set<string>();
@@ -58,6 +58,7 @@ function notify() {
 export function ensureGrammar(lang: string): Promise<boolean> {
     if (!lang) return Promise.resolve(false);
     const norm = normalize(lang);
+    if (PLAIN_TEXT_CODE_LANGUAGES.has(norm)) return Promise.resolve(false);
     if (Prism.languages[norm]) return Promise.resolve(true);
     if (known404.has(norm)) return Promise.resolve(false);
     const existing = inflight.get(norm);
@@ -104,6 +105,7 @@ export function getGrammarVersion(): number {
 export function tokenize(code: string, lang?: string): CodeToken[] {
     if (!lang) return [];
     const norm = normalize(lang);
+    if (PLAIN_TEXT_CODE_LANGUAGES.has(norm)) return [];
     const grammar = Prism.languages[norm];
     if (grammar) return Prism.tokenize(code, grammar);
     void ensureGrammar(norm);

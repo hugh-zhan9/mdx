@@ -721,6 +721,19 @@ html[data-theme="dark"] {
     padding: 0.1rem 0.25rem;
 }
 
+.mdx-footnote-ref {
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 28%, transparent);
+    border-radius: 999px;
+    color: color-mix(in srgb, var(--color-primary) 82%, var(--color-base-content));
+    font-size: 0.68em;
+    font-weight: 600;
+    line-height: 1;
+    margin-inline: 0.12rem;
+    padding: 0.02rem 0.3rem;
+    vertical-align: super;
+}
+
 .mdx-footnote-content {
     display: inline;
 }
