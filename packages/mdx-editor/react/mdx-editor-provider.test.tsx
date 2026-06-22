@@ -369,11 +369,27 @@ describe("MdxEditorProvider", () => {
         const fallback = host.querySelector<HTMLDivElement>(
             "[data-mdx-node-type='source_fallback']",
         );
+
+        expect(fallback).not.toBeNull();
+        expect(
+            host.querySelector("textarea[aria-label='Markdown source fallback']"),
+        ).toBeNull();
+        expect(fallback?.querySelector("div")?.textContent).toContain(
+            "Unsupported",
+        );
+
+        await act(async () => {
+            host
+                .querySelector<HTMLElement>(
+                    "[role='button'][aria-label='Edit source fallback']",
+                )
+                ?.click();
+        });
+
         const textarea = host.querySelector<HTMLTextAreaElement>(
             "textarea[aria-label='Markdown source fallback']",
         );
 
-        expect(fallback).not.toBeNull();
         expect(textarea?.value).toBe(markdown);
 
         await act(async () => {
@@ -394,6 +410,43 @@ describe("MdxEditorProvider", () => {
         expect(textarea?.value).toBe(editedMarkdown);
     });
 
+    it("renders adjacent source fallback html blocks without leaking closing tags", async () => {
+        const markdown = [
+            '<div class="custom-block">',
+            "  <p>One</p>",
+            "</div>",
+            "",
+            '<div class="custom-block">',
+            "  <p>Two</p>",
+            "</div>",
+            "",
+        ].join("\n");
+
+        await act(async () => {
+            root.render(
+                <MdxEditorProvider initialMarkdown={markdown}>
+                    <MdxEditorView />
+                </MdxEditorProvider>,
+            );
+        });
+
+        const fallbacks = Array.from(
+            host.querySelectorAll<HTMLElement>(
+                "[data-mdx-node-type='source_fallback']",
+            ),
+        );
+
+        expect(fallbacks).toHaveLength(2);
+        expect(
+            fallbacks.map((fallback) =>
+                fallback.querySelector(".custom-block")?.textContent?.trim(),
+            ),
+        ).toEqual(["One", "Two"]);
+        expect(
+            fallbacks.some((fallback) => fallback.textContent?.includes("</div>")),
+        ).toBe(false);
+    });
+
     it("keeps selection offsets aligned after source fallback text length changes", async () => {
         const markdown = "<div>\nfallback\n</div>\n";
         const editedMarkdown = "<section>\nmuch longer fallback\n</section>\n";
@@ -409,6 +462,14 @@ describe("MdxEditorProvider", () => {
                     <Probe />
                 </MdxEditorProvider>,
             );
+        });
+
+        await act(async () => {
+            host
+                .querySelector<HTMLElement>(
+                    "[role='button'][aria-label='Edit source fallback']",
+                )
+                ?.click();
         });
 
         const textarea = host.querySelector<HTMLTextAreaElement>(

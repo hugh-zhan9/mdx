@@ -4,16 +4,13 @@ import type { ChangeEvent, FocusEvent, KeyboardEvent, MouseEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { NodeViewProps } from "./node-views";
 
-export function SourceFallbackNodeView({
-    editingRequest,
-    node,
-    updateAttrs,
-}: NodeViewProps) {
-    const markdown = String(node.attrs.markdown || node.textContent || "");
+export function HtmlBlockNodeView({ node, updateAttrs }: NodeViewProps) {
+    const html = String(node.attrs.html || node.textContent || "");
+    const tag = String(node.attrs.tag || "");
     const [editing, setEditing] = useState(false);
+    const [collapsed, setCollapsed] = useState(Boolean(node.attrs.collapsed));
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     const rootRef = useRef<HTMLDivElement | null>(null);
-    const lastEditingRequestRef = useRef(editingRequest ?? 0);
 
     useEffect(() => {
         if (editing) {
@@ -21,18 +18,9 @@ export function SourceFallbackNodeView({
         }
     }, [editing]);
 
-    useEffect(() => {
-        const nextRequest = editingRequest ?? 0;
-        if (nextRequest === lastEditingRequestRef.current) {
-            return;
-        }
-
-        lastEditingRequestRef.current = nextRequest;
-        setEditing(true);
-    }, [editingRequest]);
-
     function handleChange(event: ChangeEvent<HTMLTextAreaElement>) {
-        updateAttrs({ markdown: event.currentTarget.value });
+        const nextHtml = event.currentTarget.value;
+        updateAttrs({ html: nextHtml });
     }
 
     function handleBlur(event: FocusEvent) {
@@ -52,6 +40,7 @@ export function SourceFallbackNodeView({
     }
 
     function handlePreviewClick(event: MouseEvent<HTMLDivElement>) {
+        // 如果点击的是交互元素（如 details/summary），不进入编辑模式
         if (isInteractiveHtmlTarget(event.target, event.currentTarget)) {
             return;
         }
@@ -78,25 +67,36 @@ export function SourceFallbackNodeView({
         openEditor();
     }
 
+    function handleDetailsToggle(event: MouseEvent) {
+        const target = event.target as HTMLElement;
+        if (target.tagName === "SUMMARY") {
+            const newCollapsed = !collapsed;
+            setCollapsed(newCollapsed);
+            updateAttrs({ collapsed: newCollapsed });
+        }
+    }
+
     return (
         <div
             ref={rootRef}
-            data-mdx-node-type="source_fallback"
-            className="mdx-source-fallback"
+            data-mdx-node-type="html_block"
+            data-mdx-html-tag={tag}
+            className="mdx-html-block"
             data-mdx-editing={editing ? "true" : "false"}
             onBlur={handleBlur}
         >
             {editing ? (
                 <textarea
-                    aria-label="Markdown source fallback"
+                    aria-label="HTML block source"
                     ref={textareaRef}
-                    value={markdown}
+                    value={html}
                     onChange={handleChange}
+                    className="mdx-html-block-editor"
                 />
             ) : (
                 <div
-                    aria-label="Edit source fallback"
-                    className="mdx-source-fallback-preview"
+                    aria-label="Edit HTML block"
+                    className="mdx-html-block-preview"
                     contentEditable={false}
                     onClick={handlePreviewClick}
                     onMouseDownCapture={handlePreviewMouseDown}
@@ -104,7 +104,7 @@ export function SourceFallbackNodeView({
                     role="button"
                     tabIndex={0}
                     dangerouslySetInnerHTML={{
-                        __html: sanitizeFallbackHtml(markdown),
+                        __html: sanitizeBlockHtml(html, tag, collapsed),
                     }}
                 />
             )}
@@ -113,13 +113,12 @@ export function SourceFallbackNodeView({
 }
 
 function isInteractiveHtmlTarget(target: EventTarget, root: HTMLElement) {
-    const element = eventTargetElement(target, root);
-    if (!element || element === root) {
+    if (!(target instanceof Element) || target === root) {
         return false;
     }
 
     return Boolean(
-        element.closest(
+        target.closest(
             [
                 "a",
                 "button",
@@ -128,39 +127,30 @@ function isInteractiveHtmlTarget(target: EventTarget, root: HTMLElement) {
                 "select",
                 "textarea",
                 "label",
+                "details",
                 "[contenteditable='true']",
             ].join(","),
         ),
     );
 }
 
-function eventTargetElement(target: EventTarget, root: HTMLElement) {
-    if (target instanceof Element) {
-        return target;
-    }
-
-    if (target instanceof Node && root.contains(target)) {
-        return target.parentElement;
-    }
-
-    return null;
-}
-
-function sanitizeFallbackHtml(markdown: string) {
+function sanitizeBlockHtml(html: string, tag: string, collapsed: boolean): string {
     if (typeof DOMParser === "undefined") {
-        return escapeHtml(markdown);
+        return escapeHtml(html);
     }
 
     const parser = new DOMParser();
-    const document = parser.parseFromString(markdown, "text/html");
+    const doc = parser.parseFromString(html, "text/html");
 
+    // 移除危险标签
     for (const element of Array.from(
-        document.body.querySelectorAll("script, iframe, object, embed"),
+        doc.body.querySelectorAll("script, iframe, object, embed"),
     )) {
         element.remove();
     }
 
-    for (const element of Array.from(document.body.querySelectorAll("*"))) {
+    // 移除危险属性
+    for (const element of Array.from(doc.body.querySelectorAll("*"))) {
         for (const attribute of Array.from(element.attributes)) {
             const name = attribute.name.toLowerCase();
             const value = attribute.value.trim().toLowerCase();
@@ -175,7 +165,19 @@ function sanitizeFallbackHtml(markdown: string) {
         }
     }
 
-    return document.body.innerHTML || escapeHtml(markdown);
+    // 对于 details 元素，设置 open 属性
+    if (tag === "details") {
+        const detailsElement = doc.body.querySelector("details");
+        if (detailsElement) {
+            if (collapsed) {
+                detailsElement.removeAttribute("open");
+            } else {
+                detailsElement.setAttribute("open", "");
+            }
+        }
+    }
+
+    return doc.body.innerHTML || escapeHtml(html);
 }
 
 function escapeHtml(text: string) {

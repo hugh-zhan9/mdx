@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { isValidElement, type ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { OutlinePanel } from "../components/outline-panel";
@@ -37,6 +39,24 @@ describe("outline scroll helpers", () => {
         });
     });
 
+    it("finds the rendered heading by text and level instead of raw dom index", () => {
+        const wrongIndexHeading = createHeading("粘贴与撤销检查区", 2);
+        const targetHeading = createHeading("HTML 与不支持块", 2);
+        const root = createHeadingRoot([wrongIndexHeading, targetHeading]);
+        const headings: MarkdownOutlineHeading[] = [
+            { id: "html", level: 2, text: "HTML 与不支持块", line: 328 },
+            { id: "paste", level: 2, text: "粘贴与撤销检查区", line: 390 },
+        ];
+
+        expect(scrollRenderedHeadingIntoView(root, headings[0], headings)).toBe(true);
+        expect(targetHeading.scrollIntoView).toHaveBeenCalledWith({
+            behavior: "instant",
+            block: "start",
+            inline: "nearest",
+        });
+        expect(wrongIndexHeading.scrollIntoView).not.toHaveBeenCalled();
+    });
+
     it("calls the outline click handler with the matching heading index", () => {
         const onHeadingClick = vi.fn();
         const headings: MarkdownOutlineHeading[] = [
@@ -46,7 +66,6 @@ describe("outline scroll helpers", () => {
         const tree = OutlinePanel({
             headings,
             collapsed: false,
-            onToggleCollapsed: () => {},
             onHeadingClick,
             resizeHandleProps: {} as never,
         });
@@ -67,11 +86,12 @@ describe("outline scroll helpers", () => {
     });
 });
 
-function createHeading(text: string) {
-    return {
-        scrollIntoView: vi.fn(),
-        textContent: text,
-    } as unknown as HTMLElement;
+function createHeading(text: string, level = 1) {
+    const heading = document.createElement(`h${level}`);
+    heading.textContent = text;
+    heading.scrollIntoView = vi.fn();
+
+    return heading;
 }
 
 function createHeadingRoot(headings: HTMLElement[]) {

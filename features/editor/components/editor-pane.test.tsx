@@ -16,6 +16,7 @@ import {
     .IS_REACT_ACT_ENVIRONMENT = true;
 
 const bridgeMocks = vi.hoisted(() => ({
+    currentMarkdown: "",
     focus: vi.fn(),
     getDocumentSelectionRange: vi.fn(),
     insertImage: vi.fn(),
@@ -24,7 +25,7 @@ const bridgeMocks = vi.hoisted(() => ({
 
 vi.mock("../hooks/use-editor-bridge", () => ({
     useEditorBridge: () => ({
-        currentMarkdown: "",
+        currentMarkdown: bridgeMocks.currentMarkdown,
         focus: bridgeMocks.focus,
         getDocumentSelectionRange: bridgeMocks.getDocumentSelectionRange,
         insertImage: bridgeMocks.insertImage,
@@ -34,7 +35,7 @@ vi.mock("../hooks/use-editor-bridge", () => ({
 }));
 
 vi.mock("./editor-kernel-adapter", () => ({
-    DOMD: () => <div data-testid="domd" />,
+    DOMD: () => <div data-mdx-editor-root data-testid="domd" />,
     DOMDProvider: ({ children }: { children: React.ReactNode }) => children,
     toMarkdown: () => "",
     useEditor: () => null,
@@ -45,6 +46,10 @@ vi.mock("./editor-kernel-adapter", () => ({
 vi.mock("./editor-mermaid-preview-layer", () => ({
     EditorMermaidPreviewLayer: () => null,
 }));
+
+beforeEach(() => {
+    bridgeMocks.currentMarkdown = "";
+});
 
 describe("editor find/replace shortcuts", () => {
     it("recognizes Command+F and Ctrl+F without alt", () => {
@@ -260,6 +265,145 @@ describe("editor pane image paste", () => {
         );
         expect(event.defaultPrevented).toBe(true);
     });
+
+    it("rebuilds find ranges when editor text mounts after markdown fallback", async () => {
+        bridgeMocks.currentMarkdown = "# Markdown 语法支持检查";
+        const tab = {
+            tabId: "tab-1",
+            path: "/tmp/note.md",
+            title: "note.md",
+            dirty: false,
+            needsRenameOnFirstSave: false,
+            markdown: bridgeMocks.currentMarkdown,
+            baseFingerprint: "base",
+        };
+
+        await act(async () => {
+            root.render(
+                <EditorPane
+                    rootPath="/tmp"
+                    tab={tab}
+                    onMarkdownChange={vi.fn()}
+                />,
+            );
+        });
+
+        const editorRoot = host.querySelector<HTMLElement>(
+            "[data-mdx-editor-root]",
+        );
+        const contentRoot = editorRoot?.parentElement;
+        expect(editorRoot).not.toBeNull();
+        expect(contentRoot).not.toBeNull();
+
+        await act(async () => {
+            contentRoot?.dispatchEvent(
+                new KeyboardEvent("keydown", {
+                    bubbles: true,
+                    cancelable: true,
+                    code: "KeyF",
+                    ctrlKey: true,
+                }),
+            );
+        });
+
+        const input = host.querySelector<HTMLInputElement>(
+            "input[aria-label='查找']",
+        );
+        expect(input).not.toBeNull();
+
+        await act(async () => {
+            setInputValue(input!, "语法");
+            input!.dispatchEvent(new Event("input", { bubbles: true }));
+            await flushPromises();
+        });
+
+        expect(host.textContent).toContain("1/1");
+
+        const paragraph = document.createElement("p");
+        paragraph.textContent = "Markdown 语法支持检查";
+        paragraph.scrollIntoView = vi.fn();
+
+        await act(async () => {
+            editorRoot!.append(paragraph);
+            await flushPromises();
+        });
+
+        expect(window.getSelection()?.toString()).toBe("语法");
+        expect(paragraph.scrollIntoView).toHaveBeenCalled();
+    });
+
+    it("uses Enter in the editor body to navigate find results while find is open", async () => {
+        bridgeMocks.currentMarkdown = "语法 A 语法 B";
+        const tab = {
+            tabId: "tab-1",
+            path: "/tmp/note.md",
+            title: "note.md",
+            dirty: false,
+            needsRenameOnFirstSave: false,
+            markdown: bridgeMocks.currentMarkdown,
+            baseFingerprint: "base",
+        };
+
+        await act(async () => {
+            root.render(
+                <EditorPane
+                    rootPath="/tmp"
+                    tab={tab}
+                    onMarkdownChange={vi.fn()}
+                />,
+            );
+        });
+
+        const editorRoot = host.querySelector<HTMLElement>(
+            "[data-mdx-editor-root]",
+        );
+        const contentRoot = editorRoot?.parentElement;
+        const paragraph = document.createElement("p");
+        paragraph.textContent = "语法 A 语法 B";
+        paragraph.scrollIntoView = vi.fn();
+
+        await act(async () => {
+            editorRoot!.append(paragraph);
+            await flushPromises();
+        });
+
+        await act(async () => {
+            contentRoot?.dispatchEvent(
+                new KeyboardEvent("keydown", {
+                    bubbles: true,
+                    cancelable: true,
+                    code: "KeyF",
+                    ctrlKey: true,
+                }),
+            );
+        });
+
+        const input = host.querySelector<HTMLInputElement>(
+            "input[aria-label='查找']",
+        );
+
+        await act(async () => {
+            setInputValue(input!, "语法");
+            input!.dispatchEvent(new Event("input", { bubbles: true }));
+            await flushPromises();
+        });
+
+        expect(host.textContent).toContain("1/2");
+
+        const event = new KeyboardEvent("keydown", {
+            bubbles: true,
+            cancelable: true,
+            key: "Enter",
+        });
+
+        await act(async () => {
+            contentRoot?.dispatchEvent(event);
+            await flushPromises();
+        });
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(host.textContent).toContain("2/2");
+    });
 });
 
 describe("editor pane source mode chrome", () => {
@@ -314,4 +458,13 @@ describe("editor pane source mode chrome", () => {
 
 async function flushPromises() {
     await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+function setInputValue(input: HTMLInputElement, value: string) {
+    const setter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+    )?.set;
+
+    setter?.call(input, value);
 }

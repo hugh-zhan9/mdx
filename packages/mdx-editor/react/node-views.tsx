@@ -2,6 +2,7 @@ import type { Node as ProseMirrorNode } from "prosemirror-model";
 import type { ComponentType } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
+import { NodeSelection } from "prosemirror-state";
 import type {
     EditorView,
     NodeView,
@@ -9,7 +10,11 @@ import type {
 } from "prosemirror-view";
 import { CalloutNodeView } from "./callout-node-view";
 import { FootnoteNodeView } from "./footnote-node-view";
+import { HtmlBlockNodeView } from "./html-block-node-view";
+import { InlineHtmlNodeView } from "./inline-html-node-view";
 import { MathNodeView } from "./math-node-view";
+import { MermaidNodeView } from "./mermaid-node-view";
+import { parseInlineMarkdown } from "../parser/inline-markdown";
 import { SourceFallbackNodeView } from "./source-fallback-node-view";
 import { TableNodeView } from "./table-node-view";
 import { TaskListNodeView } from "./task-list-node-view";
@@ -17,6 +22,7 @@ import { TaskListNodeView } from "./task-list-node-view";
 const RESOLVED_SOURCE_ATTRIBUTE = "data-mdx-resolved-src";
 
 export interface NodeViewProps {
+    editingRequest?: number;
     node: ProseMirrorNode;
     updateAttrs: (attrs: Record<string, unknown>) => void;
     selected?: boolean;
@@ -40,7 +46,17 @@ export function createMdxNodeViews(
             contentDOMTag: "div",
             domTag: "section",
         }),
+        html_block: createReactNodeView(HtmlBlockNodeView, {
+            className: "mdx-html-block-wrapper",
+            domTag: "div",
+            textBacked: true,
+        }),
         image: createImageNodeView(options.imageLoader),
+        inline_html: createReactNodeView(InlineHtmlNodeView, {
+            className: "mdx-inline-html-node",
+            domTag: "span",
+            inline: true,
+        }),
         math_block: createReactNodeView(MathNodeView, {
             textBacked: true,
         }),
@@ -48,6 +64,9 @@ export function createMdxNodeViews(
             className: "mdx-math-node mdx-math-inline",
             domTag: "span",
             inline: true,
+        }),
+        mermaid_block: createReactNodeView(MermaidNodeView, {
+            textBacked: true,
         }),
         source_fallback: createSourceFallbackNodeView,
         table: createReactNodeView(TableNodeView, {
@@ -105,6 +124,9 @@ function createCodeBlockNodeView(
     };
 
     languageInput.addEventListener("change", updateAttrs);
+    languageInput.addEventListener("input", () => {
+        syncCodeBlockLanguageInputSize(languageInput);
+    });
     languageInput.addEventListener("keydown", (event) => {
         event.stopPropagation();
         if (event.key === "Enter") {
@@ -121,6 +143,7 @@ function createCodeBlockNodeView(
         syncNodeViewAttributes(dom, currentNode);
         dom.setAttribute("data-mdx-code-block", "");
         languageInput.value = codeBlockInfo(currentNode);
+        syncCodeBlockLanguageInputSize(languageInput);
     };
 
     render();
@@ -150,22 +173,40 @@ function createCodeBlockNodeView(
     };
 }
 
+function syncCodeBlockLanguageInputSize(input: HTMLInputElement) {
+    const visibleLength = input.value.length || input.placeholder.length;
+    input.size = Math.min(Math.max(visibleLength + 1, 5), 18);
+}
+
 function createImageNodeView(
     imageLoader?: (src: string) => Promise<string>,
 ): NodeViewConstructor {
-    return (node: ProseMirrorNode): NodeView => {
+    return (
+        node: ProseMirrorNode,
+        view: EditorView,
+        getPos: () => number | undefined,
+    ): NodeView => {
         const dom = document.createElement("span");
         const image = document.createElement("img");
         const fallback = document.createElement("span");
+        const sourceInput = document.createElement("textarea");
         let currentNode = node;
         let loadToken = 0;
+        let selected = false;
 
         dom.dataset.mdxNodeType = "image";
         dom.dataset.mdxImageNode = "true";
         dom.contentEditable = "false";
 
         image.dataset.mdxNodeType = "image";
+        image.draggable = false;
         fallback.dataset.mdxImageFallback = "true";
+        sourceInput.autocapitalize = "off";
+        sourceInput.autocomplete = "off";
+        sourceInput.rows = 1;
+        sourceInput.spellcheck = false;
+        sourceInput.setAttribute("aria-label", "Markdown image source");
+        sourceInput.dataset.mdxImageSourceInput = "true";
 
         image.addEventListener("load", () => {
             dom.dataset.mdxImageError = "false";
@@ -173,10 +214,55 @@ function createImageNodeView(
         image.addEventListener("error", () => {
             dom.dataset.mdxImageError = "true";
         });
+        sourceInput.addEventListener("mousedown", (event) => {
+            event.stopPropagation();
+        });
+        sourceInput.addEventListener("keydown", (event) => {
+            event.stopPropagation();
+            if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                commitImageSourceEdit(currentNode, view, getPos, sourceInput.value);
+                sourceInput.blur();
+            }
+
+            if (event.key === "Escape") {
+                event.preventDefault();
+                sourceInput.value = imageMarkdownSource(currentNode);
+                sourceInput.blur();
+            }
+        });
+        sourceInput.addEventListener("blur", () => {
+            commitImageSourceEdit(currentNode, view, getPos, sourceInput.value);
+        });
+        sourceInput.addEventListener("input", () => {
+            resizeImageSourceInput(sourceInput);
+        });
+        dom.addEventListener("mousedown", (event) => {
+            const pos = getPos();
+            if (
+                pos === undefined ||
+                event.button !== 0 ||
+                event.target === sourceInput
+            ) {
+                return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+            clearNativeSelection(dom);
+            view.dispatch(
+                view.state.tr.setSelection(
+                    NodeSelection.create(view.state.doc, pos),
+                ),
+            );
+            (view as EditorView & { focus?: () => void }).focus?.();
+            clearNativeSelection(dom);
+        });
 
         const render = () => {
             loadToken += 1;
-            renderImageNode(currentNode, image, fallback, dom);
+            dom.dataset.mdxImageSelected = selected ? "true" : "false";
+            renderImageNode(currentNode, image, fallback, sourceInput, dom);
             void resolveImageNodeSource(
                 currentNode,
                 image,
@@ -187,7 +273,7 @@ function createImageNodeView(
             );
         };
 
-        dom.append(image, fallback);
+        dom.append(image, fallback, sourceInput);
         render();
 
         return {
@@ -202,17 +288,53 @@ function createImageNodeView(
 
                 return true;
             },
+            selectNode() {
+                selected = true;
+                dom.dataset.mdxImageSelected = "true";
+                sourceInput.hidden = false;
+                sourceInput.value = imageMarkdownSource(currentNode);
+                resizeImageSourceInput(sourceInput);
+                sourceInput.ownerDocument.defaultView?.setTimeout(() => {
+                    sourceInput.focus();
+                    sourceInput.setSelectionRange(
+                        0,
+                        sourceInput.value.length,
+                    );
+                }, 0);
+            },
+            deselectNode() {
+                selected = false;
+                dom.dataset.mdxImageSelected = "false";
+                sourceInput.blur();
+                sourceInput.hidden = true;
+            },
             ignoreMutation() {
                 return true;
             },
+            stopEvent(event) {
+                return (
+                    event.type === "mousedown" ||
+                    event.target === sourceInput
+                );
+            },
         };
     };
+}
+
+function clearNativeSelection(element: HTMLElement) {
+    const selection = element.ownerDocument.defaultView?.getSelection?.();
+
+    selection?.removeAllRanges();
+    element.ownerDocument.defaultView?.setTimeout(() => {
+        selection?.removeAllRanges();
+    }, 0);
 }
 
 function renderImageNode(
     node: ProseMirrorNode,
     image: HTMLImageElement,
     fallback: HTMLSpanElement,
+    sourceInput: HTMLTextAreaElement,
     dom: HTMLElement,
 ) {
     const src = String(node.attrs.src ?? "");
@@ -223,8 +345,69 @@ function renderImageNode(
     image.src = src;
     image.alt = alt;
     image.title = title ?? "";
-    fallback.textContent = `![${alt || src}](${src})`;
+    const markdown = imageMarkdownSource(node);
+    fallback.textContent = markdown;
+    if (sourceInput.ownerDocument.activeElement !== sourceInput) {
+        sourceInput.value = markdown;
+        resizeImageSourceInput(sourceInput);
+    }
+    sourceInput.hidden = dom.dataset.mdxImageSelected !== "true";
+    dom.dataset.mdxImageMarkdown = markdown;
     dom.dataset.mdxImageError = src ? "false" : "true";
+}
+
+function imageMarkdownSource(node: ProseMirrorNode) {
+    const src = String(node.attrs.src ?? "");
+    const alt = String(node.attrs.alt ?? "") || src;
+    const title =
+        typeof node.attrs.title === "string" && node.attrs.title.length > 0
+            ? ` "${String(node.attrs.title).replaceAll('"', '\\"')}"`
+            : "";
+
+    return `![${alt}](${src}${title})`;
+}
+
+function commitImageSourceEdit(
+    currentNode: ProseMirrorNode,
+    view: EditorView,
+    getPos: () => number | undefined,
+    markdown: string,
+) {
+    const nextImage = parseMarkdownImageSource(markdown.trim());
+    const pos = getPos();
+
+    if (!nextImage || pos === undefined) {
+        return;
+    }
+
+    if (
+        nextImage.attrs.src === currentNode.attrs.src &&
+        nextImage.attrs.alt === currentNode.attrs.alt &&
+        nextImage.attrs.title === currentNode.attrs.title
+    ) {
+        return;
+    }
+
+    view.dispatch(
+        view.state.tr.setNodeMarkup(pos, undefined, {
+            ...currentNode.attrs,
+            ...nextImage.attrs,
+        }),
+    );
+}
+
+function parseMarkdownImageSource(markdown: string) {
+    const nodes = parseInlineMarkdown(markdown);
+    if (nodes.length !== 1 || nodes[0].type.name !== "image") {
+        return null;
+    }
+
+    return nodes[0];
+}
+
+function resizeImageSourceInput(input: HTMLTextAreaElement) {
+    input.style.height = "auto";
+    input.style.height = `${input.scrollHeight}px`;
 }
 
 async function resolveImageNodeSource(
@@ -279,6 +462,8 @@ interface InternalNodeViewProps extends NodeViewProps {
     inline?: boolean;
     onAddColumn?: () => void;
     onAddRow?: () => void;
+    onDeleteColumn?: () => void;
+    onDeleteRow?: () => void;
     updateText?: (text: string) => void;
 }
 
@@ -363,6 +548,16 @@ function createReactNodeView(
                                 ? () => addTableRow(currentNode, view, getPos)
                                 : undefined
                         }
+                        onDeleteColumn={
+                            options.tableControls
+                                ? () => deleteTableColumn(currentNode, view, getPos)
+                                : undefined
+                        }
+                        onDeleteRow={
+                            options.tableControls
+                                ? () => deleteTableRow(currentNode, view, getPos)
+                                : undefined
+                        }
                     />,
                 );
             });
@@ -395,7 +590,7 @@ function createReactNodeView(
                 const target = event.target;
 
                 return (
-                    target instanceof HTMLElement &&
+                    target instanceof Node &&
                     (!contentDOM || !contentDOM.contains(target))
                 );
             },
@@ -417,6 +612,7 @@ function createSourceFallbackNodeView(
     const dom = document.createElement("div");
     const root = createRoot(dom);
     let currentNode = node;
+    let editingRequest = 0;
     let selected = false;
 
     const updateAttrs = (attrs: Record<string, unknown>) => {
@@ -445,6 +641,7 @@ function createSourceFallbackNodeView(
     const render = () => {
         root.render(
             <SourceFallbackNodeView
+                editingRequest={editingRequest}
                 node={currentNode}
                 updateAttrs={updateAttrs}
                 selected={selected}
@@ -452,6 +649,38 @@ function createSourceFallbackNodeView(
             />,
         );
     };
+
+    const requestEditing = () => {
+        editingRequest += 1;
+        render();
+    };
+
+    const handlePreviewMouseDown = (event: MouseEvent) => {
+        if (
+            isInteractiveSourceFallbackTarget(event.target, dom) ||
+            !isInsideSourceFallbackPreview(event.target, dom)
+        ) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        requestEditing();
+    };
+
+    const handlePreviewClick = (event: MouseEvent) => {
+        if (
+            isInteractiveSourceFallbackTarget(event.target, dom) ||
+            !isInsideSourceFallbackPreview(event.target, dom)
+        ) {
+            return;
+        }
+
+        requestEditing();
+    };
+
+    dom.addEventListener("mousedown", handlePreviewMouseDown, true);
+    dom.addEventListener("click", handlePreviewClick, true);
 
     render();
 
@@ -476,15 +705,67 @@ function createSourceFallbackNodeView(
             render();
         },
         stopEvent(event) {
-            return event.target instanceof HTMLTextAreaElement;
+            if (!(event.target instanceof Node) || !dom.contains(event.target)) {
+                return false;
+            }
+
+            return (
+                event.type === "mousedown" ||
+                event.target instanceof HTMLTextAreaElement
+            );
         },
         ignoreMutation() {
             return true;
         },
         destroy() {
+            dom.removeEventListener("mousedown", handlePreviewMouseDown, true);
+            dom.removeEventListener("click", handlePreviewClick, true);
             root.unmount();
         },
     };
+}
+
+function isInsideSourceFallbackPreview(target: EventTarget | null, root: HTMLElement) {
+    const element = eventTargetElement(target, root);
+
+    return Boolean(element?.closest(".mdx-source-fallback-preview"));
+}
+
+function isInteractiveSourceFallbackTarget(
+    target: EventTarget | null,
+    root: HTMLElement,
+) {
+    const element = eventTargetElement(target, root);
+    if (!element) {
+        return false;
+    }
+
+    return Boolean(
+        element.closest(
+            [
+                "a",
+                "button",
+                "summary",
+                "input",
+                "select",
+                "textarea",
+                "label",
+                "[contenteditable='true']",
+            ].join(","),
+        ),
+    );
+}
+
+function eventTargetElement(target: EventTarget | null, root: HTMLElement) {
+    if (target instanceof Element) {
+        return target;
+    }
+
+    if (target instanceof Node && root.contains(target)) {
+        return target.parentElement;
+    }
+
+    return null;
 }
 
 function replaceNodeWithTextContent(
@@ -554,11 +835,51 @@ function addTableColumn(
     replaceTableNode(node, view, getPos, rows);
 }
 
+function deleteTableRow(
+    node: ProseMirrorNode,
+    view: EditorView,
+    getPos: () => number | undefined,
+) {
+    if (node.type.name !== "table" || node.childCount <= 1) {
+        return;
+    }
+
+    replaceTableNode(node, view, getPos, childrenOf(node).slice(0, -1));
+}
+
+function deleteTableColumn(
+    node: ProseMirrorNode,
+    view: EditorView,
+    getPos: () => number | undefined,
+) {
+    if (node.type.name !== "table") {
+        return;
+    }
+
+    const rows = childrenOf(node);
+    const columnCount = rows[0]?.childCount ?? 0;
+    if (columnCount <= 1) {
+        return;
+    }
+
+    replaceTableNode(
+        node,
+        view,
+        getPos,
+        rows.map((row) => row.type.create(row.attrs, childrenOf(row).slice(0, -1))),
+        {
+            ...node.attrs,
+            alignments: trimLastAlignment(node.attrs.alignments),
+        },
+    );
+}
+
 function replaceTableNode(
     node: ProseMirrorNode,
     view: EditorView,
     getPos: () => number | undefined,
     rows: ProseMirrorNode[],
+    attrs: Record<string, unknown> = node.attrs,
 ) {
     const pos = getPos();
     if (pos === undefined) {
@@ -569,9 +890,13 @@ function replaceTableNode(
         view.state.tr.replaceWith(
             pos,
             pos + node.nodeSize,
-            node.type.create(node.attrs, rows),
+            node.type.create(attrs, rows),
         ),
     );
+}
+
+function trimLastAlignment(alignments: unknown) {
+    return Array.isArray(alignments) ? alignments.slice(0, -1) : alignments;
 }
 
 function childrenOf(node: ProseMirrorNode) {
@@ -607,6 +932,12 @@ function syncNodeViewAttributes(dom: HTMLElement, node: ProseMirrorNode) {
             break;
         case "footnote_definition":
             dom.setAttribute("data-mdx-label", String(node.attrs.label));
+            break;
+        case "inline_html":
+            dom.setAttribute("data-mdx-html", String(node.attrs.html ?? ""));
+            if (node.attrs.tag) {
+                dom.setAttribute("data-mdx-tag", String(node.attrs.tag));
+            }
             break;
         case "math_block":
             dom.setAttribute("data-mdx-syntax", "math");

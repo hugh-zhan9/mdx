@@ -35,6 +35,8 @@ function serializeInlineNode(node: ProseMirrorNode) {
     switch (node.type.name) {
         case "image":
             return serializeImageNode(node);
+        case "inline_html":
+            return String(node.attrs.html ?? node.textContent);
         case "math_inline":
             return `$${escapeMathInline(String(node.attrs.latex ?? ""))}$`;
         case "footnote_ref":
@@ -179,12 +181,18 @@ function openMark(mark: Mark) {
             return "*";
         case "strike":
             return "~~";
+        case "kbd":
+            return "<kbd>";
         default:
             return "";
     }
 }
 
 function closeMark(mark: Mark) {
+    if (mark.type.name === "kbd") {
+        return "</kbd>";
+    }
+
     return openMark(mark);
 }
 

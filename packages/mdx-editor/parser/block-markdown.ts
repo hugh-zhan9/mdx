@@ -219,6 +219,19 @@ export function parseMarkdownBlocks(
             continue;
         }
 
+        const htmlBlockRange = tryParseHtmlBlock(
+            logicalLines,
+            cursor,
+            markdown,
+            sourceSlices,
+        );
+        if (htmlBlockRange) {
+            const { node, nextCursor } = htmlBlockRange;
+            blocks.push(node);
+            cursor = nextCursor;
+            continue;
+        }
+
         const fallbackRange = tryParseSourceFallbackBlock(logicalLines, cursor);
         if (fallbackRange) {
             const start =
@@ -1307,6 +1320,17 @@ function consumeHtmlOpaqueBlock(
     logicalLines: LogicalLine[],
     startLine: number,
 ) {
+    const startTag = htmlStartTagName(logicalLines[startLine]?.text ?? "");
+    if (startTag) {
+        const closePattern = new RegExp(`</${escapeRegExp(startTag)}\\s*>`, "i");
+
+        for (let line = startLine; line < logicalLines.length; line += 1) {
+            if (closePattern.test(logicalLines[line]?.text ?? "")) {
+                return { startLine, endLine: line };
+            }
+        }
+    }
+
     let endLine = startLine;
 
     while (endLine + 1 < logicalLines.length) {
@@ -1327,6 +1351,14 @@ function consumeHtmlOpaqueBlock(
     }
 
     return { startLine, endLine };
+}
+
+function htmlStartTagName(text: string) {
+    return text.trim().match(/^<([A-Za-z][A-Za-z0-9:-]*)(?:\s[^>]*)?>/)?.[1] ?? null;
+}
+
+function escapeRegExp(text: string) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function isTableStart(logicalLines: LogicalLine[], startLine: number) {
@@ -1400,6 +1432,59 @@ function isHtmlStart(text: string) {
         /^<([A-Za-z][A-Za-z0-9:-]*)(?:\s[^>]*)?>[\s\S]*<\/\1>$/.test(trimmed)
     );
 }
+
+function tryParseHtmlBlock(
+    logicalLines: LogicalLine[],
+    startLine: number,
+    markdown: string,
+    sourceSlices: SourceSlice[],
+) {
+    const firstLine = logicalLines[startLine]?.text ?? "";
+
+    // 只支持特定的交互式块级 HTML 标签
+    const blockHtmlMatch = firstLine.match(/^<(details)(\s[^>]*)?>$/);
+    if (!blockHtmlMatch) {
+        return null;
+    }
+
+    const tag = blockHtmlMatch[1];
+    const closeTag = `</${tag}>`;
+    let endLine = startLine;
+    let foundClose = false;
+
+    // 查找闭合标签
+    for (let i = startLine; i < logicalLines.length; i++) {
+        const line = logicalLines[i]?.text ?? "";
+        if (line.includes(closeTag)) {
+            endLine = i;
+            foundClose = true;
+            break;
+        }
+    }
+
+    if (!foundClose) {
+        return null;
+    }
+
+    const start = logicalLines[startLine].start;
+    const end = logicalLines[endLine].end;
+    const sourceId = addSlice(sourceSlices, markdown, start, end);
+    const html = markdown.slice(start, end);
+
+    return {
+        node: mdxEditorSchema.nodes.html_block.create(
+            {
+                html,
+                tag,
+                collapsed: tag === "details",
+                sourceId,
+            },
+            textNode(html),
+        ),
+        nextCursor: endLine + 1,
+    };
+}
+
 
 function isUnknownBlockSyntaxStart(text: string) {
     const trimmed = text.trimStart();

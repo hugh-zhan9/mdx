@@ -33,6 +33,43 @@ export const mdxEditorSchema = new Schema({
                 },
             ],
         },
+        inline_html: {
+            inline: true,
+            group: "inline",
+            atom: true,
+            attrs: {
+                html: {},
+                tag: { default: null },
+                text: { default: "" },
+                sourceId: { default: null },
+            },
+            toDOM: (node) => [
+                "span",
+                {
+                    "data-mdx-node-type": "inline_html",
+                    "data-mdx-html": node.attrs.html,
+                    "data-mdx-tag": node.attrs.tag ?? undefined,
+                    "data-mdx-source-id": node.attrs.sourceId ?? undefined,
+                },
+                node.attrs.text || node.attrs.html,
+            ],
+            parseDOM: [
+                {
+                    tag: "span[data-mdx-node-type='inline_html']",
+                    getAttrs: (dom) => ({
+                        html:
+                            (dom as HTMLElement).getAttribute("data-mdx-html") ??
+                            (dom as HTMLElement).textContent ??
+                            "",
+                        tag: (dom as HTMLElement).getAttribute("data-mdx-tag"),
+                        sourceId: (dom as HTMLElement).getAttribute(
+                            "data-mdx-source-id",
+                        ),
+                        text: (dom as HTMLElement).textContent ?? "",
+                    }),
+                },
+            ],
+        },
         paragraph: {
             group: "block",
             content: "inline*",
@@ -667,6 +704,45 @@ export const mdxEditorSchema = new Schema({
                 },
             ],
         },
+        html_block: {
+            group: "block",
+            content: "text*",
+            code: true,
+            marks: "",
+            selectable: true,
+            attrs: {
+                html: { default: "" },
+                tag: { default: null },
+                collapsed: { default: false },
+                sourceId: { default: null },
+            },
+            toDOM: (node) => [
+                "div",
+                {
+                    "data-mdx-node-type": "html_block",
+                    "data-mdx-html-tag": node.attrs.tag ?? undefined,
+                    "data-mdx-collapsed": node.attrs.collapsed ? "true" : "false",
+                    "data-mdx-source-id": node.attrs.sourceId ?? undefined,
+                },
+                ["pre", ["code", 0]],
+            ],
+            parseDOM: [
+                {
+                    tag: "div[data-mdx-node-type='html_block']",
+                    priority: 86,
+                    preserveWhitespace: "full",
+                    getAttrs: (dom) => ({
+                        html: (dom as HTMLElement).textContent ?? "",
+                        tag: (dom as HTMLElement).getAttribute("data-mdx-html-tag"),
+                        collapsed:
+                            (dom as HTMLElement).getAttribute("data-mdx-collapsed") === "true",
+                        sourceId: (dom as HTMLElement).getAttribute(
+                            "data-mdx-source-id",
+                        ),
+                    }),
+                },
+            ],
+        },
     },
     marks: {
         strong: {
@@ -685,6 +761,10 @@ export const mdxEditorSchema = new Schema({
             code: true,
             toDOM: () => ["code", { "data-mdx-node-type": "inline_code" }, 0],
             parseDOM: [{ tag: "code" }],
+        },
+        kbd: {
+            toDOM: () => ["kbd", { "data-mdx-node-type": "kbd" }, 0],
+            parseDOM: [{ tag: "kbd" }],
         },
         link: {
             attrs: {

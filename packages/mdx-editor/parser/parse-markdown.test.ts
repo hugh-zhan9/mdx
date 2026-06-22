@@ -138,6 +138,22 @@ describe("parseMarkdown", () => {
         expect(paragraph.textContent).toContain("user@example.com.");
     });
 
+    it("parses inline kbd html into a raw-preserving inline node", () => {
+        const parsed = parseMarkdown("Press <kbd>Command</kbd> + <kbd>Z</kbd>.\n");
+        const paragraph = parsed.doc.child(0);
+
+        expect(paragraph.textContent).toBe("Press  + .");
+        expect(paragraph.child(1).type.name).toBe("inline_html");
+        expect(paragraph.child(1).attrs).toEqual({
+            html: "<kbd>Command</kbd>",
+            sourceId: null,
+            tag: "kbd",
+            text: "Command",
+        });
+        expect(paragraph.child(3).type.name).toBe("inline_html");
+        expect(paragraph.child(3).attrs.html).toBe("<kbd>Z</kbd>");
+    });
+
     it("parses inline markdown marks, footnote refs, and math into structured nodes", () => {
         const parsed = parseMarkdown("A **bold** *em* ~~gone~~ `code` $x+1$ [^note].\n");
         const paragraph = parsed.doc.child(0);
@@ -604,6 +620,30 @@ describe("parseMarkdown", () => {
         expect(parsedSingleLine.doc.child(0).attrs.reason).toBe("unsupported");
     });
 
+    it("keeps adjacent unsupported html blocks separate", () => {
+        const markdown = [
+            '<div class="custom-block">',
+            "  <p>One</p>",
+            "</div>",
+            "",
+            '<div class="custom-block">',
+            "  <p>Two</p>",
+            "</div>",
+            "",
+        ].join("\n");
+        const parsed = parseMarkdown(markdown);
+
+        expect(parsed.doc.childCount).toBe(2);
+        expect(parsed.doc.child(0).type.name).toBe("source_fallback");
+        expect(parsed.doc.child(0).attrs.markdown).toBe(
+            '<div class="custom-block">\n  <p>One</p>\n</div>\n',
+        );
+        expect(parsed.doc.child(1).type.name).toBe("source_fallback");
+        expect(parsed.doc.child(1).attrs.markdown).toBe(
+            '<div class="custom-block">\n  <p>Two</p>\n</div>\n',
+        );
+    });
+
     it("parses block math and footnote definition blocks while leaving supported paragraphs intact", () => {
         const math = roundTripFixtures.find((fixture) => fixture.name === "math");
         const footnote = roundTripFixtures.find((fixture) => fixture.name === "footnote");
@@ -657,5 +697,44 @@ describe("parseMarkdown", () => {
         expect(parsed.doc.child(0).type.name).toBe("bullet_list");
         expect(parsed.doc.child(1).type.name).toBe("heading");
         expect(parsed.doc.child(1).textContent).toBe("Title");
+    });
+
+    it("parses various safe inline html tags beyond kbd", () => {
+        const markdown = "Text with <mark>highlight</mark>, H<sub>2</sub>O, and x<sup>2</sup>.\n";
+        const parsed = parseMarkdown(markdown);
+        const paragraph = parsed.doc.child(0);
+
+        // 找到所有 inline_html 节点
+        const inlineHtmlNodes: any[] = [];
+        paragraph.forEach((child) => {
+            if (child.type.name === "inline_html") {
+                inlineHtmlNodes.push(child);
+            }
+        });
+
+        expect(inlineHtmlNodes.length).toBe(3);
+
+        // mark
+        expect(inlineHtmlNodes[0].attrs.tag).toBe("mark");
+        expect(inlineHtmlNodes[0].attrs.text).toBe("highlight");
+
+        // sub
+        expect(inlineHtmlNodes[1].attrs.tag).toBe("sub");
+        expect(inlineHtmlNodes[1].attrs.text).toBe("2");
+
+        // sup
+        expect(inlineHtmlNodes[2].attrs.tag).toBe("sup");
+        expect(inlineHtmlNodes[2].attrs.text).toBe("2");
+    });
+
+    it("parses details block as html_block node", () => {
+        const markdown = "<details>\n  <summary>Click to expand</summary>\n  <p>Hidden content</p>\n</details>\n";
+        const parsed = parseMarkdown(markdown);
+
+        expect(parsed.doc.childCount).toBe(1);
+        expect(parsed.doc.child(0).type.name).toBe("html_block");
+        expect(parsed.doc.child(0).attrs.tag).toBe("details");
+        expect(parsed.doc.child(0).attrs.collapsed).toBe(true);
+        expect(parsed.doc.child(0).textContent).toContain("summary");
     });
 });

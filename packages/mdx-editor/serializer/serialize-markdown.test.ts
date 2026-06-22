@@ -166,6 +166,12 @@ describe("serializeMarkdown", () => {
                 schema.text(" "),
                 schema.text("code", [schema.marks.inline_code.create()]),
                 schema.text(" "),
+                schema.nodes.inline_html.create({
+                    html: "<kbd>Command</kbd>",
+                    tag: "kbd",
+                    text: "Command",
+                }),
+                schema.text(" "),
                 schema.nodes.math_inline.create({ latex: "x+1" }),
                 schema.text(" "),
                 schema.nodes.footnote_ref.create({ label: "note" }),
@@ -173,7 +179,7 @@ describe("serializeMarkdown", () => {
         ]);
 
         expect(serializeMarkdown(emptyParsedDocument(doc))).toBe(
-            "A **bold** *em* ~~gone~~ `code` $x+1$ [^note]\n",
+            "A **bold** *em* ~~gone~~ `code` <kbd>Command</kbd> $x+1$ [^note]\n",
         );
     });
 

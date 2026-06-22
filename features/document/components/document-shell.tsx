@@ -27,6 +27,7 @@ import {
 } from "@/features/workspace/lib/preferences";
 import type {
   AppPreferences,
+  MarkdownOutlineHeading,
   PersistedAppState,
 } from "@/features/workspace/lib/types";
 import {
@@ -906,9 +907,9 @@ export function DocumentShell({
     );
   }, []);
 
-  const scrollToHeading = useCallback((_: unknown, index: number) => {
-    scrollRenderedHeadingIntoView(editorViewportRef.current, index);
-  }, []);
+  const scrollToHeading = useCallback((heading: MarkdownOutlineHeading) => {
+    scrollRenderedHeadingIntoView(editorViewportRef.current, heading, headings);
+  }, [headings]);
 
   if (error) {
     return (

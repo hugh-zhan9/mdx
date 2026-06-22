@@ -157,6 +157,7 @@ function EditorPaneInner({
     const [contentRootNode, setContentRootNode] =
         useState<HTMLDivElement | null>(null);
     const [editorRoot, setEditorRoot] = useState<HTMLElement | null>(null);
+    const [editorDomRevision, setEditorDomRevision] = useState(0);
     const [mermaidVisibilityRevision, setMermaidVisibilityRevision] =
         useState(0);
     const handleMermaidVisibilityChange = useCallback(() => {
@@ -167,7 +168,7 @@ function EditorPaneInner({
         focusEditor: focus,
         markdown: bridge.currentMarkdown,
         replaceSelectedText: insertText,
-        visibilityRevision: mermaidVisibilityRevision,
+        visibilityRevision: mermaidVisibilityRevision + editorDomRevision,
     });
     const {
         close,
@@ -237,6 +238,23 @@ function EditorPaneInner({
                 return;
             }
 
+            if (
+                findReplace.state.isOpen &&
+                event.key === "Enter" &&
+                !(event.nativeEvent as KeyboardEvent & { isComposing?: boolean })
+                    .isComposing
+            ) {
+                event.preventDefault();
+                event.stopPropagation();
+                if (event.shiftKey) {
+                    goPrevious();
+                    return;
+                }
+
+                goNext();
+                return;
+            }
+
             if (!isSelectAllShortcut(event.nativeEvent)) {
                 return;
             }
@@ -254,7 +272,7 @@ function EditorPaneInner({
             event.stopPropagation();
             selectElementContents(selectTarget as HTMLElement);
         },
-        [openFind, openReplace],
+        [findReplace.state.isOpen, goNext, goPrevious, openFind, openReplace],
     );
     const handleEditorClickCapture = useCallback(
         (event: React.MouseEvent<HTMLDivElement>) => {
@@ -352,6 +370,7 @@ function EditorPaneInner({
 
         const observer = new MutationObserver(() => {
             refreshEditorRoot();
+            setEditorDomRevision((revision) => revision + 1);
         });
 
         observer.observe(contentRootNode, {

@@ -1,6 +1,6 @@
 "use client";
 
-import { Columns3, Rows3 } from "lucide-react";
+import { Columns3, Rows3, Trash2 } from "lucide-react";
 import type { Node as ProseMirrorNode } from "prosemirror-model";
 import type { NodeViewProps } from "./node-views";
 
@@ -8,6 +8,8 @@ interface TableNodeViewProps extends NodeViewProps {
     contentRef?: (element: HTMLElement | null) => void;
     onAddColumn?: () => void;
     onAddRow?: () => void;
+    onDeleteColumn?: () => void;
+    onDeleteRow?: () => void;
 }
 
 export function TableNodeView({
@@ -15,8 +17,12 @@ export function TableNodeView({
     node,
     onAddColumn,
     onAddRow,
+    onDeleteColumn,
+    onDeleteRow,
 }: TableNodeViewProps) {
     const alignments = getAlignments(node);
+    const rowCount = node.childCount;
+    const columnCount = node.child(0)?.childCount ?? 0;
 
     return (
         <>
@@ -38,6 +44,26 @@ export function TableNodeView({
                     title="Add column"
                 >
                     <Columns3 aria-hidden="true" />
+                </button>
+                <button
+                    type="button"
+                    aria-label="Delete row"
+                    className="mdx-table-control-button"
+                    disabled={rowCount <= 1}
+                    onClick={onDeleteRow}
+                    title="Delete row"
+                >
+                    <Trash2 aria-hidden="true" />
+                </button>
+                <button
+                    type="button"
+                    aria-label="Delete column"
+                    className="mdx-table-control-button"
+                    disabled={columnCount <= 1}
+                    onClick={onDeleteColumn}
+                    title="Delete column"
+                >
+                    <Trash2 aria-hidden="true" />
                 </button>
             </div>
             <table

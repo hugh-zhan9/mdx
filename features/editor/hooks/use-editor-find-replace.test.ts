@@ -4,11 +4,13 @@ import { act, createElement, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 import type { VisibleTextMatch } from "../lib/visible-text-search";
+import { findVisibleTextMatches } from "../lib/visible-text-search";
 import {
     applyFindBarShortcut,
     buildVisibleTextIndexForMarkdown,
     createInitialFindReplaceState,
     findBarCountLabel,
+    markdownToSearchableText,
     matchIndexAfterCurrentReplacement,
     nextMatchIndex,
     previousMatchIndex,
@@ -114,6 +116,30 @@ describe("editor find replace state", () => {
 });
 
 describe("editor find replace visible text index", () => {
+    it("falls back to markdown text when the editor DOM index is empty", () => {
+        const root = document.createElement("div");
+        const markdown = [
+            "---",
+            "title: Markdown 语法支持检查",
+            "---",
+            "",
+            "# Markdown 语法支持检查",
+        ].join("\n");
+
+        const index = buildVisibleTextIndexForMarkdown(root, markdown);
+
+        expect(index.text).toContain("语法");
+        expect(
+            findVisibleTextMatches(index, "语法", { caseSensitive: false }),
+        ).toHaveLength(2);
+    });
+
+    it("keeps Chinese markdown content searchable after lightweight cleanup", () => {
+        expect(markdownToSearchableText("# Markdown 语法支持检查")).toContain(
+            "语法",
+        );
+    });
+
     it("rebuilds from the live DOM when mermaid visibility changes", () => {
         const root = document.createElement("div");
         document.body.append(root);
@@ -267,15 +293,17 @@ describe("editor find replace visible text index", () => {
         });
         await act(async () => {});
 
-        expect(latestState?.query).toBe("raw");
+        const stateAfterOpen = latestState as FindReplaceState | null;
+        expect(stateAfterOpen?.query).toBe("raw");
 
         await act(async () => {
             close?.();
         });
         await act(async () => {});
 
-        expect(latestState?.isOpen).toBe(false);
-        expect(latestState?.query).toBe("");
+        const stateAfterClose = latestState as FindReplaceState | null;
+        expect(stateAfterClose?.isOpen).toBe(false);
+        expect(stateAfterClose?.query).toBe("");
 
         act(() => reactRoot.unmount());
         editorRoot.remove();

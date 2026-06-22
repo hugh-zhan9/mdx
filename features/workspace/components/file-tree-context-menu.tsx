@@ -43,6 +43,7 @@ export function FileTreeContextMenu({
         <div
             className="fixed z-30 min-w-48 border border-base-300 bg-base-100 py-1 text-sm shadow-lg"
             style={{ left: x, top: y }}
+            onClick={(event) => event.stopPropagation()}
             onContextMenu={(event) => event.preventDefault()}
         >
             {isFolder ? (

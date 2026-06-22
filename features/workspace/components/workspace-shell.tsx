@@ -75,6 +75,7 @@ import type {
   CliTabEvent,
   FileTreeNode,
   AppPreferences,
+  MarkdownOutlineHeading,
   PendingCliEditorCommand,
   WorkspaceFileTreeActions,
   WorkspaceMenuActions,
@@ -1932,9 +1933,13 @@ export function WorkspaceShell({
     };
   }, [dispatchAndMirror, preferences, queuePendingCliCommand, saveTab]);
 
-  const scrollToHeading = useCallback((_: unknown, index: number) => {
-    scrollRenderedHeadingIntoView(editorViewportRef.current, index);
-  }, []);
+  const scrollToHeading = useCallback((heading: MarkdownOutlineHeading) => {
+    scrollRenderedHeadingIntoView(
+      editorViewportRef.current,
+      heading,
+      activeHeadings,
+    );
+  }, [activeHeadings]);
   const panelLayout = calculateWorkspacePanelLayout({
     containerWidth: workspaceBodyWidth,
     leftCollapsed: isMemoryView || leftPanel.isCollapsed,

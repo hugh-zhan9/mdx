@@ -76,6 +76,13 @@ describe("mdxEditorSchema advanced markdown nodes", () => {
             schema.nodes.math_inline.create({ latex: "x+1" }).attrs.latex,
         ).toBe("x+1");
         expect(
+            schema.nodes.inline_html.create({
+                html: "<kbd>Command</kbd>",
+                tag: "kbd",
+                text: "Command",
+            }).attrs.html,
+        ).toBe("<kbd>Command</kbd>");
+        expect(
             schema.nodes.math_block.create(null, schema.text("y=mx+b"))
                 .textContent,
         ).toBe("y=mx+b");

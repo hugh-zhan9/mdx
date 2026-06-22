@@ -105,6 +105,9 @@ export function FileTreePanel({
 }: FileTreePanelProps) {
     const dialogs = useAppDialogs();
     const [selectedPath, setSelectedPath] = useState<string | null>(null);
+    const [selectedPaths, setSelectedPaths] = useState<Set<string>>(
+        () => new Set(),
+    );
     const [expandedPaths, setExpandedPaths] = useState<Set<string>>(
         () => new Set(),
     );
@@ -134,10 +137,27 @@ export function FileTreePanel({
             ? findNodeByPath(fileTree, activeTabPath)
             : null;
     }, [activeTabPath, fileTree, selectedPath]);
+    const selectedActionNodes = useMemo(() => {
+        const nodes = Array.from(selectedPaths)
+            .map((path) => findNodeByPath(fileTree, path))
+            .filter((node): node is FileTreeNode => Boolean(node));
+
+        return withoutDescendantsOfSelectedFolders(nodes);
+    }, [fileTree, selectedPaths]);
+    const visibleNodeOrder = useMemo(
+        () =>
+            flattenVisibleFileTreeNodes(
+                visibleNodes,
+                expandedPaths,
+                searchActive,
+            ),
+        [expandedPaths, searchActive, visibleNodes],
+    );
 
     useEffect(() => {
         setContextMenu(null);
         setSelectedPath(null);
+        setSelectedPaths(new Set());
         setExpandedPaths(new Set());
     }, [rootPath]);
 
@@ -147,10 +167,13 @@ export function FileTreePanel({
         }
 
         const close = () => setContextMenu(null);
-        document.addEventListener("click", close);
+        const listenerHandle = window.setTimeout(() => {
+            document.addEventListener("click", close);
+        }, 0);
         window.addEventListener("blur", close);
 
         return () => {
+            window.clearTimeout(listenerHandle);
             document.removeEventListener("click", close);
             window.removeEventListener("blur", close);
         };
@@ -246,7 +269,7 @@ export function FileTreePanel({
                     },
                 );
 
-                setSelectedPath(normalizeWorkspacePath(created.path));
+                selectSinglePath(created.path, setSelectedPath, setSelectedPaths);
                 expandPath(parentDir, setExpandedPaths);
                 await refreshTree();
             } catch (error) {
@@ -269,7 +292,7 @@ export function FileTreePanel({
                     },
                 );
 
-                setSelectedPath(normalizeWorkspacePath(created.path));
+                selectSinglePath(created.path, setSelectedPath, setSelectedPaths);
                 expandPath(parentDir, setExpandedPaths);
                 dispatch({
                     type: "tab/opened",
@@ -341,7 +364,11 @@ export function FileTreePanel({
                                   },
                           },
                 );
-                setSelectedPath(normalizeWorkspacePath(renamed.newPath));
+                selectSinglePath(
+                    renamed.newPath,
+                    setSelectedPath,
+                    setSelectedPaths,
+                );
                 await refreshTree();
             } catch (error) {
                 showError(error, "重命名失败。");
@@ -379,8 +406,10 @@ export function FileTreePanel({
                               prefix: node.path,
                           },
                 );
-                setSelectedPath((current) =>
-                    current === node.path ? null : current,
+                clearDeletedSelection(
+                    [node.path],
+                    setSelectedPath,
+                    setSelectedPaths,
                 );
                 await refreshTree();
             } catch (error) {
@@ -404,7 +433,14 @@ export function FileTreePanel({
     }, [actionTargetNode, dialogs, renameNode]);
 
     const deleteSelection = useCallback(async () => {
-        if (!actionTargetNode) {
+        const deleteTargets =
+            selectedActionNodes.length > 0
+                ? selectedActionNodes
+                : actionTargetNode
+                  ? [actionTargetNode]
+                  : [];
+
+        if (deleteTargets.length === 0) {
             setMessage("请先选择文件或文件夹。");
             void dialogs.alert({
                 title: "需要选择",
@@ -413,8 +449,60 @@ export function FileTreePanel({
             return;
         }
 
-        await deleteNode(actionTargetNode);
-    }, [actionTargetNode, deleteNode, dialogs]);
+        if (deleteTargets.length === 1) {
+            await deleteNode(deleteTargets[0]);
+            return;
+        }
+
+        const confirmed = await dialogs.confirm({
+            title: "移到废纸篓",
+            message: `将选中的 ${deleteTargets.length} 个项目移到废纸篓？`,
+            confirmLabel: "移到废纸篓",
+            destructive: true,
+        });
+
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            for (const node of deleteTargets) {
+                await invokeTauri("trash_path", {
+                    rootPath,
+                    path: node.path,
+                });
+                dispatch(
+                    node.kind === "file"
+                        ? {
+                              type: "tab/closedByPath",
+                              path: node.path,
+                          }
+                        : {
+                              type: "tab/closedByPrefix",
+                              prefix: node.path,
+                          },
+                );
+            }
+
+            clearDeletedSelection(
+                deleteTargets.map((node) => node.path),
+                setSelectedPath,
+                setSelectedPaths,
+            );
+            await refreshTree();
+        } catch (error) {
+            showError(error, "移动到废纸篓失败。");
+        }
+    }, [
+        actionTargetNode,
+        deleteNode,
+        dialogs,
+        dispatch,
+        refreshTree,
+        rootPath,
+        selectedActionNodes,
+        showError,
+    ]);
 
     const actions = useMemo<WorkspaceFileTreeActions>(
         () => ({
@@ -484,7 +572,7 @@ export function FileTreePanel({
                                   },
                           },
                 );
-                setSelectedPath(normalizeWorkspacePath(moved.newPath));
+                selectSinglePath(moved.newPath, setSelectedPath, setSelectedPaths);
                 expandPath(normalizedTargetDir, setExpandedPaths);
                 await refreshTree();
             } catch (error) {
@@ -516,6 +604,9 @@ export function FileTreePanel({
             event.preventDefault();
             event.stopPropagation();
             setSelectedPath(node.path);
+            setSelectedPaths((current) =>
+                current.has(node.path) ? current : new Set([node.path]),
+            );
             setContextMenu({
                 node,
                 x: clamp(event.clientX, 0, window.innerWidth - 180),
@@ -553,6 +644,43 @@ export function FileTreePanel({
             }
         },
         [rootPath, showError],
+    );
+
+    const selectNode = useCallback(
+        (
+            node: FilteredFileTreeNode,
+            event: ReactMouseEvent<HTMLButtonElement>,
+        ) => {
+            setSelectedPath(node.path);
+            setSelectedPaths((current) => {
+                if (event.shiftKey && selectedPath) {
+                    const range = selectedRangePaths(
+                        visibleNodeOrder,
+                        selectedPath,
+                        node.path,
+                    );
+
+                    if (range.length > 0) {
+                        return new Set(range);
+                    }
+                }
+
+                if (event.metaKey || event.ctrlKey) {
+                    const next = new Set(current);
+
+                    if (next.has(node.path)) {
+                        next.delete(node.path);
+                    } else {
+                        next.add(node.path);
+                    }
+
+                    return next.size > 0 ? next : new Set([node.path]);
+                }
+
+                return new Set([node.path]);
+            });
+        },
+        [selectedPath, visibleNodeOrder],
     );
 
     if (collapsed) {
@@ -639,13 +767,15 @@ export function FileTreePanel({
                                         key={node.path}
                                         node={node}
                                         depth={0}
-                                        selectedPath={selectedPath}
+                                        selectedPaths={selectedPaths}
                                         expandedPaths={expandedPaths}
                                         searchActive={searchActive}
-                                        onSelect={(selected) => {
-                                            setSelectedPath(selected.path);
-
+                                        onSelect={(selected, event) => {
+                                            selectNode(selected, event);
                                             if (
+                                                !event.shiftKey &&
+                                                !event.metaKey &&
+                                                !event.ctrlKey &&
                                                 selected.kind === "file" &&
                                                 isPreviewableFilePath(
                                                     selected.path,
@@ -717,7 +847,10 @@ export function FileTreePanel({
                 }}
                 onDelete={() => {
                     if (contextMenu?.node) {
-                        void deleteNode(contextMenu.node);
+                        void (selectedPaths.size > 1 &&
+                        selectedPaths.has(contextMenu.node.path)
+                            ? deleteSelection()
+                            : deleteNode(contextMenu.node));
                     }
                 }}
             />
@@ -750,6 +883,97 @@ function expandPath(
         next.add(normalizedPath);
         return next;
     });
+}
+
+function selectSinglePath(
+    path: string,
+    setSelectedPath: Dispatch<SetStateAction<string | null>>,
+    setSelectedPaths: Dispatch<SetStateAction<Set<string>>>,
+) {
+    const normalizedPath = normalizeWorkspacePath(path);
+    setSelectedPath(normalizedPath);
+    setSelectedPaths(new Set([normalizedPath]));
+}
+
+function clearDeletedSelection(
+    deletedPaths: string[],
+    setSelectedPath: Dispatch<SetStateAction<string | null>>,
+    setSelectedPaths: Dispatch<SetStateAction<Set<string>>>,
+) {
+    const deleted = new Set(deletedPaths.map(normalizeWorkspacePath));
+
+    setSelectedPath((current) =>
+        current && deleted.has(current) ? null : current,
+    );
+    setSelectedPaths((current) => {
+        const next = new Set(current);
+
+        for (const path of deleted) {
+            next.delete(path);
+        }
+
+        return next;
+    });
+}
+
+export function flattenVisibleFileTreeNodes(
+    nodes: FilteredFileTreeNode[],
+    expandedPaths: Set<string>,
+    searchActive: boolean,
+): FilteredFileTreeNode[] {
+    const flattened: FilteredFileTreeNode[] = [];
+
+    for (const node of nodes) {
+        flattened.push(node);
+
+        if (
+            node.kind === "folder" &&
+            (searchActive || expandedPaths.has(node.path))
+        ) {
+            flattened.push(
+                ...flattenVisibleFileTreeNodes(
+                    node.children,
+                    expandedPaths,
+                    searchActive,
+                ),
+            );
+        }
+    }
+
+    return flattened;
+}
+
+export function selectedRangePaths(
+    nodes: FilteredFileTreeNode[],
+    anchorPath: string,
+    targetPath: string,
+) {
+    const anchorIndex = nodes.findIndex((node) => node.path === anchorPath);
+    const targetIndex = nodes.findIndex((node) => node.path === targetPath);
+
+    if (anchorIndex === -1 || targetIndex === -1) {
+        return [];
+    }
+
+    const start = Math.min(anchorIndex, targetIndex);
+    const end = Math.max(anchorIndex, targetIndex);
+
+    return nodes.slice(start, end + 1).map((node) => node.path);
+}
+
+export function withoutDescendantsOfSelectedFolders(nodes: FileTreeNode[]) {
+    const selectedFolderPaths = nodes
+        .filter((node) => node.kind === "folder")
+        .map((node) => node.path);
+
+    return nodes.filter(
+        (node) =>
+            !selectedFolderPaths.some(
+                (folderPath) =>
+                    node.path !== folderPath &&
+                    isPathWithinFolder(node.path, folderPath),
+            ),
+    );
 }
 
 function withMarkdownExtension(name: string, fallbackName = "Untitled.md") {

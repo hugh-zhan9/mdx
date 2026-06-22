@@ -121,7 +121,7 @@ export function useEditorFindReplace({
     const visibleTextIndex = useMemo(() => {
         void visibilityRevision;
         if (!editorRoot) {
-            return { segments: [], text: "" };
+            return markdownFallbackIndex(markdown);
         }
 
         return buildVisibleTextIndexForMarkdown(editorRoot, markdown);
@@ -330,7 +330,29 @@ export function buildVisibleTextIndexForMarkdown(
     editorRoot: HTMLElement,
     markdown: string,
 ) {
-    void markdown;
+    const index = buildVisibleTextIndex(editorRoot);
 
-    return buildVisibleTextIndex(editorRoot);
+    if (
+        index.text.length > 0 ||
+        markdown.length === 0 ||
+        editorRoot.childNodes.length > 0
+    ) {
+        return index;
+    }
+
+    return markdownFallbackIndex(markdown);
+}
+
+export function markdownToSearchableText(markdown: string) {
+    return markdown
+        .replace(/^---\r?\n([\s\S]*?)\r?\n---(?=\r?\n|$)/, "$1")
+        .replace(/^#{1,6}[ \t]+/gm, "")
+        .replace(/[*_~`[\]()!>#-]/g, "");
+}
+
+function markdownFallbackIndex(markdown: string) {
+    return {
+        segments: [],
+        text: markdownToSearchableText(markdown),
+    };
 }

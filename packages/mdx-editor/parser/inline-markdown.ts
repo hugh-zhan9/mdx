@@ -105,6 +105,21 @@ export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
             continue;
         }
 
+        const inlineHtml = tryParseInlineHtml(text, cursor);
+        if (inlineHtml) {
+            pushText(children, buffer);
+            buffer = "";
+            children.push(
+                mdxEditorSchema.nodes.inline_html.create({
+                    html: inlineHtml.html,
+                    tag: inlineHtml.tag,
+                    text: inlineHtml.content,
+                }),
+            );
+            cursor = inlineHtml.nextIndex;
+            continue;
+        }
+
         const inlineCode = tryParseInlineCode(text, cursor);
         if (inlineCode) {
             pushMarkedText(
@@ -544,6 +559,53 @@ function tryParseInlineCode(text: string, startIndex: number) {
     return {
         content: trimCodeSpanPadding(rawContent),
         nextIndex: closeIndex + openerLength,
+    };
+}
+
+function tryParseInlineHtml(text: string, startIndex: number) {
+    // 安全的行内 HTML 标签白名单
+    const safeInlineTags = [
+        "kbd",
+        "mark",
+        "sup",
+        "sub",
+        "abbr",
+        "cite",
+        "var",
+        "samp",
+        "time",
+        "small",
+        "code",
+    ];
+
+    // 匹配开始标签：<tag> 或 <tag attr="value">
+    const tagMatch = text.slice(startIndex).match(/^<([a-zA-Z][\w:-]*)\b([^>]*)>/);
+    if (!tagMatch) {
+        return null;
+    }
+
+    const tag = tagMatch[1].toLowerCase();
+    if (!safeInlineTags.includes(tag)) {
+        return null;
+    }
+
+    const openTagLength = tagMatch[0].length;
+    const contentStart = startIndex + openTagLength;
+    const closeTag = `</${tag}>`;
+    const closeIndex = text.indexOf(closeTag, contentStart);
+
+    if (closeIndex < 0) {
+        return null;
+    }
+
+    const content = text.slice(contentStart, closeIndex);
+    const html = text.slice(startIndex, closeIndex + closeTag.length);
+
+    return {
+        content,
+        html,
+        tag,
+        nextIndex: closeIndex + closeTag.length,
     };
 }
 

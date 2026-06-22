@@ -13,10 +13,13 @@ import type {
 interface FileTreeNodeViewProps {
     node: FilteredFileTreeNode;
     depth: number;
-    selectedPath: string | null;
+    selectedPaths: Set<string>;
     expandedPaths: Set<string>;
     searchActive: boolean;
-    onSelect: (node: FilteredFileTreeNode) => void;
+    onSelect: (
+        node: FilteredFileTreeNode,
+        event: ReactMouseEvent<HTMLButtonElement>,
+    ) => void;
     onToggleFolder: (path: string) => void;
     onContextMenu: (
         node: FilteredFileTreeNode,
@@ -33,7 +36,7 @@ interface FileTreeNodeViewProps {
 export function FileTreeNodeView({
     node,
     depth,
-    selectedPath,
+    selectedPaths,
     expandedPaths,
     searchActive,
     onSelect,
@@ -43,7 +46,7 @@ export function FileTreeNodeView({
     onDragStart,
     onDropOnFolder,
 }: FileTreeNodeViewProps) {
-    const isSelected = selectedPath === node.path;
+    const isSelected = selectedPaths.has(node.path);
     const isFolder = node.kind === "folder";
     const isExpanded =
         isFolder && (searchActive || expandedPaths.has(node.path));
@@ -69,7 +72,7 @@ export function FileTreeNodeView({
                         return;
                     }
 
-                    onSelect(node);
+                    onSelect(node, event);
 
                     if (node.kind === "folder") {
                         onToggleFolder(node.path);
@@ -128,7 +131,7 @@ export function FileTreeNodeView({
                                 key={child.path}
                                 node={child}
                                 depth={depth + 1}
-                                selectedPath={selectedPath}
+                                selectedPaths={selectedPaths}
                                 expandedPaths={expandedPaths}
                                 searchActive={searchActive}
                                 onSelect={onSelect}
