@@ -59,6 +59,11 @@ export function coreMarkdownSyntax(): SyntaxPlugin {
                     {
                         href: mark.attrs.href,
                         title: mark.attrs.title ?? undefined,
+                        "data-mdx-node-type": mark.attrs.href?.startsWith(
+                            "mdx-wikilink:",
+                        )
+                            ? "wikilink"
+                            : "link",
                     },
                     0,
                 ],
