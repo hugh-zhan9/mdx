@@ -22,6 +22,10 @@ export interface MarkdownClipboardPluginOptions {
     serializeMarkdown?: (doc: ProseMirrorNode | ParsedMarkdownDocument) => string;
 }
 
+type ClipboardMarkdownSerializer = (
+    doc: ProseMirrorNode | ParsedMarkdownDocument,
+) => string;
+
 export function markdownToClipboardHtml(
     markdown: string,
     options: MarkdownClipboardHtmlOptions = {},
@@ -54,7 +58,8 @@ export function createMarkdownClipboardPlugin(
     const schema = options.schema ?? mdxEditorSchema;
     const parse = options.parseMarkdown
         ?? ((markdown: string) => parseMarkdown(markdown, schema));
-    const serialize = options.serializeMarkdown ?? serializeMarkdown;
+    const serialize = options.serializeMarkdown
+        ?? defaultClipboardSerializer;
 
     return new Plugin({
         key: markdownClipboardPluginKey,
@@ -100,7 +105,7 @@ function writeSelectionToClipboard(
     cut: boolean,
     schema: Schema,
     parse: (markdown: string) => ParsedMarkdownDocument,
-    serialize: (doc: ParsedMarkdownDocument) => string,
+    serialize: ClipboardMarkdownSerializer,
 ) {
     if (view.state.selection.empty || !event.clipboardData) {
         return false;
@@ -228,7 +233,7 @@ function insertMarkdown(
 function sliceToMarkdown(
     slice: Slice,
     schema: Schema,
-    serialize: (doc: ProseMirrorNode | ParsedMarkdownDocument) => string,
+    serialize: ClipboardMarkdownSerializer,
 ) {
     const singleChild = slice.content.childCount === 1
         ? slice.content.firstChild
@@ -252,7 +257,7 @@ function sliceToMarkdown(
 function serializeSliceDocument(
     slice: Slice,
     schema: Schema,
-    serialize: (doc: ProseMirrorNode | ParsedMarkdownDocument) => string,
+    serialize: ClipboardMarkdownSerializer,
 ) {
     const blocks: ProseMirrorNode[] = [];
     slice.content.forEach((node) => {
@@ -275,6 +280,25 @@ function serializeSliceDocument(
         originalMarkdown: "",
         sourceSlices: [],
     });
+}
+
+function defaultClipboardSerializer(
+    doc: ProseMirrorNode | ParsedMarkdownDocument,
+) {
+    return serializeMarkdown(isParsedMarkdownDocument(doc)
+        ? doc
+        : {
+            diagnostics: [],
+            doc,
+            originalMarkdown: "",
+            sourceSlices: [],
+        });
+}
+
+function isParsedMarkdownDocument(
+    doc: ProseMirrorNode | ParsedMarkdownDocument,
+): doc is ParsedMarkdownDocument {
+    return "doc" in doc && "sourceSlices" in doc;
 }
 
 function containsKernelOwnedClipboardNode(node: ProseMirrorNode) {
