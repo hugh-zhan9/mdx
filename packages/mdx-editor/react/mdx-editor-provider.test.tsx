@@ -63,6 +63,11 @@ function Probe() {
                         ?.setAttribute("data-selection", snapshot?.selected_text ?? "");
                 }}
             />
+            <button
+                type="button"
+                data-testid="reset-image-source"
+                onClick={() => editor.resetMarkdown('![Diagram](.assets/b.png)\n')}
+            />
         </>
     );
 }
@@ -674,10 +679,53 @@ describe("MdxEditorProvider", () => {
 
         const hydratedImage = host.querySelector("img[data-mdx-node-type='image']");
 
+        expect(hydratedImage).toBe(initialImage);
         expect(imageLoader).toHaveBeenCalledWith(".assets/a.png");
         expect(hydratedImage?.getAttribute("src")).toBe("resolved:.assets/a.png");
         expect(hydratedImage?.getAttribute("data-mdx-resolved-src")).toBe(
             ".assets/a.png",
+        );
+    });
+
+    it("clears stale image hydration source when markdown image source changes", async () => {
+        const imageLoader = vi.fn(async (src: string) => `resolved:${src}`);
+
+        await act(async () => {
+            root.render(
+                <MdxEditorProvider
+                    initialMarkdown={'![Diagram](.assets/a.png)\n'}
+                    imageLoader={imageLoader}
+                >
+                    <MdxEditorView />
+                    <Probe />
+                </MdxEditorProvider>,
+            );
+        });
+
+        await act(async () => {});
+
+        expect(imageLoader).toHaveBeenCalledWith(".assets/a.png");
+        expect(
+            host.querySelector("img[data-mdx-node-type='image']")?.getAttribute(
+                "data-mdx-resolved-src",
+            ),
+        ).toBe(".assets/a.png");
+
+        await act(async () => {
+            host
+                .querySelector<HTMLButtonElement>("[data-testid='reset-image-source']")
+                ?.click();
+        });
+
+        await act(async () => {});
+
+        const image = host.querySelector("img[data-mdx-node-type='image']");
+
+        expect(imageLoader).toHaveBeenCalledWith(".assets/b.png");
+        expect(imageLoader).not.toHaveBeenCalledWith("resolved:.assets/a.png");
+        expect(image?.getAttribute("src")).toBe("resolved:.assets/b.png");
+        expect(image?.getAttribute("data-mdx-resolved-src")).toBe(
+            ".assets/b.png",
         );
     });
 

@@ -21,6 +21,10 @@ import { TaskListNodeView } from "./task-list-node-view";
 
 const RESOLVED_SOURCE_ATTRIBUTE = "data-mdx-resolved-src";
 
+type ImageLoader = ((src: string) => Promise<string>) & {
+    isAvailable?: () => boolean;
+};
+
 export interface NodeViewProps {
     editingRequest?: number;
     node: ProseMirrorNode;
@@ -175,7 +179,7 @@ function syncCodeBlockLanguageInputSize(input: HTMLInputElement) {
 }
 
 function createImageNodeView(
-    imageLoader?: (src: string) => Promise<string>,
+    imageLoader?: ImageLoader,
 ): NodeViewConstructor {
     return (
         node: ProseMirrorNode,
@@ -338,6 +342,11 @@ function renderImageNode(
     const title =
         typeof node.attrs.title === "string" ? node.attrs.title : undefined;
 
+    const resolvedSource = image.getAttribute(RESOLVED_SOURCE_ATTRIBUTE);
+    if (resolvedSource && resolvedSource !== src) {
+        image.removeAttribute(RESOLVED_SOURCE_ATTRIBUTE);
+    }
+
     image.src = src;
     image.alt = alt;
     image.title = title ?? "";
@@ -410,12 +419,12 @@ async function resolveImageNodeSource(
     node: ProseMirrorNode,
     image: HTMLImageElement,
     dom: HTMLElement,
-    imageLoader: ((src: string) => Promise<string>) | undefined,
+    imageLoader: ImageLoader | undefined,
     token: number,
     currentToken: () => number,
 ) {
     const src = String(node.attrs.src ?? "");
-    if (!src || !imageLoader) {
+    if (!src || !imageLoader || imageLoader.isAvailable?.() === false) {
         return;
     }
 
@@ -1153,9 +1162,9 @@ function getPosForProps(getPos: () => number | undefined) {
 
 export async function hydrateRenderedImages(
     root: ParentNode,
-    imageLoader?: (src: string) => Promise<string>,
+    imageLoader?: ImageLoader,
 ) {
-    if (!imageLoader) {
+    if (!imageLoader || imageLoader.isAvailable?.() === false) {
         return;
     }
 

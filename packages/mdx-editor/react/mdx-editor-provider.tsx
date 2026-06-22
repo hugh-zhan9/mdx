@@ -56,15 +56,19 @@ export function MdxEditorProvider({
     const tokenizeCode = useCallback<CodeTokenizer>((code, lang) => {
         return codeTokenizerRef.current?.(code, lang) ?? [];
     }, []);
-    const hasImageLoader = imageLoader !== undefined;
-    const resolveImageSource = useCallback((src: string) => {
-        const currentImageLoader = imageLoaderRef.current;
+    const resolveImageSource = useMemo(() => {
+        const resolver = ((src: string) => {
+            const currentImageLoader = imageLoaderRef.current;
 
-        if (!currentImageLoader) {
-            return Promise.reject(new Error("Image loader unavailable"));
-        }
+            if (!currentImageLoader) {
+                return Promise.reject(new Error("Image loader unavailable"));
+            }
 
-        return currentImageLoader(src);
+            return currentImageLoader(src);
+        }) as ((src: string) => Promise<string>) & { isAvailable: () => boolean };
+
+        resolver.isAvailable = () => imageLoaderRef.current !== undefined;
+        return resolver;
     }, []);
     const runtimeKernel = useMemo(
         () =>
@@ -73,12 +77,10 @@ export function MdxEditorProvider({
                 syntax: defaultMarkdownSyntax(),
                 services: {
                     codeTokenizer: tokenizeCode,
-                    ...(hasImageLoader
-                        ? { imageLoader: resolveImageSource }
-                        : {}),
+                    imageLoader: resolveImageSource,
                 },
             }),
-        [hasImageLoader, kernel, resolveImageSource, tokenizeCode],
+        [kernel, resolveImageSource, tokenizeCode],
     );
     const initialDocument = useMemo(
         () => runtimeKernel.parseMarkdown(initialMarkdown),
