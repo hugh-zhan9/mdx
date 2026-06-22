@@ -1066,14 +1066,18 @@ export function DocumentShell({
         </div>
 
         <div
-          className="grid min-h-0 min-w-0"
+          className="grid h-full min-h-0 min-w-0"
+          data-document-editor-grid=""
           style={{
             gridTemplateColumns: state.outlineCollapsed
               ? "minmax(0,1fr) 0px"
               : "minmax(0,1fr) 280px",
           }}
         >
-          <section className="min-h-0 min-w-0 overflow-hidden">
+          <section
+            className="flex h-full min-h-0 min-w-0 overflow-hidden"
+            data-document-editor-stage=""
+          >
             <EditorPane
               rootPath={null}
               tab={{

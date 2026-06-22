@@ -177,10 +177,17 @@ describe("DocumentShell draft recovery", () => {
 
     const bodyClassName =
       host.querySelector("[data-document-editor-body]")?.className ?? "";
+    const gridClassName =
+      host.querySelector("[data-document-editor-grid]")?.className ?? "";
+    const stageClassName =
+      host.querySelector("[data-document-editor-stage]")?.className ?? "";
 
     expect(bodyClassName).toContain("grid-rows-[auto_minmax(0,1fr)]");
     expect(bodyClassName).toContain("min-h-0");
     expect(bodyClassName).not.toContain("h-full");
+    expect(gridClassName).toContain("h-full");
+    expect(stageClassName).toContain("h-full");
+    expect(stageClassName).toContain("overflow-hidden");
   });
 
   it("destroys clean document windows explicitly on close request", async () => {
