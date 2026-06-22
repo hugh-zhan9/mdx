@@ -1,5 +1,6 @@
 import { baseKeymap, chainCommands } from "prosemirror-commands";
 import { redo, undo } from "prosemirror-history";
+import type { Schema } from "prosemirror-model";
 import {
     liftListItem,
     sinkListItem,
@@ -14,8 +15,10 @@ import {
 } from "../commands/editor-commands";
 import { mdxEditorSchema } from "../schema/schema";
 
-export function markdownKeymap(): Record<string, Command> {
-    const { list_item: listItem, task_item: taskItem } = mdxEditorSchema.nodes;
+export function markdownKeymap(
+    schema: Schema = mdxEditorSchema,
+): Record<string, Command> {
+    const { list_item: listItem, task_item: taskItem } = schema.nodes;
     const splitListCommand = listItem && taskItem
         ? chainCommands(splitListItem(taskItem), splitListItem(listItem))
         : listItem

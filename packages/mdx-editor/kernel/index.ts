@@ -1,3 +1,9 @@
+export { createMdxEditorKernel } from "./create-kernel";
+export type {
+    MdxEditorKernel,
+    MdxEditorKernelOptions,
+    MdxEditorKernelServices,
+} from "./create-kernel";
 export { createSyntaxRegistry } from "./registry";
 export { buildSchemaFromRegistry } from "./schema";
 export type {

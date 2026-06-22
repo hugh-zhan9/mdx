@@ -1,7 +1,8 @@
-import type { Node as ProseMirrorNode } from "prosemirror-model";
+import type { Node as ProseMirrorNode, Schema } from "prosemirror-model";
 import { Slice } from "prosemirror-model";
 import { Plugin, PluginKey } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
+import type { ParsedMarkdownDocument } from "../core/types";
 import { parseMarkdown } from "../parser/parse-markdown";
 import { mdxEditorSchema } from "../schema/schema";
 import { serializeBlockNode } from "../serializer/block-serializer";
@@ -11,8 +12,22 @@ export const MARKDOWN_CLIPBOARD_MIME = "application/x-mdx-markdown";
 
 export const markdownClipboardPluginKey = new PluginKey("markdownClipboard");
 
-export function markdownToClipboardHtml(markdown: string): string {
-    const parsed = parseMarkdown(markdown);
+export interface MarkdownClipboardHtmlOptions {
+    parseMarkdown?: (markdown: string) => ParsedMarkdownDocument;
+}
+
+export interface MarkdownClipboardPluginOptions {
+    schema?: Schema;
+    parseMarkdown?: (markdown: string) => ParsedMarkdownDocument;
+    serializeMarkdown?: (doc: ParsedMarkdownDocument) => string;
+}
+
+export function markdownToClipboardHtml(
+    markdown: string,
+    options: MarkdownClipboardHtmlOptions = {},
+): string {
+    const parse = options.parseMarkdown ?? parseMarkdown;
+    const parsed = parse(markdown);
     let html = "";
 
     parsed.doc.forEach((node) => {
@@ -33,25 +48,46 @@ export function clipboardTextToMarkdown(text: string, html?: string): string {
     return markdown.length > 0 ? markdown : text;
 }
 
-export function createMarkdownClipboardPlugin() {
+export function createMarkdownClipboardPlugin(
+    options: MarkdownClipboardPluginOptions = {},
+) {
+    const schema = options.schema ?? mdxEditorSchema;
+    const parse = options.parseMarkdown
+        ?? ((markdown: string) => parseMarkdown(markdown, schema));
+    const serialize = options.serializeMarkdown ?? serializeMarkdown;
+
     return new Plugin({
         key: markdownClipboardPluginKey,
         props: {
             clipboardTextSerializer(slice) {
-                return sliceToMarkdown(slice);
+                return sliceToMarkdown(slice, schema, serialize);
             },
             transformPastedHTML(html) {
                 return sanitizeClipboardHtml(html);
             },
             handleDOMEvents: {
                 copy(view, event) {
-                    return writeSelectionToClipboard(view, event, false);
+                    return writeSelectionToClipboard(
+                        view,
+                        event,
+                        false,
+                        schema,
+                        parse,
+                        serialize,
+                    );
                 },
                 cut(view, event) {
-                    return writeSelectionToClipboard(view, event, true);
+                    return writeSelectionToClipboard(
+                        view,
+                        event,
+                        true,
+                        schema,
+                        parse,
+                        serialize,
+                    );
                 },
                 paste(view, event) {
-                    return readMarkdownFromClipboard(view, event);
+                    return readMarkdownFromClipboard(view, event, parse);
                 },
             },
         },
@@ -62,18 +98,24 @@ function writeSelectionToClipboard(
     view: EditorView,
     event: ClipboardEvent,
     cut: boolean,
+    schema: Schema,
+    parse: (markdown: string) => ParsedMarkdownDocument,
+    serialize: (doc: ParsedMarkdownDocument) => string,
 ) {
     if (view.state.selection.empty || !event.clipboardData) {
         return false;
     }
 
-    const markdown = sliceToMarkdown(view.state.selection.content());
+    const markdown = sliceToMarkdown(view.state.selection.content(), schema, serialize);
 
     event.preventDefault();
     event.clipboardData.clearData();
     event.clipboardData.setData(MARKDOWN_CLIPBOARD_MIME, markdown);
     event.clipboardData.setData("text/plain", markdown);
-    event.clipboardData.setData("text/html", markdownToClipboardHtml(markdown));
+    event.clipboardData.setData(
+        "text/html",
+        markdownToClipboardHtml(markdown, { parseMarkdown: parse }),
+    );
 
     if (cut) {
         view.dispatch(
@@ -87,7 +129,11 @@ function writeSelectionToClipboard(
     return true;
 }
 
-function readMarkdownFromClipboard(view: EditorView, event: ClipboardEvent) {
+function readMarkdownFromClipboard(
+    view: EditorView,
+    event: ClipboardEvent,
+    parse: (markdown: string) => ParsedMarkdownDocument,
+) {
     const clipboardData = event.clipboardData;
     if (!clipboardData) {
         return false;
@@ -96,14 +142,14 @@ function readMarkdownFromClipboard(view: EditorView, event: ClipboardEvent) {
     const internalMarkdown = clipboardData.getData(MARKDOWN_CLIPBOARD_MIME);
     if (internalMarkdown) {
         event.preventDefault();
-        insertMarkdown(view, internalMarkdown);
+        insertMarkdown(view, internalMarkdown, parse);
         return true;
     }
 
     const text = clipboardData.getData("text/plain");
     if (looksLikeBlockMarkdownPaste(text)) {
         event.preventDefault();
-        insertMarkdown(view, normalizePastedMarkdown(text));
+        insertMarkdown(view, normalizePastedMarkdown(text), parse);
         return true;
     }
 
@@ -118,7 +164,7 @@ function readMarkdownFromClipboard(view: EditorView, event: ClipboardEvent) {
     }
 
     event.preventDefault();
-    insertMarkdown(view, markdown);
+    insertMarkdown(view, markdown, parse);
     return true;
 }
 
@@ -164,8 +210,12 @@ function looksLikeMarkdownTable(text: string) {
     return false;
 }
 
-function insertMarkdown(view: EditorView, markdown: string) {
-    const parsed = parseMarkdown(markdown);
+function insertMarkdown(
+    view: EditorView,
+    markdown: string,
+    parse: (markdown: string) => ParsedMarkdownDocument,
+) {
+    const parsed = parse(markdown);
     view.dispatch(
         view.state.tr
             .replaceSelection(new Slice(parsed.doc.content, 0, 0))
@@ -175,7 +225,11 @@ function insertMarkdown(view: EditorView, markdown: string) {
     );
 }
 
-function sliceToMarkdown(slice: Slice) {
+function sliceToMarkdown(
+    slice: Slice,
+    schema: Schema,
+    serialize: (doc: ParsedMarkdownDocument) => string,
+) {
     const singleChild = slice.content.childCount === 1
         ? slice.content.firstChild
         : null;
@@ -191,7 +245,7 @@ function sliceToMarkdown(slice: Slice) {
     const blocks: ProseMirrorNode[] = [];
     slice.content.forEach((node) => {
         if (node.isInline) {
-            blocks.push(mdxEditorSchema.nodes.paragraph.create(null, node));
+            blocks.push(schema.nodes.paragraph.create(null, node));
         } else {
             blocks.push(node);
         }
@@ -201,9 +255,9 @@ function sliceToMarkdown(slice: Slice) {
         return slice.content.textBetween(0, slice.content.size, "\n\n");
     }
 
-    const doc = mdxEditorSchema.nodes.doc.create(null, blocks);
+    const doc = schema.nodes.doc.create(null, blocks);
 
-    return serializeMarkdown({
+    return serialize({
         diagnostics: [],
         doc,
         originalMarkdown: "",

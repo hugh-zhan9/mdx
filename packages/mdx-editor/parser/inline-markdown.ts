@@ -1,7 +1,10 @@
-import type { Mark, Node as ProseMirrorNode } from "prosemirror-model";
+import type { Mark, Node as ProseMirrorNode, Schema } from "prosemirror-model";
 import { mdxEditorSchema } from "../schema/schema";
 
-export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
+export function parseInlineMarkdown(
+    text: string,
+    schema: Schema = mdxEditorSchema,
+): ProseMirrorNode[] {
     const children: ProseMirrorNode[] = [];
     let cursor = 0;
     let buffer = "";
@@ -9,10 +12,10 @@ export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
     while (cursor < text.length) {
         const image = tryParseImage(text, cursor);
         if (image) {
-            pushText(children, buffer);
+            pushText(schema, children, buffer);
             buffer = "";
             children.push(
-                mdxEditorSchema.nodes.image.create({
+                schema.nodes.image.create({
                     src: image.src,
                     alt: image.alt,
                     title: image.title,
@@ -24,12 +27,13 @@ export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
 
         const wikilink = tryParseWikilink(text, cursor);
         if (wikilink) {
-            pushText(children, buffer);
+            pushText(schema, children, buffer);
             buffer = "";
             pushInlineNodesWithMark(
+                schema,
                 children,
-                parseInlineMarkdown(wikilink.rawLabel),
-                mdxEditorSchema.marks.link.create({
+                parseInlineMarkdown(wikilink.rawLabel, schema),
+                schema.marks.link.create({
                     href: `mdx-wikilink:${encodeWikilinkPayload(wikilink.payload)}`,
                 }),
             );
@@ -39,21 +43,22 @@ export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
 
         const link = tryParseLink(text, cursor);
         if (link) {
-            pushText(children, buffer);
+            pushText(schema, children, buffer);
             buffer = "";
-            const linkMark = mdxEditorSchema.marks.link.create({
+            const linkMark = schema.marks.link.create({
                 href: link.href,
                 title: link.title,
             });
 
             if (link.rawLabel.length > 0) {
                 pushInlineNodesWithMark(
+                    schema,
                     children,
-                    parseInlineMarkdown(link.rawLabel),
+                    parseInlineMarkdown(link.rawLabel, schema),
                     linkMark,
                 );
             } else {
-                pushText(children, link.href, [linkMark]);
+                pushText(schema, children, link.href, [linkMark]);
             }
             cursor = link.nextIndex;
             continue;
@@ -61,13 +66,14 @@ export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
 
         const autolink = tryParseAutolink(text, cursor);
         if (autolink) {
-            pushText(children, buffer);
+            pushText(schema, children, buffer);
             buffer = "";
             pushText(
+                schema,
                 children,
                 autolink.text,
                 [
-                    mdxEditorSchema.marks.link.create({
+                    schema.marks.link.create({
                         href: autolink.href,
                         title: null,
                     }),
@@ -79,10 +85,10 @@ export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
 
         const footnoteRef = tryParseFootnoteRef(text, cursor);
         if (footnoteRef) {
-            pushText(children, buffer);
+            pushText(schema, children, buffer);
             buffer = "";
             children.push(
-                mdxEditorSchema.nodes.footnote_ref.create({
+                schema.nodes.footnote_ref.create({
                     label: footnoteRef.label,
                 }),
             );
@@ -94,10 +100,10 @@ export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
             preserveEscapes: true,
         });
         if (inlineMath) {
-            pushText(children, buffer);
+            pushText(schema, children, buffer);
             buffer = "";
             children.push(
-                mdxEditorSchema.nodes.math_inline.create({
+                schema.nodes.math_inline.create({
                     latex: decodeMathEscapes(inlineMath.content),
                 }),
             );
@@ -107,10 +113,10 @@ export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
 
         const inlineHtml = tryParseInlineHtml(text, cursor);
         if (inlineHtml) {
-            pushText(children, buffer);
+            pushText(schema, children, buffer);
             buffer = "";
             children.push(
-                mdxEditorSchema.nodes.inline_html.create({
+                schema.nodes.inline_html.create({
                     html: inlineHtml.html,
                     tag: inlineHtml.tag,
                     text: inlineHtml.content,
@@ -123,10 +129,11 @@ export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
         const inlineCode = tryParseInlineCode(text, cursor);
         if (inlineCode) {
             pushMarkedText(
+                schema,
                 children,
                 buffer,
                 inlineCode.content,
-                mdxEditorSchema.marks.inline_code.create(),
+                schema.marks.inline_code.create(),
             );
             buffer = "";
             cursor = inlineCode.nextIndex;
@@ -135,11 +142,12 @@ export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
 
         const strong = tryParseDelimitedInline(text, cursor, "**", "**");
         if (strong) {
-            pushText(children, buffer);
+            pushText(schema, children, buffer);
             pushInlineNodesWithMark(
+                schema,
                 children,
-                parseInlineMarkdown(strong.content),
-                mdxEditorSchema.marks.strong.create(),
+                parseInlineMarkdown(strong.content, schema),
+                schema.marks.strong.create(),
             );
             buffer = "";
             cursor = strong.nextIndex;
@@ -148,11 +156,12 @@ export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
 
         const strike = tryParseDelimitedInline(text, cursor, "~~", "~~");
         if (strike) {
-            pushText(children, buffer);
+            pushText(schema, children, buffer);
             pushInlineNodesWithMark(
+                schema,
                 children,
-                parseInlineMarkdown(strike.content),
-                mdxEditorSchema.marks.strike.create(),
+                parseInlineMarkdown(strike.content, schema),
+                schema.marks.strike.create(),
             );
             buffer = "";
             cursor = strike.nextIndex;
@@ -161,11 +170,12 @@ export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
 
         const emphasis = tryParseDelimitedInline(text, cursor, "*", "*");
         if (emphasis) {
-            pushText(children, buffer);
+            pushText(schema, children, buffer);
             pushInlineNodesWithMark(
+                schema,
                 children,
-                parseInlineMarkdown(emphasis.content),
-                mdxEditorSchema.marks.emphasis.create(),
+                parseInlineMarkdown(emphasis.content, schema),
+                schema.marks.emphasis.create(),
             );
             buffer = "";
             cursor = emphasis.nextIndex;
@@ -183,7 +193,7 @@ export function parseInlineMarkdown(text: string): ProseMirrorNode[] {
         cursor += 1;
     }
 
-    pushText(children, buffer);
+    pushText(schema, children, buffer);
     return children;
 }
 
@@ -194,33 +204,36 @@ function encodeWikilinkPayload(payload: string): string {
 }
 
 function pushMarkedText(
+    schema: Schema,
     children: ProseMirrorNode[],
     pendingText: string,
     markedText: string,
     mark: Mark,
 ) {
-    pushText(children, pendingText);
-    pushText(children, markedText, [mark]);
+    pushText(schema, children, pendingText);
+    pushText(schema, children, markedText, [mark]);
 }
 
 function pushText(
+    schema: Schema,
     children: ProseMirrorNode[],
     text: string,
     marks?: readonly Mark[],
 ) {
     if (text.length > 0) {
-        children.push(mdxEditorSchema.text(text, marks));
+        children.push(schema.text(text, marks));
     }
 }
 
 function pushInlineNodesWithMark(
+    schema: Schema,
     children: ProseMirrorNode[],
     nodes: ProseMirrorNode[],
     mark: Mark,
 ) {
     for (const node of nodes) {
         if (node.isText) {
-            pushText(children, node.text ?? "", mark.addToSet(node.marks));
+            pushText(schema, children, node.text ?? "", mark.addToSet(node.marks));
         } else {
             children.push(node.mark(mark.addToSet(node.marks)));
         }

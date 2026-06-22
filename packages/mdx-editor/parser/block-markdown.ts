@@ -1,4 +1,4 @@
-import type { Node as ProseMirrorNode } from "prosemirror-model";
+import type { Node as ProseMirrorNode, Schema } from "prosemirror-model";
 import { sourceRange } from "../core/source-map";
 import type { SourceSlice } from "../core/types";
 import { mdxEditorSchema } from "../schema/schema";
@@ -22,6 +22,7 @@ interface ListMarker {
 export function parseMarkdownBlocks(
     markdown: string,
     sourceSlices: SourceSlice[],
+    schema: Schema = mdxEditorSchema,
 ): ProseMirrorNode[] {
     const blocks: ProseMirrorNode[] = [];
     const logicalLines = splitLogicalLines(markdown);
@@ -36,13 +37,14 @@ export function parseMarkdownBlocks(
             const end = logicalLines[closing].end;
             const sourceId = addSlice(sourceSlices, markdown, start, end);
             blocks.push(
-                mdxEditorSchema.nodes.frontmatter.create(
+                schema.nodes.frontmatter.create(
                     { sourceId },
                     textNode(
                         markdown.slice(
                             logicalLines[0].end,
                             logicalLines[closing].start,
                         ),
+                        schema,
                     ),
                 ),
             );
@@ -97,17 +99,18 @@ export function parseMarkdownBlocks(
                 singleLineCode
                     ? `${singleLineCode.content}\n`
                     : markdown.slice(contentStart, contentEnd),
+                schema,
             );
             blocks.push(
                 !singleLineCode && firstInfoToken(info).toLowerCase() === "mermaid"
-                    ? mdxEditorSchema.nodes.mermaid_block.create(
+                    ? schema.nodes.mermaid_block.create(
                           {
                               info: info || "mermaid",
                               sourceId,
                           },
                           content,
                       )
-                    : mdxEditorSchema.nodes.code_block.create(
+                    : schema.nodes.code_block.create(
                           {
                               language: singleLineCode
                                   ? ""
@@ -130,7 +133,7 @@ export function parseMarkdownBlocks(
                 line.end,
             );
             blocks.push(
-                mdxEditorSchema.nodes.horizontal_rule.create({ sourceId }),
+                schema.nodes.horizontal_rule.create({ sourceId }),
             );
             cursor += 1;
             continue;
@@ -145,9 +148,9 @@ export function parseMarkdownBlocks(
                 line.end,
             );
             blocks.push(
-                mdxEditorSchema.nodes.heading.create(
+                schema.nodes.heading.create(
                     { level: heading[1].length, sourceId },
-                    parseInlineMarkdown(heading[2]),
+                    parseInlineMarkdown(heading[2], schema),
                 ),
             );
             cursor += 1;
@@ -159,6 +162,7 @@ export function parseMarkdownBlocks(
             cursor,
             markdown,
             sourceSlices,
+            schema,
         );
         if (taskListRange) {
             const { node, nextCursor } = taskListRange;
@@ -172,6 +176,7 @@ export function parseMarkdownBlocks(
             cursor,
             markdown,
             sourceSlices,
+            schema,
         );
         if (tableRange) {
             const { node, nextCursor } = tableRange;
@@ -185,6 +190,7 @@ export function parseMarkdownBlocks(
             cursor,
             markdown,
             sourceSlices,
+            schema,
         );
         if (calloutRange) {
             const { node, nextCursor } = calloutRange;
@@ -198,6 +204,7 @@ export function parseMarkdownBlocks(
             cursor,
             markdown,
             sourceSlices,
+            schema,
         );
         if (mathRange) {
             const { node, nextCursor } = mathRange;
@@ -211,6 +218,7 @@ export function parseMarkdownBlocks(
             cursor,
             markdown,
             sourceSlices,
+            schema,
         );
         if (footnoteRange) {
             const { node, nextCursor } = footnoteRange;
@@ -224,6 +232,7 @@ export function parseMarkdownBlocks(
             cursor,
             markdown,
             sourceSlices,
+            schema,
         );
         if (htmlBlockRange) {
             const { node, nextCursor } = htmlBlockRange;
@@ -243,13 +252,13 @@ export function parseMarkdownBlocks(
             const sourceId = addSlice(sourceSlices, markdown, start, end);
             const fallbackMarkdown = markdown.slice(start, end);
             blocks.push(
-                mdxEditorSchema.nodes.source_fallback.create(
+                schema.nodes.source_fallback.create(
                     {
                         markdown: fallbackMarkdown,
                         reason: "unsupported",
                         sourceId,
                     },
-                    textNode(fallbackMarkdown),
+                    textNode(fallbackMarkdown, schema),
                 ),
             );
             cursor = fallbackRange.endLine + 1;
@@ -261,6 +270,7 @@ export function parseMarkdownBlocks(
             cursor,
             markdown,
             sourceSlices,
+            schema,
         );
         if (bulletRange) {
             const { node, nextCursor } = bulletRange;
@@ -274,6 +284,7 @@ export function parseMarkdownBlocks(
             cursor,
             markdown,
             sourceSlices,
+            schema,
         );
         if (orderedRange) {
             const { node, nextCursor } = orderedRange;
@@ -287,6 +298,7 @@ export function parseMarkdownBlocks(
             cursor,
             markdown,
             sourceSlices,
+            schema,
         );
         if (blockquoteRange) {
             const { node, nextCursor } = blockquoteRange;
@@ -309,9 +321,9 @@ export function parseMarkdownBlocks(
             logicalLines[cursor - 1]?.end ?? logicalLines[paragraphStart].end;
         const sourceId = addSlice(sourceSlices, markdown, start, end);
         blocks.push(
-            mdxEditorSchema.nodes.paragraph.create(
+            schema.nodes.paragraph.create(
                 { sourceId },
-                parseInlineMarkdown(paragraphLines.join("\n")),
+                parseInlineMarkdown(paragraphLines.join("\n"), schema),
             ),
         );
     }
@@ -377,6 +389,7 @@ function tryParseBulletList(
     startLine: number,
     markdown: string,
     sourceSlices: SourceSlice[],
+    schema: Schema,
 ) {
     const marker = parseListMarker(logicalLines[startLine]?.text ?? "");
     if (!marker || marker.kind !== "bullet" || marker.task) {
@@ -390,6 +403,7 @@ function tryParseBulletList(
         marker.kind,
         markdown,
         sourceSlices,
+        schema,
     );
 }
 
@@ -398,6 +412,7 @@ function tryParseTaskList(
     startLine: number,
     markdown: string,
     sourceSlices: SourceSlice[],
+    schema: Schema,
 ) {
     const marker = parseListMarker(logicalLines[startLine]?.text ?? "");
     if (!marker || !marker.task) {
@@ -411,6 +426,7 @@ function tryParseTaskList(
         marker.kind,
         markdown,
         sourceSlices,
+        schema,
     );
 }
 
@@ -419,6 +435,7 @@ function tryParseTable(
     startLine: number,
     markdown: string,
     sourceSlices: SourceSlice[],
+    schema: Schema,
 ) {
     if (!isTableStart(logicalLines, startLine)) {
         return null;
@@ -437,7 +454,7 @@ function tryParseTable(
     }
 
     const rows: ProseMirrorNode[] = [
-        createTableRow("table_header", headerCells, alignments),
+        createTableRow("table_header", headerCells, alignments, schema),
     ];
     let cursor = startLine + 2;
 
@@ -452,7 +469,7 @@ function tryParseTable(
             break;
         }
 
-        rows.push(createTableRow("table_cell", bodyCells, alignments));
+        rows.push(createTableRow("table_cell", bodyCells, alignments, schema));
         cursor += 1;
     }
 
@@ -464,7 +481,7 @@ function tryParseTable(
     );
 
     return {
-        node: mdxEditorSchema.nodes.table.create(
+        node: schema.nodes.table.create(
             { alignments, sourceId },
             rows,
         ),
@@ -477,6 +494,7 @@ function tryParseCallout(
     startLine: number,
     markdown: string,
     sourceSlices: SourceSlice[],
+    schema: Schema,
 ) {
     const firstLine = logicalLines[startLine]?.text ?? "";
     const callout = firstLine.match(/^>\s*\[!([^\]]+)\](?:[ \t]+(.*))?$/);
@@ -521,7 +539,7 @@ function tryParseCallout(
         cursor += 1;
     }
 
-    const children = createParagraphBlocks(contentLines);
+    const children = createParagraphBlocks(contentLines, schema);
     const sourceId = addSlice(
         sourceSlices,
         markdown,
@@ -530,7 +548,7 @@ function tryParseCallout(
     );
 
     return {
-        node: mdxEditorSchema.nodes.callout.create(
+        node: schema.nodes.callout.create(
             {
                 kind: callout[1].toUpperCase(),
                 title: callout[2] && callout[2].length > 0 ? callout[2] : null,
@@ -538,7 +556,7 @@ function tryParseCallout(
             },
             children.length > 0
                 ? children
-                : [mdxEditorSchema.nodes.paragraph.create({ sourceId: null })],
+                : [schema.nodes.paragraph.create({ sourceId: null })],
         ),
         nextCursor: cursor,
     };
@@ -570,6 +588,7 @@ function tryParseMathBlock(
     startLine: number,
     markdown: string,
     sourceSlices: SourceSlice[],
+    schema: Schema,
 ) {
     if (!isMathBlockStart(logicalLines[startLine]?.text ?? "")) {
         return null;
@@ -596,9 +615,9 @@ function tryParseMathBlock(
     );
 
     return {
-        node: mdxEditorSchema.nodes.math_block.create(
+        node: schema.nodes.math_block.create(
             { sourceId },
-            textNode(content),
+            textNode(content, schema),
         ),
         nextCursor: endLine + 1,
     };
@@ -609,6 +628,7 @@ function tryParseFootnoteDefinition(
     startLine: number,
     markdown: string,
     sourceSlices: SourceSlice[],
+    schema: Schema,
 ) {
     const line = logicalLines[startLine];
     const match = (line?.text ?? "").match(/^\[\^([^\]]+)\]:[ \t]*(.*)$/);
@@ -640,14 +660,14 @@ function tryParseFootnoteDefinition(
         logicalLines[endLine]?.end ?? line.end,
     );
     const content = contentLines.map((contentLine) =>
-        mdxEditorSchema.nodes.paragraph.create(
+        schema.nodes.paragraph.create(
             { sourceId: null },
-            parseInlineMarkdown(contentLine),
+            parseInlineMarkdown(contentLine, schema),
         ),
     );
 
     return {
-        node: mdxEditorSchema.nodes.footnote_definition.create(
+        node: schema.nodes.footnote_definition.create(
             { label: match[1], sourceId },
             content,
         ),
@@ -668,6 +688,7 @@ function tryParseOrderedList(
     startLine: number,
     markdown: string,
     sourceSlices: SourceSlice[],
+    schema: Schema,
 ) {
     const marker = parseListMarker(logicalLines[startLine]?.text ?? "");
     if (!marker || marker.kind !== "ordered") {
@@ -681,6 +702,7 @@ function tryParseOrderedList(
         marker.kind,
         markdown,
         sourceSlices,
+        schema,
     );
 }
 
@@ -691,6 +713,7 @@ function parseListAt(
     kind: ListMarker["kind"],
     markdown: string,
     sourceSlices: SourceSlice[],
+    schema: Schema,
 ) {
     const items: ProseMirrorNode[] = [];
     let cursor = startLine;
@@ -711,6 +734,7 @@ function parseListAt(
                 items[items.length - 1] = appendListItemContinuation(
                     items[items.length - 1],
                     line.text.trimStart(),
+                    schema,
                 );
                 cursor += 1;
                 continue;
@@ -734,6 +758,7 @@ function parseListAt(
                 marker.kind,
                 markdown,
                 sourceSlices,
+                schema,
             );
             items[items.length - 1] = appendListItemChild(
                 items[items.length - 1],
@@ -747,7 +772,7 @@ function parseListAt(
             break;
         }
 
-        items.push(createListItem(marker));
+        items.push(createListItem(marker, schema));
         cursor += 1;
     }
 
@@ -759,11 +784,11 @@ function parseListAt(
     );
 
     const node = kind === "ordered"
-        ? mdxEditorSchema.nodes.ordered_list.create(
+        ? schema.nodes.ordered_list.create(
               { order: firstMarker?.order ?? 1, sourceId },
               items,
           )
-        : mdxEditorSchema.nodes.bullet_list.create({ sourceId }, items);
+        : schema.nodes.bullet_list.create({ sourceId }, items);
 
     return { node, nextCursor: cursor };
 }
@@ -773,6 +798,7 @@ function tryParseBlockquote(
     startLine: number,
     markdown: string,
     sourceSlices: SourceSlice[],
+    schema: Schema,
 ) {
     if (!blockquoteLine(logicalLines[startLine]?.text ?? "")) {
         return null;
@@ -814,9 +840,9 @@ function tryParseBlockquote(
         }
 
         children.push(
-            mdxEditorSchema.nodes.paragraph.create(
+            schema.nodes.paragraph.create(
                 { sourceId: null },
-                parseInlineMarkdown(paragraphLines.join("\n")),
+                parseInlineMarkdown(paragraphLines.join("\n"), schema),
             ),
         );
         paragraphLines = [];
@@ -834,7 +860,7 @@ function tryParseBlockquote(
 
     if (children.length === 0) {
         children.push(
-            mdxEditorSchema.nodes.paragraph.create({ sourceId: null }),
+            schema.nodes.paragraph.create({ sourceId: null }),
         );
     }
 
@@ -843,23 +869,23 @@ function tryParseBlockquote(
     const sourceId = addSlice(sourceSlices, markdown, start, end);
 
     return {
-        node: mdxEditorSchema.nodes.blockquote.create({ sourceId }, children),
+        node: schema.nodes.blockquote.create({ sourceId }, children),
         nextCursor: cursor,
     };
 }
 
-function createListItem(marker: ListMarker) {
-    const paragraph = mdxEditorSchema.nodes.paragraph.create(
+function createListItem(marker: ListMarker, schema: Schema) {
+    const paragraph = schema.nodes.paragraph.create(
         { sourceId: null },
-        parseInlineMarkdown(marker.content),
+        parseInlineMarkdown(marker.content, schema),
     );
 
     return marker.task
-        ? mdxEditorSchema.nodes.task_item.create(
+        ? schema.nodes.task_item.create(
               { checked: marker.checked, sourceId: null },
               paragraph,
           )
-        : mdxEditorSchema.nodes.list_item.create(
+        : schema.nodes.list_item.create(
               { sourceId: null },
               paragraph,
           );
@@ -875,7 +901,11 @@ function appendListItemChild(item: ProseMirrorNode, child: ProseMirrorNode) {
     return item.type.create(item.attrs, children);
 }
 
-function appendListItemContinuation(item: ProseMirrorNode, content: string) {
+function appendListItemContinuation(
+    item: ProseMirrorNode,
+    content: string,
+    schema: Schema,
+) {
     const children: ProseMirrorNode[] = [];
     item.forEach((existing, _offset, index) => {
         if (index === 0 && existing.type.name === "paragraph") {
@@ -883,8 +913,8 @@ function appendListItemContinuation(item: ProseMirrorNode, content: string) {
             existing.forEach((inline) => {
                 paragraphChildren.push(inline);
             });
-            paragraphChildren.push(mdxEditorSchema.text("\n"));
-            paragraphChildren.push(...parseInlineMarkdown(content));
+            paragraphChildren.push(schema.text("\n"));
+            paragraphChildren.push(...parseInlineMarkdown(content, schema));
             children.push(existing.type.create(existing.attrs, paragraphChildren));
             return;
         }
@@ -895,7 +925,7 @@ function appendListItemContinuation(item: ProseMirrorNode, content: string) {
     return item.type.create(item.attrs, children);
 }
 
-function createParagraphBlocks(lines: string[]) {
+function createParagraphBlocks(lines: string[], schema: Schema) {
     const children: ProseMirrorNode[] = [];
     let paragraphLines: string[] = [];
     const flushParagraph = () => {
@@ -904,9 +934,9 @@ function createParagraphBlocks(lines: string[]) {
         }
 
         children.push(
-            mdxEditorSchema.nodes.paragraph.create(
+            schema.nodes.paragraph.create(
                 { sourceId: null },
-                parseInlineMarkdown(paragraphLines.join("\n")),
+                parseInlineMarkdown(paragraphLines.join("\n"), schema),
             ),
         );
         paragraphLines = [];
@@ -929,13 +959,14 @@ function createTableRow(
     cellType: "table_cell" | "table_header",
     cells: string[],
     alignments: (string | null)[],
+    schema: Schema,
 ) {
-    return mdxEditorSchema.nodes.table_row.create(
+    return schema.nodes.table_row.create(
         null,
         cells.map((cell, index) =>
-            mdxEditorSchema.nodes[cellType].create(
+            schema.nodes[cellType].create(
                 { align: alignments[index] ?? null },
-                parseInlineMarkdown(cell),
+                parseInlineMarkdown(cell, schema),
             ),
         ),
     );
@@ -1196,8 +1227,8 @@ function blockquoteLine(text: string) {
     return text.match(/^> ?(.*)$/);
 }
 
-function textNode(text: string): ProseMirrorNode | null {
-    return text.length > 0 ? mdxEditorSchema.text(text) : null;
+function textNode(text: string, schema: Schema): ProseMirrorNode | null {
+    return text.length > 0 ? schema.text(text) : null;
 }
 
 function addSlice(
@@ -1466,6 +1497,7 @@ function tryParseHtmlBlock(
     startLine: number,
     markdown: string,
     sourceSlices: SourceSlice[],
+    schema: Schema,
 ) {
     const firstLine = logicalLines[startLine]?.text ?? "";
 
@@ -1500,14 +1532,14 @@ function tryParseHtmlBlock(
     const html = markdown.slice(start, end);
 
     return {
-        node: mdxEditorSchema.nodes.html_block.create(
+        node: schema.nodes.html_block.create(
             {
                 html,
                 tag,
                 collapsed: tag === "details",
                 sourceId,
             },
-            textNode(html),
+            textNode(html, schema),
         ),
         nextCursor: endLine + 1,
     };

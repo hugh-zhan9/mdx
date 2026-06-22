@@ -13,7 +13,16 @@ interface SourceReference {
     slice: SourceSlice;
 }
 
-export function serializeMarkdown(parsed: ParsedMarkdownDocument): string {
+export interface SerializeMarkdownOptions {
+    parseMarkdown?: (markdown: string) => ParsedMarkdownDocument;
+}
+
+export function serializeMarkdown(
+    parsed: ParsedMarkdownDocument,
+    options: SerializeMarkdownOptions = {},
+): string {
+    const parseForComparison = options.parseMarkdown ?? parseMarkdown;
+
     if (isParserPlaceholderDocument(parsed)) {
         return parsed.originalMarkdown;
     }
@@ -31,7 +40,7 @@ export function serializeMarkdown(parsed: ParsedMarkdownDocument): string {
         renderedBlocks.push({
             source,
             text:
-                source && nodeMatchesSource(node, source.slice)
+                source && nodeMatchesSource(node, source.slice, parseForComparison)
                     ? source.slice.text
                     : serializeBlockNode(node),
         });
@@ -123,7 +132,11 @@ function defaultBlockGap(output: string) {
     return output.endsWith("\n") ? "\n" : "\n\n";
 }
 
-function nodeMatchesSource(node: ProseMirrorNode, source: SourceSlice) {
+function nodeMatchesSource(
+    node: ProseMirrorNode,
+    source: SourceSlice,
+    parseForComparison: (markdown: string) => ParsedMarkdownDocument,
+) {
     if (node.type.name === "opaque_block") {
         const sourceText = normalizeLineEndings(source.text);
         const nodeText = normalizeLineEndings(node.textContent);
@@ -138,7 +151,7 @@ function nodeMatchesSource(node: ProseMirrorNode, source: SourceSlice) {
         return sourceText === nodeText;
     }
 
-    const reparsed = parseMarkdown(source.text);
+    const reparsed = parseForComparison(source.text);
     if (reparsed.doc.childCount !== 1) {
         return false;
     }
