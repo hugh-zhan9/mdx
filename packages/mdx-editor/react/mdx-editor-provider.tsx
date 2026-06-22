@@ -52,14 +52,16 @@ export function MdxEditorProvider({
     const codeTokenizerRef = useRef(codeTokenizer);
     const onMarkdownChangeRef = useRef(onMarkdownChange);
     const onSelectionChangeRef = useRef(onSelectionChange);
+    const appliedInitialMarkdownRef = useRef(initialMarkdown);
     const tokenizeCode = useCallback<CodeTokenizer>((code, lang) => {
         return codeTokenizerRef.current?.(code, lang) ?? [];
     }, []);
+    const hasImageLoader = imageLoader !== undefined;
     const resolveImageSource = useCallback((src: string) => {
         const currentImageLoader = imageLoaderRef.current;
 
         if (!currentImageLoader) {
-            return Promise.resolve(src);
+            return Promise.reject(new Error("Image loader unavailable"));
         }
 
         return currentImageLoader(src);
@@ -71,10 +73,12 @@ export function MdxEditorProvider({
                 syntax: defaultMarkdownSyntax(),
                 services: {
                     codeTokenizer: tokenizeCode,
-                    imageLoader: resolveImageSource,
+                    ...(hasImageLoader
+                        ? { imageLoader: resolveImageSource }
+                        : {}),
                 },
             }),
-        [kernel, resolveImageSource, tokenizeCode],
+        [hasImageLoader, kernel, resolveImageSource, tokenizeCode],
     );
     const initialDocument = useMemo(
         () => runtimeKernel.parseMarkdown(initialMarkdown),
@@ -93,15 +97,6 @@ export function MdxEditorProvider({
             Selection.atEnd(initialDocument.doc),
         ),
     );
-
-    useEffect(() => {
-        parsedRef.current = initialDocument;
-        markdownRef.current = initialMarkdown;
-        selectionOffsetsRef.current = selectionOffsetsFromDocSelection(
-            initialDocument.doc,
-            Selection.atEnd(initialDocument.doc),
-        );
-    }, [initialDocument, initialMarkdown]);
 
     useEffect(() => {
         onMarkdownChangeRef.current = onMarkdownChange;
@@ -193,6 +188,15 @@ export function MdxEditorProvider({
         },
         [runtimeKernel, updateMarkdown, updateSelectionFromState],
     );
+
+    useEffect(() => {
+        if (initialMarkdown === appliedInitialMarkdownRef.current) {
+            return;
+        }
+
+        appliedInitialMarkdownRef.current = initialMarkdown;
+        rebuildEditorFromMarkdown(initialMarkdown, false);
+    }, [initialMarkdown, rebuildEditorFromMarkdown]);
 
     useEffect(() => {
         if (!rootNode) {

@@ -165,6 +165,35 @@ describe("MdxEditorProvider", () => {
         );
     });
 
+    it("uses explicit kernel image services without a provider imageLoader prop", async () => {
+        const imageLoader = vi.fn(async (src: string) => `kernel:${src}`);
+        const kernel = createMdxEditorKernel({
+            syntax: defaultMarkdownSyntax(),
+            services: {
+                imageLoader,
+            },
+        });
+
+        await act(async () => {
+            root.render(
+                <MdxEditorProvider
+                    initialMarkdown={'![Kernel](.assets/a.png)\n'}
+                    kernel={kernel}
+                >
+                    <MdxEditorView />
+                </MdxEditorProvider>,
+            );
+        });
+
+        await act(async () => {});
+
+        const image = host.querySelector("img[data-mdx-node-type='image']");
+
+        expect(imageLoader).toHaveBeenCalledWith(".assets/a.png");
+        expect(image?.getAttribute("src")).toBe("kernel:.assets/a.png");
+        expect(image?.getAttribute("alt")).toBe("Kernel");
+    });
+
     it("renders fenced code blocks through the editor view", async () => {
         await act(async () => {
             root.render(
@@ -581,6 +610,44 @@ describe("MdxEditorProvider", () => {
         expect(imageLoader).toHaveBeenCalledWith(".assets/a.png");
         expect(image?.getAttribute("src")).toBe("resolved:.assets/a.png");
         expect(image?.getAttribute("alt")).toBe("Diagram");
+    });
+
+    it("hydrates images after imageLoader appears on a later render", async () => {
+        const imageLoader = vi.fn(async (src: string) => `resolved:${src}`);
+
+        await act(async () => {
+            root.render(
+                <MdxEditorProvider initialMarkdown={'![Diagram](.assets/a.png)\n'}>
+                    <MdxEditorView />
+                </MdxEditorProvider>,
+            );
+        });
+
+        const initialImage = host.querySelector("img[data-mdx-node-type='image']");
+
+        expect(initialImage?.getAttribute("src")).toBe(".assets/a.png");
+        expect(initialImage?.hasAttribute("data-mdx-resolved-src")).toBe(false);
+
+        await act(async () => {
+            root.render(
+                <MdxEditorProvider
+                    initialMarkdown={'![Diagram](.assets/a.png)\n'}
+                    imageLoader={imageLoader}
+                >
+                    <MdxEditorView />
+                </MdxEditorProvider>,
+            );
+        });
+
+        await act(async () => {});
+
+        const hydratedImage = host.querySelector("img[data-mdx-node-type='image']");
+
+        expect(imageLoader).toHaveBeenCalledWith(".assets/a.png");
+        expect(hydratedImage?.getAttribute("src")).toBe("resolved:.assets/a.png");
+        expect(hydratedImage?.getAttribute("data-mdx-resolved-src")).toBe(
+            ".assets/a.png",
+        );
     });
 
     it("exposes placeholder state on an empty editor root", async () => {
