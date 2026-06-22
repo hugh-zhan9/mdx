@@ -1,37 +1,67 @@
 import type { Node as ProseMirrorNode } from "prosemirror-model";
 import { serializeInlineContent } from "./inline-serializer";
 
-export function serializeBlockNode(node: ProseMirrorNode): string {
+type NodeSerializer = (node: ProseMirrorNode) => string;
+
+export interface BlockSerializerOptions {
+    nodeSerializers?: Record<string, NodeSerializer>;
+    serializeInline?: (node: ProseMirrorNode) => string;
+    serializeNode?: (node: ProseMirrorNode) => string;
+}
+
+export function serializeBlockNode(
+    node: ProseMirrorNode,
+    options: BlockSerializerOptions = {},
+): string {
+    const serializer = options.nodeSerializers?.[node.type.name];
+    if (serializer) {
+        return serializer(node);
+    }
+
+    const serializeInline =
+        options.serializeInline ??
+        ((value: ProseMirrorNode) =>
+            serializeInlineContent(value, {
+                nodeSerializers: options.nodeSerializers,
+            }));
+    const serializeNode =
+        options.serializeNode ??
+        ((value: ProseMirrorNode) =>
+            serializeBlockNode(value, {
+                ...options,
+                serializeInline,
+            }));
+
     switch (node.type.name) {
         case "heading":
-            return `${"#".repeat(headingLevel(node))} ${serializeInlineContent(node)}\n`;
+            return `${"#".repeat(headingLevel(node))} ${serializeInline(node)}\n`;
         case "paragraph":
-            return `${escapeParagraphLineStarts(serializeInlineContent(node))}\n`;
+            return `${escapeParagraphLineStarts(serializeInline(node))}\n`;
         case "bullet_list":
-            return serializeList(node, "-");
+            return serializeList(node, "-", serializeNode, serializeInline);
         case "ordered_list":
-            return serializeOrderedList(node);
+            return serializeOrderedList(node, serializeNode, serializeInline);
         case "list_item":
-            return serializeListItem(node, "-");
+            return serializeListItem(node, "-", serializeNode, serializeInline);
         case "task_item":
-            return serializeTaskItem(node);
+            return serializeTaskItem(node, serializeNode, serializeInline);
         case "blockquote":
-            return serializeBlockquote(node);
+            return serializeBlockquote(node, serializeNode);
         case "horizontal_rule":
             return "---\n";
         case "table":
-            return serializeTable(node);
+            return serializeTable(node, serializeInline);
         case "table_row":
-            return serializeTableRow(node);
+            return serializeTableRow(node, serializeInline);
         case "table_cell":
         case "table_header":
-            return `${serializeInlineContent(node)}\n`;
+            return `${serializeInline(node)}\n`;
         case "callout":
-            return serializeCallout(node);
+            return serializeCallout(node, serializeNode);
         case "math_block":
             return `$$\n${textBeforeClosingFence(node.textContent)}$$\n`;
         case "footnote_definition":
-            return serializeFootnoteDefinition(node);
+            return serializeFootnoteDefinition(node, serializeNode, serializeInline);
         case "mermaid_block":
             return `\`\`\`${mermaidBlockInfo(node)}\n${textBeforeClosingFence(node.textContent)}\`\`\`\n`;
         case "code_block":
@@ -49,36 +79,64 @@ export function serializeBlockNode(node: ProseMirrorNode): string {
     }
 }
 
-function serializeList(node: ProseMirrorNode, marker: string) {
+function serializeList(
+    node: ProseMirrorNode,
+    marker: string,
+    serializeNode: (node: ProseMirrorNode) => string,
+    serializeInline: (node: ProseMirrorNode) => string,
+) {
     let output = "";
 
     node.forEach((child) => {
         output +=
             child.type.name === "task_item"
-                ? serializeTaskItem(child)
-                : serializeListItem(child, marker);
+                ? serializeTaskItem(child, serializeNode, serializeInline)
+                : serializeListItem(child, marker, serializeNode, serializeInline);
     });
 
     return output;
 }
 
-function serializeOrderedList(node: ProseMirrorNode) {
+function serializeOrderedList(
+    node: ProseMirrorNode,
+    serializeNode: (node: ProseMirrorNode) => string,
+    serializeInline: (node: ProseMirrorNode) => string,
+) {
     let output = "";
     let order = typeof node.attrs.order === "number" ? node.attrs.order : 1;
 
     node.forEach((child) => {
-        output += serializeListItem(child, `${order}.`);
+        output += serializeListItem(
+            child,
+            `${order}.`,
+            serializeNode,
+            serializeInline,
+        );
         order += 1;
     });
 
     return output;
 }
 
-function serializeTaskItem(node: ProseMirrorNode) {
-    return serializeListItem(node, node.attrs.checked ? "- [x]" : "- [ ]");
+function serializeTaskItem(
+    node: ProseMirrorNode,
+    serializeNode: (node: ProseMirrorNode) => string,
+    serializeInline: (node: ProseMirrorNode) => string,
+) {
+    return serializeListItem(
+        node,
+        node.attrs.checked ? "- [x]" : "- [ ]",
+        serializeNode,
+        serializeInline,
+    );
 }
 
-function serializeListItem(node: ProseMirrorNode, marker: string) {
+function serializeListItem(
+    node: ProseMirrorNode,
+    marker: string,
+    serializeNode: (node: ProseMirrorNode) => string,
+    serializeInline: (node: ProseMirrorNode) => string,
+) {
     const firstChild = node.firstChild;
     if (!firstChild) {
         return `${marker}\n`;
@@ -86,8 +144,8 @@ function serializeListItem(node: ProseMirrorNode, marker: string) {
 
     const firstLine =
         firstChild.type.name === "paragraph"
-            ? serializeInlineContent(firstChild)
-            : serializeNestedBlock(firstChild);
+            ? serializeInline(firstChild)
+            : serializeNestedBlock(firstChild, serializeNode);
     const firstLines = firstLine.split("\n");
     const lines = [`${marker} ${firstLines[0] ?? ""}`];
 
@@ -96,7 +154,7 @@ function serializeListItem(node: ProseMirrorNode, marker: string) {
     }
 
     for (let index = 1; index < node.childCount; index += 1) {
-        const childText = serializeNestedBlock(node.child(index));
+        const childText = serializeNestedBlock(node.child(index), serializeNode);
         for (const line of childText.split("\n")) {
             lines.push(line.length > 0 ? `  ${line}` : "");
         }
@@ -105,11 +163,14 @@ function serializeListItem(node: ProseMirrorNode, marker: string) {
     return `${lines.join("\n")}\n`;
 }
 
-function serializeBlockquote(node: ProseMirrorNode) {
+function serializeBlockquote(
+    node: ProseMirrorNode,
+    serializeNode: (node: ProseMirrorNode) => string,
+) {
     const lines: string[] = [];
 
     node.forEach((child) => {
-        const childText = serializeNestedBlock(child);
+        const childText = serializeNestedBlock(child, serializeNode);
         for (const line of childText.split("\n")) {
             lines.push(line.length > 0 ? `> ${line}` : ">");
         }
@@ -118,11 +179,14 @@ function serializeBlockquote(node: ProseMirrorNode) {
     return `${lines.join("\n")}\n`;
 }
 
-function serializeTable(node: ProseMirrorNode) {
+function serializeTable(
+    node: ProseMirrorNode,
+    serializeInline: (node: ProseMirrorNode) => string,
+) {
     let output = "";
 
     node.forEach((row, _offset, index) => {
-        output += serializeTableRow(row);
+        output += serializeTableRow(row, serializeInline);
         if (index === 0 && tableRowHasHeader(row)) {
             output += serializeTableSeparator(row, node.attrs.alignments);
         }
@@ -131,11 +195,14 @@ function serializeTable(node: ProseMirrorNode) {
     return output;
 }
 
-function serializeTableRow(node: ProseMirrorNode) {
+function serializeTableRow(
+    node: ProseMirrorNode,
+    serializeInline: (node: ProseMirrorNode) => string,
+) {
     const cells: string[] = [];
 
     node.forEach((cell) => {
-        cells.push(escapeTableCellPipes(serializeInlineContent(cell)));
+        cells.push(escapeTableCellPipes(serializeInline(cell)));
     });
 
     return `| ${cells.join(" | ")} |\n`;
@@ -313,7 +380,10 @@ function tableRowHasHeader(row: ProseMirrorNode) {
     return false;
 }
 
-function serializeCallout(node: ProseMirrorNode) {
+function serializeCallout(
+    node: ProseMirrorNode,
+    serializeNode: (node: ProseMirrorNode) => string,
+) {
     const title =
         typeof node.attrs.title === "string" && node.attrs.title.length > 0
             ? ` ${node.attrs.title}`
@@ -321,7 +391,7 @@ function serializeCallout(node: ProseMirrorNode) {
     const lines = [`> [!${String(node.attrs.kind ?? "NOTE")}]${title}`];
 
     node.forEach((child) => {
-        const childText = serializeNestedBlock(child);
+        const childText = serializeNestedBlock(child, serializeNode);
         for (const line of childText.split("\n")) {
             lines.push(line.length > 0 ? `> ${line}` : ">");
         }
@@ -330,7 +400,11 @@ function serializeCallout(node: ProseMirrorNode) {
     return `${lines.join("\n")}\n`;
 }
 
-function serializeFootnoteDefinition(node: ProseMirrorNode) {
+function serializeFootnoteDefinition(
+    node: ProseMirrorNode,
+    serializeNode: (node: ProseMirrorNode) => string,
+    serializeInline: (node: ProseMirrorNode) => string,
+) {
     const label = String(node.attrs.label ?? "");
     const firstChild = node.firstChild;
     if (!firstChild) {
@@ -339,12 +413,12 @@ function serializeFootnoteDefinition(node: ProseMirrorNode) {
 
     const firstLine =
         firstChild.type.name === "paragraph"
-            ? serializeInlineContent(firstChild)
-            : serializeNestedBlock(firstChild);
+            ? serializeInline(firstChild)
+            : serializeNestedBlock(firstChild, serializeNode);
     const lines = [`[^${label}]: ${firstLine}`];
 
     for (let index = 1; index < node.childCount; index += 1) {
-        const childText = serializeNestedBlock(node.child(index));
+        const childText = serializeNestedBlock(node.child(index), serializeNode);
         for (const line of childText.split("\n")) {
             lines.push(line.length > 0 ? `    ${line}` : "");
         }
@@ -353,8 +427,11 @@ function serializeFootnoteDefinition(node: ProseMirrorNode) {
     return `${lines.join("\n")}\n`;
 }
 
-function serializeNestedBlock(node: ProseMirrorNode) {
-    return serializeBlockNode(node).replace(/\n$/, "");
+function serializeNestedBlock(
+    node: ProseMirrorNode,
+    serializeNode: (node: ProseMirrorNode) => string,
+) {
+    return serializeNode(node).replace(/\n$/, "");
 }
 
 function escapeParagraphLineStarts(text: string) {

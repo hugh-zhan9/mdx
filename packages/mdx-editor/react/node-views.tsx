@@ -82,7 +82,7 @@ export function createMdxNodeViews(
     };
 }
 
-function createCodeBlockNodeView(
+export function createCodeBlockNodeView(
     node: ProseMirrorNode,
     view: EditorView,
     getPos: () => number | undefined,
@@ -481,7 +481,7 @@ interface ReactNodeViewOptions {
     textBacked?: boolean;
 }
 
-function createReactNodeView(
+export function createReactNodeView(
     Component: ComponentType<InternalNodeViewProps>,
     options: ReactNodeViewOptions = {},
 ): NodeViewConstructor {
@@ -609,7 +609,7 @@ function createReactNodeView(
     };
 }
 
-function createSourceFallbackNodeView(
+export function createSourceFallbackNodeView(
     node: ProseMirrorNode,
     view: EditorView,
     getPos: () => number | undefined,
@@ -730,7 +730,7 @@ function createSourceFallbackNodeView(
     };
 }
 
-function createHtmlBlockNodeView(
+export function createHtmlBlockNodeView(
     node: ProseMirrorNode,
     view: EditorView,
     getPos: () => number | undefined,

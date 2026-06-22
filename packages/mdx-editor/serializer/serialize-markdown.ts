@@ -15,6 +15,7 @@ interface SourceReference {
 
 export interface SerializeMarkdownOptions {
     parseMarkdown?: (markdown: string) => ParsedMarkdownDocument;
+    serializeNode?: (node: ProseMirrorNode) => string;
 }
 
 export function serializeMarkdown(
@@ -22,6 +23,7 @@ export function serializeMarkdown(
     options: SerializeMarkdownOptions = {},
 ): string {
     const parseForComparison = options.parseMarkdown ?? parseMarkdown;
+    const renderNode = options.serializeNode ?? serializeBlockNode;
 
     if (isParserPlaceholderDocument(parsed)) {
         return parsed.originalMarkdown;
@@ -42,7 +44,7 @@ export function serializeMarkdown(
             text:
                 source && nodeMatchesSource(node, source.slice, parseForComparison)
                     ? source.slice.text
-                    : serializeBlockNode(node),
+                    : renderNode(node),
         });
     });
 

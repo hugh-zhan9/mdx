@@ -6,6 +6,8 @@ import type { CodeTokenizer } from "../plugins/editor-code-highlight";
 import { createMdxEditorPlugins } from "../plugins/editor-plugins";
 import { parseMarkdown as parseMarkdownWithSchema } from "../parser/parse-markdown";
 import { createMdxNodeViews } from "../react/node-views";
+import { serializeBlockNode } from "../serializer/block-serializer";
+import { serializeInlineContent } from "../serializer/inline-serializer";
 import { serializeMarkdown as serializeParsedMarkdown } from "../serializer/serialize-markdown";
 import { createSyntaxRegistry } from "./registry";
 import { buildSchemaFromRegistry } from "./schema";
@@ -39,13 +41,26 @@ export function createMdxEditorKernel(
 ): MdxEditorKernel {
     const registry = createSyntaxRegistry(options.syntax);
     const schema = buildSchemaFromRegistry(registry);
+    const nodeSerializers = mergeNodeSerializers(registry);
 
     const parseMarkdown = (markdown: string) =>
         parseMarkdownWithSchema(markdown, schema);
-    const serializeMarkdown = (doc: ProseMirrorNode | ParsedMarkdownDocument) =>
-        serializeParsedMarkdown(isParsedDocument(doc) ? doc : emptyParsedDocument(doc), {
-            parseMarkdown,
+    const serializeInline = (node: ProseMirrorNode) =>
+        serializeInlineContent(node, { nodeSerializers });
+    const serializeNode = (node: ProseMirrorNode) =>
+        serializeBlockNode(node, {
+            nodeSerializers,
+            serializeInline,
+            serializeNode,
         });
+    const serializeMarkdown = (doc: ProseMirrorNode | ParsedMarkdownDocument) =>
+        serializeParsedMarkdown(
+            isParsedDocument(doc) ? doc : emptyParsedDocument(doc),
+            {
+                parseMarkdown,
+                serializeNode,
+            },
+        );
 
     return {
         schema,
@@ -83,4 +98,14 @@ function emptyParsedDocument(doc: ProseMirrorNode): ParsedMarkdownDocument {
         sourceSlices: [],
         diagnostics: [],
     };
+}
+
+function mergeNodeSerializers(registry: SyntaxRegistry) {
+    const nodeSerializers: Record<string, (node: ProseMirrorNode) => string> = {};
+
+    for (const contribution of registry.serializers) {
+        Object.assign(nodeSerializers, contribution.nodeSerializers);
+    }
+
+    return nodeSerializers;
 }

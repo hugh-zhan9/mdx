@@ -4,7 +4,6 @@ import { mdxEditorSchema } from "../../schema/schema";
 
 const legacyNodeNames = [
     "image",
-    "inline_html",
     "heading",
     "blockquote",
     "horizontal_rule",
@@ -24,19 +23,23 @@ const legacyNodeNames = [
     "callout",
     "mermaid_block",
     "frontmatter",
-    "html_block",
-    "source_fallback",
 ] as const;
 
 export function legacyMarkdownSyntax(): SyntaxPlugin {
     const nodes: NonNullable<SyntaxPlugin["nodes"]> = {};
+    const allNodeViews = createMdxNodeViews();
+    const nodeViews: NonNullable<SyntaxPlugin["nodeViews"]> = {};
+
     for (const name of legacyNodeNames) {
         nodes[name] = mdxEditorSchema.nodes[name].spec;
+        if (allNodeViews[name]) {
+            nodeViews[name] = allNodeViews[name];
+        }
     }
 
     return {
         id: "legacy",
         nodes,
-        nodeViews: createMdxNodeViews(),
+        nodeViews,
     };
 }

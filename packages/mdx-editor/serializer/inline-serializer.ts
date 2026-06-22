@@ -2,7 +2,16 @@ import type { Mark, Node as ProseMirrorNode } from "prosemirror-model";
 
 const WIKILINK_HREF_PREFIX = "mdx-wikilink:";
 
-export function serializeInlineContent(node: ProseMirrorNode): string {
+type NodeSerializer = (node: ProseMirrorNode) => string;
+
+export interface InlineSerializerOptions {
+    nodeSerializers?: Record<string, NodeSerializer>;
+}
+
+export function serializeInlineContent(
+    node: ProseMirrorNode,
+    options: InlineSerializerOptions = {},
+): string {
     let output = "";
     let index = 0;
 
@@ -15,6 +24,7 @@ export function serializeInlineContent(node: ProseMirrorNode): string {
                 index,
                 (candidate) => linkMarksEquivalent(link, findLinkMark(candidate)),
                 link,
+                options,
             );
             output += serializeLinkedText(serializedRun.serialized, link);
             index = serializedRun.nextIndex;
@@ -23,7 +33,7 @@ export function serializeInlineContent(node: ProseMirrorNode): string {
 
         const serializedRun = serializeTextRun(node, index, (candidate) => {
             return findLinkMark(candidate) === null;
-        });
+        }, undefined, options);
         output += serializedRun.serialized;
         index = serializedRun.nextIndex;
     }
@@ -31,7 +41,15 @@ export function serializeInlineContent(node: ProseMirrorNode): string {
     return output;
 }
 
-function serializeInlineNode(node: ProseMirrorNode) {
+function serializeInlineNode(
+    node: ProseMirrorNode,
+    options: InlineSerializerOptions,
+) {
+    const serializer = options.nodeSerializers?.[node.type.name];
+    if (serializer) {
+        return serializer(node);
+    }
+
     switch (node.type.name) {
         case "image":
             return serializeImageNode(node);
@@ -51,8 +69,9 @@ function serializeTextRun(
     startIndex: number,
     predicate: (candidate: ProseMirrorNode) => boolean,
     excludedMark?: Mark,
+    options: InlineSerializerOptions = {},
 ) {
-    return serializeInlineRun(node, startIndex, predicate, excludedMark);
+    return serializeInlineRun(node, startIndex, predicate, excludedMark, options);
 }
 
 function serializeInlineRun(
@@ -60,6 +79,7 @@ function serializeInlineRun(
     startIndex: number,
     predicate: (candidate: ProseMirrorNode) => boolean,
     excludedMark?: Mark,
+    options: InlineSerializerOptions = {},
 ) {
     let serialized = "";
     const activeMarks: Mark[] = [];
@@ -105,7 +125,7 @@ function serializeInlineRun(
                 ? serializeInlineCodeText(child.text ?? "")
                 : escapePlainText(child.text ?? "");
         } else {
-            serialized += serializeInlineNode(child);
+            serialized += serializeInlineNode(child, options);
         }
         nextIndex += 1;
     }
