@@ -1,4 +1,5 @@
 import type { Mark, Node as ProseMirrorNode } from "prosemirror-model";
+import { serializeFootnoteRef } from "../syntax/footnote/serialize";
 
 const WIKILINK_HREF_PREFIX = "mdx-wikilink:";
 
@@ -22,7 +23,8 @@ export function serializeInlineContent(
             const serializedRun = serializeInlineRun(
                 node,
                 index,
-                (candidate) => linkMarksEquivalent(link, findLinkMark(candidate)),
+                (candidate) =>
+                    linkMarksEquivalent(link, findLinkMark(candidate)),
                 link,
                 options,
             );
@@ -31,9 +33,15 @@ export function serializeInlineContent(
             continue;
         }
 
-        const serializedRun = serializeTextRun(node, index, (candidate) => {
-            return findLinkMark(candidate) === null;
-        }, undefined, options);
+        const serializedRun = serializeTextRun(
+            node,
+            index,
+            (candidate) => {
+                return findLinkMark(candidate) === null;
+            },
+            undefined,
+            options,
+        );
         output += serializedRun.serialized;
         index = serializedRun.nextIndex;
     }
@@ -56,7 +64,7 @@ function serializeInlineNode(
         case "math_inline":
             return `$${escapeMathInline(String(node.attrs.latex ?? ""))}$`;
         case "footnote_ref":
-            return `[^${escapeFootnoteLabel(String(node.attrs.label ?? ""))}]`;
+            return serializeFootnoteRef(node);
         default:
             return node.textContent;
     }
@@ -69,7 +77,13 @@ function serializeTextRun(
     excludedMark?: Mark,
     options: InlineSerializerOptions = {},
 ) {
-    return serializeInlineRun(node, startIndex, predicate, excludedMark, options);
+    return serializeInlineRun(
+        node,
+        startIndex,
+        predicate,
+        excludedMark,
+        options,
+    );
 }
 
 function serializeInlineRun(
@@ -128,7 +142,11 @@ function serializeInlineRun(
         nextIndex += 1;
     }
 
-    for (let markIndex = activeMarks.length - 1; markIndex >= 0; markIndex -= 1) {
+    for (
+        let markIndex = activeMarks.length - 1;
+        markIndex >= 0;
+        markIndex -= 1
+    ) {
         serialized += closeMark(activeMarks[markIndex]);
     }
 
@@ -228,7 +246,9 @@ function serializeWikilink(text: string, href: string) {
             ? originalPayload.slice(0, separatorIndex)
             : originalPayload;
     const originalLabel =
-        separatorIndex >= 0 ? originalPayload.slice(separatorIndex + 1) : target;
+        separatorIndex >= 0
+            ? originalPayload.slice(separatorIndex + 1)
+            : target;
 
     if (text === originalLabel) {
         return separatorIndex >= 0
@@ -257,9 +277,7 @@ function escapeLinkTitle(title: string) {
 
 function escapeLinkHref(href: string) {
     if (/\s/.test(href)) {
-        return `<${href
-            .replaceAll("\\", "\\\\")
-            .replaceAll(">", "\\>")}>`;
+        return `<${href.replaceAll("\\", "\\\\").replaceAll(">", "\\>")}>`;
     }
 
     return href.replaceAll("\\", "\\\\").replaceAll(")", "\\)");
@@ -280,9 +298,10 @@ function escapePlainText(text: string) {
 }
 
 function serializeInlineCodeText(text: string) {
-    const longestBacktickRun = text.match(/`+/g)?.reduce((longest, run) => {
-        return Math.max(longest, run.length);
-    }, 0) ?? 0;
+    const longestBacktickRun =
+        text.match(/`+/g)?.reduce((longest, run) => {
+            return Math.max(longest, run.length);
+        }, 0) ?? 0;
     const delimiter = "`".repeat(longestBacktickRun + 1);
     const needsBoundaryPadding = text.startsWith("`") || text.endsWith("`");
 
@@ -292,19 +311,11 @@ function serializeInlineCodeText(text: string) {
 }
 
 function escapeWikilinkSegment(segment: string) {
-    return segment
-        .replaceAll("\\", "\\\\")
-        .replaceAll("]", "\\]");
+    return segment.replaceAll("\\", "\\\\").replaceAll("]", "\\]");
 }
 
 function escapeMathInline(latex: string) {
     return latex.replaceAll("\\", "\\\\").replaceAll("$", "\\$");
-}
-
-function escapeFootnoteLabel(label: string) {
-    return label
-        .replaceAll("\\", "\\\\")
-        .replaceAll("]", "\\]");
 }
 
 function attrsEquivalent(

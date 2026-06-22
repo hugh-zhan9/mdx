@@ -1,14 +1,25 @@
 // @vitest-environment jsdom
 
 import { act } from "react";
-import { EditorState, NodeSelection, type Transaction } from "prosemirror-state";
-import { DecorationSet, type EditorView, type NodeView } from "prosemirror-view";
+import {
+    EditorState,
+    NodeSelection,
+    type Transaction,
+} from "prosemirror-state";
+import {
+    DecorationSet,
+    type EditorView,
+    type NodeView,
+} from "prosemirror-view";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createMdxEditorKernel } from "../kernel";
 import { mdxEditorSchema } from "../schema/schema";
+import { defaultMarkdownSyntax } from "../syntax/default";
 import { createMdxNodeViews } from "./node-views";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
-    .IS_REACT_ACT_ENVIRONMENT = true;
+(
+    globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 const renderMermaidDiagram = vi.hoisted(() => vi.fn());
 
@@ -27,7 +38,7 @@ describe("createMdxNodeViews", () => {
         });
     });
 
-    it("registers node views for advanced Markdown structures", () => {
+    it("registers generic node views for non-plugin-owned structures", () => {
         const keys = Object.keys(
             createMdxNodeViews({ imageLoader: undefined }),
         ).sort();
@@ -36,7 +47,6 @@ describe("createMdxNodeViews", () => {
             expect.arrayContaining([
                 "callout",
                 "code_block",
-                "footnote_definition",
                 "image",
                 "inline_html",
                 "math_block",
@@ -47,7 +57,21 @@ describe("createMdxNodeViews", () => {
                 "task_item",
             ]),
         );
+        expect(keys).not.toContain("footnote_definition");
         expect(mdxEditorSchema.nodes.mermaid_block).toBeDefined();
+    });
+
+    it("exposes footnote node views through the syntax registry", () => {
+        const kernel = createMdxEditorKernel({
+            syntax: defaultMarkdownSyntax(),
+        });
+
+        expect(createMdxNodeViews()).not.toHaveProperty("footnote_definition");
+        expect(kernel.registry.nodeViews).toHaveProperty("footnote_definition");
+        expect(kernel.createNodeViews()).toHaveProperty("footnote_definition");
+        expect(kernel.createNodeViews().footnote_definition).toBe(
+            kernel.registry.nodeViews.footnote_definition,
+        );
     });
 
     it("renders mermaid blocks through a node view instead of a source pre", async () => {
@@ -57,9 +81,12 @@ describe("createMdxNodeViews", () => {
             schema.text("graph TD\n  A --> B\n"),
         );
         const dispatched: Transaction[] = [];
-        const view = createView(schema.nodes.doc.create(null, mermaid), (tr) => {
-            dispatched.push(tr);
-        });
+        const view = createView(
+            schema.nodes.doc.create(null, mermaid),
+            (tr) => {
+                dispatched.push(tr);
+            },
+        );
         let nodeView: NodeView | undefined;
 
         act(() => {
@@ -83,7 +110,9 @@ describe("createMdxNodeViews", () => {
         expect(nodeView?.dom.getAttribute("data-mdx-node-type")).toBe(
             "mermaid_block",
         );
-        expect(nodeView?.dom.querySelector("pre[data-mdx-code-block]")).toBeNull();
+        expect(
+            nodeView?.dom.querySelector("pre[data-mdx-code-block]"),
+        ).toBeNull();
         expect(textarea?.value).toBe("graph TD\n  A --> B\n");
         expect(renderMermaidDiagram).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -135,9 +164,7 @@ describe("createMdxNodeViews", () => {
             DecorationSet.empty,
         );
 
-        nodeView.dom
-            .querySelector("img")
-            ?.dispatchEvent(new Event("error"));
+        nodeView.dom.querySelector("img")?.dispatchEvent(new Event("error"));
 
         expect(nodeView.dom.getAttribute("data-mdx-image-error")).toBe("true");
         expect(nodeView.dom.textContent).toBe(
@@ -193,7 +220,9 @@ describe("createMdxNodeViews", () => {
 
         nodeView.selectNode?.();
 
-        expect(nodeView.dom.getAttribute("data-mdx-image-selected")).toBe("true");
+        expect(nodeView.dom.getAttribute("data-mdx-image-selected")).toBe(
+            "true",
+        );
         expect(nodeView.dom.getAttribute("data-mdx-image-markdown")).toBe(
             "![本地图片示例](.assets/example.png)",
         );
@@ -291,9 +320,12 @@ describe("createMdxNodeViews", () => {
             schema.text("\\int_0^1 x^2 dx = \\frac{1}{3}"),
         );
         const dispatched: Transaction[] = [];
-        const view = createView(schema.nodes.doc.create(null, mathBlock), (tr) => {
-            dispatched.push(tr);
-        });
+        const view = createView(
+            schema.nodes.doc.create(null, mathBlock),
+            (tr) => {
+                dispatched.push(tr);
+            },
+        );
         let nodeView: NodeView | undefined;
 
         act(() => {
@@ -344,19 +376,27 @@ describe("createMdxNodeViews", () => {
     });
 
     it("shows footnote label source only while editing the label", () => {
-        const schema = mdxEditorSchema;
+        const kernel = createMdxEditorKernel({
+            syntax: defaultMarkdownSyntax(),
+        });
+        const schema = kernel.schema;
         const footnote = schema.nodes.footnote_definition.create(
             { label: "note1", sourceId: "source-1" },
             schema.nodes.paragraph.create(null, schema.text("Footnote body.")),
         );
         const dispatched: Transaction[] = [];
-        const view = createView(schema.nodes.doc.create(null, footnote), (tr) => {
-            dispatched.push(tr);
-        });
+        const view = createView(
+            schema.nodes.doc.create(null, footnote),
+            (tr) => {
+                dispatched.push(tr);
+            },
+        );
         let nodeView: NodeView | undefined;
+        const footnoteNodeView = kernel.createNodeViews().footnote_definition;
+        expect(footnoteNodeView).toBeDefined();
 
         act(() => {
-            nodeView = createMdxNodeViews().footnote_definition(
+            nodeView = footnoteNodeView?.(
                 footnote,
                 view,
                 () => 0,
@@ -419,12 +459,17 @@ describe("createMdxNodeViews", () => {
                 reason: "unsupported",
                 sourceId: "source-1",
             },
-            schema.text('<div class="custom-block">\n  <p>Unsupported</p>\n</div>\n'),
+            schema.text(
+                '<div class="custom-block">\n  <p>Unsupported</p>\n</div>\n',
+            ),
         );
         const dispatched: Transaction[] = [];
-        const view = createView(schema.nodes.doc.create(null, fallback), (tr) => {
-            dispatched.push(tr);
-        });
+        const view = createView(
+            schema.nodes.doc.create(null, fallback),
+            (tr) => {
+                dispatched.push(tr);
+            },
+        );
         let nodeView: NodeView | undefined;
 
         act(() => {
@@ -440,7 +485,9 @@ describe("createMdxNodeViews", () => {
         expect(nodeView?.dom.querySelector(".custom-block")).not.toBeNull();
         expect(nodeView?.dom.textContent).toBe("\n  Unsupported\n\n");
         expect(
-            nodeView?.dom.querySelector("textarea[aria-label='Markdown source fallback']"),
+            nodeView?.dom.querySelector(
+                "textarea[aria-label='Markdown source fallback']",
+            ),
         ).toBeNull();
 
         act(() => {
@@ -560,7 +607,9 @@ describe("createMdxNodeViews", () => {
 
         expect(preview).not.toBeNull();
         expect(preview!.querySelector("script")).toBeNull();
-        expect(preview!.querySelector("div")?.getAttribute("onclick")).toBeNull();
+        expect(
+            preview!.querySelector("div")?.getAttribute("onclick"),
+        ).toBeNull();
         expect(preview!.querySelector("a")?.getAttribute("href")).toBeNull();
         expect(preview?.textContent?.trim()).toBe("Safe");
 
@@ -588,7 +637,8 @@ describe("createMdxNodeViews", () => {
             );
         });
 
-        const details = nodeView?.dom.querySelector<HTMLDetailsElement>("details");
+        const details =
+            nodeView?.dom.querySelector<HTMLDetailsElement>("details");
         const summary = nodeView?.dom.querySelector<HTMLElement>("summary");
         const paragraph = nodeView?.dom.querySelector<HTMLElement>("p");
 
@@ -606,7 +656,9 @@ describe("createMdxNodeViews", () => {
         });
 
         expect(
-            nodeView?.dom.querySelector("textarea[aria-label='Markdown source fallback']"),
+            nodeView?.dom.querySelector(
+                "textarea[aria-label='Markdown source fallback']",
+            ),
         ).toBeNull();
 
         act(() => {
@@ -619,7 +671,9 @@ describe("createMdxNodeViews", () => {
         });
 
         expect(
-            nodeView?.dom.querySelector("textarea[aria-label='Markdown source fallback']"),
+            nodeView?.dom.querySelector(
+                "textarea[aria-label='Markdown source fallback']",
+            ),
         ).toBeNull();
 
         act(() => {
@@ -638,7 +692,9 @@ describe("createMdxNodeViews", () => {
         });
 
         expect(
-            nodeView?.dom.querySelector("textarea[aria-label='Markdown source fallback']"),
+            nodeView?.dom.querySelector(
+                "textarea[aria-label='Markdown source fallback']",
+            ),
         ).not.toBeNull();
 
         act(() => nodeView?.destroy?.());
@@ -670,7 +726,8 @@ describe("createMdxNodeViews", () => {
             );
         });
 
-        const details = nodeView?.dom.querySelector<HTMLDetailsElement>("details");
+        const details =
+            nodeView?.dom.querySelector<HTMLDetailsElement>("details");
         const summary = nodeView?.dom.querySelector<HTMLElement>("summary");
         const paragraph = nodeView?.dom.querySelector<HTMLElement>("p");
 
@@ -688,7 +745,9 @@ describe("createMdxNodeViews", () => {
         });
 
         expect(
-            nodeView?.dom.querySelector("textarea[aria-label='HTML block source']"),
+            nodeView?.dom.querySelector(
+                "textarea[aria-label='HTML block source']",
+            ),
         ).toBeNull();
 
         act(() => {
@@ -701,7 +760,9 @@ describe("createMdxNodeViews", () => {
         });
 
         expect(
-            nodeView?.dom.querySelector("textarea[aria-label='HTML block source']"),
+            nodeView?.dom.querySelector(
+                "textarea[aria-label='HTML block source']",
+            ),
         ).toBeNull();
 
         act(() => {
@@ -797,7 +858,9 @@ describe("createMdxNodeViews", () => {
 
         expect(nodeView?.dom.querySelector("kbd")?.textContent).toBe("Command");
         expect(
-            nodeView?.dom.querySelector("input[aria-label='Inline HTML source']"),
+            nodeView?.dom.querySelector(
+                "input[aria-label='Inline HTML source']",
+            ),
         ).toBeNull();
 
         act(() => {
@@ -863,7 +926,9 @@ describe("createMdxNodeViews", () => {
 
         const renderedTable = nodeView?.dom.querySelector("table");
 
-        expect(nodeView?.dom.classList.contains("mdx-table-wrapper")).toBe(true);
+        expect(nodeView?.dom.classList.contains("mdx-table-wrapper")).toBe(
+            true,
+        );
         expect(nodeView?.contentDOM?.tagName).toBe("TBODY");
         expect(renderedTable?.firstElementChild).toBe(nodeView?.contentDOM);
         expect(renderedTable?.querySelector("tbody tbody")).toBeNull();
@@ -932,7 +997,9 @@ describe("createMdxNodeViews", () => {
         );
 
         nextNodeView.dom
-            .querySelector<HTMLButtonElement>("button[aria-label='Delete column']")
+            .querySelector<HTMLButtonElement>(
+                "button[aria-label='Delete column']",
+            )
             ?.click();
 
         expect(dispatched).toHaveLength(2);
@@ -980,9 +1047,12 @@ describe("createMdxNodeViews", () => {
             schema.nodes.paragraph.create(null, schema.text("Body")),
         );
         const dispatched: Transaction[] = [];
-        const view = createView(schema.nodes.doc.create(null, callout), (tr) => {
-            dispatched.push(tr);
-        });
+        const view = createView(
+            schema.nodes.doc.create(null, callout),
+            (tr) => {
+                dispatched.push(tr);
+            },
+        );
         let nodeView: NodeView | undefined;
 
         act(() => {
@@ -999,9 +1069,9 @@ describe("createMdxNodeViews", () => {
             "select[aria-label='Callout type']",
         );
 
-        expect(nodeView?.dom.querySelector(".mdx-callout-header")?.textContent).toContain(
-            "NOTE",
-        );
+        expect(
+            nodeView?.dom.querySelector(".mdx-callout-header")?.textContent,
+        ).toContain("NOTE");
         expect(nodeView?.dom.textContent).not.toContain("[!NOTE]");
 
         act(() => {
@@ -1026,9 +1096,12 @@ describe("createMdxNodeViews", () => {
             schema.text("const value = 1;\n"),
         );
         const dispatched: Transaction[] = [];
-        const view = createView(schema.nodes.doc.create(null, codeBlock), (tr) => {
-            dispatched.push(tr);
-        });
+        const view = createView(
+            schema.nodes.doc.create(null, codeBlock),
+            (tr) => {
+                dispatched.push(tr);
+            },
+        );
         const nodeView = createMdxNodeViews().code_block(
             codeBlock,
             view,

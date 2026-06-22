@@ -109,4 +109,32 @@ describe("syntax registry", () => {
         expect(schema.nodes.paragraph).toBeDefined();
         expect(schema.text("hello").text).toBe("hello");
     });
+
+    it("collects serializer and node view ownership from syntax plugins", () => {
+        const owned = (() => null) as NonNullable<
+            SyntaxPlugin["nodeViews"]
+        >[string];
+        const registry = createSyntaxRegistry([
+            {
+                id: "owner",
+                serializers: {
+                    nodeSerializers: {
+                        owned: () => "owned\n",
+                    },
+                },
+                nodeViews: {
+                    owned,
+                },
+            },
+        ]);
+
+        expect(registry.serializers).toEqual([
+            expect.objectContaining({
+                nodeSerializers: expect.objectContaining({
+                    owned: expect.any(Function),
+                }),
+            }),
+        ]);
+        expect(registry.nodeViews.owned).toBe(owned);
+    });
 });

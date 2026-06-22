@@ -1,4 +1,5 @@
 import type { Node as ProseMirrorNode } from "prosemirror-model";
+import { serializeFootnoteDefinition } from "../syntax/footnote/serialize";
 import { serializeInlineContent } from "./inline-serializer";
 
 type NodeSerializer = (node: ProseMirrorNode) => string;
@@ -61,7 +62,10 @@ export function serializeBlockNode(
         case "math_block":
             return `$$\n${textBeforeClosingFence(node.textContent)}$$\n`;
         case "footnote_definition":
-            return serializeFootnoteDefinition(node, serializeNode, serializeInline);
+            return serializeFootnoteDefinition(node, {
+                serializeInline,
+                serializeNode,
+            });
         case "mermaid_block":
             return `\`\`\`${mermaidBlockInfo(node)}\n${textBeforeClosingFence(node.textContent)}\`\`\`\n`;
         case "code_block":
@@ -87,7 +91,12 @@ function serializeList(
         output +=
             child.type.name === "task_item"
                 ? serializeTaskItem(child, serializeNode, serializeInline)
-                : serializeListItem(child, marker, serializeNode, serializeInline);
+                : serializeListItem(
+                      child,
+                      marker,
+                      serializeNode,
+                      serializeInline,
+                  );
     });
 
     return output;
@@ -150,7 +159,10 @@ function serializeListItem(
     }
 
     for (let index = 1; index < node.childCount; index += 1) {
-        const childText = serializeNestedBlock(node.child(index), serializeNode);
+        const childText = serializeNestedBlock(
+            node.child(index),
+            serializeNode,
+        );
         for (const line of childText.split("\n")) {
             lines.push(line.length > 0 ? `  ${line}` : "");
         }
@@ -207,7 +219,7 @@ function serializeTableRow(
 function escapeTableCellPipes(markdown: string) {
     let output = "";
 
-    for (let index = 0; index < markdown.length;) {
+    for (let index = 0; index < markdown.length; ) {
         const protectedInline = readProtectedInlineSpan(markdown, index);
         if (protectedInline) {
             output += protectedInline.value;
@@ -314,7 +326,11 @@ function readUntilUnescapedToken(
         return null;
     }
 
-    const closeIndex = findUnescapedToken(text, closer, startIndex + opener.length);
+    const closeIndex = findUnescapedToken(
+        text,
+        closer,
+        startIndex + opener.length,
+    );
     if (closeIndex < 0) {
         return null;
     }
@@ -327,7 +343,11 @@ function readUntilUnescapedToken(
 }
 
 function findUnescapedToken(text: string, token: string, startIndex: number) {
-    for (let index = startIndex; index <= text.length - token.length; index += 1) {
+    for (
+        let index = startIndex;
+        index <= text.length - token.length;
+        index += 1
+    ) {
         if (text[index] === "\\") {
             index += 1;
             continue;
@@ -392,33 +412,6 @@ function serializeCallout(
             lines.push(line.length > 0 ? `> ${line}` : ">");
         }
     });
-
-    return `${lines.join("\n")}\n`;
-}
-
-function serializeFootnoteDefinition(
-    node: ProseMirrorNode,
-    serializeNode: (node: ProseMirrorNode) => string,
-    serializeInline: (node: ProseMirrorNode) => string,
-) {
-    const label = String(node.attrs.label ?? "");
-    const firstChild = node.firstChild;
-    if (!firstChild) {
-        return `[^${label}]:\n`;
-    }
-
-    const firstLine =
-        firstChild.type.name === "paragraph"
-            ? serializeInline(firstChild)
-            : serializeNestedBlock(firstChild, serializeNode);
-    const lines = [`[^${label}]: ${firstLine}`];
-
-    for (let index = 1; index < node.childCount; index += 1) {
-        const childText = serializeNestedBlock(node.child(index), serializeNode);
-        for (const line of childText.split("\n")) {
-            lines.push(line.length > 0 ? `    ${line}` : "");
-        }
-    }
 
     return `${lines.join("\n")}\n`;
 }

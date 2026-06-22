@@ -9,7 +9,6 @@ import type {
     NodeViewConstructor,
 } from "prosemirror-view";
 import { CalloutNodeView } from "./callout-node-view";
-import { FootnoteNodeView } from "./footnote-node-view";
 import { HtmlBlockNodeView } from "./html-block-node-view";
 import { InlineHtmlNodeView } from "./inline-html-node-view";
 import { MathNodeView } from "./math-node-view";
@@ -46,10 +45,6 @@ export function createMdxNodeViews(
             domTag: "aside",
         }),
         code_block: createCodeBlockNodeView,
-        footnote_definition: createReactNodeView(FootnoteNodeView, {
-            contentDOMTag: "div",
-            domTag: "section",
-        }),
         html_block: createHtmlBlockNodeView,
         image: createImageNodeView(options.imageLoader),
         inline_html: createReactNodeView(InlineHtmlNodeView, {
@@ -178,9 +173,7 @@ function syncCodeBlockLanguageInputSize(input: HTMLInputElement) {
     input.size = Math.min(Math.max(visibleLength + 1, 5), 18);
 }
 
-function createImageNodeView(
-    imageLoader?: ImageLoader,
-): NodeViewConstructor {
+function createImageNodeView(imageLoader?: ImageLoader): NodeViewConstructor {
     return (
         node: ProseMirrorNode,
         view: EditorView,
@@ -221,7 +214,12 @@ function createImageNodeView(
             event.stopPropagation();
             if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
-                commitImageSourceEdit(currentNode, view, getPos, sourceInput.value);
+                commitImageSourceEdit(
+                    currentNode,
+                    view,
+                    getPos,
+                    sourceInput.value,
+                );
                 sourceInput.blur();
             }
 
@@ -296,10 +294,7 @@ function createImageNodeView(
                 resizeImageSourceInput(sourceInput);
                 sourceInput.ownerDocument.defaultView?.setTimeout(() => {
                     sourceInput.focus();
-                    sourceInput.setSelectionRange(
-                        0,
-                        sourceInput.value.length,
-                    );
+                    sourceInput.setSelectionRange(0, sourceInput.value.length);
                 }, 0);
             },
             deselectNode() {
@@ -313,8 +308,7 @@ function createImageNodeView(
             },
             stopEvent(event) {
                 return (
-                    event.type === "mousedown" ||
-                    event.target === sourceInput
+                    event.type === "mousedown" || event.target === sourceInput
                 );
             },
         };
@@ -545,7 +539,8 @@ export function createReactNodeView(
                         updateText={updateText}
                         onAddColumn={
                             options.tableControls
-                                ? () => addTableColumn(currentNode, view, getPos)
+                                ? () =>
+                                      addTableColumn(currentNode, view, getPos)
                                 : undefined
                         }
                         onAddRow={
@@ -555,12 +550,18 @@ export function createReactNodeView(
                         }
                         onDeleteColumn={
                             options.tableControls
-                                ? () => deleteTableColumn(currentNode, view, getPos)
+                                ? () =>
+                                      deleteTableColumn(
+                                          currentNode,
+                                          view,
+                                          getPos,
+                                      )
                                 : undefined
                         }
                         onDeleteRow={
                             options.tableControls
-                                ? () => deleteTableRow(currentNode, view, getPos)
+                                ? () =>
+                                      deleteTableRow(currentNode, view, getPos)
                                 : undefined
                         }
                     />,
@@ -710,7 +711,10 @@ export function createSourceFallbackNodeView(
             render();
         },
         stopEvent(event) {
-            if (!(event.target instanceof Node) || !dom.contains(event.target)) {
+            if (
+                !(event.target instanceof Node) ||
+                !dom.contains(event.target)
+            ) {
                 return false;
             }
 
@@ -752,7 +756,8 @@ export function createHtmlBlockNodeView(
             ...attrs,
         };
         const html = String(nextAttrs.html ?? "");
-        const content = html.length > 0 ? currentNode.type.schema.text(html) : null;
+        const content =
+            html.length > 0 ? currentNode.type.schema.text(html) : null;
 
         view.dispatch(
             view.state.tr.replaceWith(
@@ -847,7 +852,10 @@ export function createHtmlBlockNodeView(
             render();
         },
         stopEvent(event) {
-            if (!(event.target instanceof Node) || !dom.contains(event.target)) {
+            if (
+                !(event.target instanceof Node) ||
+                !dom.contains(event.target)
+            ) {
                 return false;
             }
 
@@ -869,7 +877,10 @@ export function createHtmlBlockNodeView(
     };
 }
 
-function isInsideHtmlBlockPreview(target: EventTarget | null, root: HTMLElement) {
+function isInsideHtmlBlockPreview(
+    target: EventTarget | null,
+    root: HTMLElement,
+) {
     const element = eventTargetElement(target, root);
 
     return Boolean(element?.closest(".mdx-html-block-preview"));
@@ -900,11 +911,17 @@ function isInteractiveHtmlBlockTarget(
     );
 }
 
-function isHtmlBlockSummaryTarget(target: EventTarget | null, root: HTMLElement) {
+function isHtmlBlockSummaryTarget(
+    target: EventTarget | null,
+    root: HTMLElement,
+) {
     return Boolean(eventTargetElement(target, root)?.closest("summary"));
 }
 
-function isInsideSourceFallbackPreview(target: EventTarget | null, root: HTMLElement) {
+function isInsideSourceFallbackPreview(
+    target: EventTarget | null,
+    root: HTMLElement,
+) {
     const element = eventTargetElement(target, root);
 
     return Boolean(element?.closest(".mdx-source-fallback-preview"));
@@ -1003,7 +1020,8 @@ function addTableColumn(
     const rows = childrenOf(node).map((row, rowIndex) => {
         const cells = childrenOf(row);
         const useHeader =
-            rowIndex === 0 && cells.every((cell) => cell.type.name === "table_header");
+            rowIndex === 0 &&
+            cells.every((cell) => cell.type.name === "table_header");
         const cellType = useHeader
             ? node.type.schema.nodes.table_header
             : node.type.schema.nodes.table_cell;
@@ -1045,7 +1063,9 @@ function deleteTableColumn(
         node,
         view,
         getPos,
-        rows.map((row) => row.type.create(row.attrs, childrenOf(row).slice(0, -1))),
+        rows.map((row) =>
+            row.type.create(row.attrs, childrenOf(row).slice(0, -1)),
+        ),
         {
             ...node.attrs,
             alignments: trimLastAlignment(node.attrs.alignments),
@@ -1103,7 +1123,10 @@ function syncNodeViewAttributes(dom: HTMLElement, node: ProseMirrorNode) {
         case "code_block":
             dom.setAttribute("data-mdx-code-block", "");
             if (node.attrs.language) {
-                dom.setAttribute("data-mdx-language", String(node.attrs.language));
+                dom.setAttribute(
+                    "data-mdx-language",
+                    String(node.attrs.language),
+                );
             }
             if (node.attrs.info) {
                 dom.setAttribute("data-mdx-info", String(node.attrs.info));

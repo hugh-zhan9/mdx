@@ -32,6 +32,38 @@ describe("footnote syntax", () => {
         });
         const markdown = "A note[^n].\n\n[^n]: Body\n";
 
-        expect(kernel.serializeMarkdown(kernel.parseMarkdown(markdown).doc)).toBe(markdown);
+        expect(
+            kernel.serializeMarkdown(kernel.parseMarkdown(markdown).doc),
+        ).toBe(markdown);
+    });
+
+    it("registers serializer and node view ownership through the plugin", () => {
+        const kernel = createMdxEditorKernel({
+            syntax: [coreMarkdownSyntax(), fallbackSyntax(), footnoteSyntax()],
+        });
+        const schema = kernel.schema;
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("A "),
+                schema.nodes.footnote_ref.create({ label: "n" }),
+            ]),
+            schema.nodes.footnote_definition.create(
+                { label: "n" },
+                schema.nodes.paragraph.create(null, [schema.text("Body")]),
+            ),
+        ]);
+
+        expect(kernel.registry.serializers).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    nodeSerializers: expect.objectContaining({
+                        footnote_ref: expect.any(Function),
+                        footnote_definition: expect.any(Function),
+                    }),
+                }),
+            ]),
+        );
+        expect(kernel.registry.nodeViews).toHaveProperty("footnote_definition");
+        expect(kernel.serializeMarkdown(doc)).toBe("A [^n]\n\n[^n]: Body\n");
     });
 });

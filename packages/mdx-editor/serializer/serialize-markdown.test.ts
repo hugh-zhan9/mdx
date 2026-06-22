@@ -26,13 +26,19 @@ describe("serializeMarkdown", () => {
     it("serializes edited headings and paragraphs without rewriting untouched blocks", () => {
         const markdown = "# Title\n\nBody.\n";
         const parsed = parseMarkdown(markdown);
-        const heading = parsed.doc.child(0).type.create(
-            parsed.doc.child(0).attrs,
-            parsed.doc.type.schema.text("New Title"),
+        const heading = parsed.doc
+            .child(0)
+            .type.create(
+                parsed.doc.child(0).attrs,
+                parsed.doc.type.schema.text("New Title"),
+            );
+        const editedDoc = parsed.doc.copy(
+            parsed.doc.content.replaceChild(0, heading),
         );
-        const editedDoc = parsed.doc.copy(parsed.doc.content.replaceChild(0, heading));
 
-        expect(serializeMarkdown({ ...parsed, doc: editedDoc })).toBe("# New Title\n\nBody.\n");
+        expect(serializeMarkdown({ ...parsed, doc: editedDoc })).toBe(
+            "# New Title\n\nBody.\n",
+        );
     });
 
     it("restores wikilinks instead of serializing temporary mdx-wikilink links", () => {
@@ -46,7 +52,9 @@ describe("serializeMarkdown", () => {
             ]),
         ]);
 
-        expect(serializeMarkdown(emptyParsedDocument(doc))).toBe("[[Target|Alias]]\n");
+        expect(serializeMarkdown(emptyParsedDocument(doc))).toBe(
+            "[[Target|Alias]]\n",
+        );
     });
 
     it("preserves multiple blank lines between untouched source blocks", () => {
@@ -64,7 +72,8 @@ describe("serializeMarkdown", () => {
     });
 
     it("preserves unchanged frontmatter and fenced code inner text", () => {
-        const markdown = "---\ntitle: Test\n\n---\n\n```mermaid live\ngraph TD\n  A --> B\n```\n";
+        const markdown =
+            "---\ntitle: Test\n\n---\n\n```mermaid live\ngraph TD\n  A --> B\n```\n";
         const parsed = parseMarkdown(markdown);
 
         expect(serializeMarkdown(parsed)).toBe(markdown);
@@ -105,7 +114,9 @@ describe("serializeMarkdown", () => {
             schema.nodes.math_block.create(null, schema.text("y = mx + b\n")),
             schema.nodes.footnote_definition.create(
                 { label: "1" },
-                schema.nodes.paragraph.create(null, [schema.text("Footnote body.")]),
+                schema.nodes.paragraph.create(null, [
+                    schema.text("Footnote body."),
+                ]),
             ),
             schema.nodes.mermaid_block.create(
                 { info: "mermaid live" },
@@ -115,6 +126,37 @@ describe("serializeMarkdown", () => {
 
         expect(serializeMarkdown(emptyParsedDocument(doc))).toBe(
             "- [x] Done\n- [ ] Todo\n\n$$\ny = mx + b\n$$\n\n[^1]: Footnote body.\n\n```mermaid live\ngraph TD\n  A --> B\n```\n",
+        );
+    });
+
+    it("serializes footnotes through kernel plugin serializers", () => {
+        const kernel = createMdxEditorKernel({
+            syntax: defaultMarkdownSyntax(),
+        });
+        const schema = kernel.schema;
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("A "),
+                schema.nodes.footnote_ref.create({ label: "note" }),
+            ]),
+            schema.nodes.footnote_definition.create(
+                { label: "note" },
+                schema.nodes.paragraph.create(null, [schema.text("Body")]),
+            ),
+        ]);
+
+        expect(kernel.registry.serializers).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    nodeSerializers: expect.objectContaining({
+                        footnote_ref: expect.any(Function),
+                        footnote_definition: expect.any(Function),
+                    }),
+                }),
+            ]),
+        );
+        expect(kernel.serializeMarkdown(doc)).toBe(
+            "A [^note]\n\n[^note]: Body\n",
         );
     });
 
@@ -216,7 +258,8 @@ describe("serializeMarkdown", () => {
         const reparsed = parseMarkdown(serialized);
 
         expect(serialized).toBe(
-            String.raw`plain \*\*bold\*\* \*em\* \~\~gone\~\~ \`code\` \$x+1\$` + "\n",
+            String.raw`plain \*\*bold\*\* \*em\* \~\~gone\~\~ \`code\` \$x+1\$` +
+                "\n",
         );
         expect(reparsed.doc.child(0).childCount).toBe(1);
         expect(reparsed.doc.child(0).textContent).toBe(plainText);
@@ -235,7 +278,9 @@ describe("serializeMarkdown", () => {
         const schema = mdxEditorSchema;
         const doc = schema.nodes.doc.create(null, [
             schema.nodes.paragraph.create(null, [
-                schema.text(String.raw`a\b`, [schema.marks.inline_code.create()]),
+                schema.text(String.raw`a\b`, [
+                    schema.marks.inline_code.create(),
+                ]),
                 schema.text(" "),
                 schema.nodes.math_inline.create({ latex: String.raw`\alpha` }),
             ]),
@@ -243,9 +288,18 @@ describe("serializeMarkdown", () => {
         const markdown = serializeMarkdown(emptyParsedDocument(doc));
         const reparsed = parseMarkdown(markdown);
 
-        expect(markdown).toBe(String.raw`` + "`" + String.raw`a\b` + "` " + String.raw`$\\alpha$` + "\n");
+        expect(markdown).toBe(
+            String.raw`` +
+                "`" +
+                String.raw`a\b` +
+                "` " +
+                String.raw`$\\alpha$` +
+                "\n",
+        );
         expect(reparsed.doc.child(0).child(0).text).toBe(String.raw`a\b`);
-        expect(reparsed.doc.child(0).child(2).attrs.latex).toBe(String.raw`\alpha`);
+        expect(reparsed.doc.child(0).child(2).attrs.latex).toBe(
+            String.raw`\alpha`,
+        );
     });
 
     it("round-trips inline math containing dollars and trailing backslashes", () => {
@@ -265,7 +319,9 @@ describe("serializeMarkdown", () => {
             const reparsed = parseMarkdown(markdown);
 
             expect(markdown).toBe(testCase.markdown);
-            expect(reparsed.doc.child(0).child(0).type.name).toBe("math_inline");
+            expect(reparsed.doc.child(0).child(0).type.name).toBe(
+                "math_inline",
+            );
             expect(reparsed.doc.child(0).child(0).attrs.latex).toBe(
                 testCase.latex,
             );
@@ -316,10 +372,12 @@ describe("serializeMarkdown", () => {
 
         expect(markdown).toBe("**`x`**\n");
         expect(reparsed.doc.child(0).child(0).text).toBe("x");
-        expect(reparsed.doc.child(0).child(0).marks.map((mark) => mark.type.name)).toEqual([
-            "strong",
-            "inline_code",
-        ]);
+        expect(
+            reparsed.doc
+                .child(0)
+                .child(0)
+                .marks.map((mark) => mark.type.name),
+        ).toEqual(["strong", "inline_code"]);
     });
 
     it("round-trips outer marks on generated inline atom nodes", () => {
@@ -331,9 +389,9 @@ describe("serializeMarkdown", () => {
                 schema.text(" "),
                 schema.nodes.footnote_ref.create({ label: "n" }).mark([strong]),
                 schema.text(" "),
-                schema.nodes.image.create({ src: "src", alt: "alt" }).mark([
-                    strong,
-                ]),
+                schema.nodes.image
+                    .create({ src: "src", alt: "alt" })
+                    .mark([strong]),
             ]),
         ]);
         const markdown = serializeMarkdown(emptyParsedDocument(doc));
@@ -341,17 +399,26 @@ describe("serializeMarkdown", () => {
 
         expect(markdown).toBe("**$x$** **[^n]** **![alt](src)**\n");
         expect(reparsed.doc.child(0).child(0).type.name).toBe("math_inline");
-        expect(reparsed.doc.child(0).child(0).marks.map((mark) => mark.type.name)).toEqual([
-            "strong",
-        ]);
+        expect(
+            reparsed.doc
+                .child(0)
+                .child(0)
+                .marks.map((mark) => mark.type.name),
+        ).toEqual(["strong"]);
         expect(reparsed.doc.child(0).child(2).type.name).toBe("footnote_ref");
-        expect(reparsed.doc.child(0).child(2).marks.map((mark) => mark.type.name)).toEqual([
-            "strong",
-        ]);
+        expect(
+            reparsed.doc
+                .child(0)
+                .child(2)
+                .marks.map((mark) => mark.type.name),
+        ).toEqual(["strong"]);
         expect(reparsed.doc.child(0).child(4).type.name).toBe("image");
-        expect(reparsed.doc.child(0).child(4).marks.map((mark) => mark.type.name)).toEqual([
-            "strong",
-        ]);
+        expect(
+            reparsed.doc
+                .child(0)
+                .child(4)
+                .marks.map((mark) => mark.type.name),
+        ).toEqual(["strong"]);
     });
 
     it("round-trips parsed marks on inline atom nodes", () => {
@@ -431,7 +498,9 @@ describe("serializeMarkdown", () => {
         const doc = schema.nodes.doc.create(null, [
             schema.nodes.paragraph.create(null, [
                 schema.text("Code "),
-                schema.text(String.raw`a[b]\c`, [schema.marks.inline_code.create()]),
+                schema.text(String.raw`a[b]\c`, [
+                    schema.marks.inline_code.create(),
+                ]),
             ]),
         ]);
 
@@ -464,19 +533,16 @@ describe("serializeMarkdown", () => {
     it("escapes table cell pipes so edited cells remain structured after reload", () => {
         const schema = mdxEditorSchema;
         const doc = schema.nodes.doc.create(null, [
-            schema.nodes.table.create(
-                { alignments: [] },
-                [
-                    schema.nodes.table_row.create(null, [
-                        schema.nodes.table_header.create(null, schema.text("A")),
-                        schema.nodes.table_header.create(null, schema.text("B")),
-                    ]),
-                    schema.nodes.table_row.create(null, [
-                        schema.nodes.table_cell.create(null, schema.text("A | B")),
-                        schema.nodes.table_cell.create(null, schema.text("C")),
-                    ]),
-                ],
-            ),
+            schema.nodes.table.create({ alignments: [] }, [
+                schema.nodes.table_row.create(null, [
+                    schema.nodes.table_header.create(null, schema.text("A")),
+                    schema.nodes.table_header.create(null, schema.text("B")),
+                ]),
+                schema.nodes.table_row.create(null, [
+                    schema.nodes.table_cell.create(null, schema.text("A | B")),
+                    schema.nodes.table_cell.create(null, schema.text("C")),
+                ]),
+            ]),
         ]);
         const markdown = serializeMarkdown(emptyParsedDocument(doc));
         const reparsed = parseMarkdown(markdown).doc.child(0);
@@ -490,29 +556,24 @@ describe("serializeMarkdown", () => {
     it("preserves inline syntax pipes inside table cells", () => {
         const schema = mdxEditorSchema;
         const doc = schema.nodes.doc.create(null, [
-            schema.nodes.table.create(
-                { alignments: [] },
-                [
-                    schema.nodes.table_row.create(null, [
-                        schema.nodes.table_header.create(null, schema.text("Link")),
-                        schema.nodes.table_header.create(null, schema.text("Code")),
-                    ]),
-                    schema.nodes.table_row.create(null, [
-                        schema.nodes.table_cell.create(null, [
-                            schema.text("Alias", [
-                                schema.marks.link.create({
-                                    href: "mdx-wikilink:Page%7CAlias",
-                                }),
-                            ]),
-                        ]),
-                        schema.nodes.table_cell.create(null, [
-                            schema.text("a|b", [
-                                schema.marks.inline_code.create(),
-                            ]),
+            schema.nodes.table.create({ alignments: [] }, [
+                schema.nodes.table_row.create(null, [
+                    schema.nodes.table_header.create(null, schema.text("Link")),
+                    schema.nodes.table_header.create(null, schema.text("Code")),
+                ]),
+                schema.nodes.table_row.create(null, [
+                    schema.nodes.table_cell.create(null, [
+                        schema.text("Alias", [
+                            schema.marks.link.create({
+                                href: "mdx-wikilink:Page%7CAlias",
+                            }),
                         ]),
                     ]),
-                ],
-            ),
+                    schema.nodes.table_cell.create(null, [
+                        schema.text("a|b", [schema.marks.inline_code.create()]),
+                    ]),
+                ]),
+            ]),
         ]);
         const markdown = serializeMarkdown(emptyParsedDocument(doc));
         const reparsed = parseMarkdown(markdown).doc.child(0);
@@ -537,7 +598,9 @@ describe("serializeMarkdown", () => {
             ]),
         ]);
 
-        expect(serializeMarkdown(emptyParsedDocument(doc))).toBe("- **bold**\n");
+        expect(serializeMarkdown(emptyParsedDocument(doc))).toBe(
+            "- **bold**\n",
+        );
     });
 
     it("keeps markdown headings distinct from ordered list items", () => {
@@ -659,7 +722,9 @@ describe("serializeMarkdown", () => {
         const reparsedLink = parseMarkdown(linkMarkdown);
         const reparsedImage = parseMarkdown(imageMarkdown);
 
-        expect(linkMarkdown).toBe(String.raw`[docs](https://example.com "a\\b")` + "\n");
+        expect(linkMarkdown).toBe(
+            String.raw`[docs](https://example.com "a\\b")` + "\n",
+        );
         expect(imageMarkdown).toBe(String.raw`![Alt](image.png "a\\b")` + "\n");
         expect(reparsedLink.doc.child(0).child(0).marks[0]?.attrs.title).toBe(
             String.raw`a\b`,
@@ -741,14 +806,18 @@ describe("serializeMarkdown", () => {
         const reparsed = parseMarkdown(markdown);
 
         expect(markdown).toBe("[**bold** *em*](https://x.test)\n");
-        expect(reparsed.doc.child(0).child(0).marks.map((mark) => mark.type.name)).toEqual([
-            "strong",
-            "link",
-        ]);
-        expect(reparsed.doc.child(0).child(2).marks.map((mark) => mark.type.name)).toEqual([
-            "emphasis",
-            "link",
-        ]);
+        expect(
+            reparsed.doc
+                .child(0)
+                .child(0)
+                .marks.map((mark) => mark.type.name),
+        ).toEqual(["strong", "link"]);
+        expect(
+            reparsed.doc
+                .child(0)
+                .child(2)
+                .marks.map((mark) => mark.type.name),
+        ).toEqual(["emphasis", "link"]);
     });
 
     it("serializes one wikilink spanning multiple text nodes once", () => {
@@ -784,13 +853,18 @@ describe("serializeMarkdown", () => {
 
         expect(markdown).toBe("[**bold** tail](https://x.test)\n");
         expect(reparsed.doc.child(0).textContent).toBe("bold tail");
-        expect(reparsed.doc.child(0).child(0).marks.map((mark) => mark.type.name)).toEqual([
-            "strong",
-            "link",
-        ]);
-        expect(reparsed.doc.child(0).child(1).marks.map((mark) => mark.type.name)).toEqual([
-            "link",
-        ]);
+        expect(
+            reparsed.doc
+                .child(0)
+                .child(0)
+                .marks.map((mark) => mark.type.name),
+        ).toEqual(["strong", "link"]);
+        expect(
+            reparsed.doc
+                .child(0)
+                .child(1)
+                .marks.map((mark) => mark.type.name),
+        ).toEqual(["link"]);
     });
 
     it("round-trips nested marks inside wikilink labels", () => {
@@ -809,13 +883,18 @@ describe("serializeMarkdown", () => {
 
         expect(markdown).toBe("[[Target|**Bold** tail]]\n");
         expect(reparsed.doc.child(0).textContent).toBe("Bold tail");
-        expect(reparsed.doc.child(0).child(0).marks.map((mark) => mark.type.name)).toEqual([
-            "strong",
-            "link",
-        ]);
-        expect(reparsed.doc.child(0).child(1).marks.map((mark) => mark.type.name)).toEqual([
-            "link",
-        ]);
+        expect(
+            reparsed.doc
+                .child(0)
+                .child(0)
+                .marks.map((mark) => mark.type.name),
+        ).toEqual(["strong", "link"]);
+        expect(
+            reparsed.doc
+                .child(0)
+                .child(1)
+                .marks.map((mark) => mark.type.name),
+        ).toEqual(["link"]);
     });
 
     it("serializes link hrefs containing spaces as angle-bracket hrefs", () => {
@@ -868,9 +947,13 @@ describe("serializeMarkdown", () => {
     it("does not resurrect deleted trailing blocks from the original source", () => {
         const markdown = "# Title\n\nBody.\n";
         const parsed = parseMarkdown(markdown);
-        const trimmedDoc = parsed.doc.copy(parsed.doc.content.cut(0, parsed.doc.child(0).nodeSize));
+        const trimmedDoc = parsed.doc.copy(
+            parsed.doc.content.cut(0, parsed.doc.child(0).nodeSize),
+        );
 
-        expect(serializeMarkdown({ ...parsed, doc: trimmedDoc })).toBe("# Title\n");
+        expect(serializeMarkdown({ ...parsed, doc: trimmedDoc })).toBe(
+            "# Title\n",
+        );
     });
 
     it("does not resurrect deleted middle blocks from original source gaps", () => {
@@ -885,7 +968,9 @@ describe("serializeMarkdown", () => {
             );
         const editedDoc = parsed.doc.copy(nextContent);
 
-        expect(serializeMarkdown({ ...parsed, doc: editedDoc })).toBe("# Title\n\nKeep me.\n");
+        expect(serializeMarkdown({ ...parsed, doc: editedDoc })).toBe(
+            "# Title\n\nKeep me.\n",
+        );
     });
 
     it("preserves trailing blank source when the final source block is unchanged", () => {
@@ -952,7 +1037,9 @@ describe("serializeMarkdown", () => {
     });
 });
 
-function emptyParsedDocument(doc: ReturnType<typeof mdxEditorSchema.nodes.doc.create>) {
+function emptyParsedDocument(
+    doc: ReturnType<typeof mdxEditorSchema.nodes.doc.create>,
+) {
     return {
         doc,
         originalMarkdown: "",
