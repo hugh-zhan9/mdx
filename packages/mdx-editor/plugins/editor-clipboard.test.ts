@@ -3,7 +3,9 @@ import { AllSelection, EditorState, TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { JSDOM } from "jsdom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createMdxEditorKernel, type SyntaxPlugin } from "../kernel";
 import { mdxEditorSchema } from "../schema/schema";
+import { defaultMarkdownSyntax } from "../syntax/default";
 import {
     clipboardTextToMarkdown,
     createMarkdownClipboardPlugin,
@@ -97,6 +99,108 @@ describe("markdown clipboard plugin", () => {
         expect(handleCopy(plugin, view, event)).toBe(true);
         expect(event.clipboardData.getData("text/plain")).toBe(
             `## ${headingText}\n`,
+        );
+    });
+
+    it("preserves ordinary paragraph clipboard serialization for open slices", () => {
+        const plugin = createMarkdownClipboardPlugin();
+        const doc = mdxEditorSchema.nodes.doc.create(null, [
+            mdxEditorSchema.nodes.paragraph.create(null, [
+                mdxEditorSchema.text("plain"),
+            ]),
+        ]);
+        const state = EditorState.create({
+            doc,
+            schema: mdxEditorSchema,
+            selection: TextSelection.create(doc, 1, doc.child(0).nodeSize - 1),
+        });
+        const view = fakeEditorView(state, () => {});
+        const event = copyEvent();
+
+        expect(handleCopy(plugin, view, event)).toBe(true);
+        expect(event.clipboardData.getData("text/plain")).toBe("plain");
+    });
+
+    it("uses kernel-backed inline_html clipboard serialization for open paragraph selections", () => {
+        const kernel = createClipboardKernel({
+            inline_html: (node) => `INLINE:${String(node.attrs.html ?? "")}`,
+        });
+        const plugin = clipboardPluginFrom(kernel);
+        const doc = kernel.schema.nodes.doc.create(null, [
+            kernel.schema.nodes.paragraph.create(null, [
+                kernel.schema.nodes.inline_html.create({
+                    html: "<kbd>Command</kbd>",
+                    tag: "kbd",
+                    text: "Command",
+                }),
+            ]),
+        ]);
+        const state = EditorState.create({
+            doc,
+            schema: kernel.schema,
+            selection: TextSelection.create(doc, 1, doc.child(0).nodeSize - 1),
+        });
+        const view = fakeEditorView(state, () => {});
+        const event = copyEvent();
+
+        expect(handleCopy(plugin, view, event)).toBe(true);
+        expect(event.clipboardData.getData("text/plain")).toBe(
+            "INLINE:<kbd>Command</kbd>",
+        );
+    });
+
+    it("uses kernel-backed html_block clipboard serialization", () => {
+        const kernel = createClipboardKernel({
+            html_block: (node) => `BLOCK:${node.textContent}\n`,
+        });
+        const plugin = clipboardPluginFrom(kernel);
+        const doc = kernel.schema.nodes.doc.create(null, [
+            kernel.schema.nodes.html_block.create(
+                {
+                    html: "<details>value</details>",
+                    tag: "details",
+                },
+                kernel.schema.text("<details>value</details>"),
+            ),
+        ]);
+        const state = EditorState.create({
+            doc,
+            schema: kernel.schema,
+            selection: new AllSelection(doc),
+        });
+        const view = fakeEditorView(state, () => {});
+        const event = copyEvent();
+
+        expect(handleCopy(plugin, view, event)).toBe(true);
+        expect(event.clipboardData.getData("text/plain")).toBe(
+            "BLOCK:<details>value</details>\n",
+        );
+    });
+
+    it("uses kernel-backed source_fallback clipboard serialization", () => {
+        const kernel = createClipboardKernel({
+            source_fallback: (node) =>
+                `FALLBACK:${String(node.attrs.markdown ?? "").trim()}\n`,
+        });
+        const plugin = clipboardPluginFrom(kernel);
+        const doc = kernel.schema.nodes.doc.create(null, [
+            kernel.schema.nodes.source_fallback.create({
+                markdown: "<div>fallback</div>\n",
+                reason: "unsupported",
+                sourceId: "source-0",
+            }),
+        ]);
+        const state = EditorState.create({
+            doc,
+            schema: kernel.schema,
+            selection: new AllSelection(doc),
+        });
+        const view = fakeEditorView(state, () => {});
+        const event = copyEvent();
+
+        expect(handleCopy(plugin, view, event)).toBe(true);
+        expect(event.clipboardData.getData("text/plain")).toBe(
+            "FALLBACK:<div>fallback</div>\n",
         );
     });
 
@@ -324,6 +428,33 @@ function transformPastedHTML(html: string) {
     expect(transform).toBeTypeOf("function");
 
     return transform?.call(plugin, html, {} as EditorView) ?? "";
+}
+
+function createClipboardKernel(
+    nodeSerializers: NonNullable<SyntaxPlugin["serializers"]>["nodeSerializers"],
+) {
+    const overridePlugin: SyntaxPlugin = {
+        id: "clipboard-serializer-override",
+        serializers: {
+            nodeSerializers,
+        },
+    };
+
+    return createMdxEditorKernel({
+        syntax: [...defaultMarkdownSyntax(), overridePlugin],
+    });
+}
+
+function clipboardPluginFrom(
+    kernel: ReturnType<typeof createMdxEditorKernel>,
+) {
+    const plugin = kernel
+        .createEditorPlugins()
+        .find((candidate) => candidate.props.clipboardTextSerializer);
+
+    expect(plugin).toBeDefined();
+
+    return plugin as Plugin;
 }
 
 function handlePaste(

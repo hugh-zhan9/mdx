@@ -19,7 +19,7 @@ export interface MarkdownClipboardHtmlOptions {
 export interface MarkdownClipboardPluginOptions {
     schema?: Schema;
     parseMarkdown?: (markdown: string) => ParsedMarkdownDocument;
-    serializeMarkdown?: (doc: ParsedMarkdownDocument) => string;
+    serializeMarkdown?: (doc: ProseMirrorNode | ParsedMarkdownDocument) => string;
 }
 
 export function markdownToClipboardHtml(
@@ -228,7 +228,7 @@ function insertMarkdown(
 function sliceToMarkdown(
     slice: Slice,
     schema: Schema,
-    serialize: (doc: ParsedMarkdownDocument) => string,
+    serialize: (doc: ProseMirrorNode | ParsedMarkdownDocument) => string,
 ) {
     const singleChild = slice.content.childCount === 1
         ? slice.content.firstChild
@@ -239,9 +239,21 @@ function sliceToMarkdown(
         slice.openStart > 0 &&
         slice.openEnd > 0
     ) {
+        if (containsKernelOwnedClipboardNode(singleChild)) {
+            return serializeSliceDocument(slice, schema, serialize).replace(/\n$/, "");
+        }
+
         return serializeBlockNode(singleChild).replace(/\n$/, "");
     }
 
+    return serializeSliceDocument(slice, schema, serialize);
+}
+
+function serializeSliceDocument(
+    slice: Slice,
+    schema: Schema,
+    serialize: (doc: ProseMirrorNode | ParsedMarkdownDocument) => string,
+) {
     const blocks: ProseMirrorNode[] = [];
     slice.content.forEach((node) => {
         if (node.isInline) {
@@ -263,6 +275,28 @@ function sliceToMarkdown(
         originalMarkdown: "",
         sourceSlices: [],
     });
+}
+
+function containsKernelOwnedClipboardNode(node: ProseMirrorNode) {
+    if (node.type.name === "inline_html") {
+        return true;
+    }
+
+    let found = false;
+    node.descendants((child) => {
+        if (
+            child.type.name === "inline_html" ||
+            child.type.name === "html_block" ||
+            child.type.name === "source_fallback"
+        ) {
+            found = true;
+            return false;
+        }
+
+        return true;
+    });
+
+    return found;
 }
 
 function renderBlockNode(node: ProseMirrorNode): string {

@@ -89,6 +89,8 @@ export function createMdxEditorKernel(
             createMdxEditorPlugins({
                 schema,
                 codeTokenizer: options.services?.codeTokenizer,
+                parseMarkdown,
+                serializeMarkdown,
             }),
         clipboard: {
             serializeMarkdown,

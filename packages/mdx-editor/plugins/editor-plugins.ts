@@ -2,6 +2,8 @@ import { baseKeymap } from "prosemirror-commands";
 import { history } from "prosemirror-history";
 import { keymap } from "prosemirror-keymap";
 import type { Schema } from "prosemirror-model";
+import type { Node as ProseMirrorNode } from "prosemirror-model";
+import type { ParsedMarkdownDocument } from "../core/types";
 import { mdxEditorSchema } from "../schema/schema";
 import {
     createCodeHighlightPlugin,
@@ -16,6 +18,8 @@ import { createSourceFallbackPlugin } from "./source-fallback-plugin";
 export interface MdxEditorPluginOptions {
     schema?: Schema;
     codeTokenizer?: CodeTokenizer;
+    parseMarkdown?: (markdown: string) => ParsedMarkdownDocument;
+    serializeMarkdown?: (doc: ProseMirrorNode | ParsedMarkdownDocument) => string;
 }
 
 export function createMdxEditorPlugins(options: MdxEditorPluginOptions = {}) {
@@ -26,7 +30,11 @@ export function createMdxEditorPlugins(options: MdxEditorPluginOptions = {}) {
         createSourceFallbackPlugin(),
         createCodeHighlightPlugin({ codeTokenizer: options.codeTokenizer }),
         markdownInputRulesPlugin(schema),
-        createMarkdownClipboardPlugin({ schema }),
+        createMarkdownClipboardPlugin({
+            schema,
+            parseMarkdown: options.parseMarkdown,
+            serializeMarkdown: options.serializeMarkdown,
+        }),
         createEditableLinkPlugin(schema),
         keymap(markdownKeymap(schema)),
         keymap(baseKeymap),
