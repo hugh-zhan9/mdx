@@ -2,6 +2,7 @@ import type { Node as ProseMirrorNode, Schema } from "prosemirror-model";
 import { sourceRange } from "../core/source-map";
 import type { SourceSlice } from "../core/types";
 import { mdxEditorSchema } from "../schema/schema";
+import { tryParseFootnoteDefinition } from "../syntax/footnote/parse";
 import { parseInlineMarkdown } from "./inline-markdown";
 
 interface LogicalLine {
@@ -219,6 +220,7 @@ export function parseMarkdownBlocks(
             markdown,
             sourceSlices,
             schema,
+            parseInlineMarkdown,
         );
         if (footnoteRange) {
             const { node, nextCursor } = footnoteRange;
@@ -621,66 +623,6 @@ function tryParseMathBlock(
         ),
         nextCursor: endLine + 1,
     };
-}
-
-function tryParseFootnoteDefinition(
-    logicalLines: LogicalLine[],
-    startLine: number,
-    markdown: string,
-    sourceSlices: SourceSlice[],
-    schema: Schema,
-) {
-    const line = logicalLines[startLine];
-    const match = (line?.text ?? "").match(/^\[\^([^\]]+)\]:[ \t]*(.*)$/);
-    if (!line || !match) {
-        return null;
-    }
-
-    const contentLines = [match[2]];
-    let endLine = startLine;
-
-    while (endLine + 1 < logicalLines.length) {
-        const nextLine = logicalLines[endLine + 1];
-        if (!nextLine || nextLine.text.trim() === "") {
-            break;
-        }
-
-        if (!/^[ \t]+/.test(nextLine.text)) {
-            break;
-        }
-
-        contentLines.push(stripFootnoteContinuationIndent(nextLine.text));
-        endLine += 1;
-    }
-
-    const sourceId = addSlice(
-        sourceSlices,
-        markdown,
-        line.start,
-        logicalLines[endLine]?.end ?? line.end,
-    );
-    const content = contentLines.map((contentLine) =>
-        schema.nodes.paragraph.create(
-            { sourceId: null },
-            parseInlineMarkdown(contentLine, schema),
-        ),
-    );
-
-    return {
-        node: schema.nodes.footnote_definition.create(
-            { label: match[1], sourceId },
-            content,
-        ),
-        nextCursor: endLine + 1,
-    };
-}
-
-function stripFootnoteContinuationIndent(text: string) {
-    if (text.startsWith("\t")) {
-        return text.slice(1);
-    }
-
-    return text.replace(/^ {1,4}/, "");
 }
 
 function tryParseOrderedList(

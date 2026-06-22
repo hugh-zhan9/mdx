@@ -16,8 +16,6 @@ const legacyNodeNames = [
     "table_row",
     "table_cell",
     "table_header",
-    "footnote_ref",
-    "footnote_definition",
     "math_inline",
     "math_block",
     "callout",

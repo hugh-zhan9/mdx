@@ -1,5 +1,6 @@
 import type { Mark, Node as ProseMirrorNode, Schema } from "prosemirror-model";
 import { mdxEditorSchema } from "../schema/schema";
+import { tryParseFootnoteRef } from "../syntax/footnote/parse";
 
 export function parseInlineMarkdown(
     text: string,
@@ -526,27 +527,6 @@ function tryParseLink(text: string, startIndex: number) {
         href,
         title,
         nextIndex: cursor + 1,
-    };
-}
-
-function tryParseFootnoteRef(text: string, startIndex: number) {
-    if (!text.startsWith("[^", startIndex)) {
-        return null;
-    }
-
-    const labelEnd = findUnescaped(text, "]", startIndex + 2);
-    if (labelEnd < 0) {
-        return null;
-    }
-
-    const rawLabel = text.slice(startIndex + 2, labelEnd);
-    if (rawLabel.length === 0) {
-        return null;
-    }
-
-    return {
-        label: decodeEscapes(rawLabel),
-        nextIndex: labelEnd + 1,
     };
 }
 
