@@ -18,6 +18,14 @@ For Mermaid live preview:
 
 Markdown text remains the authoritative document format. If the editor encounters Markdown that cannot be represented by the visual block model, it must preserve that content in an explicit fallback block instead of dropping, normalizing, or silently rewriting it. Saving must round-trip the original Markdown for those fallback blocks until the editor gains structured support for that construct.
 
+## Markdown Syntax Plugin Kernel
+
+The self-owned Markdown editor is composed through `createMdxEditorKernel(...)` and `defaultMarkdownSyntax()`. Current app and feature callers must use the kernel API rather than the old direct parser, serializer, schema, or editor-plugin factory exports from `packages/mdx-editor`.
+
+Syntax families that have been extracted into independent plugins own their schema contribution, parser contribution, serializer, NodeView, clipboard behavior, and focused tests. The first extracted syntax families are fallback/source blocks, HTML, footnotes, code fences/frontmatter, and Mermaid.
+
+Mermaid fence parsing is intentionally independent from ordinary code-fence parsing. Clipboard HTML must be sanitized before it can rehydrate raw Markdown HTML or syntax-owned clipboard metadata.
+
 ## Recovery And External Change Safety
 
 Unsaved recovery data must stay under explicit user control. If a draft recovery banner is visible, automatic clean reloads from disk may update the editor's clean baseline, but they must not delete the draft; only save success or an explicit discard action may remove it.
