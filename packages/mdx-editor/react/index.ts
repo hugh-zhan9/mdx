@@ -9,4 +9,3 @@ export {
 } from "./mdx-editor-provider";
 export { MdxEditorView } from "./mdx-editor-view";
 export { EditorToolbar } from "./editor-toolbar";
-export { nodeViewPlaceholder } from "./node-views";
