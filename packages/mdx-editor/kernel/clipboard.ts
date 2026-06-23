@@ -277,9 +277,11 @@ function renderHtmlNodeAsMarkdown(node: Node): string {
     }
 
     if (nodeType === "html_block") {
-        return ensureTrailingNewline(
-            element.getAttribute("data-mdx-html") ?? element.textContent ?? "",
-        );
+        return ensureTrailingNewline(sanitizedRawHtmlFromMetadata(element));
+    }
+
+    if (nodeType === "inline_html") {
+        return sanitizedRawHtmlFromMetadata(element);
     }
 
     if (nodeType === "mermaid_block") {
@@ -438,6 +440,12 @@ function textBeforeFence(text: string) {
 
 function ensureTrailingNewline(text: string) {
     return text.endsWith("\n") ? text : `${text}\n`;
+}
+
+function sanitizedRawHtmlFromMetadata(element: HTMLElement) {
+    return sanitizeClipboardHtml(
+        element.getAttribute("data-mdx-html") ?? element.textContent ?? "",
+    );
 }
 
 function safeUrl(url: string) {

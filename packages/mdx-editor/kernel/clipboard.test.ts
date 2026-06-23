@@ -88,6 +88,48 @@ describe("kernel clipboard", () => {
         );
     });
 
+    it("preserves sanitized inline html from kernel clipboard metadata", () => {
+        vi.stubGlobal("DOMParser", new JSDOM("").window.DOMParser);
+
+        const kernel = createMdxEditorKernel({ syntax: defaultMarkdownSyntax() });
+        const doc = kernel.schema.nodes.doc.create(null, [
+            kernel.schema.nodes.paragraph.create(null, [
+                kernel.schema.text("Press "),
+                kernel.schema.nodes.inline_html.create({
+                    html: "<kbd>Command</kbd>",
+                    tag: "kbd",
+                    text: "Command",
+                }),
+            ]),
+        ]);
+
+        const parsed = kernel.clipboard.parseHtml(
+            kernel.clipboard.serializeHtml(doc),
+        );
+
+        expect(kernel.serializeMarkdown(parsed.doc)).toBe(
+            "Press <kbd>Command</kbd>\n",
+        );
+    });
+
+    it("sanitizes raw html stored in kernel clipboard metadata", () => {
+        vi.stubGlobal("DOMParser", new JSDOM("").window.DOMParser);
+
+        const kernel = createMdxEditorKernel({ syntax: defaultMarkdownSyntax() });
+        const parsed = kernel.clipboard.parseHtml(
+            '<div data-mdx-node-type="html_block" data-mdx-html="<details onclick=&quot;alert(1)&quot;><summary>Safe</summary><script>alert(2)</script><a href=&quot;javascript:alert(3)&quot;>link</a></details>">ignored</div>',
+        );
+        const markdown = kernel.serializeMarkdown(parsed.doc);
+
+        expect(markdown).toContain("<details");
+        expect(markdown).toContain("<summary>Safe</summary>");
+        expect(markdown).toContain(">link</a>");
+        expect(markdown).not.toContain("onclick");
+        expect(markdown).not.toContain("script");
+        expect(markdown).not.toContain("javascript");
+        expect(markdown).not.toContain("alert");
+    });
+
     it("removes unsafe event handlers and urls while keeping safe text", () => {
         const kernel = createMdxEditorKernel({ syntax: defaultMarkdownSyntax() });
         const parsed = kernel.clipboard.parseHtml(
