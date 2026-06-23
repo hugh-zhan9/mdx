@@ -2,18 +2,23 @@ import { DOMParser, DOMSerializer } from "prosemirror-model";
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vitest";
 import { MDX_CODE_BLOCK_SELECTOR } from "../../../features/editor/lib/editor-dom-contract";
-import { mdxEditorSchema } from "./schema";
+import { createMdxEditorKernel } from "../kernel";
+import { defaultMarkdownSyntax } from "../syntax/default";
 
-describe("mdxEditorSchema DOM contract", () => {
+const editorSchema = createMdxEditorKernel({
+    syntax: defaultMarkdownSyntax(),
+}).schema;
+
+describe("editorSchema DOM contract", () => {
     it("round-trips typed pre blocks through specific DOM parse rules", () => {
         const dom = new JSDOM(
             `<article><pre data-mdx-node-type="frontmatter" data-mdx-syntax="frontmatter" data-mdx-source-id="source-0"><code>title: Test
 </code></pre><pre data-mdx-node-type="code_block" data-mdx-code-block="" data-mdx-language="mermaid" data-mdx-info="mermaid live" data-mdx-source-id="source-1"><code>graph TD
-</code></pre><pre data-mdx-node-type="opaque" data-mdx-source-id="source-2" data-mdx-reason="unsupported"><code>:::callout
+</code></pre><pre data-mdx-node-type="source_fallback" data-mdx-source-id="source-2" data-mdx-reason="unsupported" data-mdx-markdown=":::callout&#10;"><code>:::callout
 </code></pre></article>`,
         );
 
-        const parsed = DOMParser.fromSchema(mdxEditorSchema).parse(
+        const parsed = DOMParser.fromSchema(editorSchema).parse(
             dom.window.document.querySelector("article")!,
             { preserveWhitespace: "full" },
         );
@@ -27,136 +32,135 @@ describe("mdxEditorSchema DOM contract", () => {
             info: "mermaid live",
             sourceId: "source-1",
         });
-        expect(parsed.child(2).type.name).toBe("opaque_block");
+        expect(parsed.child(2).type.name).toBe("source_fallback");
         expect(parsed.child(2).attrs).toEqual({
+            markdown: ":::callout\n",
             reason: "unsupported",
             sourceId: "source-2",
         });
     });
 });
 
-describe("mdxEditorSchema advanced markdown nodes", () => {
+describe("editorSchema advanced markdown nodes", () => {
     it("creates list, task, blockquote, table, footnote, math, callout, mermaid, and source fallback nodes", () => {
-        const schema = mdxEditorSchema;
-        const paragraph = schema.nodes.paragraph.create(
+        const paragraph = editorSchema.nodes.paragraph.create(
             null,
-            schema.text("Cell"),
+            editorSchema.text("Cell"),
         );
-        const table = schema.nodes.table.create(
+        const table = editorSchema.nodes.table.create(
             { alignments: ["left", "right"] },
-            schema.nodes.table_row.create(null, [
-                schema.nodes.table_header.create(null, schema.text("A")),
-                schema.nodes.table_header.create(null, schema.text("B")),
+            editorSchema.nodes.table_row.create(null, [
+                editorSchema.nodes.table_header.create(null, editorSchema.text("A")),
+                editorSchema.nodes.table_header.create(null, editorSchema.text("B")),
             ]),
         );
 
         expect(
-            schema.nodes.bullet_list.create(null, [
-                schema.nodes.task_item.create(
+            editorSchema.nodes.bullet_list.create(null, [
+                editorSchema.nodes.task_item.create(
                     { checked: true },
-                    schema.nodes.paragraph.create(null, schema.text("Done")),
+                    editorSchema.nodes.paragraph.create(null, editorSchema.text("Done")),
                 ),
             ]).type.name,
         ).toBe("bullet_list");
-        expect(schema.nodes.blockquote.create(null, paragraph).type.name).toBe(
+        expect(editorSchema.nodes.blockquote.create(null, paragraph).type.name).toBe(
             "blockquote",
         );
-        expect(schema.nodes.horizontal_rule.create().type.name).toBe(
+        expect(editorSchema.nodes.horizontal_rule.create().type.name).toBe(
             "horizontal_rule",
         );
         expect(table.attrs.alignments).toEqual(["left", "right"]);
         expect(
-            schema.nodes.footnote_ref.create({ label: "1" }).attrs.label,
+            editorSchema.nodes.footnote_ref.create({ label: "1" }).attrs.label,
         ).toBe("1");
         expect(
-            schema.nodes.footnote_definition.create({ label: "1" }, paragraph)
+            editorSchema.nodes.footnote_definition.create({ label: "1" }, paragraph)
                 .attrs.label,
         ).toBe("1");
         expect(
-            schema.nodes.math_inline.create({ latex: "x+1" }).attrs.latex,
+            editorSchema.nodes.math_inline.create({ latex: "x+1" }).attrs.latex,
         ).toBe("x+1");
         expect(
-            schema.nodes.inline_html.create({
+            editorSchema.nodes.inline_html.create({
                 html: "<kbd>Command</kbd>",
                 tag: "kbd",
                 text: "Command",
             }).attrs.html,
         ).toBe("<kbd>Command</kbd>");
         expect(
-            schema.nodes.math_block.create(null, schema.text("y=mx+b"))
+            editorSchema.nodes.math_block.create(null, editorSchema.text("y=mx+b"))
                 .textContent,
         ).toBe("y=mx+b");
         expect(
-            schema.nodes.callout.create(
+            editorSchema.nodes.callout.create(
                 { kind: "NOTE", title: "Note" },
                 paragraph,
             ).attrs.kind,
         ).toBe("NOTE");
         expect(
-            schema.nodes.mermaid_block.create(
+            editorSchema.nodes.mermaid_block.create(
                 null,
-                schema.text("graph TD\nA-->B"),
+                editorSchema.text("graph TD\nA-->B"),
             ).textContent,
         ).toContain("graph TD");
         expect(
-            schema.nodes.source_fallback.create(null, schema.text("<x>"))
+            editorSchema.nodes.source_fallback.create(null, editorSchema.text("<x>"))
                 .textContent,
         ).toBe("<x>");
     });
 
     it("renders stable data-mdx attributes for integration helpers", () => {
-        const dom = mdxEditorSchema.nodes.heading
+        const dom = editorSchema.nodes.heading
             .create({ level: 2 })
             .type.spec.toDOM?.(
-                mdxEditorSchema.nodes.heading.create({ level: 2 }),
+                editorSchema.nodes.heading.create({ level: 2 }),
             );
 
         expect(dom).toBeDefined();
         expect(JSON.stringify(dom)).toContain("data-mdx-node-type");
     });
 
-    it("renders data-mdx-node-type on advanced block schema DOM without mermaid preview UI", () => {
-        const schema = mdxEditorSchema;
-        const paragraph = schema.nodes.paragraph.create(
+    it("renders data-mdx-node-type on advanced block editorSchema DOM without mermaid preview UI", () => {
+        const paragraph = editorSchema.nodes.paragraph.create(
             null,
-            schema.text("Text"),
+            editorSchema.text("Text"),
         );
-        const listItem = schema.nodes.list_item.create(null, paragraph);
-        const taskItem = schema.nodes.task_item.create(
+        const listItem = editorSchema.nodes.list_item.create(null, paragraph);
+        const taskItem = editorSchema.nodes.task_item.create(
             { checked: false },
             paragraph,
         );
-        const tableHeader = schema.nodes.table_header.create(
+        const tableHeader = editorSchema.nodes.table_header.create(
             null,
-            schema.text("A"),
+            editorSchema.text("A"),
         );
-        const tableCell = schema.nodes.table_cell.create(
+        const tableCell = editorSchema.nodes.table_cell.create(
             null,
-            schema.text("B"),
+            editorSchema.text("B"),
         );
-        const tableRow = schema.nodes.table_row.create(null, [
+        const tableRow = editorSchema.nodes.table_row.create(null, [
             tableHeader,
             tableCell,
         ]);
         const advancedBlocks = [
-            schema.nodes.blockquote.create(null, paragraph),
-            schema.nodes.horizontal_rule.create(),
-            schema.nodes.bullet_list.create(null, listItem),
-            schema.nodes.ordered_list.create({ order: 3 }, listItem),
+            editorSchema.nodes.blockquote.create(null, paragraph),
+            editorSchema.nodes.horizontal_rule.create(),
+            editorSchema.nodes.bullet_list.create(null, listItem),
+            editorSchema.nodes.ordered_list.create({ order: 3 }, listItem),
             listItem,
             taskItem,
-            schema.nodes.table.create(null, tableRow),
+            editorSchema.nodes.table.create(null, tableRow),
             tableRow,
             tableCell,
             tableHeader,
-            schema.nodes.footnote_definition.create({ label: "a" }, paragraph),
-            schema.nodes.math_block.create(null, schema.text("x=1")),
-            schema.nodes.callout.create({ kind: "TIP" }, paragraph),
-            schema.nodes.mermaid_block.create(
+            editorSchema.nodes.footnote_definition.create({ label: "a" }, paragraph),
+            editorSchema.nodes.math_block.create(null, editorSchema.text("x=1")),
+            editorSchema.nodes.callout.create({ kind: "TIP" }, paragraph),
+            editorSchema.nodes.mermaid_block.create(
                 null,
-                schema.text("graph TD\nA-->B"),
+                editorSchema.text("graph TD\nA-->B"),
             ),
-            schema.nodes.source_fallback.create(null, schema.text("<x>")),
+            editorSchema.nodes.source_fallback.create(null, editorSchema.text("<x>")),
         ];
 
         for (const node of advancedBlocks) {
@@ -165,10 +169,10 @@ describe("mdxEditorSchema advanced markdown nodes", () => {
         }
 
         const mermaidDom = JSON.stringify(
-            schema.nodes.mermaid_block.spec.toDOM?.(
-                schema.nodes.mermaid_block.create(
+            editorSchema.nodes.mermaid_block.spec.toDOM?.(
+                editorSchema.nodes.mermaid_block.create(
                     null,
-                    schema.text("graph TD\nA-->B"),
+                    editorSchema.text("graph TD\nA-->B"),
                 ),
             ),
         );
@@ -177,14 +181,13 @@ describe("mdxEditorSchema advanced markdown nodes", () => {
     });
 
     it("keeps mermaid blocks visible to the existing code block DOM selector", () => {
-        const schema = mdxEditorSchema;
         const jsdom = new JSDOM("<article></article>");
         const document = jsdom.window.document;
         const article = document.querySelector("article")!;
-        const serializer = DOMSerializer.fromSchema(schema);
-        const mermaid = schema.nodes.mermaid_block.create(
+        const serializer = DOMSerializer.fromSchema(editorSchema);
+        const mermaid = editorSchema.nodes.mermaid_block.create(
             { info: "mermaid live", sourceId: "source-mermaid" },
-            schema.text("graph TD\nA-->B\n"),
+            editorSchema.text("graph TD\nA-->B\n"),
         );
         const domNode = serializer.serializeNode(mermaid, { document });
 
@@ -196,7 +199,7 @@ describe("mdxEditorSchema advanced markdown nodes", () => {
         expect(pre?.getAttribute("data-mdx-language")).toBe("mermaid");
         expect(pre?.getAttribute("data-mdx-info")).toBe("mermaid live");
 
-        const parsed = DOMParser.fromSchema(schema).parse(article, {
+        const parsed = DOMParser.fromSchema(editorSchema).parse(article, {
             preserveWhitespace: "full",
         });
         expect(parsed.child(0).type.name).toBe("mermaid_block");
@@ -204,34 +207,33 @@ describe("mdxEditorSchema advanced markdown nodes", () => {
     });
 
     it("preserves advanced code block payloads through DOM serialization and parsing", () => {
-        const schema = mdxEditorSchema;
         const jsdom = new JSDOM("<article></article>");
         const document = jsdom.window.document;
         const article = document.querySelector("article")!;
-        const serializer = DOMSerializer.fromSchema(schema);
+        const serializer = DOMSerializer.fromSchema(editorSchema);
         const blocks = [
             {
                 expectedType: "math_block",
                 expectedText: "y=mx+b\n",
-                node: schema.nodes.math_block.create(
+                node: editorSchema.nodes.math_block.create(
                     { sourceId: "source-math" },
-                    schema.text("y=mx+b\n"),
+                    editorSchema.text("y=mx+b\n"),
                 ),
             },
             {
                 expectedType: "mermaid_block",
                 expectedText: "graph TD\nA-->B\n",
-                node: schema.nodes.mermaid_block.create(
+                node: editorSchema.nodes.mermaid_block.create(
                     { info: "mermaid live", sourceId: "source-mermaid" },
-                    schema.text("graph TD\nA-->B\n"),
+                    editorSchema.text("graph TD\nA-->B\n"),
                 ),
             },
             {
                 expectedType: "source_fallback",
                 expectedText: "<x>\n",
-                node: schema.nodes.source_fallback.create(
+                node: editorSchema.nodes.source_fallback.create(
                     { reason: "unsupported", sourceId: "source-fallback" },
-                    schema.text("<x>\n"),
+                    editorSchema.text("<x>\n"),
                 ),
             },
         ];
@@ -245,7 +247,7 @@ describe("mdxEditorSchema advanced markdown nodes", () => {
             article.append(domNode);
         }
 
-        const parsed = DOMParser.fromSchema(schema).parse(article, {
+        const parsed = DOMParser.fromSchema(editorSchema).parse(article, {
             preserveWhitespace: "full",
         });
 

@@ -10,11 +10,11 @@ import {
     createCodeHighlightPlugin,
     type CodeTokenizer,
 } from "./editor-code-highlight";
-import { createMarkdownClipboardPlugin } from "./editor-clipboard";
-import { markdownInputRulesPlugin } from "./editor-input-rules";
+import { createEditorClipboardPlugin } from "./editor-clipboard";
+import { createMarkdownInputRulesPlugin } from "./editor-input-rules";
 import { markdownKeymap } from "./editor-keymap";
 import { createEditableLinkPlugin } from "./editor-link-interaction";
-import { createSourceFallbackPlugin } from "./source-fallback-plugin";
+import { sourceFallbackPlugin } from "./source-fallback-plugin";
 
 export interface MdxEditorPluginOptions {
     schema?: Schema;
@@ -24,15 +24,15 @@ export interface MdxEditorPluginOptions {
     clipboard?: KernelClipboard;
 }
 
-export function createMdxEditorPlugins(options: MdxEditorPluginOptions = {}) {
+export function createEditorPluginsForKernel(options: MdxEditorPluginOptions = {}) {
     const schema = options.schema ?? mdxEditorSchema;
 
     return [
         history(),
-        createSourceFallbackPlugin(),
+        sourceFallbackPlugin(),
         createCodeHighlightPlugin({ codeTokenizer: options.codeTokenizer }),
-        markdownInputRulesPlugin(schema),
-        createMarkdownClipboardPlugin({
+        createMarkdownInputRulesPlugin(schema),
+        createEditorClipboardPlugin({
             schema,
             parseMarkdown: options.parseMarkdown,
             serializeMarkdown: options.serializeMarkdown,

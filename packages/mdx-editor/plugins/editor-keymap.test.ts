@@ -2,21 +2,26 @@ import { describe, expect, it } from "vitest";
 import { EditorState, TextSelection, type Transaction } from "prosemirror-state";
 import type { Command } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
-import { mdxEditorSchema } from "../schema/schema";
+import { createMdxEditorKernel } from "../kernel";
+import { defaultMarkdownSyntax } from "../syntax/default";
 import { markdownKeymap } from "./editor-keymap";
+
+const schema = createMdxEditorKernel({
+    syntax: defaultMarkdownSyntax(),
+}).schema;
 
 describe("markdown keymap", () => {
     it("starts a paragraph after pressing Enter at the end of a heading", () => {
         const title = "Spring Cloud中有用到哪些组件";
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.heading.create(
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.heading.create(
                 { level: 2 },
-                mdxEditorSchema.text(title),
+                schema.text(title),
             ),
         ]);
         const state = EditorState.create({
             doc,
-            schema: mdxEditorSchema,
+            schema: schema,
             selection: TextSelection.create(doc, 1 + title.length),
         });
 
@@ -32,15 +37,15 @@ describe("markdown keymap", () => {
 
     it("removes code block styling when pressing Backspace at its start", () => {
         const code = "const value = 1;";
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.code_block.create(
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.code_block.create(
                 { language: "ts", info: "ts" },
-                mdxEditorSchema.text(code),
+                schema.text(code),
             ),
         ]);
         const state = EditorState.create({
             doc,
-            schema: mdxEditorSchema,
+            schema: schema,
             selection: TextSelection.create(doc, 1),
         });
 
@@ -54,15 +59,15 @@ describe("markdown keymap", () => {
 
     it("removes heading styling when pressing Backspace at its start", () => {
         const title = "qBittorrent + PostgreSQL + Bark 操作文档";
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.heading.create(
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.heading.create(
                 { level: 2 },
-                mdxEditorSchema.text(title),
+                schema.text(title),
             ),
         ]);
         const state = EditorState.create({
             doc,
-            schema: mdxEditorSchema,
+            schema: schema,
             selection: TextSelection.create(doc, 1),
         });
 
@@ -76,15 +81,15 @@ describe("markdown keymap", () => {
 
     it("removes heading styling when pressing Delete at its start", () => {
         const title = "qBittorrent + PostgreSQL + Bark 操作文档";
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.heading.create(
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.heading.create(
                 { level: 2 },
-                mdxEditorSchema.text(title),
+                schema.text(title),
             ),
         ]);
         const state = EditorState.create({
             doc,
-            schema: mdxEditorSchema,
+            schema: schema,
             selection: TextSelection.create(doc, 1),
         });
 

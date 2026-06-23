@@ -4,11 +4,14 @@ import { EditorState, type Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { createMdxEditorKernel } from "../kernel";
 import { defaultMarkdownSyntax } from "../syntax/default";
-import { mdxEditorSchema } from "../schema/schema";
 import {
     markdownInputRules,
-    markdownInputRulesPlugin,
+    createMarkdownInputRulesPlugin,
 } from "./editor-input-rules";
+
+const defaultSchema = createMdxEditorKernel({
+    syntax: defaultMarkdownSyntax(),
+}).schema;
 
 describe("markdown input rules", () => {
     it("includes common Markdown block patterns", () => {
@@ -119,17 +122,17 @@ describe("markdown input rules", () => {
         const state = typeWithInputRules("[kernel](example.com)", kernel.schema);
         const link = state.doc.child(0).child(0).marks[0];
 
-        expect(kernel.schema).not.toBe(mdxEditorSchema);
+        expect(kernel.schema).not.toBe(defaultSchema);
         expect(link.type).toBe(kernel.schema.marks.link);
-        expect(link.type).not.toBe(mdxEditorSchema.marks.link);
+        expect(link.type).not.toBe(defaultSchema.marks.link);
     });
 });
 
 function typeWithInputRules(
     text: string,
-    schema: Schema = mdxEditorSchema,
+    schema: Schema = defaultSchema,
 ): EditorState {
-    const plugin = markdownInputRulesPlugin(schema);
+    const plugin = createMarkdownInputRulesPlugin(schema);
     let state = EditorState.create({
         doc: schema.nodes.doc.create(null, [
             schema.nodes.paragraph.create(),

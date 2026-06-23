@@ -82,7 +82,7 @@ export function markdownInputRules(schema: Schema = mdxEditorSchema): InputRule[
     return rules;
 }
 
-export function markdownInputRulesPlugin(schema: Schema = mdxEditorSchema) {
+export function createMarkdownInputRulesPlugin(schema: Schema = mdxEditorSchema) {
     return inputRules({ rules: markdownInputRules(schema) });
 }
 

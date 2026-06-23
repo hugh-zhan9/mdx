@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createMdxEditorKernel } from "../kernel";
-import { mdxEditorSchema } from "../schema/schema";
-import { parseMarkdown } from "../parser/parse-markdown";
 import { defaultMarkdownSyntax } from "../syntax/default";
 import { sourceRange } from "../core/source-map";
 import { roundTripFixtures } from "../test/fixtures";
-import { serializeMarkdown } from "./serialize-markdown";
+
+const kernel = createMdxEditorKernel({ syntax: defaultMarkdownSyntax() });
+const { parseMarkdown, serializeMarkdown, schema } = kernel;
 
 describe("serializeMarkdown", () => {
     it("returns the original Markdown when the document is unchanged", () => {
@@ -42,10 +42,10 @@ describe("serializeMarkdown", () => {
     });
 
     it("restores wikilinks instead of serializing temporary mdx-wikilink links", () => {
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [
-                mdxEditorSchema.text("Alias", [
-                    mdxEditorSchema.marks.link.create({
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("Alias", [
+                    schema.marks.link.create({
                         href: "mdx-wikilink:Target%7CAlias",
                     }),
                 ]),
@@ -99,7 +99,6 @@ describe("serializeMarkdown", () => {
     });
 
     it("serializes generated advanced block structures", () => {
-        const schema = mdxEditorSchema;
         const doc = schema.nodes.doc.create(null, [
             schema.nodes.bullet_list.create(null, [
                 schema.nodes.task_item.create(
@@ -165,8 +164,8 @@ describe("serializeMarkdown", () => {
         const kernel = createMdxEditorKernel({
             syntax: defaultMarkdownSyntax(),
         });
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.source_fallback.create({
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.source_fallback.create({
                 markdown,
                 reason: "unsupported",
             }),
@@ -176,10 +175,10 @@ describe("serializeMarkdown", () => {
     });
 
     it("serializes normal links with titles", () => {
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [
-                mdxEditorSchema.text("docs", [
-                    mdxEditorSchema.marks.link.create({
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("docs", [
+                    schema.marks.link.create({
                         href: "https://example.com",
                         title: "Example Site",
                     }),
@@ -201,7 +200,6 @@ describe("serializeMarkdown", () => {
     });
 
     it("serializes inline marks, math, and footnote refs", () => {
-        const schema = mdxEditorSchema;
         const kernel = createMdxEditorKernel({
             syntax: defaultMarkdownSyntax(),
         });
@@ -234,7 +232,6 @@ describe("serializeMarkdown", () => {
     });
 
     it("serializes atom-only paragraphs instead of treating them as placeholders", () => {
-        const schema = mdxEditorSchema;
         const doc = schema.nodes.doc.create(null, [
             schema.nodes.paragraph.create(null, [
                 schema.nodes.image.create({ src: "image.png", alt: "Alt" }),
@@ -249,7 +246,6 @@ describe("serializeMarkdown", () => {
     });
 
     it("escapes generated plain text active delimiters so they stay plain", () => {
-        const schema = mdxEditorSchema;
         const plainText = "plain **bold** *em* ~~gone~~ `code` $x+1$";
         const doc = schema.nodes.doc.create(null, [
             schema.nodes.paragraph.create(null, [schema.text(plainText)]),
@@ -266,7 +262,6 @@ describe("serializeMarkdown", () => {
     });
 
     it("does not bracket-escape editable image placeholders", () => {
-        const schema = mdxEditorSchema;
         const doc = schema.nodes.doc.create(null, [
             schema.nodes.paragraph.create(null, [schema.text("![]()")]),
         ]);
@@ -275,7 +270,6 @@ describe("serializeMarkdown", () => {
     });
 
     it("round-trips backslashes inside inline code and math", () => {
-        const schema = mdxEditorSchema;
         const doc = schema.nodes.doc.create(null, [
             schema.nodes.paragraph.create(null, [
                 schema.text(String.raw`a\b`, [
@@ -303,7 +297,6 @@ describe("serializeMarkdown", () => {
     });
 
     it("round-trips inline math containing dollars and trailing backslashes", () => {
-        const schema = mdxEditorSchema;
         const cases = [
             { latex: "x$", markdown: String.raw`$x\$$` + "\n" },
             { latex: "x\\", markdown: String.raw`$x\\$` + "\n" },
@@ -329,7 +322,6 @@ describe("serializeMarkdown", () => {
     });
 
     it("round-trips literal backticks inside inline code", () => {
-        const schema = mdxEditorSchema;
         const cases = [
             { text: "`", markdown: "`` ` ``\n" },
             { text: "a`", markdown: "`` a` ``\n" },
@@ -358,7 +350,6 @@ describe("serializeMarkdown", () => {
     });
 
     it("round-trips combined strong and inline code marks", () => {
-        const schema = mdxEditorSchema;
         const doc = schema.nodes.doc.create(null, [
             schema.nodes.paragraph.create(null, [
                 schema.text("x", [
@@ -381,7 +372,6 @@ describe("serializeMarkdown", () => {
     });
 
     it("round-trips outer marks on generated inline atom nodes", () => {
-        const schema = mdxEditorSchema;
         const strong = schema.marks.strong.create();
         const doc = schema.nodes.doc.create(null, [
             schema.nodes.paragraph.create(null, [
@@ -453,7 +443,7 @@ describe("serializeMarkdown", () => {
 
     it("does not reuse source when adding marks to inline atom nodes", () => {
         const parsed = parseMarkdown("$x$\n\n[^n]\n");
-        const strong = mdxEditorSchema.marks.strong.create();
+        const strong = schema.marks.strong.create();
         const mathParagraph = parsed.doc.child(0);
         const footnoteParagraph = parsed.doc.child(1);
         const mathWithStrong = mathParagraph.type.create(
@@ -476,7 +466,6 @@ describe("serializeMarkdown", () => {
     });
 
     it("does not block-escape leading triple-backtick inline code spans", () => {
-        const schema = mdxEditorSchema;
         const doc = schema.nodes.doc.create(null, [
             schema.nodes.paragraph.create(null, [
                 schema.text("``", [schema.marks.inline_code.create()]),
@@ -494,7 +483,6 @@ describe("serializeMarkdown", () => {
     });
 
     it("does not bracket-escape inline code content", () => {
-        const schema = mdxEditorSchema;
         const doc = schema.nodes.doc.create(null, [
             schema.nodes.paragraph.create(null, [
                 schema.text("Code "),
@@ -510,7 +498,6 @@ describe("serializeMarkdown", () => {
     });
 
     it("serializes inline marks inside table cells", () => {
-        const schema = mdxEditorSchema;
         const doc = schema.nodes.doc.create(null, [
             schema.nodes.table.create(
                 { alignments: [] },
@@ -531,7 +518,6 @@ describe("serializeMarkdown", () => {
     });
 
     it("escapes table cell pipes so edited cells remain structured after reload", () => {
-        const schema = mdxEditorSchema;
         const doc = schema.nodes.doc.create(null, [
             schema.nodes.table.create({ alignments: [] }, [
                 schema.nodes.table_row.create(null, [
@@ -554,7 +540,6 @@ describe("serializeMarkdown", () => {
     });
 
     it("preserves inline syntax pipes inside table cells", () => {
-        const schema = mdxEditorSchema;
         const doc = schema.nodes.doc.create(null, [
             schema.nodes.table.create({ alignments: [] }, [
                 schema.nodes.table_row.create(null, [
@@ -587,7 +572,6 @@ describe("serializeMarkdown", () => {
     });
 
     it("serializes inline marks inside list item paragraphs", () => {
-        const schema = mdxEditorSchema;
         const doc = schema.nodes.doc.create(null, [
             schema.nodes.bullet_list.create(null, [
                 schema.nodes.list_item.create(null, [
@@ -618,7 +602,6 @@ describe("serializeMarkdown", () => {
     });
 
     it("serializes generated basic block structures", () => {
-        const schema = mdxEditorSchema;
         const doc = schema.nodes.doc.create(null, [
             schema.nodes.bullet_list.create(null, [
                 schema.nodes.list_item.create(null, [
@@ -660,7 +643,6 @@ describe("serializeMarkdown", () => {
     });
 
     it("serializes inline marks inside callout paragraphs", () => {
-        const schema = mdxEditorSchema;
         const doc = schema.nodes.doc.create(null, [
             schema.nodes.callout.create(
                 { kind: "NOTE", title: null },
@@ -696,7 +678,6 @@ describe("serializeMarkdown", () => {
     });
 
     it("round-trips normal link and image title backslashes", () => {
-        const schema = mdxEditorSchema;
         const linkDoc = schema.nodes.doc.create(null, [
             schema.nodes.paragraph.create(null, [
                 schema.text("docs", [
@@ -735,14 +716,14 @@ describe("serializeMarkdown", () => {
     });
 
     it("serializes one normal link spanning multiple text nodes once", () => {
-        const link = mdxEditorSchema.marks.link.create({
+        const link = schema.marks.link.create({
             href: "https://x.test",
         });
-        const strong = mdxEditorSchema.marks.strong.create();
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [
-                mdxEditorSchema.text("bold", [link, strong]),
-                mdxEditorSchema.text(" tail", [link]),
+        const strong = schema.marks.strong.create();
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("bold", [link, strong]),
+                schema.text(" tail", [link]),
             ]),
         ]);
 
@@ -763,17 +744,17 @@ describe("serializeMarkdown", () => {
     });
 
     it("round-trips image and footnote refs inside normal link labels", () => {
-        const link = mdxEditorSchema.marks.link.create({
+        const link = schema.marks.link.create({
             href: "https://x.test",
         });
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [
-                mdxEditorSchema.text("see ", [link]),
-                mdxEditorSchema.nodes.footnote_ref
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("see ", [link]),
+                schema.nodes.footnote_ref
                     .create({ label: "n" })
                     .mark([link]),
-                mdxEditorSchema.text(" ", [link]),
-                mdxEditorSchema.nodes.image
+                schema.text(" ", [link]),
+                schema.nodes.image
                     .create({ src: "src", alt: "alt" })
                     .mark([link]),
             ]),
@@ -821,14 +802,14 @@ describe("serializeMarkdown", () => {
     });
 
     it("serializes one wikilink spanning multiple text nodes once", () => {
-        const link = mdxEditorSchema.marks.link.create({
+        const link = schema.marks.link.create({
             href: "mdx-wikilink:Target%7CBold%20tail",
         });
-        const strong = mdxEditorSchema.marks.strong.create();
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [
-                mdxEditorSchema.text("Bold", [link, strong]),
-                mdxEditorSchema.text(" tail", [link]),
+        const strong = schema.marks.strong.create();
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("Bold", [link, strong]),
+                schema.text(" tail", [link]),
             ]),
         ]);
 
@@ -838,14 +819,14 @@ describe("serializeMarkdown", () => {
     });
 
     it("round-trips nested marks inside normal link labels", () => {
-        const link = mdxEditorSchema.marks.link.create({
+        const link = schema.marks.link.create({
             href: "https://x.test",
         });
-        const strong = mdxEditorSchema.marks.strong.create();
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [
-                mdxEditorSchema.text("bold", [link, strong]),
-                mdxEditorSchema.text(" tail", [link]),
+        const strong = schema.marks.strong.create();
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("bold", [link, strong]),
+                schema.text(" tail", [link]),
             ]),
         ]);
         const markdown = serializeMarkdown(emptyParsedDocument(doc));
@@ -868,14 +849,14 @@ describe("serializeMarkdown", () => {
     });
 
     it("round-trips nested marks inside wikilink labels", () => {
-        const link = mdxEditorSchema.marks.link.create({
+        const link = schema.marks.link.create({
             href: "mdx-wikilink:Target%7C**Bold**%20tail",
         });
-        const strong = mdxEditorSchema.marks.strong.create();
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [
-                mdxEditorSchema.text("Bold", [link, strong]),
-                mdxEditorSchema.text(" tail", [link]),
+        const strong = schema.marks.strong.create();
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("Bold", [link, strong]),
+                schema.text(" tail", [link]),
             ]),
         ]);
         const markdown = serializeMarkdown(emptyParsedDocument(doc));
@@ -898,10 +879,10 @@ describe("serializeMarkdown", () => {
     });
 
     it("serializes link hrefs containing spaces as angle-bracket hrefs", () => {
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [
-                mdxEditorSchema.text("docs", [
-                    mdxEditorSchema.marks.link.create({
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("docs", [
+                    schema.marks.link.create({
                         href: "docs/My File.md",
                     }),
                 ]),
@@ -917,7 +898,6 @@ describe("serializeMarkdown", () => {
     });
 
     it("escapes paragraph line starts that would reparse as block syntax", () => {
-        const schema = mdxEditorSchema;
         const cases = [
             { text: "# not heading", markdown: "\\# not heading\n" },
             { text: "- not list", markdown: "\\- not list\n" },
@@ -980,15 +960,16 @@ describe("serializeMarkdown", () => {
         expect(serializeMarkdown(parsed)).toBe(markdown);
     });
 
-    it("reuses original source for unchanged source-preserved opaque blocks", () => {
+    it("reuses original source for unchanged source fallback blocks", () => {
         const markdown = "> [!NOTE]\n> Keep this.\n\n";
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.opaque_block.create(
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.source_fallback.create(
                 {
+                    markdown,
                     reason: "source-preserved",
                     sourceId: "source-0",
                 },
-                mdxEditorSchema.text("> [!NOTE]\n> Keep this."),
+                schema.text("> [!NOTE]\n> Keep this."),
             ),
         ]);
 
@@ -1005,18 +986,20 @@ describe("serializeMarkdown", () => {
                 ],
                 diagnostics: [],
             }),
-        ).toBe("> [!NOTE]\n> Keep this.\n");
+        ).toBe(markdown);
     });
 
-    it("does not reuse original source for edited source-preserved opaque blocks", () => {
+    it("does not reuse original source for edited source fallback blocks", () => {
         const markdown = "> [!NOTE]\n> Keep this.\n\n";
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.opaque_block.create(
+        const editedMarkdown = "> [!NOTE]\n> Changed this.\n";
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.source_fallback.create(
                 {
+                    markdown: editedMarkdown,
                     reason: "source-preserved",
                     sourceId: "source-0",
                 },
-                mdxEditorSchema.text("> [!NOTE]\n> Changed this."),
+                schema.text("> [!NOTE]\n> Changed this."),
             ),
         ]);
 
@@ -1033,12 +1016,12 @@ describe("serializeMarkdown", () => {
                 ],
                 diagnostics: [],
             }),
-        ).toBe("> [!NOTE]\n> Changed this.\n");
+        ).toBe(editedMarkdown);
     });
 });
 
 function emptyParsedDocument(
-    doc: ReturnType<typeof mdxEditorSchema.nodes.doc.create>,
+    doc: ReturnType<typeof schema.nodes.doc.create>,
 ) {
     return {
         doc,

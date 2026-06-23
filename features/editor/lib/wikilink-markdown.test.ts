@@ -3,8 +3,16 @@ import {
     renderWikilinksForEditor,
     restoreWikilinksFromEditor,
 } from "./wikilink-markdown";
-import { parseMarkdown } from "../../../packages/mdx-editor/parser/parse-markdown";
-import { serializeMarkdown } from "../../../packages/mdx-editor/serializer/serialize-markdown";
+import {
+    createMdxEditorKernel,
+    defaultMarkdownSyntax,
+} from "../../../packages/mdx-editor";
+
+const wikilinkKernel = createMdxEditorKernel({
+    syntax: defaultMarkdownSyntax(),
+});
+const parseWithKernel = wikilinkKernel.parseMarkdown;
+const serializeWithKernel = wikilinkKernel.serializeMarkdown;
 
 describe("renderWikilinksForEditor", () => {
     it("renders bare wikilinks as temporary markdown links", () => {
@@ -59,7 +67,7 @@ describe("restoreWikilinksFromEditor", () => {
         const markdown = "See [[A)B]] and [[A(B)]].\n";
         const editorMarkdown = renderWikilinksForEditor(markdown);
         const restored = restoreWikilinksFromEditor(
-            serializeMarkdown(parseMarkdown(editorMarkdown)),
+            serializeWithKernel(parseWithKernel(editorMarkdown)),
         );
 
         expect(restored).toBe(markdown);

@@ -4,14 +4,27 @@ import type { EditorView } from "prosemirror-view";
 import { JSDOM } from "jsdom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMdxEditorKernel, type SyntaxPlugin } from "../kernel";
-import { mdxEditorSchema } from "../schema/schema";
 import { defaultMarkdownSyntax } from "../syntax/default";
 import {
     clipboardTextToMarkdown,
-    createMarkdownClipboardPlugin,
+    createEditorClipboardPlugin,
     MARKDOWN_CLIPBOARD_MIME,
     markdownToClipboardHtml,
 } from "./editor-clipboard";
+
+const testKernel = createMdxEditorKernel({
+    syntax: defaultMarkdownSyntax(),
+});
+const schema = testKernel.schema;
+
+function createClipboardPluginForKernel() {
+    return createEditorClipboardPlugin({
+        schema,
+        parseMarkdown: testKernel.parseMarkdown,
+        serializeMarkdown: testKernel.serializeMarkdown,
+        clipboard: testKernel.clipboard,
+    });
+}
 
 describe("markdown clipboard helpers", () => {
     afterEach(() => {
@@ -80,17 +93,17 @@ script:alert(2)" onmouseover="alert(3)">link</a><img src='javascript:alert(4)' o
 
 describe("markdown clipboard plugin", () => {
     it("copies selected heading text with heading markdown", () => {
-        const plugin = createMarkdownClipboardPlugin();
+        const plugin = createClipboardPluginForKernel();
         const headingText = "Spring Cloud中有用到哪些组件";
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.heading.create(
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.heading.create(
                 { level: 2 },
-                mdxEditorSchema.text(headingText),
+                schema.text(headingText),
             ),
         ]);
         const state = EditorState.create({
             doc,
-            schema: mdxEditorSchema,
+            schema: schema,
             selection: TextSelection.create(doc, 1, 1 + headingText.length),
         });
         const view = fakeEditorView(state, () => {});
@@ -103,15 +116,15 @@ describe("markdown clipboard plugin", () => {
     });
 
     it("preserves ordinary paragraph clipboard serialization for open slices", () => {
-        const plugin = createMarkdownClipboardPlugin();
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [
-                mdxEditorSchema.text("plain"),
+        const plugin = createClipboardPluginForKernel();
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("plain"),
             ]),
         ]);
         const state = EditorState.create({
             doc,
-            schema: mdxEditorSchema,
+            schema: schema,
             selection: TextSelection.create(doc, 1, doc.child(0).nodeSize - 1),
         });
         const view = fakeEditorView(state, () => {});
@@ -205,15 +218,15 @@ describe("markdown clipboard plugin", () => {
     });
 
     it("does not intercept ordinary plain text paste inside a paragraph", () => {
-        const plugin = createMarkdownClipboardPlugin();
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [
-                mdxEditorSchema.text("hello !"),
+        const plugin = createClipboardPluginForKernel();
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("hello !"),
             ]),
         ]);
         let state = EditorState.create({
             doc,
-            schema: mdxEditorSchema,
+            schema: schema,
             selection: TextSelection.create(doc, 6),
         });
         const view = fakeEditorView(state, (nextState) => {
@@ -231,15 +244,15 @@ describe("markdown clipboard plugin", () => {
     });
 
     it("uses internal Markdown clipboard MIME before text or HTML paste data", () => {
-        const plugin = createMarkdownClipboardPlugin();
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [
-                mdxEditorSchema.text("body"),
+        const plugin = createClipboardPluginForKernel();
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("body"),
             ]),
         ]);
         let state = EditorState.create({
             doc,
-            schema: mdxEditorSchema,
+            schema: schema,
             selection: new AllSelection(doc),
         });
         const view = fakeEditorView(state, (nextState) => {
@@ -258,15 +271,15 @@ describe("markdown clipboard plugin", () => {
     });
 
     it("parses plain text Markdown fences on paste", () => {
-        const plugin = createMarkdownClipboardPlugin();
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [
-                mdxEditorSchema.text("body"),
+        const plugin = createClipboardPluginForKernel();
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("body"),
             ]),
         ]);
         let state = EditorState.create({
             doc,
-            schema: mdxEditorSchema,
+            schema: schema,
             selection: new AllSelection(doc),
         });
         const view = fakeEditorView(state, (nextState) => {
@@ -285,15 +298,15 @@ describe("markdown clipboard plugin", () => {
     });
 
     it("parses indented plain text Markdown fences on paste", () => {
-        const plugin = createMarkdownClipboardPlugin();
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [
-                mdxEditorSchema.text("body"),
+        const plugin = createClipboardPluginForKernel();
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("body"),
             ]),
         ]);
         let state = EditorState.create({
             doc,
-            schema: mdxEditorSchema,
+            schema: schema,
             selection: new AllSelection(doc),
         });
         const view = fakeEditorView(state, (nextState) => {
@@ -313,15 +326,15 @@ describe("markdown clipboard plugin", () => {
     });
 
     it("parses plain text Markdown block structures on paste", () => {
-        const plugin = createMarkdownClipboardPlugin();
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [
-                mdxEditorSchema.text("body"),
+        const plugin = createClipboardPluginForKernel();
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("body"),
             ]),
         ]);
         let state = EditorState.create({
             doc,
-            schema: mdxEditorSchema,
+            schema: schema,
             selection: new AllSelection(doc),
         });
         const view = fakeEditorView(state, (nextState) => {
@@ -340,15 +353,15 @@ describe("markdown clipboard plugin", () => {
     });
 
     it("parses plain text inline markdown links and images on paste", () => {
-        const plugin = createMarkdownClipboardPlugin();
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [
-                mdxEditorSchema.text("body"),
+        const plugin = createClipboardPluginForKernel();
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("body"),
             ]),
         ]);
         let state = EditorState.create({
             doc,
-            schema: mdxEditorSchema,
+            schema: schema,
             selection: new AllSelection(doc),
         });
         const view = fakeEditorView(state, (nextState) => {
@@ -367,15 +380,15 @@ describe("markdown clipboard plugin", () => {
     });
 
     it("prefers plain text Markdown fences over clipboard HTML", () => {
-        const plugin = createMarkdownClipboardPlugin();
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [
-                mdxEditorSchema.text("body"),
+        const plugin = createClipboardPluginForKernel();
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("body"),
             ]),
         ]);
         let state = EditorState.create({
             doc,
-            schema: mdxEditorSchema,
+            schema: schema,
             selection: new AllSelection(doc),
         });
         const view = fakeEditorView(state, (nextState) => {
@@ -393,15 +406,15 @@ describe("markdown clipboard plugin", () => {
     });
 
     it("normalizes escaped Markdown fences on paste", () => {
-        const plugin = createMarkdownClipboardPlugin();
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [
-                mdxEditorSchema.text("body"),
+        const plugin = createClipboardPluginForKernel();
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("body"),
             ]),
         ]);
         let state = EditorState.create({
             doc,
-            schema: mdxEditorSchema,
+            schema: schema,
             selection: new AllSelection(doc),
         });
         const view = fakeEditorView(state, (nextState) => {
@@ -422,7 +435,7 @@ describe("markdown clipboard plugin", () => {
 });
 
 function transformPastedHTML(html: string) {
-    const plugin = createMarkdownClipboardPlugin();
+    const plugin = createClipboardPluginForKernel();
     const transform = plugin.props.transformPastedHTML;
 
     expect(transform).toBeTypeOf("function");

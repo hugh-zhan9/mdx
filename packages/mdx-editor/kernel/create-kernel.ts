@@ -3,7 +3,7 @@ import type { Plugin } from "prosemirror-state";
 import type { NodeViewConstructor } from "prosemirror-view";
 import type { ParsedMarkdownDocument } from "../core/types";
 import type { CodeTokenizer } from "../plugins/editor-code-highlight";
-import { createMdxEditorPlugins } from "../plugins/editor-plugins";
+import { createEditorPluginsForKernel } from "../plugins/editor-plugins";
 import { parseMarkdown as parseMarkdownWithSchema } from "../parser/parse-markdown";
 import { createMdxNodeViews } from "../react/node-views";
 import { serializeBlockNode } from "../serializer/block-serializer";
@@ -90,7 +90,7 @@ export function createMdxEditorKernel(
             }).image,
         }),
         createEditorPlugins: () =>
-            createMdxEditorPlugins({
+            createEditorPluginsForKernel({
                 schema,
                 codeTokenizer: options.services?.codeTokenizer,
                 parseMarkdown,

@@ -2,9 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { Node as ProseMirrorNode } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 import { undo } from "prosemirror-history";
-import { parseMarkdown, serializeMarkdown } from "..";
-import { mdxEditorSchema } from "../schema/schema";
-import { createMdxEditorPlugins } from "../plugins/editor-plugins";
+import { createMdxEditorKernel } from "../kernel";
+import { defaultMarkdownSyntax } from "../syntax/default";
 import {
     insertImageMarkdown,
     insertImageNode,
@@ -15,6 +14,9 @@ import {
     toggleStrongMark,
     toggleTaskItemChecked,
 } from "./editor-commands";
+
+const kernel = createMdxEditorKernel({ syntax: defaultMarkdownSyntax() });
+const { parseMarkdown, serializeMarkdown, schema } = kernel;
 
 describe("editor commands", () => {
     it("inserts plain text into Markdown at an offset", () => {
@@ -58,13 +60,13 @@ describe("editor commands", () => {
     it("inserts image nodes at document positions after editable link text", () => {
         const markdown = "[百度](http://baidu.com)";
         let state = EditorState.create({
-            doc: mdxEditorSchema.nodes.doc.create(null, [
-                mdxEditorSchema.nodes.paragraph.create(null, [
-                    mdxEditorSchema.text(markdown),
+            doc: schema.nodes.doc.create(null, [
+                schema.nodes.paragraph.create(null, [
+                    schema.text(markdown),
                 ]),
             ]),
-            plugins: createMdxEditorPlugins(),
-            schema: mdxEditorSchema,
+            plugins: kernel.createEditorPlugins(),
+            schema,
         });
 
         expect(
@@ -86,15 +88,15 @@ describe("editor commands", () => {
     });
 
     it("makes inserted image nodes undoable", () => {
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [
-                mdxEditorSchema.text("Hello"),
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("Hello"),
             ]),
         ]);
         let state = EditorState.create({
             doc,
-            plugins: createMdxEditorPlugins(),
-            schema: mdxEditorSchema,
+            plugins: kernel.createEditorPlugins(),
+            schema,
             selection: TextSelection.create(doc, 6),
         });
 
@@ -123,15 +125,15 @@ describe("editor commands", () => {
     });
 
     it("toggles strong marks through a ProseMirror command", () => {
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [
-                mdxEditorSchema.text("bold"),
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("bold"),
             ]),
         ]);
         let state = EditorState.create({
             doc,
-            plugins: createMdxEditorPlugins(),
-            schema: mdxEditorSchema,
+            plugins: kernel.createEditorPlugins(),
+            schema,
             selection: TextSelection.create(doc, 1, 5),
         });
 
@@ -145,13 +147,13 @@ describe("editor commands", () => {
 
     it("sets the current block to a heading level 2", () => {
         let state = EditorState.create({
-            doc: mdxEditorSchema.nodes.doc.create(null, [
-                mdxEditorSchema.nodes.paragraph.create(null, [
-                    mdxEditorSchema.text("Title"),
+            doc: schema.nodes.doc.create(null, [
+                schema.nodes.paragraph.create(null, [
+                    schema.text("Title"),
                 ]),
             ]),
-            plugins: createMdxEditorPlugins(),
-            schema: mdxEditorSchema,
+            plugins: kernel.createEditorPlugins(),
+            schema,
         });
 
         expect(
@@ -178,23 +180,23 @@ describe("editor commands", () => {
     });
 
     it("does not toggle a task item from a broad unrelated selection", () => {
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [
-                mdxEditorSchema.text("Intro"),
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [
+                schema.text("Intro"),
             ]),
-            mdxEditorSchema.nodes.bullet_list.create(null, [
-                mdxEditorSchema.nodes.task_item.create(
+            schema.nodes.bullet_list.create(null, [
+                schema.nodes.task_item.create(
                     { checked: false },
-                    mdxEditorSchema.nodes.paragraph.create(null, [
-                        mdxEditorSchema.text("Task"),
+                    schema.nodes.paragraph.create(null, [
+                        schema.text("Task"),
                     ]),
                 ),
             ]),
         ]);
         let state = EditorState.create({
             doc,
-            plugins: createMdxEditorPlugins(),
-            schema: mdxEditorSchema,
+            plugins: kernel.createEditorPlugins(),
+            schema,
             selection: TextSelection.create(doc, 1, taskTextPosition(doc)),
         });
 

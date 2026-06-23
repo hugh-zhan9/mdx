@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { parseMarkdown } from "../parser/parse-markdown";
+import { createMdxEditorKernel } from "../kernel";
+import { defaultMarkdownSyntax } from "../syntax/default";
 import { roundTripFixtures } from "../test/fixtures";
-import { serializeMarkdown } from "./serialize-markdown";
+
+const { parseMarkdown, serializeMarkdown } = createMdxEditorKernel({
+    syntax: defaultMarkdownSyntax(),
+});
 
 describe("Markdown round-trip fixtures", () => {
     it.each(roundTripFixtures)("$name", ({ markdown }) => {

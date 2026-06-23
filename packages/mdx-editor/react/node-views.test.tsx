@@ -13,7 +13,6 @@ import {
 } from "prosemirror-view";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMdxEditorKernel } from "../kernel";
-import { mdxEditorSchema } from "../schema/schema";
 import { defaultMarkdownSyntax } from "../syntax/default";
 import { createMdxNodeViews } from "./node-views";
 
@@ -22,6 +21,10 @@ import { createMdxNodeViews } from "./node-views";
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 const renderMermaidDiagram = vi.hoisted(() => vi.fn());
+
+const schema = createMdxEditorKernel({
+    syntax: defaultMarkdownSyntax(),
+}).schema;
 
 vi.mock("./mermaid-renderer", () => ({
     renderMermaidDiagram: (
@@ -58,7 +61,7 @@ describe("createMdxNodeViews", () => {
             ]),
         );
         expect(keys).not.toContain("footnote_definition");
-        expect(mdxEditorSchema.nodes.mermaid_block).toBeDefined();
+        expect(schema.nodes.mermaid_block).toBeDefined();
     });
 
     it("exposes footnote node views through the syntax registry", () => {
@@ -75,7 +78,6 @@ describe("createMdxNodeViews", () => {
     });
 
     it("renders mermaid blocks through a node view instead of a source pre", async () => {
-        const schema = mdxEditorSchema;
         const mermaid = schema.nodes.mermaid_block.create(
             { info: "mermaid", sourceId: "source-1" },
             schema.text("graph TD\n  A --> B\n"),
@@ -151,11 +153,11 @@ describe("createMdxNodeViews", () => {
     });
 
     it("renders failed image nodes as markdown fallback text", () => {
-        const image = mdxEditorSchema.nodes.image.create({
+        const image = schema.nodes.image.create({
             src: "www.baidu.com",
             alt: "www.baidu.com",
         });
-        const view = createView(mdxEditorSchema.nodes.doc.create(null, image));
+        const view = createView(schema.nodes.doc.create(null, image));
         const nodeView = createMdxNodeViews().image(
             image,
             view,
@@ -175,12 +177,12 @@ describe("createMdxNodeViews", () => {
     });
 
     it("selects image nodes on mouse down and exposes markdown source while selected", () => {
-        const image = mdxEditorSchema.nodes.image.create({
+        const image = schema.nodes.image.create({
             src: ".assets/example.png",
             alt: "本地图片示例",
         });
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [image]),
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [image]),
         ]);
         const dispatched: Transaction[] = [];
         const view = createView(doc, (tr) => {
@@ -241,12 +243,12 @@ describe("createMdxNodeViews", () => {
     });
 
     it("commits edited markdown image source back to image attrs", () => {
-        const image = mdxEditorSchema.nodes.image.create({
+        const image = schema.nodes.image.create({
             src: ".assets/old.png",
             alt: "Old",
         });
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [image]),
+        const doc = schema.nodes.doc.create(null, [
+            schema.nodes.paragraph.create(null, [image]),
         ]);
         const dispatched: Transaction[] = [];
         const view = createView(doc, (tr) => {
@@ -285,10 +287,10 @@ describe("createMdxNodeViews", () => {
     });
 
     it("creates inline math with an inline span wrapper", () => {
-        const node = mdxEditorSchema.nodes.math_inline.create({
+        const node = schema.nodes.math_inline.create({
             latex: "x + y",
         });
-        const view = createView(mdxEditorSchema.nodes.doc.create());
+        const view = createView(schema.nodes.doc.create());
         let nodeView: NodeView | undefined;
 
         act(() => {
@@ -314,7 +316,6 @@ describe("createMdxNodeViews", () => {
     });
 
     it("shows math source controls only while editing", () => {
-        const schema = mdxEditorSchema;
         const mathBlock = schema.nodes.math_block.create(
             { sourceId: "source-1" },
             schema.text("\\int_0^1 x^2 dx = \\frac{1}{3}"),
@@ -451,7 +452,6 @@ describe("createMdxNodeViews", () => {
     });
 
     it("renders source fallback html before editing and preserves source during editing", () => {
-        const schema = mdxEditorSchema;
         const fallback = schema.nodes.source_fallback.create(
             {
                 markdown:
@@ -534,7 +534,6 @@ describe("createMdxNodeViews", () => {
     });
 
     it("stops editor event handling inside source fallback previews", () => {
-        const schema = mdxEditorSchema;
         const fallback = schema.nodes.source_fallback.create({
             markdown: "<p>Unsupported</p>\n",
             reason: "unsupported",
@@ -582,7 +581,6 @@ describe("createMdxNodeViews", () => {
     });
 
     it("sanitizes rendered source fallback html preview", () => {
-        const schema = mdxEditorSchema;
         const fallback = schema.nodes.source_fallback.create({
             markdown:
                 '<div onclick="evil()"><script>evil()</script><a href="javascript:evil()">Safe</a></div>\n',
@@ -617,7 +615,6 @@ describe("createMdxNodeViews", () => {
     });
 
     it("lets rendered details summary toggle while details content enters source editing", () => {
-        const schema = mdxEditorSchema;
         const fallback = schema.nodes.source_fallback.create({
             markdown:
                 "<details>\n  <summary>展开详情</summary>\n  <p>详情内容。</p>\n</details>\n",
@@ -701,7 +698,6 @@ describe("createMdxNodeViews", () => {
     });
 
     it("lets html block details summary toggle while details content enters source editing", () => {
-        const schema = mdxEditorSchema;
         const html =
             "<details>\n  <summary>展开详情</summary>\n  <p>详情内容。</p>\n</details>\n";
         const htmlBlock = schema.nodes.html_block.create(
@@ -825,7 +821,6 @@ describe("createMdxNodeViews", () => {
     });
 
     it("edits inline html as raw source instead of only text content", () => {
-        const schema = mdxEditorSchema;
         const inlineHtml = schema.nodes.inline_html.create({
             html: "<kbd>Command</kbd>",
             tag: "kbd",
@@ -900,7 +895,6 @@ describe("createMdxNodeViews", () => {
     });
 
     it("mounts table rows into a single valid tbody contentDOM", () => {
-        const schema = mdxEditorSchema;
         const table = schema.nodes.table.create(null, [
             schema.nodes.table_row.create(null, [
                 schema.nodes.table_header.create(null, schema.text("A")),
@@ -951,7 +945,6 @@ describe("createMdxNodeViews", () => {
     });
 
     it("deletes the last table row and column from controls", () => {
-        const schema = mdxEditorSchema;
         const table = schema.nodes.table.create(
             { alignments: ["left", "right"] },
             [
@@ -1011,7 +1004,6 @@ describe("createMdxNodeViews", () => {
     });
 
     it("disables table delete controls at the minimum dimensions", () => {
-        const schema = mdxEditorSchema;
         const table = schema.nodes.table.create(null, [
             schema.nodes.table_row.create(null, [
                 schema.nodes.table_cell.create(null, schema.text("Only")),
@@ -1041,7 +1033,6 @@ describe("createMdxNodeViews", () => {
     });
 
     it("dispatches setNodeMarkup-equivalent attr updates from controls", () => {
-        const schema = mdxEditorSchema;
         const callout = schema.nodes.callout.create(
             { kind: "NOTE" },
             schema.nodes.paragraph.create(null, schema.text("Body")),
@@ -1090,7 +1081,6 @@ describe("createMdxNodeViews", () => {
     });
 
     it("updates code block language from its language control", () => {
-        const schema = mdxEditorSchema;
         const codeBlock = schema.nodes.code_block.create(
             { language: "ts", info: "ts", sourceId: null },
             schema.text("const value = 1;\n"),

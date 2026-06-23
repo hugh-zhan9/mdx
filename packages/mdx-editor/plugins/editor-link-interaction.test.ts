@@ -5,9 +5,16 @@ import type { EditorView } from "prosemirror-view";
 import { EditorView as ProseMirrorEditorView } from "prosemirror-view";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createMdxEditorKernel } from "../kernel";
-import { mdxEditorSchema } from "../schema/schema";
 import { defaultMarkdownSyntax } from "../syntax/default";
 import { createEditableLinkPlugin } from "./editor-link-interaction";
+
+const defaultSchema = createMdxEditorKernel({
+    syntax: defaultMarkdownSyntax(),
+}).schema;
+
+function createLinkPluginForKernel() {
+    return createEditableLinkPlugin(defaultSchema);
+}
 
 describe("createEditableLinkPlugin", () => {
     afterEach(() => {
@@ -15,7 +22,7 @@ describe("createEditableLinkPlugin", () => {
     });
 
     it("prevents plain editor link clicks from navigating so their text remains editable", () => {
-        const plugin = createEditableLinkPlugin();
+        const plugin = createLinkPluginForKernel();
         const editorRoot = document.createElement("div");
         const link = document.createElement("a");
         const preventDefault = vi.fn();
@@ -38,7 +45,7 @@ describe("createEditableLinkPlugin", () => {
     });
 
     it("opens editor links with a command click", () => {
-        const plugin = createEditableLinkPlugin();
+        const plugin = createLinkPluginForKernel();
         const editorRoot = document.createElement("div");
         const link = document.createElement("a");
         const preventDefault = vi.fn();
@@ -69,26 +76,26 @@ describe("createEditableLinkPlugin", () => {
     });
 
     it("does not show a hover popup for editor links", () => {
-        const plugin = createEditableLinkPlugin();
+        const plugin = createLinkPluginForKernel();
 
         expect(plugin.props.handleDOMEvents?.mouseover).toBeUndefined();
     });
 
     it("expands a selected link into editable markdown text and restores it after leaving", () => {
         const host = document.createElement("div");
-        const linkMark = mdxEditorSchema.marks.link.create({
+        const linkMark = defaultSchema.marks.link.create({
             href: "www.baidu.com",
         });
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [
-                mdxEditorSchema.text("百度", [linkMark]),
-                mdxEditorSchema.text(" tail"),
+        const doc = defaultSchema.nodes.doc.create(null, [
+            defaultSchema.nodes.paragraph.create(null, [
+                defaultSchema.text("百度", [linkMark]),
+                defaultSchema.text(" tail"),
             ]),
         ]);
         const initialState = EditorState.create({
             doc,
-            schema: mdxEditorSchema,
-            plugins: [createEditableLinkPlugin()],
+            schema: defaultSchema,
+            plugins: [createLinkPluginForKernel()],
         });
         let state = initialState.apply(
             initialState.tr.setSelection(
@@ -139,18 +146,18 @@ describe("createEditableLinkPlugin", () => {
 
     it("restores an expanded markdown link before handling Enter", () => {
         const host = document.createElement("div");
-        const linkMark = mdxEditorSchema.marks.link.create({
+        const linkMark = defaultSchema.marks.link.create({
             href: "www.baidu.com",
         });
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [
-                mdxEditorSchema.text("百度", [linkMark]),
+        const doc = defaultSchema.nodes.doc.create(null, [
+            defaultSchema.nodes.paragraph.create(null, [
+                defaultSchema.text("百度", [linkMark]),
             ]),
         ]);
         const initialState = EditorState.create({
             doc,
-            schema: mdxEditorSchema,
-            plugins: [createEditableLinkPlugin()],
+            schema: defaultSchema,
+            plugins: [createLinkPluginForKernel()],
         });
         let state = initialState.apply(
             initialState.tr.setSelection(
@@ -231,9 +238,9 @@ describe("createEditableLinkPlugin", () => {
         view.dispatch(state.tr.setSelection(TextSelection.atEnd(state.doc)));
 
         const restoredLink = state.doc.child(0).child(0).marks[0];
-        expect(kernel.schema).not.toBe(mdxEditorSchema);
+        expect(kernel.schema).not.toBe(defaultSchema);
         expect(restoredLink.type).toBe(kernel.schema.marks.link);
-        expect(restoredLink.type).not.toBe(mdxEditorSchema.marks.link);
+        expect(restoredLink.type).not.toBe(defaultSchema.marks.link);
         expect(restoredLink.attrs.href).toBe("http://www.baidu.com");
 
         view.destroy();
@@ -242,19 +249,19 @@ describe("createEditableLinkPlugin", () => {
 
     it("keeps edited markdown as plain text when the link syntax is no longer valid", () => {
         const host = document.createElement("div");
-        const linkMark = mdxEditorSchema.marks.link.create({
+        const linkMark = defaultSchema.marks.link.create({
             href: "www.baidu.com",
         });
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [
-                mdxEditorSchema.text("百度", [linkMark]),
-                mdxEditorSchema.text(" tail"),
+        const doc = defaultSchema.nodes.doc.create(null, [
+            defaultSchema.nodes.paragraph.create(null, [
+                defaultSchema.text("百度", [linkMark]),
+                defaultSchema.text(" tail"),
             ]),
         ]);
         const initialState = EditorState.create({
             doc,
-            schema: mdxEditorSchema,
-            plugins: [createEditableLinkPlugin()],
+            schema: defaultSchema,
+            plugins: [createLinkPluginForKernel()],
         });
         let state = initialState.apply(
             initialState.tr.setSelection(
@@ -289,18 +296,18 @@ describe("createEditableLinkPlugin", () => {
 
     it("restores an expanded markdown link when the editor loses focus", () => {
         const host = document.createElement("div");
-        const linkMark = mdxEditorSchema.marks.link.create({
+        const linkMark = defaultSchema.marks.link.create({
             href: "www.baidu.com",
         });
-        const doc = mdxEditorSchema.nodes.doc.create(null, [
-            mdxEditorSchema.nodes.paragraph.create(null, [
-                mdxEditorSchema.text("百度", [linkMark]),
+        const doc = defaultSchema.nodes.doc.create(null, [
+            defaultSchema.nodes.paragraph.create(null, [
+                defaultSchema.text("百度", [linkMark]),
             ]),
         ]);
         const initialState = EditorState.create({
             doc,
-            schema: mdxEditorSchema,
-            plugins: [createEditableLinkPlugin()],
+            schema: defaultSchema,
+            plugins: [createLinkPluginForKernel()],
         });
         let state = initialState.apply(
             initialState.tr.setSelection(

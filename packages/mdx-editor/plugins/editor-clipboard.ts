@@ -54,7 +54,7 @@ export function clipboardTextToMarkdown(text: string, html?: string): string {
     return markdown.length > 0 ? markdown : text;
 }
 
-export function createMarkdownClipboardPlugin(
+export function createEditorClipboardPlugin(
     options: MarkdownClipboardPluginOptions = {},
 ) {
     const schema = options.schema ?? mdxEditorSchema;

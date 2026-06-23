@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { parseMarkdown } from "./parse-markdown";
+import { createMdxEditorKernel } from "../kernel";
+import { defaultMarkdownSyntax } from "../syntax/default";
 import { roundTripFixtures } from "../test/fixtures";
+
+const { parseMarkdown } = createMdxEditorKernel({
+    syntax: defaultMarkdownSyntax(),
+});
 
 describe("parseMarkdown", () => {
     it("parses heading, paragraph, wikilink, and normal link into editor nodes", () => {
