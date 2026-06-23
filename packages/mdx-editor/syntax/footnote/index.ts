@@ -1,4 +1,5 @@
 import type { SyntaxPlugin } from "../../kernel";
+import { escapeAttribute, escapeHtml } from "../../kernel/clipboard";
 import { createReactNodeView } from "../../react/node-views";
 import { FootnoteNodeView } from "../../react/footnote-node-view";
 import { mdxEditorSchema } from "../../schema/schema";
@@ -22,6 +23,23 @@ export function footnoteSyntax(): SyntaxPlugin {
                 contentDOMTag: "div",
                 domTag: "section",
             }),
+        },
+        clipboard: {
+            toClipboardHtml: {
+                footnote_ref: (node) => {
+                    const label = String(node.attrs.label ?? node.textContent ?? "");
+
+                    return `<sup data-mdx-node-type="footnote_ref" data-mdx-label="${escapeAttribute(label)}">[${escapeHtml(label)}]</sup>`;
+                },
+                footnote_definition: (node, context) => {
+                    const label = String(node.attrs.label ?? "");
+                    const markdown = context
+                        .serializeMarkdown(node)
+                        .replace(/^\[\^[^\]]+\]:\s*/, "");
+
+                    return `<section data-mdx-node-type="footnote_definition" data-mdx-label="${escapeAttribute(label)}">${escapeHtml(markdown)}</section>`;
+                },
+            },
         },
     };
 }

@@ -1,4 +1,5 @@
 import type { SyntaxPlugin } from "../../kernel";
+import { escapeAttribute, escapeHtml } from "../../kernel/clipboard";
 import { createCodeBlockNodeView } from "../../react/node-views";
 import { mdxEditorSchema } from "../../schema/schema";
 import { codeBlockParsers } from "./parse";
@@ -21,6 +22,19 @@ export function codeSyntax(): SyntaxPlugin {
         },
         nodeViews: {
             code_block: createCodeBlockNodeView,
+        },
+        clipboard: {
+            toClipboardHtml: {
+                code_block: (node) => {
+                    const info = String(
+                        node.attrs.info ?? node.attrs.language ?? "",
+                    );
+
+                    return `<pre data-mdx-node-type="code_block" data-mdx-info="${escapeAttribute(info)}"><code>${escapeHtml(node.textContent)}</code></pre>`;
+                },
+                frontmatter: (node) =>
+                    `<pre data-mdx-node-type="frontmatter"><code>${escapeHtml(node.textContent)}</code></pre>`,
+            },
         },
     };
 }

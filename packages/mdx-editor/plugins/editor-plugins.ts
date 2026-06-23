@@ -4,6 +4,7 @@ import { keymap } from "prosemirror-keymap";
 import type { Schema } from "prosemirror-model";
 import type { Node as ProseMirrorNode } from "prosemirror-model";
 import type { ParsedMarkdownDocument } from "../core/types";
+import type { KernelClipboard } from "../kernel/clipboard";
 import { mdxEditorSchema } from "../schema/schema";
 import {
     createCodeHighlightPlugin,
@@ -20,6 +21,7 @@ export interface MdxEditorPluginOptions {
     codeTokenizer?: CodeTokenizer;
     parseMarkdown?: (markdown: string) => ParsedMarkdownDocument;
     serializeMarkdown?: (doc: ProseMirrorNode | ParsedMarkdownDocument) => string;
+    clipboard?: KernelClipboard;
 }
 
 export function createMdxEditorPlugins(options: MdxEditorPluginOptions = {}) {
@@ -34,6 +36,7 @@ export function createMdxEditorPlugins(options: MdxEditorPluginOptions = {}) {
             schema,
             parseMarkdown: options.parseMarkdown,
             serializeMarkdown: options.serializeMarkdown,
+            clipboard: options.clipboard,
         }),
         createEditableLinkPlugin(schema),
         keymap(markdownKeymap(schema)),

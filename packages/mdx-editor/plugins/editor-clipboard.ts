@@ -3,6 +3,7 @@ import { Slice } from "prosemirror-model";
 import { Plugin, PluginKey } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import type { ParsedMarkdownDocument } from "../core/types";
+import type { KernelClipboard } from "../kernel/clipboard";
 import { parseMarkdown } from "../parser/parse-markdown";
 import { mdxEditorSchema } from "../schema/schema";
 import { serializeBlockNode } from "../serializer/block-serializer";
@@ -20,6 +21,7 @@ export interface MarkdownClipboardPluginOptions {
     schema?: Schema;
     parseMarkdown?: (markdown: string) => ParsedMarkdownDocument;
     serializeMarkdown?: (doc: ProseMirrorNode | ParsedMarkdownDocument) => string;
+    clipboard?: KernelClipboard;
 }
 
 type ClipboardMarkdownSerializer = (
@@ -56,9 +58,12 @@ export function createMarkdownClipboardPlugin(
     options: MarkdownClipboardPluginOptions = {},
 ) {
     const schema = options.schema ?? mdxEditorSchema;
-    const parse = options.parseMarkdown
+    const clipboard = options.clipboard;
+    const parse = clipboard?.parseMarkdown
+        ?? options.parseMarkdown
         ?? ((markdown: string) => parseMarkdown(markdown, schema));
-    const serialize = options.serializeMarkdown
+    const serialize = clipboard?.serializeMarkdown
+        ?? options.serializeMarkdown
         ?? defaultClipboardSerializer;
 
     return new Plugin({
@@ -79,6 +84,7 @@ export function createMarkdownClipboardPlugin(
                         schema,
                         parse,
                         serialize,
+                        clipboard,
                     );
                 },
                 cut(view, event) {
@@ -89,10 +95,11 @@ export function createMarkdownClipboardPlugin(
                         schema,
                         parse,
                         serialize,
+                        clipboard,
                     );
                 },
                 paste(view, event) {
-                    return readMarkdownFromClipboard(view, event, parse);
+                    return readMarkdownFromClipboard(view, event, parse, clipboard);
                 },
             },
         },
@@ -106,6 +113,7 @@ function writeSelectionToClipboard(
     schema: Schema,
     parse: (markdown: string) => ParsedMarkdownDocument,
     serialize: ClipboardMarkdownSerializer,
+    clipboard: KernelClipboard | undefined,
 ) {
     if (view.state.selection.empty || !event.clipboardData) {
         return false;
@@ -119,7 +127,9 @@ function writeSelectionToClipboard(
     event.clipboardData.setData("text/plain", markdown);
     event.clipboardData.setData(
         "text/html",
-        markdownToClipboardHtml(markdown, { parseMarkdown: parse }),
+        clipboard
+            ? sliceToHtml(view.state.selection.content(), schema, clipboard)
+            : markdownToClipboardHtml(markdown, { parseMarkdown: parse }),
     );
 
     if (cut) {
@@ -138,6 +148,7 @@ function readMarkdownFromClipboard(
     view: EditorView,
     event: ClipboardEvent,
     parse: (markdown: string) => ParsedMarkdownDocument,
+    clipboard: KernelClipboard | undefined,
 ) {
     const clipboardData = event.clipboardData;
     if (!clipboardData) {
@@ -161,6 +172,12 @@ function readMarkdownFromClipboard(
     const html = clipboardData.getData("text/html");
     if (!html) {
         return false;
+    }
+
+    if (clipboard) {
+        event.preventDefault();
+        insertParsedDocument(view, clipboard.parseHtml(html));
+        return true;
     }
 
     const markdown = clipboardTextToMarkdown(text, html);
@@ -220,7 +237,13 @@ function insertMarkdown(
     markdown: string,
     parse: (markdown: string) => ParsedMarkdownDocument,
 ) {
-    const parsed = parse(markdown);
+    insertParsedDocument(view, parse(markdown));
+}
+
+function insertParsedDocument(
+    view: EditorView,
+    parsed: ParsedMarkdownDocument,
+) {
     view.dispatch(
         view.state.tr
             .replaceSelection(new Slice(parsed.doc.content, 0, 0))
@@ -280,6 +303,27 @@ function serializeSliceDocument(
         originalMarkdown: "",
         sourceSlices: [],
     });
+}
+
+function sliceToHtml(
+    slice: Slice,
+    schema: Schema,
+    clipboard: KernelClipboard,
+) {
+    const blocks: ProseMirrorNode[] = [];
+    slice.content.forEach((node) => {
+        if (node.isInline) {
+            blocks.push(schema.nodes.paragraph.create(null, node));
+        } else {
+            blocks.push(node);
+        }
+    });
+
+    if (blocks.length === 0) {
+        return "";
+    }
+
+    return clipboard.serializeHtml(schema.nodes.doc.create(null, blocks));
 }
 
 function defaultClipboardSerializer(

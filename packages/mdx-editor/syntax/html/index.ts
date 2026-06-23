@@ -1,5 +1,9 @@
 import type { SyntaxPlugin } from "../../kernel";
 import {
+    escapeAttribute,
+    sanitizeClipboardHtml,
+} from "../../kernel/clipboard";
+import {
     createHtmlBlockNodeView,
     createReactNodeView,
 } from "../../react/node-views";
@@ -16,9 +20,8 @@ export function htmlSyntax(): SyntaxPlugin {
         },
         serializers: {
             nodeSerializers: {
-                inline_html: (node, _context) =>
-                    String(node.attrs.html ?? node.textContent),
-                html_block: (node, _context) =>
+                inline_html: (node) => String(node.attrs.html ?? node.textContent),
+                html_block: (node) =>
                     String(node.attrs.html ?? node.textContent ?? ""),
             },
         },
@@ -29,6 +32,14 @@ export function htmlSyntax(): SyntaxPlugin {
                 inline: true,
             }),
             html_block: createHtmlBlockNodeView,
+        },
+        clipboard: {
+            toClipboardHtml: {
+                inline_html: (node) =>
+                    `<span data-mdx-node-type="inline_html" data-mdx-html="${escapeAttribute(String(node.attrs.html ?? node.textContent ?? ""))}">${sanitizeClipboardHtml(String(node.attrs.html ?? node.textContent ?? ""))}</span>`,
+                html_block: (node) =>
+                    `<div data-mdx-node-type="html_block" data-mdx-html="${escapeAttribute(String(node.attrs.html ?? node.textContent ?? ""))}">${sanitizeClipboardHtml(String(node.attrs.html ?? node.textContent ?? ""))}</div>`,
+            },
         },
     };
 }

@@ -9,6 +9,7 @@ import { createMdxNodeViews } from "../react/node-views";
 import { serializeBlockNode } from "../serializer/block-serializer";
 import { serializeInlineContent } from "../serializer/inline-serializer";
 import { serializeMarkdown as serializeParsedMarkdown } from "../serializer/serialize-markdown";
+import { createKernelClipboard, type KernelClipboard } from "./clipboard";
 import { createSyntaxRegistry } from "./registry";
 import { buildSchemaFromRegistry } from "./schema";
 import type {
@@ -35,9 +36,7 @@ export interface MdxEditorKernel {
     resolveImageSource?: (src: string) => Promise<string>;
     createNodeViews(): Record<string, NodeViewConstructor>;
     createEditorPlugins(): Plugin[];
-    clipboard: {
-        serializeMarkdown(doc: ProseMirrorNode | ParsedMarkdownDocument): string;
-    };
+    clipboard: KernelClipboard;
 }
 
 export function createMdxEditorKernel(
@@ -71,6 +70,12 @@ export function createMdxEditorKernel(
                 serializeNode,
             },
         );
+    const clipboard = createKernelClipboard({
+        schema,
+        registry,
+        parseMarkdown,
+        serializeMarkdown,
+    });
 
     return {
         schema,
@@ -90,10 +95,9 @@ export function createMdxEditorKernel(
                 codeTokenizer: options.services?.codeTokenizer,
                 parseMarkdown,
                 serializeMarkdown,
+                clipboard,
             }),
-        clipboard: {
-            serializeMarkdown,
-        },
+        clipboard,
     };
 }
 

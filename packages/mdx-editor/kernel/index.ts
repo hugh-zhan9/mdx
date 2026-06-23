@@ -1,4 +1,6 @@
 export { createMdxEditorKernel } from "./create-kernel";
+export { createKernelClipboard } from "./clipboard";
+export type { KernelClipboard } from "./clipboard";
 export type {
     MdxEditorKernel,
     MdxEditorKernelOptions,
