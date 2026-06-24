@@ -21,7 +21,7 @@ interface PanelHeaderProps {
 }
 
 const baseButtonClass =
-    "inline-flex items-center justify-center border border-transparent outline-none transition-colors focus-visible:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:text-base-content/40 disabled:hover:bg-transparent";
+    "inline-flex items-center justify-center rounded-md border border-transparent outline-none transition-[background-color,border-color,color,box-shadow] duration-150 focus-visible:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:text-base-content/40 disabled:hover:bg-transparent disabled:hover:text-base-content/40";
 
 export function IconButton({
     label,
@@ -33,10 +33,10 @@ export function IconButton({
     ...props
 }: IconButtonProps) {
     const toneClass = destructive
-        ? "text-error hover:bg-error/10"
+        ? "text-error hover:bg-error/10 hover:text-error"
         : active
-          ? "bg-base-300 text-base-content"
-          : "text-base-content/75 hover:bg-base-200 hover:text-base-content";
+          ? "border-base-content/10 bg-base-content/10 text-base-content shadow-[inset_0_0_0_0.5px_color-mix(in_srgb,var(--color-base-content)_10%,transparent)]"
+          : "text-base-content/70 hover:bg-[var(--mdx-control-hover-bg)] hover:text-base-content active:bg-[var(--mdx-control-active-bg)]";
 
     return (
         <button
@@ -70,7 +70,7 @@ export function TextControlButton({
             type="button"
             className={[
                 baseButtonClass,
-                "inline-flex h-7 min-w-0 max-w-full items-center gap-1 whitespace-nowrap px-2 text-xs text-base-content/75 hover:bg-base-200 hover:text-base-content [&>svg]:h-4 [&>svg]:w-4 [&>svg]:shrink-0",
+                "h-7 min-w-0 max-w-full gap-1.5 whitespace-nowrap px-2.5 text-xs font-medium text-base-content/72 hover:bg-[var(--mdx-control-hover-bg)] hover:text-base-content active:bg-[var(--mdx-control-active-bg)] [&>svg]:h-4 [&>svg]:w-4 [&>svg]:shrink-0",
                 className,
             ].filter(Boolean).join(" ")}
             {...props}
@@ -87,7 +87,7 @@ export function PrimaryTextControlButton({
             type="button"
             className={[
                 baseButtonClass,
-                "inline-flex h-8 min-w-0 max-w-full items-center gap-1 whitespace-nowrap rounded-sm bg-primary px-3 text-xs text-primary-content hover:bg-primary/90 hover:text-primary-content disabled:bg-primary/30 disabled:text-primary-content/70 [&>svg]:h-4 [&>svg]:w-4 [&>svg]:shrink-0",
+                "h-8 min-w-0 max-w-full gap-1.5 whitespace-nowrap rounded-md bg-primary px-3 text-xs font-medium text-primary-content shadow-sm hover:bg-primary/90 hover:text-primary-content disabled:bg-primary/30 disabled:text-primary-content/70 [&>svg]:h-4 [&>svg]:w-4 [&>svg]:shrink-0",
                 className,
             ].filter(Boolean).join(" ")}
             {...props}
@@ -97,8 +97,8 @@ export function PrimaryTextControlButton({
 
 export function PanelHeader({ title, actions }: PanelHeaderProps) {
     return (
-        <div className="flex h-10 min-w-0 items-center justify-between border-b border-base-300 px-3">
-            <div className="min-w-0 truncate text-xs font-semibold text-base-content/75">
+        <div className="flex h-10 min-w-0 items-center justify-between border-b border-base-content/10 bg-transparent px-3">
+            <div className="min-w-0 truncate text-[11px] font-semibold uppercase tracking-[0.02em] text-base-content/55">
                 {title}
             </div>
             {actions ? (
@@ -128,7 +128,7 @@ export function EmptyState({
             {actionLabel && onAction ? (
                 <button
                     type="button"
-                    className="mt-4 h-8 border border-base-content bg-base-content px-3 text-sm text-base-100 outline-none transition-colors hover:bg-base-content/85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:border-base-content/30 disabled:bg-base-content/30"
+                    className="mt-4 h-8 rounded-md border border-base-content bg-base-content px-3 text-sm font-medium text-base-100 outline-none transition-colors hover:bg-base-content/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:border-base-content/30 disabled:bg-base-content/30"
                     onClick={onAction}
                     disabled={actionDisabled}
                 >

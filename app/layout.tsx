@@ -48,7 +48,7 @@ export default function RootLayout({
             <head>
                 <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
             </head>
-            <body className="h-full bg-base-100 text-base-content">
+            <body className="h-full bg-base-100 text-base-content antialiased">
                 {children}
             </body>
         </html>

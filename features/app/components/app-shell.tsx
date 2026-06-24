@@ -54,7 +54,14 @@ export function AppShell() {
 
     return (
         <AppRenderErrorBoundary resetKey={sessionKey(session)}>
-            {renderSession(session)}
+            <div
+                data-mdx-shell=""
+                data-mdx-window-kind={session.kind}
+                data-mdx-platform={isLikelyMacPlatform() ? "macos" : "other"}
+                className="h-full min-h-0"
+            >
+                {renderSession(session)}
+            </div>
         </AppRenderErrorBoundary>
     );
 }
@@ -161,4 +168,12 @@ function fileNameFromPath(path: string) {
 
 function isTauriRuntime() {
     return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+function isLikelyMacPlatform() {
+    if (typeof navigator === "undefined") {
+        return false;
+    }
+
+    return /Mac/.test(navigator.platform);
 }

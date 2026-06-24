@@ -7,17 +7,18 @@
 @plugin "daisyui/theme" {
     name: "light";
     default: true;
-    --color-accent: "#1f2937";
+    --color-accent: #1f2937;
     --color-accent-content: #ffffff;
-    --color-base-100: rgb(252, 252, 252);
-    --color-base-200: #f5f6f7;
-    --color-base-300: #ebebeb;
-    --color-base-content: rgba(20, 20, 20, 1);
-    --color-primary: oklch(49.12% 0.3096 275.75);
-    --color-neutral: #e5e7eb;
-    --color-neutral-content: #414751;
-    --color-info: #2563eb;
-    --color-info-content: #3c7cab;
+    --color-base-100: #fbfbfc;
+    --color-base-200: #f2f2f4;
+    --color-base-300: #dedee3;
+    --color-base-content: #1d1d1f;
+    --color-primary: #0066cc;
+    --color-primary-content: #ffffff;
+    --color-neutral: #e8e8ed;
+    --color-neutral-content: #3f3f46;
+    --color-info: #0066cc;
+    --color-info-content: #0a4f95;
     --color-warning: #b45309;
     --color-error: #dc2626;
     --color-error-content: #ffffff;
@@ -27,21 +28,37 @@
 @plugin "daisyui/theme" {
     name: "dark";
     prefersdark: true;
-    --color-accent: "#1f2937";
+    --color-accent: #d1d5db;
     --color-accent-content: #ffffff;
-    --color-base-100: #1e1e1e;
-    --color-base-200: #181818;
-    --color-base-300: #202020;
-    --color-base-content: #bcbec4;
-    --color-primary: oklch(49.12% 0.3096 275.75);
-    --color-neutral: #2e3034;
-    --color-neutral-content: #aaaaaa;
-    --color-info: #4daafc;
-    --color-info-content: #3c7cab;
-    --color-warning: #c3be00;
+    --color-base-100: #1f2023;
+    --color-base-200: #18191c;
+    --color-base-300: #303136;
+    --color-base-content: #f2f2f7;
+    --color-primary: #0a84ff;
+    --color-primary-content: #ffffff;
+    --color-neutral: #2c2d31;
+    --color-neutral-content: #c7c7cc;
+    --color-info: #64b5ff;
+    --color-info-content: #9fd1ff;
+    --color-warning: #ffd60a;
     --color-error: #ef4444;
     --color-error-content: #ffffff;
     --depth: 0;
+}
+
+:root {
+    --mdx-ui-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    --mdx-editor-font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", Arial, sans-serif;
+    --mdx-mono-font: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    --mdx-window-toolbar-height: 52px;
+    --mdx-editor-max-width: 52rem;
+    --mdx-focus-ring: color-mix(in srgb, var(--color-primary) 24%, transparent);
+    --mdx-separator: color-mix(in srgb, var(--color-base-content) 12%, transparent);
+    --mdx-chrome-bg: color-mix(in srgb, var(--color-base-200) 92%, var(--color-base-100) 8%);
+    --mdx-sidebar-bg: color-mix(in srgb, var(--color-base-200) 96%, var(--color-base-100) 4%);
+    --mdx-content-bg: var(--color-base-100);
+    --mdx-control-hover-bg: color-mix(in srgb, var(--color-base-content) 7%, transparent);
+    --mdx-control-active-bg: color-mix(in srgb, var(--color-base-content) 11%, transparent);
 }
 
 * {
@@ -53,6 +70,28 @@ body {
     margin: 0;
     padding: 0;
     height: 100%;
+}
+
+body {
+    font-family: var(--mdx-ui-font);
+}
+
+button,
+input,
+select,
+textarea {
+    font: inherit;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.001ms !important;
+    }
 }
 
 html[data-theme="light"] {
@@ -67,6 +106,12 @@ html[data-theme="dark"] {
  * Reserved root selector for MDX workspace-level theme bridges.
  */
 [data-mdx-root] {
+}
+
+[data-mdx-shell] {
+    background: var(--mdx-content-bg);
+    color: var(--color-base-content);
+    min-height: 100%;
 }
 
 [data-mdx-editor-root] {
