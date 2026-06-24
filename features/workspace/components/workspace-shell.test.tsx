@@ -117,7 +117,7 @@ vi.mock("./settings-button", () => ({
 }));
 
 vi.mock("./tab-strip", () => ({
-  TabStrip: () => <div data-testid="tabs" />,
+  TabStrip: () => <div data-mdx-workspace-main-tabs="" data-testid="tabs" />,
 }));
 
 describe("WorkspaceShell", () => {
@@ -246,6 +246,39 @@ describe("WorkspaceShell", () => {
     expect(host.querySelector("[data-testid='memory-page']")).not.toBeNull();
     expect(host.textContent).toContain("返回编辑器");
     expect(host.textContent).not.toContain("LLM Wiki");
+  });
+
+  it("renders macos workspace chrome regions", async () => {
+    const workspace = workspaceReducer(createWorkspaceState("/tmp/ws"), {
+      type: "tab/opened",
+      tab: {
+        tabId: "tab-1",
+        path: "/tmp/ws/note.md",
+        title: "note.md",
+        dirty: false,
+        needsRenameOnFirstSave: false,
+        markdown: "# Note",
+      },
+    });
+
+    await act(async () => {
+      root.render(
+        <WorkspaceShell
+          workspace={workspace}
+          dispatch={vi.fn()}
+          onChooseWorkspace={vi.fn()}
+          canChooseWorkspace={true}
+          preferences={preferences}
+          onPreferencesChange={vi.fn()}
+          onActionsChange={vi.fn()}
+        />,
+      );
+      await flushPromises();
+    });
+
+    expect(host.querySelector("[data-mdx-workspace-toolbar]")).not.toBeNull();
+    expect(host.querySelector("[data-mdx-workspace-main-tabs]")).not.toBeNull();
+    expect(host.querySelector("[data-mdx-right-panel-tabs]")).not.toBeNull();
   });
 
   function getButton(label: string) {

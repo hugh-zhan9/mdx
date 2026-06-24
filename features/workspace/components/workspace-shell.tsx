@@ -1954,9 +1954,15 @@ export function WorkspaceShell({
   ].join(" ");
 
   return (
-    <div className="grid h-full min-h-0 grid-rows-[44px_minmax(0,1fr)]">
-      <header className="flex min-w-0 items-center justify-between border-b border-base-300 bg-base-200 px-3">
-        <div className="flex min-w-0 items-center gap-2">
+    <div className="grid h-full min-h-0 grid-rows-[var(--mdx-window-toolbar-height)_minmax(0,1fr)] bg-[var(--mdx-content-bg)]">
+      <header
+        data-mdx-workspace-toolbar=""
+        className="flex min-w-0 items-center justify-between border-b border-base-content/10 bg-[var(--mdx-chrome-bg)] px-3"
+      >
+        <div
+          data-tauri-drag-region
+          className="flex min-w-0 items-center gap-2 pl-16"
+        >
           <IconButton
             onClick={leftPanel.toggleCollapsed}
             label={leftPanel.isCollapsed ? "展开文件树" : "收起文件树"}
@@ -1968,7 +1974,7 @@ export function WorkspaceShell({
           />
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex min-w-0 shrink-0 items-center gap-2">
           {message ? (
             <div className="max-w-80 truncate text-xs text-warning">
               {message}
@@ -2019,10 +2025,13 @@ export function WorkspaceShell({
 
       <div
         ref={workspaceBodyRef}
-        className="grid min-h-0"
+        className="grid min-h-0 bg-[var(--mdx-content-bg)]"
         style={{ gridTemplateColumns }}
       >
-        <div className="min-h-0 overflow-hidden" style={{ gridColumn: 1 }}>
+        <div
+          className="min-h-0 overflow-hidden bg-[var(--mdx-sidebar-bg)]"
+          style={{ gridColumn: 1 }}
+        >
           <FileTreePanel
             rootPath={workspace.rootPath}
             fileTree={workspace.fileTree}
@@ -2052,11 +2061,11 @@ export function WorkspaceShell({
         </div>
 
         <main
-          className="flex min-h-0 min-w-0 flex-col bg-base-100"
+          className="flex min-h-0 min-w-0 flex-col bg-[var(--mdx-content-bg)]"
           style={{ gridColumn: 2 }}
         >
           {isMemoryView ? (
-            <div className="min-h-0 flex-1 overflow-hidden bg-base-100">
+            <div className="min-h-0 flex-1 overflow-hidden bg-[var(--mdx-content-bg)]">
               <MemoryPanel rootPath={workspace.rootPath} />
             </div>
           ) : (
@@ -2068,7 +2077,7 @@ export function WorkspaceShell({
             onCloseTab={closeTab}
           />
           {draftMessage ? (
-            <div className="border-b border-base-300 bg-base-200/60 px-3 py-1.5 text-xs text-base-content/70">
+            <div className="border-b border-base-content/10 bg-[var(--mdx-chrome-bg)] px-3 py-1.5 text-xs text-base-content/65">
               {draftMessage}
             </div>
           ) : null}
@@ -2252,12 +2261,13 @@ export function WorkspaceShell({
           style={{ gridColumn: 3 }}
         >
           {isMemoryView || rightPanel.isCollapsed ? null : (
-            <aside className="h-full min-h-0 overflow-hidden border-l border-base-300 bg-base-100">
+            <aside className="h-full min-h-0 overflow-hidden border-l border-base-content/10 bg-[var(--mdx-sidebar-bg)]">
               <div className="flex h-full min-h-0 flex-col">
                 <div
+                  data-mdx-right-panel-tabs=""
                   role="tablist"
                   aria-label="Right panel"
-                  className="grid grid-cols-2 gap-1 border-b border-base-300 bg-base-200 p-1"
+                  className="grid grid-cols-2 gap-1 border-b border-base-content/10 bg-[var(--mdx-chrome-bg)] p-1"
                 >
                   {RIGHT_PANEL_TABS.map((tab) => (
                     <button
@@ -2266,10 +2276,10 @@ export function WorkspaceShell({
                       role="tab"
                       aria-selected={rightPanelTab === tab.id}
                       className={[
-                        "h-7 truncate px-2 text-xs outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                        "h-7 truncate rounded-md px-2 text-xs font-medium outline-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20",
                         rightPanelTab === tab.id
-                          ? "bg-base-100 text-base-content shadow-sm"
-                          : "text-base-content/70 hover:text-base-content",
+                          ? "bg-base-content/10 text-base-content shadow-[inset_0_0_0_0.5px_color-mix(in_srgb,var(--color-base-content)_8%,transparent)]"
+                          : "text-base-content/65 hover:bg-[var(--mdx-control-hover-bg)] hover:text-base-content",
                       ].join(" ")}
                       onClick={() => setRightPanelTab(tab.id)}
                     >
@@ -2295,7 +2305,7 @@ export function WorkspaceShell({
               </div>
               <div
                 {...rightPanel.resizeHandleProps}
-                className="absolute left-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-primary/40"
+                className="absolute left-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-base-content/10"
               />
             </aside>
           )}
