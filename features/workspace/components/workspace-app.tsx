@@ -5,7 +5,10 @@ import type { RefObject } from "react";
 import { tauriCore, tauriWindow } from "@/common/lib/tauri";
 import { EmptyState, TextControlButton } from "../../../common/components/ui-controls";
 import { useWorkspaceBootstrap } from "../hooks/use-workspace-bootstrap";
-import { syncCliWorkspaceSnapshot } from "../lib/cli-sync";
+import {
+    syncCliFrontendHeartbeat,
+    syncCliWorkspaceSnapshot,
+} from "../lib/cli-sync";
 import { deleteDiscardedWorkspaceDrafts } from "../lib/discard-drafts";
 import { createWorkspaceEmptyState } from "../lib/empty-state-copy";
 import { draftDelete } from "@/features/recovery/lib/draft-client";
@@ -92,6 +95,7 @@ function WorkspaceAppInner() {
     );
 
     useCliWorkspaceSync(workspace);
+    useWorkspaceFrontendHeartbeat(workspace);
     useWorkspaceMenuEvents(
         workspaceActionsRef,
         chooseWorkspaceWithGuard,
@@ -412,6 +416,40 @@ function useCliWorkspaceSync(workspace: WorkspaceState | null) {
         void syncCliWorkspaceSnapshot(null).catch((error) => {
             console.warn("Failed to sync CLI workspace snapshot.", error);
         });
+    }, [workspace]);
+}
+
+function useWorkspaceFrontendHeartbeat(workspace: WorkspaceState | null) {
+    useEffect(() => {
+        if (!isTauriRuntime()) {
+            return;
+        }
+
+        let disposed = false;
+
+        const sendHeartbeat = () => {
+            if (disposed) {
+                return;
+            }
+
+            void syncCliFrontendHeartbeat(workspace).catch((error) => {
+                console.warn("Failed to sync workspace frontend heartbeat.", error);
+            });
+        };
+
+        sendHeartbeat();
+        const interval = window.setInterval(sendHeartbeat, 15_000);
+        window.addEventListener("focus", sendHeartbeat);
+        window.addEventListener("pageshow", sendHeartbeat);
+        document.addEventListener("visibilitychange", sendHeartbeat);
+
+        return () => {
+            disposed = true;
+            window.clearInterval(interval);
+            window.removeEventListener("focus", sendHeartbeat);
+            window.removeEventListener("pageshow", sendHeartbeat);
+            document.removeEventListener("visibilitychange", sendHeartbeat);
+        };
     }, [workspace]);
 }
 

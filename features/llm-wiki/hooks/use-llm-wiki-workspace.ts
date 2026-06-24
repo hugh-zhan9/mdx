@@ -492,6 +492,31 @@ export function useLlmWikiWorkspace(
   }, [rootPath, setMessageForError]);
 
   useEffect(() => {
+    if (!rootPath || typeof window === "undefined") {
+      return;
+    }
+
+    const refreshWhenVisible = () => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "hidden"
+      ) {
+        return;
+      }
+
+      void refresh();
+    };
+
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [refresh, rootPath]);
+
+  useEffect(() => {
     let disposed = false;
     const requestId = ++requestIdRef.current;
 

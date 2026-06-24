@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
+use std::thread;
+use std::time::Duration;
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{
@@ -473,6 +475,9 @@ mod memory_tauri_command_tests {
 }
 
 static WIN_ID: AtomicU32 = AtomicU32::new(0);
+const WORKSPACE_FRONTEND_HEARTBEAT_MAX_AGE: Duration = Duration::from_secs(45);
+const WORKSPACE_FRONTEND_RECOVERY_DELAY: Duration = Duration::from_secs(2);
+const WORKSPACE_FRONTEND_RECOVERY_MIN_INTERVAL: Duration = Duration::from_secs(60);
 
 #[derive(Clone)]
 struct MenuState {
@@ -729,6 +734,80 @@ fn update_menu_state_for_focused_window(app: &AppHandle) {
     update_menu_state_for_role(app, focused_window_with_role(app).map(|(_, role)| role));
 }
 
+fn schedule_workspace_frontend_recovery_check(
+    app: &AppHandle,
+    label: String,
+    trigger: &'static str,
+) {
+    let app = app.clone();
+    thread::spawn(move || {
+        thread::sleep(WORKSPACE_FRONTEND_RECOVERY_DELAY);
+        let app_for_recovery = app.clone();
+        let label_for_recovery = label.clone();
+        if let Err(error) = app.run_on_main_thread(move || {
+            recover_stale_workspace_frontend(&app_for_recovery, &label_for_recovery, trigger);
+        }) {
+            log::warn!(
+                target: "mdx::webview_recovery",
+                "failed to schedule recovery check label={} trigger={} error={}",
+                label,
+                trigger,
+                error,
+            );
+        }
+    });
+}
+
+fn schedule_all_workspace_frontend_recovery_checks(app: &AppHandle, trigger: &'static str) {
+    for label in app.webview_windows().keys() {
+        if window_role_for_label(app, label) == Some(WindowRole::Workspace) {
+            schedule_workspace_frontend_recovery_check(app, label.clone(), trigger);
+        }
+    }
+}
+
+fn recover_stale_workspace_frontend(app: &AppHandle, label: &str, trigger: &str) {
+    if window_role_for_label(app, label) != Some(WindowRole::Workspace) {
+        return;
+    }
+
+    let reason = {
+        let state = app.state::<cli_server::CliState>();
+        state.reserve_frontend_recovery(
+            label,
+            WORKSPACE_FRONTEND_HEARTBEAT_MAX_AGE,
+            WORKSPACE_FRONTEND_RECOVERY_MIN_INTERVAL,
+        )
+    };
+
+    let Some(reason) = reason else {
+        return;
+    };
+
+    let Some(window) = app.get_webview_window(label) else {
+        return;
+    };
+
+    log::warn!(
+        target: "mdx::webview_recovery",
+        "reloading stale workspace webview label={} trigger={} reason={}",
+        label,
+        trigger,
+        reason.as_log_reason(),
+    );
+
+    if let Err(error) = window.reload() {
+        log::error!(
+            target: "mdx::webview_recovery",
+            "failed to reload stale workspace webview label={} trigger={} reason={} error={}",
+            label,
+            trigger,
+            reason.as_log_reason(),
+            error,
+        );
+    }
+}
+
 fn dispatch_menu_event(app: &AppHandle, menu_id: &str) {
     let Some((window, role)) = focused_window_with_role(app) else {
         return;
@@ -961,6 +1040,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             cli_server::cli_update_workspace_snapshot,
+            cli_server::cli_frontend_heartbeat,
             cli_server::cli_update_tab_state,
             state_store::load_app_state,
             state_store::save_app_state,
@@ -1096,6 +1176,7 @@ pub fn run() {
                     app.webview_windows().len(),
                 );
                 focus_or_create_initial_workspace_window(app);
+                schedule_all_workspace_frontend_recovery_checks(app, "reopen");
             }
             RunEvent::ExitRequested { code, .. } => {
                 log::info!(
@@ -1126,6 +1207,9 @@ pub fn run() {
                 ..
             } => {
                 update_menu_state_for_role(app, window_role_for_label(app, &label));
+                if window_role_for_label(app, &label) == Some(WindowRole::Workspace) {
+                    schedule_workspace_frontend_recovery_check(app, label, "focused");
+                }
             }
             RunEvent::WindowEvent {
                 label,

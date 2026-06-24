@@ -32,6 +32,31 @@ struct WindowSnapshot {
     workspace: WorkspaceSnapshot,
     tab_contents: HashMap<String, String>,
     tab_selections: HashMap<String, SelectionSnapshot>,
+    frontend_heartbeat: Option<FrontendHeartbeat>,
+    last_frontend_recovery: Option<Instant>,
+}
+
+#[derive(Clone)]
+struct FrontendHeartbeat {
+    payload: CliFrontendHeartbeatPayload,
+    seen_at: Instant,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrontendRecoveryReason {
+    MissingHeartbeat,
+    MissingRoot,
+    StaleHeartbeat(Duration),
+}
+
+impl FrontendRecoveryReason {
+    pub fn as_log_reason(self) -> &'static str {
+        match self {
+            Self::MissingHeartbeat => "missing_heartbeat",
+            Self::MissingRoot => "missing_root",
+            Self::StaleHeartbeat(_) => "stale_heartbeat",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -44,6 +69,26 @@ pub struct CliWorkspaceSyncPayload {
     #[serde(default)]
     #[serde(alias = "tabSelections")]
     pub tab_selections: HashMap<String, SelectionSnapshot>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct CliFrontendHeartbeatPayload {
+    #[serde(default)]
+    #[serde(alias = "rootPath")]
+    pub root_path: Option<String>,
+    #[serde(default)]
+    #[serde(alias = "hasWorkspace")]
+    pub has_workspace: bool,
+    #[serde(default)]
+    #[serde(alias = "rootPresent")]
+    pub root_present: bool,
+    #[serde(default)]
+    #[serde(alias = "visibilityState")]
+    pub visibility_state: Option<String>,
+    #[serde(default)]
+    #[serde(alias = "locationHref")]
+    pub location_href: Option<String>,
 }
 
 pub fn start(app: AppHandle) {
@@ -62,6 +107,16 @@ pub fn cli_update_workspace_snapshot(
         payload.tab_contents,
         payload.tab_selections,
     );
+    Ok(())
+}
+
+#[tauri::command]
+pub fn cli_frontend_heartbeat(
+    window: Window,
+    payload: CliFrontendHeartbeatPayload,
+    state: State<CliState>,
+) -> Result<(), String> {
+    state.update_frontend_heartbeat(window.label(), payload);
     Ok(())
 }
 
@@ -121,6 +176,12 @@ impl CliState {
                     .into_iter()
                     .filter(|(tab_id, _)| known_tab_ids.contains(tab_id))
                     .collect(),
+                frontend_heartbeat: previous
+                    .as_ref()
+                    .and_then(|snapshot| snapshot.frontend_heartbeat.clone()),
+                last_frontend_recovery: previous
+                    .as_ref()
+                    .and_then(|snapshot| snapshot.last_frontend_recovery),
             },
         );
     }
@@ -157,6 +218,60 @@ impl CliState {
                 .tab_selections
                 .retain(|tab_id, _| known_tab_ids.contains(tab_id));
         }
+    }
+
+    fn update_frontend_heartbeat(&self, label: &str, payload: CliFrontendHeartbeatPayload) {
+        self.update_frontend_heartbeat_at(label, payload, Instant::now());
+    }
+
+    fn update_frontend_heartbeat_at(
+        &self,
+        label: &str,
+        payload: CliFrontendHeartbeatPayload,
+        seen_at: Instant,
+    ) {
+        let mut windows = self.windows.lock().unwrap();
+        let snapshot = windows.entry(label.to_string()).or_default();
+        snapshot.frontend_heartbeat = Some(FrontendHeartbeat { payload, seen_at });
+    }
+
+    pub fn reserve_frontend_recovery(
+        &self,
+        label: &str,
+        max_heartbeat_age: Duration,
+        min_recovery_interval: Duration,
+    ) -> Option<FrontendRecoveryReason> {
+        let mut windows = self.windows.lock().unwrap();
+        let snapshot = windows.get_mut(label)?;
+        let _root_path = snapshot.workspace.root_path.as_ref()?;
+        if snapshot.workspace.tabs.iter().any(|tab| tab.dirty) {
+            return None;
+        }
+        let now = Instant::now();
+
+        if snapshot
+            .last_frontend_recovery
+            .is_some_and(|last| now.duration_since(last) < min_recovery_interval)
+        {
+            return None;
+        }
+
+        let reason = match snapshot.frontend_heartbeat.as_ref() {
+            None => FrontendRecoveryReason::MissingHeartbeat,
+            Some(heartbeat) if !heartbeat.payload.root_present => {
+                FrontendRecoveryReason::MissingRoot
+            }
+            Some(heartbeat) => {
+                let age = now.duration_since(heartbeat.seen_at);
+                if age <= max_heartbeat_age {
+                    return None;
+                }
+                FrontendRecoveryReason::StaleHeartbeat(age)
+            }
+        };
+
+        snapshot.last_frontend_recovery = Some(now);
+        Some(reason)
     }
 
     fn snapshot_for_label(&self, label: &str) -> Option<WindowSnapshot> {
@@ -2382,10 +2497,158 @@ mod tests {
             workspace: WorkspaceSnapshot::default(),
             tab_contents: HashMap::new(),
             tab_selections: HashMap::new(),
+            frontend_heartbeat: None,
+            last_frontend_recovery: None,
         };
 
         let response = llm_wiki_active_root(&snapshot).unwrap_err();
         assert!(!response.ok);
         assert_eq!(response.error_code.as_deref(), Some("no_workspace"));
+    }
+
+    #[test]
+    fn frontend_recovery_is_reserved_when_workspace_heartbeat_is_missing() {
+        let state = CliState::default();
+        state.update_window(
+            "workspace",
+            workspace_snapshot("/tmp/wiki"),
+            HashMap::new(),
+            HashMap::new(),
+        );
+
+        assert_eq!(
+            state.reserve_frontend_recovery(
+                "workspace",
+                Duration::from_secs(20),
+                Duration::from_secs(60),
+            ),
+            Some(FrontendRecoveryReason::MissingHeartbeat),
+        );
+        assert_eq!(
+            state.reserve_frontend_recovery(
+                "workspace",
+                Duration::from_secs(20),
+                Duration::from_secs(60),
+            ),
+            None,
+        );
+    }
+
+    #[test]
+    fn frontend_recovery_is_reserved_when_heartbeat_is_stale() {
+        let state = CliState::default();
+        state.update_window(
+            "workspace",
+            workspace_snapshot("/tmp/wiki"),
+            HashMap::new(),
+            HashMap::new(),
+        );
+        state.update_frontend_heartbeat_at(
+            "workspace",
+            CliFrontendHeartbeatPayload {
+                root_path: Some("/tmp/wiki".to_string()),
+                has_workspace: true,
+                root_present: true,
+                visibility_state: Some("visible".to_string()),
+                location_href: Some("tauri://localhost".to_string()),
+            },
+            Instant::now() - Duration::from_secs(45),
+        );
+
+        let reason = state
+            .reserve_frontend_recovery(
+                "workspace",
+                Duration::from_secs(20),
+                Duration::from_secs(60),
+            )
+            .unwrap();
+
+        assert!(matches!(
+            reason,
+            FrontendRecoveryReason::StaleHeartbeat(age) if age >= Duration::from_secs(45)
+        ));
+    }
+
+    #[test]
+    fn frontend_recovery_is_not_reserved_for_fresh_heartbeat_or_empty_workspace() {
+        let state = CliState::default();
+        state.update_window(
+            "workspace",
+            workspace_snapshot("/tmp/wiki"),
+            HashMap::new(),
+            HashMap::new(),
+        );
+        state.update_frontend_heartbeat_at(
+            "workspace",
+            CliFrontendHeartbeatPayload {
+                root_path: Some("/tmp/wiki".to_string()),
+                has_workspace: true,
+                root_present: true,
+                visibility_state: Some("visible".to_string()),
+                location_href: Some("tauri://localhost".to_string()),
+            },
+            Instant::now(),
+        );
+        state.update_window(
+            "empty",
+            WorkspaceSnapshot::default(),
+            HashMap::new(),
+            HashMap::new(),
+        );
+
+        assert_eq!(
+            state.reserve_frontend_recovery(
+                "workspace",
+                Duration::from_secs(20),
+                Duration::from_secs(60),
+            ),
+            None,
+        );
+        assert_eq!(
+            state.reserve_frontend_recovery(
+                "empty",
+                Duration::from_secs(20),
+                Duration::from_secs(60),
+            ),
+            None,
+        );
+    }
+
+    #[test]
+    fn frontend_recovery_is_not_reserved_when_workspace_has_dirty_tabs() {
+        let state = CliState::default();
+        state.update_window(
+            "workspace",
+            dirty_workspace_snapshot("/tmp/wiki"),
+            HashMap::new(),
+            HashMap::new(),
+        );
+
+        assert_eq!(
+            state.reserve_frontend_recovery(
+                "workspace",
+                Duration::from_secs(20),
+                Duration::from_secs(60),
+            ),
+            None,
+        );
+    }
+
+    fn workspace_snapshot(root_path: &str) -> WorkspaceSnapshot {
+        WorkspaceSnapshot {
+            root_path: Some(root_path.to_string()),
+            ..WorkspaceSnapshot::default()
+        }
+    }
+
+    fn dirty_workspace_snapshot(root_path: &str) -> WorkspaceSnapshot {
+        let mut snapshot = workspace_snapshot(root_path);
+        snapshot.tabs.push(crate::cli_protocol::TabSnapshot {
+            tab_id: "dirty-tab".to_string(),
+            path: format!("{root_path}/draft.md"),
+            title: "draft.md".to_string(),
+            dirty: true,
+        });
+        snapshot
     }
 }

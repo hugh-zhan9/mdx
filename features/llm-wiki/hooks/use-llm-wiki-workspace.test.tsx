@@ -134,6 +134,37 @@ describe("useLlmWikiWorkspace", () => {
     );
   });
 
+  it("refreshes wiki status when the app returns to the foreground", async () => {
+    let latest: LlmWikiWorkspaceHook | null = null;
+
+    function Harness() {
+      const llmWiki = useLlmWikiWorkspace("/tmp/wiki", {
+        canAutoProcess: false,
+      });
+      useEffect(() => {
+        latest = llmWiki;
+      }, [llmWiki]);
+      return null;
+    }
+
+    await act(async () => {
+      root.render(<Harness />);
+    });
+    await act(async () => {});
+
+    expect(latest?.isReady).toBe(true);
+    vi.mocked(client.detectLlmWikiWorkspace).mockClear();
+    vi.mocked(client.getLlmConfig).mockClear();
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await act(async () => {});
+
+    expect(client.detectLlmWikiWorkspace).toHaveBeenCalledWith("/tmp/wiki");
+    expect(client.getLlmConfig).toHaveBeenCalled();
+  });
+
   it("clears stale active operations when the backend operation is gone", async () => {
     vi.useFakeTimers();
     let latest: LlmWikiWorkspaceHook | null = null;

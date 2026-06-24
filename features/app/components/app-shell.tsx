@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Component, useEffect, useState } from "react";
+import type { ErrorInfo, ReactNode } from "react";
 import { tauriCore } from "@/common/lib/tauri";
 import { DocumentApp } from "@/features/document/components/document-app";
 import { DocumentError } from "@/features/document/components/document-error";
@@ -51,6 +52,14 @@ export function AppShell() {
         );
     }
 
+    return (
+        <AppRenderErrorBoundary resetKey={sessionKey(session)}>
+            {renderSession(session)}
+        </AppRenderErrorBoundary>
+    );
+}
+
+function renderSession(session: AppWindowSession) {
     if (session.kind === "document") {
         return <DocumentApp session={session} />;
     }
@@ -60,6 +69,69 @@ export function AppShell() {
     }
 
     return <WorkspaceApp />;
+}
+
+function sessionKey(session: AppWindowSession) {
+    if (session.kind === "document") {
+        return `document:${session.realPath}`;
+    }
+
+    if (session.kind === "documentError") {
+        return `document-error:${session.path}`;
+    }
+
+    return "workspace";
+}
+
+export class AppRenderErrorBoundary extends Component<
+    { children: ReactNode; resetKey: string },
+    { error: Error | null; resetKey: string }
+> {
+    state: { error: Error | null; resetKey: string } = {
+        error: null,
+        resetKey: this.props.resetKey,
+    };
+
+    static getDerivedStateFromError(error: Error) {
+        return { error };
+    }
+
+    static getDerivedStateFromProps(
+        props: { resetKey: string },
+        state: { error: Error | null; resetKey: string },
+    ) {
+        if (props.resetKey !== state.resetKey) {
+            return { error: null, resetKey: props.resetKey };
+        }
+
+        return null;
+    }
+
+    componentDidCatch(error: Error, info: ErrorInfo) {
+        console.error("MDX render failed.", error, info);
+    }
+
+    render() {
+        if (this.state.error) {
+            return (
+                <main
+                    role="alert"
+                    className="flex h-screen items-center justify-center bg-base-100 px-6 text-base-content"
+                >
+                    <div className="max-w-md text-sm">
+                        <h1 className="mb-2 text-base font-semibold">
+                            MDX 渲染失败
+                        </h1>
+                        <p className="text-base-content/70">
+                            请重新打开窗口；诊断信息已写入开发者控制台。
+                        </p>
+                    </div>
+                </main>
+            );
+        }
+
+        return this.props.children;
+    }
 }
 
 function normalizeSessionFromLocation(): AppWindowSession {

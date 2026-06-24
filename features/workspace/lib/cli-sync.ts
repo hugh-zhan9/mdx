@@ -1,5 +1,6 @@
 import { tauriCore } from "@/common/lib/tauri";
 import type {
+    CliFrontendHeartbeatPayload,
     CliSelectionSnapshot,
     CliWorkspaceSyncPayload,
     WorkspaceState,
@@ -57,5 +58,30 @@ export async function syncCliWorkspaceSnapshot(
     const { invoke } = await tauriCore();
     await invoke("cli_update_workspace_snapshot", {
         payload: buildCliWorkspaceSyncPayload(workspace, selections),
+    });
+}
+
+export function buildCliFrontendHeartbeatPayload(
+    workspace: WorkspaceState | null,
+): CliFrontendHeartbeatPayload {
+    return {
+        root_path: workspace?.rootPath ?? null,
+        has_workspace: Boolean(workspace),
+        root_present:
+            typeof document !== "undefined" &&
+            document.querySelector("[data-mdx-root]") !== null,
+        visibility_state:
+            typeof document !== "undefined" ? document.visibilityState : null,
+        location_href:
+            typeof window !== "undefined" ? window.location.href : null,
+    };
+}
+
+export async function syncCliFrontendHeartbeat(
+    workspace: WorkspaceState | null,
+) {
+    const { invoke } = await tauriCore();
+    await invoke("cli_frontend_heartbeat", {
+        payload: buildCliFrontendHeartbeatPayload(workspace),
     });
 }

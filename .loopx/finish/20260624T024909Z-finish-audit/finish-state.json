@@ -1,0 +1,1372 @@
+{
+  "schema_version": 1,
+  "audit_id": "20260624T024909Z-finish-audit",
+  "slug": "finish-audit",
+  "status": "completed",
+  "updated_at": "2026-06-24T02:56:14.034Z",
+  "inputs": {
+    "scanned": [
+      "slug=finish-audit",
+      "worktree=/Users/zhangyukun/project/mdx",
+      "branch=main",
+      "base_branch=main",
+      "head=d830c60",
+      "change_window_source=baseline",
+      "change_range=69eb098..HEAD",
+      "committed_change_count=142",
+      "changed_files_count=156",
+      "uncommitted_change_count=10",
+      "cwd=/Users/zhangyukun/project/mdx",
+      "env.LOOPX_DEVELOPER=unknown"
+    ]
+  },
+  "audit": {
+    "branch": "main",
+    "base_branch": "main",
+    "worktree": "/Users/zhangyukun/project/mdx",
+    "head": "d830c60",
+    "accepted_candidates": [
+      {
+        "id": "memory-local-review-change-window",
+        "kind": "memory",
+        "scope": "local",
+        "target": ".loopx/memory/entries/2026-06-24-workspace-webview-recovery.md",
+        "summary": "Workspace stale-WebView recovery must not auto-reload dirty workspaces; preserving unsaved edits takes priority over automatic recovery.",
+        "evidence": [
+          "uncommitted_status includes src-tauri/src/cli_server.rs",
+          "uncommitted_status includes src-tauri/src/lib.rs",
+          "uncommitted_status includes .loopx/issues/issue-llm-wiki-background-white-screen-20260624T095432.md",
+          "file: .loopx/memory/MEMORY.md"
+        ]
+      }
+    ],
+    "rejected_candidates": [
+      {
+        "id": "memory-shared-review-change-window",
+        "kind": "memory",
+        "scope": "shared",
+        "target": "docs/loopx/memory/",
+        "summary": "No shared memory written for this finish audit.",
+        "rejection_reason": "The reusable learning is an implementation-local recovery guard recorded in local memory; it is not yet a cross-machine project rule requiring repo-tracked shared memory."
+      },
+      {
+        "id": "spec-review-change-window",
+        "kind": "spec",
+        "target": "docs/loopx/specs/inbox.md",
+        "summary": "No spec candidate written for this finish audit.",
+        "rejection_reason": "The change does not define a stable team-level spec beyond the existing issue ledger and local recovery guard memory; installed App Nap validation remains deferred."
+      }
+    ],
+    "extraction_candidates": [
+      {
+        "id": "memory-local-review-change-window",
+        "kind": "memory",
+        "scope": "local",
+        "status": "pending-review",
+        "target": ".loopx/memory/entries/",
+        "summary": "Review the committed finish change window for local agent memory worth preserving.",
+        "reason": "Committed code, docs, tests, or workflow files may encode a reusable decision, constraint, pitfall, or handoff that future agents should know.",
+        "evidence": [
+          "change_window.source=baseline",
+          "change_window.range=69eb098..HEAD",
+          "change_window.commit_count=142",
+          "commit: docs(editor): record syntax plugin kernel contract",
+          "commit: fix(editor): remove node view placeholder export",
+          "commit: test(editor): add syntax plugin golden coverage",
+          "commit: refactor(editor): migrate callers to kernel api",
+          "commit: fix(editor): sanitize clipboard html metadata",
+          "file: .loopx/finish/20260618T055611Z-self-owned-markdown-wysiwyg-kernel/finish-report.md",
+          "file: .loopx/finish/20260618T055611Z-self-owned-markdown-wysiwyg-kernel/finish-state.json",
+          "file: .loopx/finish/baselines/latest.json",
+          "file: .loopx/finish/baselines/self-owned-markdown-wysiwyg-kernel.json",
+          "file: .loopx/memory/MEMORY.md"
+        ]
+      },
+      {
+        "id": "memory-shared-review-change-window",
+        "kind": "memory",
+        "scope": "shared",
+        "status": "pending-review",
+        "target": "docs/loopx/memory/",
+        "summary": "Review the committed finish change window for git-tracked shared memory worth preserving across machines.",
+        "reason": "A user may need lightweight project memory across multiple machines before it becomes stable enough to promote to a spec.",
+        "evidence": [
+          "change_window.source=baseline",
+          "change_window.range=69eb098..HEAD",
+          "change_window.commit_count=142",
+          "commit: docs(editor): record syntax plugin kernel contract",
+          "commit: fix(editor): remove node view placeholder export",
+          "commit: test(editor): add syntax plugin golden coverage",
+          "commit: refactor(editor): migrate callers to kernel api",
+          "commit: fix(editor): sanitize clipboard html metadata",
+          "file: .loopx/finish/20260618T055611Z-self-owned-markdown-wysiwyg-kernel/finish-report.md",
+          "file: .loopx/finish/20260618T055611Z-self-owned-markdown-wysiwyg-kernel/finish-state.json",
+          "file: .loopx/finish/baselines/latest.json",
+          "file: .loopx/finish/baselines/self-owned-markdown-wysiwyg-kernel.json",
+          "file: .loopx/memory/MEMORY.md"
+        ]
+      },
+      {
+        "id": "spec-review-change-window",
+        "kind": "spec",
+        "status": "pending-review",
+        "target": "docs/loopx/specs/inbox.md",
+        "summary": "Review the committed finish change window for a repo-tracked spec candidate.",
+        "reason": "Committed workflow, skill, runtime, documentation, or test changes may define a stable team rule that belongs in specs.",
+        "evidence": [
+          "change_window.source=baseline",
+          "change_window.range=69eb098..HEAD",
+          "change_window.commit_count=142",
+          "commit: docs(editor): record syntax plugin kernel contract",
+          "commit: fix(editor): remove node view placeholder export",
+          "commit: test(editor): add syntax plugin golden coverage",
+          "commit: refactor(editor): migrate callers to kernel api",
+          "commit: fix(editor): sanitize clipboard html metadata",
+          "file: .loopx/finish/20260618T055611Z-self-owned-markdown-wysiwyg-kernel/finish-report.md",
+          "file: .loopx/finish/20260618T055611Z-self-owned-markdown-wysiwyg-kernel/finish-state.json",
+          "file: .loopx/finish/baselines/latest.json",
+          "file: .loopx/finish/baselines/self-owned-markdown-wysiwyg-kernel.json",
+          "file: .loopx/memory/MEMORY.md"
+        ]
+      }
+    ],
+    "no_candidates_reason": null,
+    "change_window": {
+      "source": "baseline",
+      "baseline_ref": "69eb098ad99921137e1ee9c1723915e0e622f142",
+      "baseline_ref_short": "69eb098",
+      "range": "69eb098..HEAD",
+      "commit_count": 142,
+      "commits": [
+        {
+          "sha": "d830c602bfb9f160039a3a3924811c542c7ba8a7",
+          "subject": "docs(editor): record syntax plugin kernel contract"
+        },
+        {
+          "sha": "05d6538632dd25ab416962708a5b47c2c5edd92d",
+          "subject": "fix(editor): remove node view placeholder export"
+        },
+        {
+          "sha": "a389e9a9cdd95126d6856337bd58fd8677966b23",
+          "subject": "test(editor): add syntax plugin golden coverage"
+        },
+        {
+          "sha": "3a01067382af19b2c08842233a4062d52bfff883",
+          "subject": "refactor(editor): migrate callers to kernel api"
+        },
+        {
+          "sha": "e4ab5c046cb89ff43d08ce6333425cf328401ab4",
+          "subject": "fix(editor): sanitize clipboard html metadata"
+        },
+        {
+          "sha": "8815812e7a8042768709f01a8968ed4f1333007b",
+          "subject": "feat(editor): route clipboard through syntax plugins"
+        },
+        {
+          "sha": "ff52bff0d8d4779ce8e40fce0c4f85b38ac31951",
+          "subject": "feat(editor): extract code and mermaid syntax"
+        },
+        {
+          "sha": "d6d401ce85e04f7d94537e8a1f0369be0ef3afc1",
+          "subject": "Guard footnote parsing by syntax registration"
+        },
+        {
+          "sha": "7cfe20bef5bf30c174a0ec696e14fde5d995ddba",
+          "subject": "Fix footnote syntax ownership"
+        },
+        {
+          "sha": "746c18702db497138fd7dd9ca9c66346341d56e1",
+          "subject": "feat(editor): extract footnote syntax"
+        },
+        {
+          "sha": "29e37d5afd45a45d11c943f31178a147a53cb2f9",
+          "subject": "fix(editor): align clipboard serializer types"
+        },
+        {
+          "sha": "f16fde515170d4d94ec6bf862e8ed1b493b75de1",
+          "subject": "fix(editor): route clipboard serialization through kernel"
+        },
+        {
+          "sha": "ea06e450a67edc1f495b5b3dac42035054be4812",
+          "subject": "fix(editor): restore serializer ownership for html and fallback syntax"
+        },
+        {
+          "sha": "f4e68e3fa277d4620732100069d620bc695281d7",
+          "subject": "feat(editor): extract html and fallback syntax"
+        },
+        {
+          "sha": "85997991dc37b484e79579f9454febaf95328768",
+          "subject": "fix(editor): keep image hydration source stable"
+        },
+        {
+          "sha": "0e20a0e6826f081e119978ca14facc71f1916790",
+          "subject": "fix(editor): route image hydration through kernel"
+        },
+        {
+          "sha": "0768b7d86b8d302281a51d698655b1d62d9471f0",
+          "subject": "fix(editor): preserve markdown image source during hydration"
+        },
+        {
+          "sha": "bc3e6940922b67a951187b924726057f9ea25870",
+          "subject": "Fix delayed image loader hydration"
+        },
+        {
+          "sha": "4571fad886b316a06dd19b7953f0eb7810bcfba5",
+          "subject": "feat(editor): route react provider through kernel"
+        },
+        {
+          "sha": "4ce4e6a10be73dc6942eaec5c45447ecc0722193",
+          "subject": "fix(mdx-editor): restore legacy link dom markers"
+        },
+        {
+          "sha": "ca3887ea2314a3835a7d412f90530063554b574d",
+          "subject": "Fix Task 2 schema-aware editor plugins"
+        },
+        {
+          "sha": "19ee247dbdf8305f238a2dc89dd9317ffc969c99",
+          "subject": "feat(editor): introduce mdx editor kernel"
+        },
+        {
+          "sha": "a6f640f7d8bba052df714a4ee9a06edd9c262eb4",
+          "subject": "fix(editor): validate syntax parser contributions"
+        },
+        {
+          "sha": "c0557930dd8df1da51bf8fa65ede91540c2a2741",
+          "subject": "feat(editor): add syntax kernel registry"
+        },
+        {
+          "sha": "24226e4d42e4536ce6f28557eb80606b8d257ab1",
+          "subject": "fix(editor): stabilize markdown syntax rendering"
+        },
+        {
+          "sha": "b553347aeeeb97b211ccd9cf1908d0884f0f895b",
+          "subject": "fix(editor): stabilize html fallback editing"
+        },
+        {
+          "sha": "018e2e08572cd88b9a1a26dd271d882b7d9baebb",
+          "subject": "fix(editor): use single mermaid preview path"
+        },
+        {
+          "sha": "6fba2c450489c5f1f1838466f7938df0d3a5650b",
+          "subject": "fix(editor): isolate mermaid preview ownership"
+        },
+        {
+          "sha": "a962a0cdfd34e4c6cd7e15a125e3eb6cd7ecab78",
+          "subject": "fix(editor): prevent mermaid previews from corrupting code blocks"
+        },
+        {
+          "sha": "c07890a23e18ff5cec80ef8a5dfd4fea5c557611",
+          "subject": "fix(document): let standalone editor scroll content"
+        },
+        {
+          "sha": "7c3a4156d3f16f8bda3e927741a68d8253aab8f9",
+          "subject": "fix(document): keep editor below recovery banner"
+        },
+        {
+          "sha": "48aa50f6b68aec6c28a68e523659e7afcf1ab474",
+          "subject": "fix(editor): support code block language editing"
+        },
+        {
+          "sha": "62e28313e1a193060a5d54d7fb9c298795d08fc9",
+          "subject": "fix(editor): insert pasted images as undoable nodes"
+        },
+        {
+          "sha": "f87777b04cf8bec908e93cd27be367dd271a2321",
+          "subject": "fix(editor): paste images at cursor"
+        },
+        {
+          "sha": "9648eabab54a99cffc4a574a25c804f438b3ed43",
+          "subject": "fix(editor): keep image placeholders editable"
+        },
+        {
+          "sha": "8fcc826ae896da25497a4185cd0d8a12b3405d09",
+          "subject": "fix(editor): show markdown fallback for broken images"
+        },
+        {
+          "sha": "e4fad989bbc72f9cbad52900d19a119fdc71af99",
+          "subject": "fix(editor): recover escaped empty links"
+        },
+        {
+          "sha": "ce81fbd5760e4c5eece6ddf358793e388de2ad20",
+          "subject": "fix(editor): finish link editing on enter"
+        },
+        {
+          "sha": "3b933364f31fea3782856391da7afd84b1226d26",
+          "subject": "fix(editor): restore edited links on blur"
+        },
+        {
+          "sha": "ac19cccecd3daea266592c925061865c47b260a1",
+          "subject": "fix(editor): edit selected links as markdown text"
+        },
+        {
+          "sha": "fb7f8a7f3c83452686d2fb7c8715658da2c78b26",
+          "subject": "fix(editor): tone down inline link href editor"
+        },
+        {
+          "sha": "dd6aa3e515c4b37f472c2ce2d8b4699eae1eb4df",
+          "subject": "fix(editor): keep link href input editable"
+        },
+        {
+          "sha": "8b578f688802083cd0122f441926e3cc67b9517c",
+          "subject": "fix(editor): edit link href inline when selected"
+        },
+        {
+          "sha": "09c682d1b8eb60cd7deb28a1604efb8459e1f4d6",
+          "subject": "fix(editor): show links as markdown while editing"
+        },
+        {
+          "sha": "46850f0f905f61ab87adc77214a1087d61de4017",
+          "subject": "fix(editor): make links editable on hover"
+        },
+        {
+          "sha": "7b6eb872911ae43839f73aa7164e057b5d3b9d30",
+          "subject": "fix(editor): keep links editable in wysiwyg"
+        },
+        {
+          "sha": "a9dda37553a6d5d2ff4648cd255fa7b9e9bd638e",
+          "subject": "fix(editor): parse inline markdown links while editing"
+        },
+        {
+          "sha": "f14be5e4df3b07e6f6acb9ca46a9af0df24da2bd",
+          "subject": "fix(editor): preserve markdown positions and continuations"
+        },
+        {
+          "sha": "d81f9b1590e7bede8374d8ff5c8286f271bba45f",
+          "subject": "fix(editor): parse nested markdown and highlight code"
+        },
+        {
+          "sha": "406350f05fb3958c28c3c834b06f59fd348052cf",
+          "subject": "fix(editor): style nested list bullets"
+        },
+        {
+          "sha": "1080e0b0f5cfafdabd68c0289ad2b11ecfb964c9",
+          "subject": "fix(app): tune default window size"
+        },
+        {
+          "sha": "5e60df4fdd19b9a4b7a0254d170a586b65f7be0b",
+          "subject": "fix(app): use larger logical window size"
+        },
+        {
+          "sha": "ea616f684fd6180c71ae8bceef8dd85190d984f1",
+          "subject": "fix(app): avoid saving startup window size"
+        },
+        {
+          "sha": "bbc066fc02dc72fc82559425b907cf5b30028141",
+          "subject": "fix(editor): remove heading style at start"
+        },
+        {
+          "sha": "41c3182fc5e7076f762041ddb246db6f54696db6",
+          "subject": "fix(editor): exit block styles with keyboard"
+        },
+        {
+          "sha": "23db0600b282818bfa80a65dea6e4069dde1af8b",
+          "subject": "fix(editor): include lazy callout content"
+        },
+        {
+          "sha": "73a8938985aea0801f584ef11e704214bab78375",
+          "subject": "fix(editor): style markdown callouts"
+        },
+        {
+          "sha": "7d4b9fae6726046f03bb91dd3ad5e3ccf3d084be",
+          "subject": "fix(editor): hide table controls until hover"
+        },
+        {
+          "sha": "a31fc59cd08c7d1c953fc2621bd0cdd99de7f6fd",
+          "subject": "fix(editor): style markdown headings"
+        },
+        {
+          "sha": "01c4a5b324106549e9bc45d19110e283554aa33c",
+          "subject": "fix(editor): show table grid lines"
+        },
+        {
+          "sha": "e45c3ee8012430353372515a36d213bfd75091f1",
+          "subject": "fix(editor): render markdown horizontal rules"
+        },
+        {
+          "sha": "9f79fbec9959f9dc0b0bd4d6d1fbf7d8d4045f73",
+          "subject": "fix(editor): remove editor focus frame"
+        },
+        {
+          "sha": "56ab99a5ae235d37fd7efd034e8008fd4e19a0ee",
+          "subject": "fix(editor): normalize pasted code fences"
+        },
+        {
+          "sha": "cf94f724e1c4a0cdae7657394826fbd307cce033",
+          "subject": "fix(editor): parse indented code fences"
+        },
+        {
+          "sha": "ae9917703de5adef23b83ec2ee3a3e9a59683551",
+          "subject": "fix(editor): show list markers in wysiwyg"
+        },
+        {
+          "sha": "d4c570aef0da9ce2637a6927916e17073fb07086",
+          "subject": "fix(editor): parse pasted code fences"
+        },
+        {
+          "sha": "e82b40722bbf6d6d50965d63bef0c6a594792dcc",
+          "subject": "fix(editor): stop view refresh and render code fences"
+        },
+        {
+          "sha": "acc04bf555a69c6bd5f5822271ea673bc089ac77",
+          "subject": "chore(memory): record markdown editor contract"
+        },
+        {
+          "sha": "3571bbc825bb61ecc9a3adfc0e62ffdbb5f29f2b",
+          "subject": "fix(editor): preserve inline pipes in tables"
+        },
+        {
+          "sha": "65befdf8006cc319b46a47f29178fe96b1f005f7",
+          "subject": "fix(editor): preserve table pipes and html fallback"
+        },
+        {
+          "sha": "c8f1dc4482d89ed5f550d066cbced80677862244",
+          "subject": "fix(editor): convert typed pipe tables"
+        },
+        {
+          "sha": "27cfc245552446a43162e2787ea1245669178f85",
+          "subject": "docs(editor): document hardened wysiwyg behavior"
+        },
+        {
+          "sha": "1ffa1846a5c1d79f1fab63790243dd977efdeed9",
+          "subject": "test(editor): address browser verification review"
+        },
+        {
+          "sha": "0a988106a4a4a0cc5541eb90ed71811efeba8eff",
+          "subject": "test(editor): add browser behavior verification"
+        },
+        {
+          "sha": "b52eb9fef7699b29d5b81ff445e2ffb3de51e843",
+          "subject": "test(editor): preserve app integration contract"
+        },
+        {
+          "sha": "dad9e3f499d9309ff4df52913aa904d168dc4fdd",
+          "subject": "feat(editor): remove global source mode"
+        },
+        {
+          "sha": "296feb505728362a108291e2b7d7d0e8df47fbf1",
+          "subject": "fix(editor): emit realtime markdown from wysiwyg edits"
+        },
+        {
+          "sha": "d0326ff9f5b9d266a56b21bde70dc98be7b7a6ab",
+          "subject": "fix(editor): correct advanced node view DOM"
+        },
+        {
+          "sha": "d1c1776e9f826aa3d5df6f76f34f3bcfaeee8fc5",
+          "subject": "feat(editor): add advanced markdown node views"
+        },
+        {
+          "sha": "c832aaae24b4994bf3ba45ddfe6835d2b6bebc42",
+          "subject": "test(editor): bind clipboard plugin props"
+        },
+        {
+          "sha": "2233cf8a1dd8b3ec0b787c565b67fb3b5dd3f423",
+          "subject": "fix(editor): preserve plain text paste behavior"
+        },
+        {
+          "sha": "7c34286e49bc3f17743125a064d9b557ddd8e0b0",
+          "subject": "feat(editor): add markdown clipboard pipeline"
+        },
+        {
+          "sha": "75ba7da37194f8712218e3640ba316738e962f01",
+          "subject": "fix(editor): harden markdown command input rules"
+        },
+        {
+          "sha": "2bcc5e8bb077f3e1970488a390e64a72eb6494ed",
+          "subject": "feat(editor): add markdown commands and input rules"
+        },
+        {
+          "sha": "9b4f1bae6744cd623ec0d58fb2a628cd5c06087d",
+          "subject": "fix(editor): sync source fallback document text"
+        },
+        {
+          "sha": "2f24996515e53db351d265b2c3ee65a5fd22d5a4",
+          "subject": "fix(editor): wire source fallback node view"
+        },
+        {
+          "sha": "a2f0b2060eff323e84904f59b12d03f61b27793e",
+          "subject": "feat(editor): preserve unsupported markdown as source fallback"
+        },
+        {
+          "sha": "f1b07d04f4a6bb10a151122f2d2fee578893d52c",
+          "subject": "fix(editor): include structured blocks in line scroll indexing"
+        },
+        {
+          "sha": "0935ad67e488408660df7da806ad756d7dc584c5",
+          "subject": "fix(editor): include mermaid blocks in line scroll indexing"
+        },
+        {
+          "sha": "8121782495591276c996c48f59172a46df3809db",
+          "subject": "fix(editor): preserve mermaid code block DOM contract"
+        },
+        {
+          "sha": "881c8354a4d350b24f60db990028a1db1ead7340",
+          "subject": "feat(editor): parse advanced markdown blocks"
+        },
+        {
+          "sha": "2f70fb859e9aae4e7f86f528e511b297707cdcb2",
+          "subject": "feat(editor): parse basic markdown blocks"
+        },
+        {
+          "sha": "09d40b4572f100749ee42a31500aa11925c2bf79",
+          "subject": "fix(editor): handle link label brackets"
+        },
+        {
+          "sha": "a0f2ffd73d5db2c009e1a1d5e41db01a4e291eca",
+          "subject": "fix(editor): compare inline atom marks"
+        },
+        {
+          "sha": "f63cbbed2decab40d326931773146615a15fad58",
+          "subject": "fix(editor): preserve marks on inline atoms"
+        },
+        {
+          "sha": "b59a032b06d501928cf84d0e4d1684ec38334a34",
+          "subject": "fix(editor): preserve nested marks and escapes"
+        },
+        {
+          "sha": "e70160f7dfdb2858b997a3fffe114df4ec90a230",
+          "subject": "fix(editor): roundtrip backtick code spans"
+        },
+        {
+          "sha": "7b0c2e9ad81f65ee059ca6298b831c159a26e469",
+          "subject": "fix(editor): preserve inline roundtrip edge cases"
+        },
+        {
+          "sha": "c53ad4c190ff9162cea9c8178651831436f93425",
+          "subject": "fix: resolve root-relative mhtml resources"
+        },
+        {
+          "sha": "146f7d41bf93e29545b1fb24cdb503b65e892fdd",
+          "subject": "fix(editor): preserve nested link marks"
+        },
+        {
+          "sha": "358f2521eb13adf37304e6ac992ba6b328450f50",
+          "subject": "fix: route html and mhtml tabs to rendered preview"
+        },
+        {
+          "sha": "7cc4df54c48f8c2e62239f61629f0f02d8ac89bc",
+          "subject": "fix(editor): harden inline markdown round trips"
+        },
+        {
+          "sha": "d47afbb35db4bf4d5a421432a3ea844ad138032a",
+          "subject": "feat: render secure html preview iframe"
+        },
+        {
+          "sha": "fbf18902c18cf6b2704502a94fbda78c7dc6423e",
+          "subject": "fix: resolve mhtml relative resource locations"
+        },
+        {
+          "sha": "e06bf11a31e23597f5b85a4e6abc0a87093cab63",
+          "subject": "fix(editor): complete inline serialization wiring"
+        },
+        {
+          "sha": "e93e907cb499eadd8dcfd3c4b681ecc77a22a6e0",
+          "subject": "feat: parse mhtml preview archives"
+        },
+        {
+          "sha": "7e4d64b02577305e48ece286311ae504de0ec27c",
+          "subject": "feat(editor): parse and serialize inline markdown"
+        },
+        {
+          "sha": "d80efcfa409a58fae919dbbc6efd70ce1a68b4d7",
+          "subject": "fix: harden html preview inert links"
+        },
+        {
+          "sha": "986a9cf49a54a1afb2248ddb4dd7b8ac9137ba8e",
+          "subject": "fix(editor): preserve advanced block schema content"
+        },
+        {
+          "sha": "0cb721c9ecc94c1478cc19cc9ebf6c026159da7f",
+          "subject": "feat: add secure html preview rewriting"
+        },
+        {
+          "sha": "d5881bc3035e09f041fea3ec201e3f5b392d63dd",
+          "subject": "feat(editor): add markdown schema surface"
+        },
+        {
+          "sha": "bcb4019924c3df812c34f92db83306a44e17ac95",
+          "subject": "fix: classify mhtml as renderable html preview"
+        },
+        {
+          "sha": "71cf8ad5695220259caa9f1e28d100883f606e1b",
+          "subject": "chore: record self-owned editor finish audit"
+        },
+        {
+          "sha": "17df82f603eef33ee9b75beb039d9f0a3929f667",
+          "subject": "feat: surface empty-editor placeholder state"
+        },
+        {
+          "sha": "ca27768a1eabc6d50d6907f456980ef38b550021",
+          "subject": "feat: support semantic image nodes in editor runtime"
+        },
+        {
+          "sha": "dd02ef7679aca91c4d99a9d56ccc10f574cb9e1c",
+          "subject": "feat: render mdx editor through semantic runtime"
+        },
+        {
+          "sha": "036396a6f1c4e3dc29784782b8aa93c7bf71f1ae",
+          "subject": "fix: wire mdx editor through prosemirror runtime"
+        },
+        {
+          "sha": "96aadabd5c59026f349b9eefe345523d960994c1",
+          "subject": "chore: remove closed markdown editor kernel"
+        },
+        {
+          "sha": "4103b0f2ac12a6e0011cb004f9cad5ac18d5f9e6",
+          "subject": "docs: document self-owned markdown editor kernel"
+        },
+        {
+          "sha": "6e9ad3a203c87471cb75708d498948c49dec9bcd",
+          "subject": "test: preserve app editor behavior on self-owned kernel"
+        },
+        {
+          "sha": "d451fc848561ce51d68ab7d19f0598136ad018b8",
+          "subject": "fix: narrow opaque markdown fallback boundaries"
+        },
+        {
+          "sha": "80edb1b3f1834f0da4e9a9f41b6ff8277dc5818b",
+          "subject": "fix: guard opaque source-preservation reuse"
+        },
+        {
+          "sha": "3ee88de4b5018168b86cdf504142cd565c82dcc4",
+          "subject": "test: add markdown roundtrip fixture coverage"
+        },
+        {
+          "sha": "3f353097f42be8c886c0578eea5c4f58174e5ca6",
+          "subject": "fix: stabilize editor pane source mode"
+        },
+        {
+          "sha": "6fe42af7d4dd5344e3cc48dc15bb761011346b0c",
+          "subject": "feat: add markdown source mode to editor pane"
+        },
+        {
+          "sha": "ccd1f792778ef14d724e29e5c95632332bf2ff1e",
+          "subject": "feat: migrate editor helpers to mdx dom contract"
+        },
+        {
+          "sha": "f959213dad4230787268a877dd6dcf1a0d435aba",
+          "subject": "fix: preserve editor bridge compatibility"
+        },
+        {
+          "sha": "3c9a36d0c97353e27f483b929e8ff40f0f3afed8",
+          "subject": "feat: route editor adapter through self-owned kernel"
+        },
+        {
+          "sha": "5ebf42f102a7c2a6f86a6338211226a0f7fba698",
+          "subject": "fix: stabilize react adapter commands"
+        },
+        {
+          "sha": "388cf5002c6e3cad63b1b9e0cc9eceb17bcd5457",
+          "subject": "fix: align react adapter contracts"
+        },
+        {
+          "sha": "de67b287aab2e243c24fbf85d2a38e98982627c7",
+          "subject": "feat: add mdx editor react adapter"
+        },
+        {
+          "sha": "0ea9144e29174a8231853ec21c312a9e5cfbb132",
+          "subject": "fix: strengthen markdown command round-trips"
+        },
+        {
+          "sha": "418770a2c9d2db36d0615acb49be0ec2d1867c65",
+          "subject": "fix: escape markdown image alt text"
+        },
+        {
+          "sha": "67f814748b935965c5091a8bb56cd05c67c5adb3",
+          "subject": "fix: escape image urls in markdown commands"
+        },
+        {
+          "sha": "49d5cc3cdaa38c9a8809046a5cd3ed9e9c6b5cad",
+          "subject": "feat: add editor commands and selection snapshots"
+        },
+        {
+          "sha": "a2e4a575f3d5b42e88cd0a223e0cdd452fa27247",
+          "subject": "fix: align markdown escaping in parser and serializer"
+        },
+        {
+          "sha": "07fb7f425c8c48957c57a330fadc66c94054acdd",
+          "subject": "fix: group adjacent link text in serializer"
+        },
+        {
+          "sha": "d58fd5a84bcb78be1b60b665b929e77227cfe5c7",
+          "subject": "feat: serialize markdown with source preservation"
+        },
+        {
+          "sha": "df7ae0e867c7cbd92bd1aedda2f9c3e43d4725ee",
+          "subject": "fix: harden initial markdown parser contracts"
+        },
+        {
+          "sha": "95e3215d4c7f19e90cc36f8af92206aec52e173d",
+          "subject": "feat: add initial markdown parser and schema"
+        },
+        {
+          "sha": "18f7b057841784640c8a03724af2414fc41829ba",
+          "subject": "fix: typecheck mdx editor scaffold helpers"
+        },
+        {
+          "sha": "bde92d2a62eed8552940c900ddbaac98d3b34423",
+          "subject": "feat: scaffold self-owned markdown editor package"
+        }
+      ],
+      "changed_files": [
+        {
+          "status": "A",
+          "path": ".loopx/finish/20260618T055611Z-self-owned-markdown-wysiwyg-kernel/finish-report.md"
+        },
+        {
+          "status": "A",
+          "path": ".loopx/finish/20260618T055611Z-self-owned-markdown-wysiwyg-kernel/finish-state.json"
+        },
+        {
+          "status": "M",
+          "path": ".loopx/finish/baselines/latest.json"
+        },
+        {
+          "status": "A",
+          "path": ".loopx/finish/baselines/self-owned-markdown-wysiwyg-kernel.json"
+        },
+        {
+          "status": "M",
+          "path": ".loopx/memory/MEMORY.md"
+        },
+        {
+          "status": "A",
+          "path": ".loopx/memory/entries/2026-06-19-markdown-wysiwyg-kernel-contract.md"
+        },
+        {
+          "status": "M",
+          "path": ".loopx/memory/index.jsonl"
+        },
+        {
+          "status": "D",
+          "path": ".packages/@do-md/dist/LICENSE"
+        },
+        {
+          "status": "D",
+          "path": ".packages/@do-md/dist/index.cjs"
+        },
+        {
+          "status": "D",
+          "path": ".packages/@do-md/dist/index.js"
+        },
+        {
+          "status": "D",
+          "path": ".packages/@do-md/dist/style.css"
+        },
+        {
+          "status": "M",
+          "path": "LICENSE"
+        },
+        {
+          "status": "M",
+          "path": "README.md"
+        },
+        {
+          "status": "M",
+          "path": "README.zh-CN.md"
+        },
+        {
+          "status": "M",
+          "path": "app/globals.css"
+        },
+        {
+          "status": "M",
+          "path": "app/layout.tsx"
+        },
+        {
+          "status": "A",
+          "path": "common/lib/prism.test.ts"
+        },
+        {
+          "status": "M",
+          "path": "common/lib/prism.ts"
+        },
+        {
+          "status": "A",
+          "path": "docs/editor-regression-guardrails.md"
+        },
+        {
+          "status": "M",
+          "path": "docs/loopx/specs/editor.md"
+        },
+        {
+          "status": "A",
+          "path": "docs/markdown-syntax-support-check.md"
+        },
+        {
+          "status": "M",
+          "path": "features/document/components/document-shell.test.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/document/components/document-shell.tsx"
+        },
+        {
+          "status": "A",
+          "path": "features/editor/components/editor-kernel-adapter.test.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/components/editor-kernel-adapter.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/components/editor-mermaid-preview-layer.test.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/components/editor-mermaid-preview-layer.tsx"
+        },
+        {
+          "status": "A",
+          "path": "features/editor/components/editor-pane-mermaid-regression.test.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/components/editor-pane.test.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/components/editor-pane.tsx"
+        },
+        {
+          "status": "A",
+          "path": "features/editor/hooks/use-editor-bridge.test.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/hooks/use-editor-bridge.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/hooks/use-editor-find-replace.test.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/hooks/use-editor-find-replace.ts"
+        },
+        {
+          "status": "A",
+          "path": "features/editor/lib/editor-dom-contract.ts"
+        },
+        {
+          "status": "A",
+          "path": "features/editor/lib/editor-kernel-removal.test.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/lib/keyboard-selection-scope.test.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/lib/keyboard-selection-scope.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/lib/markdown-line-scroll.test.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/lib/markdown-line-scroll.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/lib/mermaid-dom.test.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/lib/mermaid-dom.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/lib/visible-text-search.test.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/lib/visible-text-search.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/lib/wikilink-markdown.test.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/lib/wikilink-markdown.ts"
+        },
+        {
+          "status": "A",
+          "path": "features/workspace/components/editor-stage.test.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/workspace/components/editor-stage.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/workspace/components/file-tree-context-menu.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/workspace/components/file-tree-node.test.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/workspace/components/file-tree-node.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/workspace/components/file-tree-panel.tsx"
+        },
+        {
+          "status": "A",
+          "path": "features/workspace/components/html-preview.test.tsx"
+        },
+        {
+          "status": "A",
+          "path": "features/workspace/components/html-preview.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/workspace/components/workspace-shell.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/workspace/hooks/use-workspace-bootstrap.ts"
+        },
+        {
+          "status": "A",
+          "path": "features/workspace/lib/html-preview-security.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "features/workspace/lib/html-preview-security.ts"
+        },
+        {
+          "status": "A",
+          "path": "features/workspace/lib/mhtml-archive.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "features/workspace/lib/mhtml-archive.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/workspace/lib/outline-scroll.test.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/workspace/lib/outline-scroll.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/workspace/lib/path.test.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/workspace/lib/path.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/workspace/lib/window-size.ts"
+        },
+        {
+          "status": "M",
+          "path": "package-lock.json"
+        },
+        {
+          "status": "M",
+          "path": "package.json"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/commands/editor-commands.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/commands/editor-commands.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/core/markdown-nodes.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/core/selection.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/core/selection.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/core/source-map.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/core/source-map.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/core/types.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/index.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/kernel/clipboard.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/kernel/clipboard.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/kernel/create-kernel.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/kernel/index.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/kernel/kernel.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/kernel/registry.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/kernel/registry.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/kernel/schema.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/kernel/types.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/parser/block-markdown.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/parser/inline-markdown.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/parser/parse-markdown.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/parser/parse-markdown.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/plugins/editor-clipboard.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/plugins/editor-clipboard.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/plugins/editor-code-highlight.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/plugins/editor-input-rules.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/plugins/editor-input-rules.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/plugins/editor-keymap.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/plugins/editor-keymap.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/plugins/editor-link-interaction.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/plugins/editor-link-interaction.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/plugins/editor-plugins.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/plugins/source-fallback-plugin.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/callout-node-view.tsx"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/editor-toolbar.tsx"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/footnote-node-view.tsx"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/html-block-node-view.tsx"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/index.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/inline-html-node-view.tsx"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/math-node-view.tsx"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/mdx-editor-browser.test.tsx"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/mdx-editor-context.tsx"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/mdx-editor-provider.test.tsx"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/mdx-editor-provider.tsx"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/mdx-editor-view.tsx"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/mermaid-node-view.tsx"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/mermaid-renderer.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/node-views.test.tsx"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/node-views.tsx"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/source-fallback-node-view.tsx"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/table-node-view.tsx"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/task-list-node-view.tsx"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/schema/schema.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/schema/schema.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/serializer/block-serializer.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/serializer/inline-serializer.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/serializer/markdown-roundtrip-fixtures.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/serializer/serialize-markdown.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/serializer/serialize-markdown.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/syntax/code/code.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/syntax/code/index.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/syntax/code/parse.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/syntax/core/index.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/syntax/default.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/syntax/fallback/fallback.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/syntax/fallback/index.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/syntax/fixtures/markdown-syntax-support.fixture.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/syntax/footnote/footnote.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/syntax/footnote/index.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/syntax/footnote/parse.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/syntax/footnote/serialize.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/syntax/golden-roundtrip.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/syntax/html/html.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/syntax/html/index.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/syntax/legacy/index.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/syntax/mermaid/index.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/syntax/mermaid/mermaid.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/syntax/mermaid/parse.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/test/fixtures.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/test/test-helpers.ts"
+        },
+        {
+          "status": "A",
+          "path": "scripts/verify-editor-browser.mjs"
+        },
+        {
+          "status": "M",
+          "path": "src-tauri/Cargo.lock"
+        },
+        {
+          "status": "M",
+          "path": "src-tauri/Cargo.toml"
+        },
+        {
+          "status": "M",
+          "path": "src-tauri/src/lib.rs"
+        },
+        {
+          "status": "M",
+          "path": "src-tauri/src/state_store.rs"
+        },
+        {
+          "status": "M",
+          "path": "src-tauri/src/state_store_tests.rs"
+        },
+        {
+          "status": "M",
+          "path": "src-tauri/tauri.conf.json"
+        },
+        {
+          "status": "M",
+          "path": "tsconfig.json"
+        },
+        {
+          "status": "D",
+          "path": "types/do-md-react.d.ts"
+        }
+      ],
+      "diff_stat": ".../finish-report.md                               |  259 ++++\n .../finish-state.json                              |  522 +++++++\n .loopx/finish/baselines/latest.json                |   10 +-\n .../self-owned-markdown-wysiwyg-kernel.json        |   10 +\n .loopx/memory/MEMORY.md                            |    1 +\n .../2026-06-19-markdown-wysiwyg-kernel-contract.md |   19 +\n .loopx/memory/index.jsonl                          |    1 +\n .packages/@do-md/dist/LICENSE                      |  131 --\n .packages/@do-md/dist/index.cjs                    |    1 -\n .packages/@do-md/dist/index.js                     |   15 -\n .packages/@do-md/dist/style.css                    |    1 -\n LICENSE                                            |    7 +-\n README.md                                          |    8 +-\n README.zh-CN.md                                    |    8 +-\n app/globals.css                                    |  724 +++++++++\n app/layout.tsx                                     |    1 +\n common/lib/prism.test.ts                           |   21 +\n common/lib/prism.ts                                |    4 +-\n docs/editor-regression-guardrails.md               |   18 +\n docs/loopx/specs/editor.md                         |   24 +-\n docs/markdown-syntax-support-check.md              |  433 ++++++\n .../document/components/document-shell.test.tsx    |   48 +\n features/document/components/document-shell.tsx    |   29 +-\n .../components/editor-kernel-adapter.test.tsx      |  139 ++\n .../editor/components/editor-kernel-adapter.tsx    |  241 ++-\n .../editor-mermaid-preview-layer.test.tsx          |   38 +-\n .../components/editor-mermaid-preview-layer.tsx    |    8 +-\n .../editor-pane-mermaid-regression.test.tsx        |  119 ++\n features/editor/components/editor-pane.test.tsx    |  373 ++++-\n features/editor/components/editor-pane.tsx         |  109 +-\n features/editor/hooks/use-editor-bridge.test.tsx   |   84 +\n features/editor/hooks/use-editor-bridge.ts         |   28 +-\n .../editor/hooks/use-editor-find-replace.test.ts   |   59 +-\n features/editor/hooks/use-editor-find-replace.ts   |   28 +-\n features/editor/lib/editor-dom-contract.ts         |   10 +\n features/editor/lib/editor-kernel-removal.test.ts  |   12 +\n .../editor/lib/keyboard-selection-scope.test.ts    |  101 +-\n features/editor/lib/keyboard-selection-scope.ts    |   31 +-\n features/editor/lib/markdown-line-scroll.test.ts   |  111 +-\n features/editor/lib/markdown-line-scroll.ts        |   14 +-\n features/editor/lib/mermaid-dom.test.ts            |   62 +-\n features/editor/lib/mermaid-dom.ts                 |   13 +-\n features/editor/lib/visible-text-search.test.ts    |  161 +-\n features/editor/lib/visible-text-search.ts         |   25 +-\n features/editor/lib/wikilink-markdown.test.ts      |   26 +\n features/editor/lib/wikilink-markdown.ts           |    8 +-\n .../workspace/components/editor-stage.test.tsx     |  142 ++\n features/workspace/components/editor-stage.tsx     |   20 +-\n .../components/file-tree-context-menu.tsx          |    1 +\n .../workspace/components/file-tree-node.test.ts    |   67 +\n features/workspace/components/file-tree-node.tsx   |   15 +-\n features/workspace/components/file-tree-panel.tsx  |  254 ++-\n .../workspace/components/html-preview.test.tsx     |  111 ++\n features/workspace/components/html-preview.tsx     |  160 ++\n features/workspace/components/workspace-shell.tsx  |   11 +-\n .../workspace/hooks/use-workspace-bootstrap.ts     |   57 +-\n .../workspace/lib/html-preview-security.test.ts    |  151 ++\n features/workspace/lib/html-preview-security.ts    |  312 ++++\n features/workspace/lib/mhtml-archive.test.ts       |  179 +++\n features/workspace/lib/mhtml-archive.ts            |  493 ++++++\n features/workspace/lib/outline-scroll.test.ts      |   33 +-\n features/workspace/lib/outline-scroll.ts           |   57 +-\n features/workspace/lib/path.test.ts                |   23 +-\n features/workspace/lib/path.ts                     |   23 +-\n features/workspace/lib/window-size.ts              |    4 +-\n package-lock.json                                  | 1623 +++++++++++++++++++-\n package.json                                       |   29 +-\n .../mdx-editor/commands/editor-commands.test.ts    |  227 +++\n packages/mdx-editor/commands/editor-commands.ts    |  238 +++\n packages/mdx-editor/core/markdown-nodes.ts         |   35 +\n packages/mdx-editor/core/selection.test.ts         |   31 +\n packages/mdx-editor/core/selection.ts              |   26 +\n packages/mdx-editor/core/source-map.test.ts        |   22 +\n packages/mdx-editor/core/source-map.ts             |   19 +\n packages/mdx-editor/core/types.ts                  |   55 +\n packages/mdx-editor/index.ts                       |   29 +\n packages/mdx-editor/kernel/clipboard.test.ts       |  146 ++\n packages/mdx-editor/kernel/clipboard.ts            |  478 ++++++\n packages/mdx-editor/kernel/create-kernel.ts        |  134 ++\n packages/mdx-editor/kernel/index.ts                |   24 +\n packages/mdx-editor/kernel/kernel.test.ts          |   54 +\n packages/mdx-editor/kernel/registry.test.ts        |  140 ++\n packages/mdx-editor/kernel/registry.ts             |  128 ++\n packages/mdx-editor/kernel/schema.ts               |    9 +\n packages/mdx-editor/kernel/types.ts                |  124 ++\n packages/mdx-editor/parser/block-markdown.ts       | 1449 +++++++++++++++++\n packages/mdx-editor/parser/inline-markdown.ts      |  722 +++++++++\n packages/mdx-editor/parser/parse-markdown.test.ts  |  771 ++++++++++\n packages/mdx-editor/parser/parse-markdown.ts       |   40 +\n .../mdx-editor/plugins/editor-clipboard.test.ts    |  541 +++++++\n packages/mdx-editor/plugins/editor-clipboard.ts    |  752 +++++++++\n .../mdx-editor/plugins/editor-code-highlight.ts    |   96 ++\n .../mdx-editor/plugins/editor-input-rules.test.ts  |  173 +++\n packages/mdx-editor/plugins/editor-input-rules.ts  |  298 ++++\n packages/mdx-editor/plugins/editor-keymap.test.ts  |  119 ++\n packages/mdx-editor/plugins/editor-keymap.ts       |  109 ++\n .../plugins/editor-link-interaction.test.ts        |  341 ++++\n .../mdx-editor/plugins/editor-link-interaction.ts  |  344 +++++\n packages/mdx-editor/plugins/editor-plugins.ts      |   45 +\n .../mdx-editor/plugins/source-fallback-plugin.ts   |    9 +\n packages/mdx-editor/react/callout-node-view.tsx    |   59 +\n packages/mdx-editor/react/editor-toolbar.tsx       |   11 +\n packages/mdx-editor/react/footnote-node-view.tsx   |   75 +\n packages/mdx-editor/react/html-block-node-view.tsx |  231 +++\n packages/mdx-editor/react/index.ts                 |   11 +\n .../mdx-editor/react/inline-html-node-view.tsx     |  132 ++\n packages/mdx-editor/react/math-node-view.tsx       |  125 ++\n .../mdx-editor/react/mdx-editor-browser.test.tsx   |  219 +++\n packages/mdx-editor/react/mdx-editor-context.tsx   |   46 +\n .../mdx-editor/react/mdx-editor-provider.test.tsx  |  835 ++++++++++\n packages/mdx-editor/react/mdx-editor-provider.tsx  |  453 ++++++\n packages/mdx-editor/react/mdx-editor-view.tsx      |   28 +\n packages/mdx-editor/react/mermaid-node-view.tsx    |  132 ++\n packages/mdx-editor/react/mermaid-renderer.ts      |   52 +\n packages/mdx-editor/react/node-views.test.tsx      | 1131 ++++++++++++++\n packages/mdx-editor/react/node-views.tsx           | 1226 +++++++++++++++\n .../mdx-editor/react/source-fallback-node-view.tsx |  186 +++\n packages/mdx-editor/react/table-node-view.tsx      |   85 +\n packages/mdx-editor/react/task-list-node-view.tsx  |   32 +\n packages/mdx-editor/schema/schema.test.ts          |  260 ++++\n packages/mdx-editor/schema/schema.ts               |  801 ++++++++++\n packages/mdx-editor/serializer/block-serializer.ts |  487 ++++++\n .../mdx-editor/serializer/inline-serializer.ts     |  336 ++++\n .../serializer/markdown-roundtrip-fixtures.test.ts |   39 +\n .../serializer/serialize-markdown.test.ts          | 1032 +++++++++++++\n .../mdx-editor/serializer/serialize-markdown.ts    |  233 +++\n packages/mdx-editor/syntax/code/code.test.ts       |   30 +\n packages/mdx-editor/syntax/code/index.ts           |   46 +\n packages/mdx-editor/syntax/code/parse.ts           |  188 +++\n packages/mdx-editor/syntax/core/index.ts           |   82 +\n packages/mdx-editor/syntax/default.ts              |   20 +\n .../mdx-editor/syntax/fallback/fallback.test.ts    |   44 +\n packages/mdx-editor/syntax/fallback/index.ts       |   35 +\n .../fixtures/markdown-syntax-support.fixture.ts    |   49 +\n .../mdx-editor/syntax/footnote/footnote.test.ts    |   93 ++\n packages/mdx-editor/syntax/footnote/index.ts       |   52 +\n packages/mdx-editor/syntax/footnote/parse.ts       |  129 ++\n packages/mdx-editor/syntax/footnote/serialize.ts   |   41 +\n .../mdx-editor/syntax/golden-roundtrip.test.ts     |   38 +\n packages/mdx-editor/syntax/html/html.test.ts       |   78 +\n packages/mdx-editor/syntax/html/index.ts           |   47 +\n packages/mdx-editor/syntax/legacy/index.ts         |   40 +\n packages/mdx-editor/syntax/mermaid/index.ts        |   42 +\n packages/mdx-editor/syntax/mermaid/mermaid.test.ts |   34 +\n packages/mdx-editor/syntax/mermaid/parse.ts        |  119 ++\n packages/mdx-editor/test/fixtures.ts               |   47 +\n packages/mdx-editor/test/test-helpers.ts           |    9 +\n scripts/verify-editor-browser.mjs                  |    9 +\n src-tauri/Cargo.lock                               |    2 +-\n src-tauri/Cargo.toml                               |    2 +-\n src-tauri/src/lib.rs                               |    2 +-\n src-tauri/src/state_store.rs                       |    8 +-\n src-tauri/src/state_store_tests.rs                 |   16 +-\n src-tauri/tauri.conf.json                          |    6 +-\n tsconfig.json                                      |    6 +-\n types/do-md-react.d.ts                             |   70 -\n 156 files changed, 24628 insertions(+), 601 deletions(-)",
+      "uncommitted_status": [
+        "M features/app/components/app-shell.tsx",
+        " M features/llm-wiki/hooks/use-llm-wiki-workspace.test.tsx",
+        " M features/llm-wiki/hooks/use-llm-wiki-workspace.ts",
+        " M features/workspace/components/workspace-app.tsx",
+        " M features/workspace/lib/cli-sync.ts",
+        " M features/workspace/lib/types.ts",
+        " M src-tauri/src/cli_server.rs",
+        " M src-tauri/src/lib.rs",
+        "?? features/app/components/app-shell.test.tsx",
+        "?? features/workspace/lib/cli-sync.test.ts"
+      ],
+      "source_artifacts": [
+        "docs/loopx/plans/2026-06-17-self-owned-markdown-wysiwyg-kernel.md"
+      ]
+    },
+    "report_candidates": {
+      "accepted": [
+        {
+          "id": "audit-evidence",
+          "summary": "Finish audit evidence collected from the current worktree."
+        }
+      ],
+      "rejected": []
+    }
+  },
+  "choice": {
+    "action": "keep",
+    "status": "done",
+    "summary": "Committed on main: fix(app): recover stale workspace webviews",
+    "url": null,
+    "recorded_at": "2026-06-24T02:56:14.034Z",
+    "updated_at": "2026-06-24T02:56:14.034Z"
+  },
+  "choice_history": []
+}

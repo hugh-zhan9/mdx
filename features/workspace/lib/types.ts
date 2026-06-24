@@ -72,6 +72,14 @@ export interface CliWorkspaceSyncPayload {
     tab_selections: Record<string, CliSelectionSnapshot | null>;
 }
 
+export interface CliFrontendHeartbeatPayload {
+    root_path: string | null;
+    has_workspace: boolean;
+    root_present: boolean;
+    visibility_state: string | null;
+    location_href: string | null;
+}
+
 export interface CliEditorSnapshot {
     tabId: string;
     markdown: string;

@@ -1,0 +1,572 @@
+# Finish Audit
+
+## Summary
+
+- audit_id: 20260624T024909Z-finish-audit
+- slug: finish-audit
+- status: completed
+- updated_at: 2026-06-24T02:56:14.034Z
+- branch: main
+- base branch: main
+- worktree: /Users/zhangyukun/project/mdx
+
+## Scanned Inputs
+
+- slug=finish-audit
+- worktree=/Users/zhangyukun/project/mdx
+- branch=main
+- base_branch=main
+- head=d830c60
+- change_window_source=baseline
+- change_range=69eb098..HEAD
+- committed_change_count=142
+- changed_files_count=156
+- uncommitted_change_count=10
+- cwd=/Users/zhangyukun/project/mdx
+- env.LOOPX_DEVELOPER=unknown
+
+## Change Window
+
+- source: baseline
+- baseline_ref: 69eb098
+- range: 69eb098..HEAD
+- committed_change_count: 142
+
+### Commits
+
+- d830c602bfb9f160039a3a3924811c542c7ba8a7 docs(editor): record syntax plugin kernel contract
+- 05d6538632dd25ab416962708a5b47c2c5edd92d fix(editor): remove node view placeholder export
+- a389e9a9cdd95126d6856337bd58fd8677966b23 test(editor): add syntax plugin golden coverage
+- 3a01067382af19b2c08842233a4062d52bfff883 refactor(editor): migrate callers to kernel api
+- e4ab5c046cb89ff43d08ce6333425cf328401ab4 fix(editor): sanitize clipboard html metadata
+- 8815812e7a8042768709f01a8968ed4f1333007b feat(editor): route clipboard through syntax plugins
+- ff52bff0d8d4779ce8e40fce0c4f85b38ac31951 feat(editor): extract code and mermaid syntax
+- d6d401ce85e04f7d94537e8a1f0369be0ef3afc1 Guard footnote parsing by syntax registration
+- 7cfe20bef5bf30c174a0ec696e14fde5d995ddba Fix footnote syntax ownership
+- 746c18702db497138fd7dd9ca9c66346341d56e1 feat(editor): extract footnote syntax
+- 29e37d5afd45a45d11c943f31178a147a53cb2f9 fix(editor): align clipboard serializer types
+- f16fde515170d4d94ec6bf862e8ed1b493b75de1 fix(editor): route clipboard serialization through kernel
+- ea06e450a67edc1f495b5b3dac42035054be4812 fix(editor): restore serializer ownership for html and fallback syntax
+- f4e68e3fa277d4620732100069d620bc695281d7 feat(editor): extract html and fallback syntax
+- 85997991dc37b484e79579f9454febaf95328768 fix(editor): keep image hydration source stable
+- 0e20a0e6826f081e119978ca14facc71f1916790 fix(editor): route image hydration through kernel
+- 0768b7d86b8d302281a51d698655b1d62d9471f0 fix(editor): preserve markdown image source during hydration
+- bc3e6940922b67a951187b924726057f9ea25870 Fix delayed image loader hydration
+- 4571fad886b316a06dd19b7953f0eb7810bcfba5 feat(editor): route react provider through kernel
+- 4ce4e6a10be73dc6942eaec5c45447ecc0722193 fix(mdx-editor): restore legacy link dom markers
+- ca3887ea2314a3835a7d412f90530063554b574d Fix Task 2 schema-aware editor plugins
+- 19ee247dbdf8305f238a2dc89dd9317ffc969c99 feat(editor): introduce mdx editor kernel
+- a6f640f7d8bba052df714a4ee9a06edd9c262eb4 fix(editor): validate syntax parser contributions
+- c0557930dd8df1da51bf8fa65ede91540c2a2741 feat(editor): add syntax kernel registry
+- 24226e4d42e4536ce6f28557eb80606b8d257ab1 fix(editor): stabilize markdown syntax rendering
+- b553347aeeeb97b211ccd9cf1908d0884f0f895b fix(editor): stabilize html fallback editing
+- 018e2e08572cd88b9a1a26dd271d882b7d9baebb fix(editor): use single mermaid preview path
+- 6fba2c450489c5f1f1838466f7938df0d3a5650b fix(editor): isolate mermaid preview ownership
+- a962a0cdfd34e4c6cd7e15a125e3eb6cd7ecab78 fix(editor): prevent mermaid previews from corrupting code blocks
+- c07890a23e18ff5cec80ef8a5dfd4fea5c557611 fix(document): let standalone editor scroll content
+- 7c3a4156d3f16f8bda3e927741a68d8253aab8f9 fix(document): keep editor below recovery banner
+- 48aa50f6b68aec6c28a68e523659e7afcf1ab474 fix(editor): support code block language editing
+- 62e28313e1a193060a5d54d7fb9c298795d08fc9 fix(editor): insert pasted images as undoable nodes
+- f87777b04cf8bec908e93cd27be367dd271a2321 fix(editor): paste images at cursor
+- 9648eabab54a99cffc4a574a25c804f438b3ed43 fix(editor): keep image placeholders editable
+- 8fcc826ae896da25497a4185cd0d8a12b3405d09 fix(editor): show markdown fallback for broken images
+- e4fad989bbc72f9cbad52900d19a119fdc71af99 fix(editor): recover escaped empty links
+- ce81fbd5760e4c5eece6ddf358793e388de2ad20 fix(editor): finish link editing on enter
+- 3b933364f31fea3782856391da7afd84b1226d26 fix(editor): restore edited links on blur
+- ac19cccecd3daea266592c925061865c47b260a1 fix(editor): edit selected links as markdown text
+- fb7f8a7f3c83452686d2fb7c8715658da2c78b26 fix(editor): tone down inline link href editor
+- dd6aa3e515c4b37f472c2ce2d8b4699eae1eb4df fix(editor): keep link href input editable
+- 8b578f688802083cd0122f441926e3cc67b9517c fix(editor): edit link href inline when selected
+- 09c682d1b8eb60cd7deb28a1604efb8459e1f4d6 fix(editor): show links as markdown while editing
+- 46850f0f905f61ab87adc77214a1087d61de4017 fix(editor): make links editable on hover
+- 7b6eb872911ae43839f73aa7164e057b5d3b9d30 fix(editor): keep links editable in wysiwyg
+- a9dda37553a6d5d2ff4648cd255fa7b9e9bd638e fix(editor): parse inline markdown links while editing
+- f14be5e4df3b07e6f6acb9ca46a9af0df24da2bd fix(editor): preserve markdown positions and continuations
+- d81f9b1590e7bede8374d8ff5c8286f271bba45f fix(editor): parse nested markdown and highlight code
+- 406350f05fb3958c28c3c834b06f59fd348052cf fix(editor): style nested list bullets
+- 1080e0b0f5cfafdabd68c0289ad2b11ecfb964c9 fix(app): tune default window size
+- 5e60df4fdd19b9a4b7a0254d170a586b65f7be0b fix(app): use larger logical window size
+- ea616f684fd6180c71ae8bceef8dd85190d984f1 fix(app): avoid saving startup window size
+- bbc066fc02dc72fc82559425b907cf5b30028141 fix(editor): remove heading style at start
+- 41c3182fc5e7076f762041ddb246db6f54696db6 fix(editor): exit block styles with keyboard
+- 23db0600b282818bfa80a65dea6e4069dde1af8b fix(editor): include lazy callout content
+- 73a8938985aea0801f584ef11e704214bab78375 fix(editor): style markdown callouts
+- 7d4b9fae6726046f03bb91dd3ad5e3ccf3d084be fix(editor): hide table controls until hover
+- a31fc59cd08c7d1c953fc2621bd0cdd99de7f6fd fix(editor): style markdown headings
+- 01c4a5b324106549e9bc45d19110e283554aa33c fix(editor): show table grid lines
+- e45c3ee8012430353372515a36d213bfd75091f1 fix(editor): render markdown horizontal rules
+- 9f79fbec9959f9dc0b0bd4d6d1fbf7d8d4045f73 fix(editor): remove editor focus frame
+- 56ab99a5ae235d37fd7efd034e8008fd4e19a0ee fix(editor): normalize pasted code fences
+- cf94f724e1c4a0cdae7657394826fbd307cce033 fix(editor): parse indented code fences
+- ae9917703de5adef23b83ec2ee3a3e9a59683551 fix(editor): show list markers in wysiwyg
+- d4c570aef0da9ce2637a6927916e17073fb07086 fix(editor): parse pasted code fences
+- e82b40722bbf6d6d50965d63bef0c6a594792dcc fix(editor): stop view refresh and render code fences
+- acc04bf555a69c6bd5f5822271ea673bc089ac77 chore(memory): record markdown editor contract
+- 3571bbc825bb61ecc9a3adfc0e62ffdbb5f29f2b fix(editor): preserve inline pipes in tables
+- 65befdf8006cc319b46a47f29178fe96b1f005f7 fix(editor): preserve table pipes and html fallback
+- c8f1dc4482d89ed5f550d066cbced80677862244 fix(editor): convert typed pipe tables
+- 27cfc245552446a43162e2787ea1245669178f85 docs(editor): document hardened wysiwyg behavior
+- 1ffa1846a5c1d79f1fab63790243dd977efdeed9 test(editor): address browser verification review
+- 0a988106a4a4a0cc5541eb90ed71811efeba8eff test(editor): add browser behavior verification
+- b52eb9fef7699b29d5b81ff445e2ffb3de51e843 test(editor): preserve app integration contract
+- dad9e3f499d9309ff4df52913aa904d168dc4fdd feat(editor): remove global source mode
+- 296feb505728362a108291e2b7d7d0e8df47fbf1 fix(editor): emit realtime markdown from wysiwyg edits
+- d0326ff9f5b9d266a56b21bde70dc98be7b7a6ab fix(editor): correct advanced node view DOM
+- d1c1776e9f826aa3d5df6f76f34f3bcfaeee8fc5 feat(editor): add advanced markdown node views
+- c832aaae24b4994bf3ba45ddfe6835d2b6bebc42 test(editor): bind clipboard plugin props
+- 2233cf8a1dd8b3ec0b787c565b67fb3b5dd3f423 fix(editor): preserve plain text paste behavior
+- 7c34286e49bc3f17743125a064d9b557ddd8e0b0 feat(editor): add markdown clipboard pipeline
+- 75ba7da37194f8712218e3640ba316738e962f01 fix(editor): harden markdown command input rules
+- 2bcc5e8bb077f3e1970488a390e64a72eb6494ed feat(editor): add markdown commands and input rules
+- 9b4f1bae6744cd623ec0d58fb2a628cd5c06087d fix(editor): sync source fallback document text
+- 2f24996515e53db351d265b2c3ee65a5fd22d5a4 fix(editor): wire source fallback node view
+- a2f0b2060eff323e84904f59b12d03f61b27793e feat(editor): preserve unsupported markdown as source fallback
+- f1b07d04f4a6bb10a151122f2d2fee578893d52c fix(editor): include structured blocks in line scroll indexing
+- 0935ad67e488408660df7da806ad756d7dc584c5 fix(editor): include mermaid blocks in line scroll indexing
+- 8121782495591276c996c48f59172a46df3809db fix(editor): preserve mermaid code block DOM contract
+- 881c8354a4d350b24f60db990028a1db1ead7340 feat(editor): parse advanced markdown blocks
+- 2f70fb859e9aae4e7f86f528e511b297707cdcb2 feat(editor): parse basic markdown blocks
+- 09d40b4572f100749ee42a31500aa11925c2bf79 fix(editor): handle link label brackets
+- a0f2ffd73d5db2c009e1a1d5e41db01a4e291eca fix(editor): compare inline atom marks
+- f63cbbed2decab40d326931773146615a15fad58 fix(editor): preserve marks on inline atoms
+- b59a032b06d501928cf84d0e4d1684ec38334a34 fix(editor): preserve nested marks and escapes
+- e70160f7dfdb2858b997a3fffe114df4ec90a230 fix(editor): roundtrip backtick code spans
+- 7b0c2e9ad81f65ee059ca6298b831c159a26e469 fix(editor): preserve inline roundtrip edge cases
+- c53ad4c190ff9162cea9c8178651831436f93425 fix: resolve root-relative mhtml resources
+- 146f7d41bf93e29545b1fb24cdb503b65e892fdd fix(editor): preserve nested link marks
+- 358f2521eb13adf37304e6ac992ba6b328450f50 fix: route html and mhtml tabs to rendered preview
+- 7cc4df54c48f8c2e62239f61629f0f02d8ac89bc fix(editor): harden inline markdown round trips
+- d47afbb35db4bf4d5a421432a3ea844ad138032a feat: render secure html preview iframe
+- fbf18902c18cf6b2704502a94fbda78c7dc6423e fix: resolve mhtml relative resource locations
+- e06bf11a31e23597f5b85a4e6abc0a87093cab63 fix(editor): complete inline serialization wiring
+- e93e907cb499eadd8dcfd3c4b681ecc77a22a6e0 feat: parse mhtml preview archives
+- 7e4d64b02577305e48ece286311ae504de0ec27c feat(editor): parse and serialize inline markdown
+- d80efcfa409a58fae919dbbc6efd70ce1a68b4d7 fix: harden html preview inert links
+- 986a9cf49a54a1afb2248ddb4dd7b8ac9137ba8e fix(editor): preserve advanced block schema content
+- 0cb721c9ecc94c1478cc19cc9ebf6c026159da7f feat: add secure html preview rewriting
+- d5881bc3035e09f041fea3ec201e3f5b392d63dd feat(editor): add markdown schema surface
+- bcb4019924c3df812c34f92db83306a44e17ac95 fix: classify mhtml as renderable html preview
+- 71cf8ad5695220259caa9f1e28d100883f606e1b chore: record self-owned editor finish audit
+- 17df82f603eef33ee9b75beb039d9f0a3929f667 feat: surface empty-editor placeholder state
+- ca27768a1eabc6d50d6907f456980ef38b550021 feat: support semantic image nodes in editor runtime
+- dd02ef7679aca91c4d99a9d56ccc10f574cb9e1c feat: render mdx editor through semantic runtime
+- 036396a6f1c4e3dc29784782b8aa93c7bf71f1ae fix: wire mdx editor through prosemirror runtime
+- 96aadabd5c59026f349b9eefe345523d960994c1 chore: remove closed markdown editor kernel
+- 4103b0f2ac12a6e0011cb004f9cad5ac18d5f9e6 docs: document self-owned markdown editor kernel
+- 6e9ad3a203c87471cb75708d498948c49dec9bcd test: preserve app editor behavior on self-owned kernel
+- d451fc848561ce51d68ab7d19f0598136ad018b8 fix: narrow opaque markdown fallback boundaries
+- 80edb1b3f1834f0da4e9a9f41b6ff8277dc5818b fix: guard opaque source-preservation reuse
+- 3ee88de4b5018168b86cdf504142cd565c82dcc4 test: add markdown roundtrip fixture coverage
+- 3f353097f42be8c886c0578eea5c4f58174e5ca6 fix: stabilize editor pane source mode
+- 6fe42af7d4dd5344e3cc48dc15bb761011346b0c feat: add markdown source mode to editor pane
+- ccd1f792778ef14d724e29e5c95632332bf2ff1e feat: migrate editor helpers to mdx dom contract
+- f959213dad4230787268a877dd6dcf1a0d435aba fix: preserve editor bridge compatibility
+- 3c9a36d0c97353e27f483b929e8ff40f0f3afed8 feat: route editor adapter through self-owned kernel
+- 5ebf42f102a7c2a6f86a6338211226a0f7fba698 fix: stabilize react adapter commands
+- 388cf5002c6e3cad63b1b9e0cc9eceb17bcd5457 fix: align react adapter contracts
+- de67b287aab2e243c24fbf85d2a38e98982627c7 feat: add mdx editor react adapter
+- 0ea9144e29174a8231853ec21c312a9e5cfbb132 fix: strengthen markdown command round-trips
+- 418770a2c9d2db36d0615acb49be0ec2d1867c65 fix: escape markdown image alt text
+- 67f814748b935965c5091a8bb56cd05c67c5adb3 fix: escape image urls in markdown commands
+- 49d5cc3cdaa38c9a8809046a5cd3ed9e9c6b5cad feat: add editor commands and selection snapshots
+- a2e4a575f3d5b42e88cd0a223e0cdd452fa27247 fix: align markdown escaping in parser and serializer
+- 07fb7f425c8c48957c57a330fadc66c94054acdd fix: group adjacent link text in serializer
+- d58fd5a84bcb78be1b60b665b929e77227cfe5c7 feat: serialize markdown with source preservation
+- df7ae0e867c7cbd92bd1aedda2f9c3e43d4725ee fix: harden initial markdown parser contracts
+- 95e3215d4c7f19e90cc36f8af92206aec52e173d feat: add initial markdown parser and schema
+- 18f7b057841784640c8a03724af2414fc41829ba fix: typecheck mdx editor scaffold helpers
+- bde92d2a62eed8552940c900ddbaac98d3b34423 feat: scaffold self-owned markdown editor package
+
+### Changed Files
+
+- A .loopx/finish/20260618T055611Z-self-owned-markdown-wysiwyg-kernel/finish-report.md
+- A .loopx/finish/20260618T055611Z-self-owned-markdown-wysiwyg-kernel/finish-state.json
+- M .loopx/finish/baselines/latest.json
+- A .loopx/finish/baselines/self-owned-markdown-wysiwyg-kernel.json
+- M .loopx/memory/MEMORY.md
+- A .loopx/memory/entries/2026-06-19-markdown-wysiwyg-kernel-contract.md
+- M .loopx/memory/index.jsonl
+- D .packages/@do-md/dist/LICENSE
+- D .packages/@do-md/dist/index.cjs
+- D .packages/@do-md/dist/index.js
+- D .packages/@do-md/dist/style.css
+- M LICENSE
+- M README.md
+- M README.zh-CN.md
+- M app/globals.css
+- M app/layout.tsx
+- A common/lib/prism.test.ts
+- M common/lib/prism.ts
+- A docs/editor-regression-guardrails.md
+- M docs/loopx/specs/editor.md
+- A docs/markdown-syntax-support-check.md
+- M features/document/components/document-shell.test.tsx
+- M features/document/components/document-shell.tsx
+- A features/editor/components/editor-kernel-adapter.test.tsx
+- M features/editor/components/editor-kernel-adapter.tsx
+- M features/editor/components/editor-mermaid-preview-layer.test.tsx
+- M features/editor/components/editor-mermaid-preview-layer.tsx
+- A features/editor/components/editor-pane-mermaid-regression.test.tsx
+- M features/editor/components/editor-pane.test.tsx
+- M features/editor/components/editor-pane.tsx
+- A features/editor/hooks/use-editor-bridge.test.tsx
+- M features/editor/hooks/use-editor-bridge.ts
+- M features/editor/hooks/use-editor-find-replace.test.ts
+- M features/editor/hooks/use-editor-find-replace.ts
+- A features/editor/lib/editor-dom-contract.ts
+- A features/editor/lib/editor-kernel-removal.test.ts
+- M features/editor/lib/keyboard-selection-scope.test.ts
+- M features/editor/lib/keyboard-selection-scope.ts
+- M features/editor/lib/markdown-line-scroll.test.ts
+- M features/editor/lib/markdown-line-scroll.ts
+- M features/editor/lib/mermaid-dom.test.ts
+- M features/editor/lib/mermaid-dom.ts
+- M features/editor/lib/visible-text-search.test.ts
+- M features/editor/lib/visible-text-search.ts
+- M features/editor/lib/wikilink-markdown.test.ts
+- M features/editor/lib/wikilink-markdown.ts
+- A features/workspace/components/editor-stage.test.tsx
+- M features/workspace/components/editor-stage.tsx
+- M features/workspace/components/file-tree-context-menu.tsx
+- M features/workspace/components/file-tree-node.test.ts
+- M features/workspace/components/file-tree-node.tsx
+- M features/workspace/components/file-tree-panel.tsx
+- A features/workspace/components/html-preview.test.tsx
+- A features/workspace/components/html-preview.tsx
+- M features/workspace/components/workspace-shell.tsx
+- M features/workspace/hooks/use-workspace-bootstrap.ts
+- A features/workspace/lib/html-preview-security.test.ts
+- A features/workspace/lib/html-preview-security.ts
+- A features/workspace/lib/mhtml-archive.test.ts
+- A features/workspace/lib/mhtml-archive.ts
+- M features/workspace/lib/outline-scroll.test.ts
+- M features/workspace/lib/outline-scroll.ts
+- M features/workspace/lib/path.test.ts
+- M features/workspace/lib/path.ts
+- M features/workspace/lib/window-size.ts
+- M package-lock.json
+- M package.json
+- A packages/mdx-editor/commands/editor-commands.test.ts
+- A packages/mdx-editor/commands/editor-commands.ts
+- A packages/mdx-editor/core/markdown-nodes.ts
+- A packages/mdx-editor/core/selection.test.ts
+- A packages/mdx-editor/core/selection.ts
+- A packages/mdx-editor/core/source-map.test.ts
+- A packages/mdx-editor/core/source-map.ts
+- A packages/mdx-editor/core/types.ts
+- A packages/mdx-editor/index.ts
+- A packages/mdx-editor/kernel/clipboard.test.ts
+- A packages/mdx-editor/kernel/clipboard.ts
+- A packages/mdx-editor/kernel/create-kernel.ts
+- A packages/mdx-editor/kernel/index.ts
+- A packages/mdx-editor/kernel/kernel.test.ts
+- A packages/mdx-editor/kernel/registry.test.ts
+- A packages/mdx-editor/kernel/registry.ts
+- A packages/mdx-editor/kernel/schema.ts
+- A packages/mdx-editor/kernel/types.ts
+- A packages/mdx-editor/parser/block-markdown.ts
+- A packages/mdx-editor/parser/inline-markdown.ts
+- A packages/mdx-editor/parser/parse-markdown.test.ts
+- A packages/mdx-editor/parser/parse-markdown.ts
+- A packages/mdx-editor/plugins/editor-clipboard.test.ts
+- A packages/mdx-editor/plugins/editor-clipboard.ts
+- A packages/mdx-editor/plugins/editor-code-highlight.ts
+- A packages/mdx-editor/plugins/editor-input-rules.test.ts
+- A packages/mdx-editor/plugins/editor-input-rules.ts
+- A packages/mdx-editor/plugins/editor-keymap.test.ts
+- A packages/mdx-editor/plugins/editor-keymap.ts
+- A packages/mdx-editor/plugins/editor-link-interaction.test.ts
+- A packages/mdx-editor/plugins/editor-link-interaction.ts
+- A packages/mdx-editor/plugins/editor-plugins.ts
+- A packages/mdx-editor/plugins/source-fallback-plugin.ts
+- A packages/mdx-editor/react/callout-node-view.tsx
+- A packages/mdx-editor/react/editor-toolbar.tsx
+- A packages/mdx-editor/react/footnote-node-view.tsx
+- A packages/mdx-editor/react/html-block-node-view.tsx
+- A packages/mdx-editor/react/index.ts
+- A packages/mdx-editor/react/inline-html-node-view.tsx
+- A packages/mdx-editor/react/math-node-view.tsx
+- A packages/mdx-editor/react/mdx-editor-browser.test.tsx
+- A packages/mdx-editor/react/mdx-editor-context.tsx
+- A packages/mdx-editor/react/mdx-editor-provider.test.tsx
+- A packages/mdx-editor/react/mdx-editor-provider.tsx
+- A packages/mdx-editor/react/mdx-editor-view.tsx
+- A packages/mdx-editor/react/mermaid-node-view.tsx
+- A packages/mdx-editor/react/mermaid-renderer.ts
+- A packages/mdx-editor/react/node-views.test.tsx
+- A packages/mdx-editor/react/node-views.tsx
+- A packages/mdx-editor/react/source-fallback-node-view.tsx
+- A packages/mdx-editor/react/table-node-view.tsx
+- A packages/mdx-editor/react/task-list-node-view.tsx
+- A packages/mdx-editor/schema/schema.test.ts
+- A packages/mdx-editor/schema/schema.ts
+- A packages/mdx-editor/serializer/block-serializer.ts
+- A packages/mdx-editor/serializer/inline-serializer.ts
+- A packages/mdx-editor/serializer/markdown-roundtrip-fixtures.test.ts
+- A packages/mdx-editor/serializer/serialize-markdown.test.ts
+- A packages/mdx-editor/serializer/serialize-markdown.ts
+- A packages/mdx-editor/syntax/code/code.test.ts
+- A packages/mdx-editor/syntax/code/index.ts
+- A packages/mdx-editor/syntax/code/parse.ts
+- A packages/mdx-editor/syntax/core/index.ts
+- A packages/mdx-editor/syntax/default.ts
+- A packages/mdx-editor/syntax/fallback/fallback.test.ts
+- A packages/mdx-editor/syntax/fallback/index.ts
+- A packages/mdx-editor/syntax/fixtures/markdown-syntax-support.fixture.ts
+- A packages/mdx-editor/syntax/footnote/footnote.test.ts
+- A packages/mdx-editor/syntax/footnote/index.ts
+- A packages/mdx-editor/syntax/footnote/parse.ts
+- A packages/mdx-editor/syntax/footnote/serialize.ts
+- A packages/mdx-editor/syntax/golden-roundtrip.test.ts
+- A packages/mdx-editor/syntax/html/html.test.ts
+- A packages/mdx-editor/syntax/html/index.ts
+- A packages/mdx-editor/syntax/legacy/index.ts
+- A packages/mdx-editor/syntax/mermaid/index.ts
+- A packages/mdx-editor/syntax/mermaid/mermaid.test.ts
+- A packages/mdx-editor/syntax/mermaid/parse.ts
+- A packages/mdx-editor/test/fixtures.ts
+- A packages/mdx-editor/test/test-helpers.ts
+- A scripts/verify-editor-browser.mjs
+- M src-tauri/Cargo.lock
+- M src-tauri/Cargo.toml
+- M src-tauri/src/lib.rs
+- M src-tauri/src/state_store.rs
+- M src-tauri/src/state_store_tests.rs
+- M src-tauri/tauri.conf.json
+- M tsconfig.json
+- D types/do-md-react.d.ts
+
+### Uncommitted Status
+
+- M features/app/components/app-shell.tsx
+- M features/llm-wiki/hooks/use-llm-wiki-workspace.test.tsx
+- M features/llm-wiki/hooks/use-llm-wiki-workspace.ts
+- M features/workspace/components/workspace-app.tsx
+- M features/workspace/lib/cli-sync.ts
+- M features/workspace/lib/types.ts
+- M src-tauri/src/cli_server.rs
+- M src-tauri/src/lib.rs
+- ?? features/app/components/app-shell.test.tsx
+- ?? features/workspace/lib/cli-sync.test.ts
+
+### Source Artifacts
+
+- docs/loopx/plans/2026-06-17-self-owned-markdown-wysiwyg-kernel.md
+
+### Diff Stat
+
+- .../finish-report.md                               |  259 ++++
+- .../finish-state.json                              |  522 +++++++
+- .loopx/finish/baselines/latest.json                |   10 +-
+- .../self-owned-markdown-wysiwyg-kernel.json        |   10 +
+- .loopx/memory/MEMORY.md                            |    1 +
+- .../2026-06-19-markdown-wysiwyg-kernel-contract.md |   19 +
+- .loopx/memory/index.jsonl                          |    1 +
+- .packages/@do-md/dist/LICENSE                      |  131 --
+- .packages/@do-md/dist/index.cjs                    |    1 -
+- .packages/@do-md/dist/index.js                     |   15 -
+- .packages/@do-md/dist/style.css                    |    1 -
+- LICENSE                                            |    7 +-
+- README.md                                          |    8 +-
+- README.zh-CN.md                                    |    8 +-
+- app/globals.css                                    |  724 +++++++++
+- app/layout.tsx                                     |    1 +
+- common/lib/prism.test.ts                           |   21 +
+- common/lib/prism.ts                                |    4 +-
+- docs/editor-regression-guardrails.md               |   18 +
+- docs/loopx/specs/editor.md                         |   24 +-
+- docs/markdown-syntax-support-check.md              |  433 ++++++
+- .../document/components/document-shell.test.tsx    |   48 +
+- features/document/components/document-shell.tsx    |   29 +-
+- .../components/editor-kernel-adapter.test.tsx      |  139 ++
+- .../editor/components/editor-kernel-adapter.tsx    |  241 ++-
+- .../editor-mermaid-preview-layer.test.tsx          |   38 +-
+- .../components/editor-mermaid-preview-layer.tsx    |    8 +-
+- .../editor-pane-mermaid-regression.test.tsx        |  119 ++
+- features/editor/components/editor-pane.test.tsx    |  373 ++++-
+- features/editor/components/editor-pane.tsx         |  109 +-
+- features/editor/hooks/use-editor-bridge.test.tsx   |   84 +
+- features/editor/hooks/use-editor-bridge.ts         |   28 +-
+- .../editor/hooks/use-editor-find-replace.test.ts   |   59 +-
+- features/editor/hooks/use-editor-find-replace.ts   |   28 +-
+- features/editor/lib/editor-dom-contract.ts         |   10 +
+- features/editor/lib/editor-kernel-removal.test.ts  |   12 +
+- .../editor/lib/keyboard-selection-scope.test.ts    |  101 +-
+- features/editor/lib/keyboard-selection-scope.ts    |   31 +-
+- features/editor/lib/markdown-line-scroll.test.ts   |  111 +-
+- features/editor/lib/markdown-line-scroll.ts        |   14 +-
+- features/editor/lib/mermaid-dom.test.ts            |   62 +-
+- features/editor/lib/mermaid-dom.ts                 |   13 +-
+- features/editor/lib/visible-text-search.test.ts    |  161 +-
+- features/editor/lib/visible-text-search.ts         |   25 +-
+- features/editor/lib/wikilink-markdown.test.ts      |   26 +
+- features/editor/lib/wikilink-markdown.ts           |    8 +-
+- .../workspace/components/editor-stage.test.tsx     |  142 ++
+- features/workspace/components/editor-stage.tsx     |   20 +-
+- .../components/file-tree-context-menu.tsx          |    1 +
+- .../workspace/components/file-tree-node.test.ts    |   67 +
+- features/workspace/components/file-tree-node.tsx   |   15 +-
+- features/workspace/components/file-tree-panel.tsx  |  254 ++-
+- .../workspace/components/html-preview.test.tsx     |  111 ++
+- features/workspace/components/html-preview.tsx     |  160 ++
+- features/workspace/components/workspace-shell.tsx  |   11 +-
+- .../workspace/hooks/use-workspace-bootstrap.ts     |   57 +-
+- .../workspace/lib/html-preview-security.test.ts    |  151 ++
+- features/workspace/lib/html-preview-security.ts    |  312 ++++
+- features/workspace/lib/mhtml-archive.test.ts       |  179 +++
+- features/workspace/lib/mhtml-archive.ts            |  493 ++++++
+- features/workspace/lib/outline-scroll.test.ts      |   33 +-
+- features/workspace/lib/outline-scroll.ts           |   57 +-
+- features/workspace/lib/path.test.ts                |   23 +-
+- features/workspace/lib/path.ts                     |   23 +-
+- features/workspace/lib/window-size.ts              |    4 +-
+- package-lock.json                                  | 1623 +++++++++++++++++++-
+- package.json                                       |   29 +-
+- .../mdx-editor/commands/editor-commands.test.ts    |  227 +++
+- packages/mdx-editor/commands/editor-commands.ts    |  238 +++
+- packages/mdx-editor/core/markdown-nodes.ts         |   35 +
+- packages/mdx-editor/core/selection.test.ts         |   31 +
+- packages/mdx-editor/core/selection.ts              |   26 +
+- packages/mdx-editor/core/source-map.test.ts        |   22 +
+- packages/mdx-editor/core/source-map.ts             |   19 +
+- packages/mdx-editor/core/types.ts                  |   55 +
+- packages/mdx-editor/index.ts                       |   29 +
+- packages/mdx-editor/kernel/clipboard.test.ts       |  146 ++
+- packages/mdx-editor/kernel/clipboard.ts            |  478 ++++++
+- packages/mdx-editor/kernel/create-kernel.ts        |  134 ++
+- packages/mdx-editor/kernel/index.ts                |   24 +
+- packages/mdx-editor/kernel/kernel.test.ts          |   54 +
+- packages/mdx-editor/kernel/registry.test.ts        |  140 ++
+- packages/mdx-editor/kernel/registry.ts             |  128 ++
+- packages/mdx-editor/kernel/schema.ts               |    9 +
+- packages/mdx-editor/kernel/types.ts                |  124 ++
+- packages/mdx-editor/parser/block-markdown.ts       | 1449 +++++++++++++++++
+- packages/mdx-editor/parser/inline-markdown.ts      |  722 +++++++++
+- packages/mdx-editor/parser/parse-markdown.test.ts  |  771 ++++++++++
+- packages/mdx-editor/parser/parse-markdown.ts       |   40 +
+- .../mdx-editor/plugins/editor-clipboard.test.ts    |  541 +++++++
+- packages/mdx-editor/plugins/editor-clipboard.ts    |  752 +++++++++
+- .../mdx-editor/plugins/editor-code-highlight.ts    |   96 ++
+- .../mdx-editor/plugins/editor-input-rules.test.ts  |  173 +++
+- packages/mdx-editor/plugins/editor-input-rules.ts  |  298 ++++
+- packages/mdx-editor/plugins/editor-keymap.test.ts  |  119 ++
+- packages/mdx-editor/plugins/editor-keymap.ts       |  109 ++
+- .../plugins/editor-link-interaction.test.ts        |  341 ++++
+- .../mdx-editor/plugins/editor-link-interaction.ts  |  344 +++++
+- packages/mdx-editor/plugins/editor-plugins.ts      |   45 +
+- .../mdx-editor/plugins/source-fallback-plugin.ts   |    9 +
+- packages/mdx-editor/react/callout-node-view.tsx    |   59 +
+- packages/mdx-editor/react/editor-toolbar.tsx       |   11 +
+- packages/mdx-editor/react/footnote-node-view.tsx   |   75 +
+- packages/mdx-editor/react/html-block-node-view.tsx |  231 +++
+- packages/mdx-editor/react/index.ts                 |   11 +
+- .../mdx-editor/react/inline-html-node-view.tsx     |  132 ++
+- packages/mdx-editor/react/math-node-view.tsx       |  125 ++
+- .../mdx-editor/react/mdx-editor-browser.test.tsx   |  219 +++
+- packages/mdx-editor/react/mdx-editor-context.tsx   |   46 +
+- .../mdx-editor/react/mdx-editor-provider.test.tsx  |  835 ++++++++++
+- packages/mdx-editor/react/mdx-editor-provider.tsx  |  453 ++++++
+- packages/mdx-editor/react/mdx-editor-view.tsx      |   28 +
+- packages/mdx-editor/react/mermaid-node-view.tsx    |  132 ++
+- packages/mdx-editor/react/mermaid-renderer.ts      |   52 +
+- packages/mdx-editor/react/node-views.test.tsx      | 1131 ++++++++++++++
+- packages/mdx-editor/react/node-views.tsx           | 1226 +++++++++++++++
+- .../mdx-editor/react/source-fallback-node-view.tsx |  186 +++
+- packages/mdx-editor/react/table-node-view.tsx      |   85 +
+- packages/mdx-editor/react/task-list-node-view.tsx  |   32 +
+- packages/mdx-editor/schema/schema.test.ts          |  260 ++++
+- packages/mdx-editor/schema/schema.ts               |  801 ++++++++++
+- packages/mdx-editor/serializer/block-serializer.ts |  487 ++++++
+- .../mdx-editor/serializer/inline-serializer.ts     |  336 ++++
+- .../serializer/markdown-roundtrip-fixtures.test.ts |   39 +
+- .../serializer/serialize-markdown.test.ts          | 1032 +++++++++++++
+- .../mdx-editor/serializer/serialize-markdown.ts    |  233 +++
+- packages/mdx-editor/syntax/code/code.test.ts       |   30 +
+- packages/mdx-editor/syntax/code/index.ts           |   46 +
+- packages/mdx-editor/syntax/code/parse.ts           |  188 +++
+- packages/mdx-editor/syntax/core/index.ts           |   82 +
+- packages/mdx-editor/syntax/default.ts              |   20 +
+- .../mdx-editor/syntax/fallback/fallback.test.ts    |   44 +
+- packages/mdx-editor/syntax/fallback/index.ts       |   35 +
+- .../fixtures/markdown-syntax-support.fixture.ts    |   49 +
+- .../mdx-editor/syntax/footnote/footnote.test.ts    |   93 ++
+- packages/mdx-editor/syntax/footnote/index.ts       |   52 +
+- packages/mdx-editor/syntax/footnote/parse.ts       |  129 ++
+- packages/mdx-editor/syntax/footnote/serialize.ts   |   41 +
+- .../mdx-editor/syntax/golden-roundtrip.test.ts     |   38 +
+- packages/mdx-editor/syntax/html/html.test.ts       |   78 +
+- packages/mdx-editor/syntax/html/index.ts           |   47 +
+- packages/mdx-editor/syntax/legacy/index.ts         |   40 +
+- packages/mdx-editor/syntax/mermaid/index.ts        |   42 +
+- packages/mdx-editor/syntax/mermaid/mermaid.test.ts |   34 +
+- packages/mdx-editor/syntax/mermaid/parse.ts        |  119 ++
+- packages/mdx-editor/test/fixtures.ts               |   47 +
+- packages/mdx-editor/test/test-helpers.ts           |    9 +
+- scripts/verify-editor-browser.mjs                  |    9 +
+- src-tauri/Cargo.lock                               |    2 +-
+- src-tauri/Cargo.toml                               |    2 +-
+- src-tauri/src/lib.rs                               |    2 +-
+- src-tauri/src/state_store.rs                       |    8 +-
+- src-tauri/src/state_store_tests.rs                 |   16 +-
+- src-tauri/tauri.conf.json                          |    6 +-
+- tsconfig.json                                      |    6 +-
+- types/do-md-react.d.ts                             |   70 -
+- 156 files changed, 24628 insertions(+), 601 deletions(-)
+
+## Extraction Candidates
+
+- memory-local-review-change-window: Review the committed finish change window for local agent memory worth preserving.
+  - kind: memory
+  - scope: local
+  - status: pending-review
+  - target: .loopx/memory/entries/
+  - reason: Committed code, docs, tests, or workflow files may encode a reusable decision, constraint, pitfall, or handoff that future agents should know.
+  - evidence: change_window.source=baseline; change_window.range=69eb098..HEAD; change_window.commit_count=142; commit: docs(editor): record syntax plugin kernel contract; commit: fix(editor): remove node view placeholder export; commit: test(editor): add syntax plugin golden coverage; commit: refactor(editor): migrate callers to kernel api; commit: fix(editor): sanitize clipboard html metadata; file: .loopx/finish/20260618T055611Z-self-owned-markdown-wysiwyg-kernel/finish-report.md; file: .loopx/finish/20260618T055611Z-self-owned-markdown-wysiwyg-kernel/finish-state.json; file: .loopx/finish/baselines/latest.json; file: .loopx/finish/baselines/self-owned-markdown-wysiwyg-kernel.json; file: .loopx/memory/MEMORY.md
+- memory-shared-review-change-window: Review the committed finish change window for git-tracked shared memory worth preserving across machines.
+  - kind: memory
+  - scope: shared
+  - status: pending-review
+  - target: docs/loopx/memory/
+  - reason: A user may need lightweight project memory across multiple machines before it becomes stable enough to promote to a spec.
+  - evidence: change_window.source=baseline; change_window.range=69eb098..HEAD; change_window.commit_count=142; commit: docs(editor): record syntax plugin kernel contract; commit: fix(editor): remove node view placeholder export; commit: test(editor): add syntax plugin golden coverage; commit: refactor(editor): migrate callers to kernel api; commit: fix(editor): sanitize clipboard html metadata; file: .loopx/finish/20260618T055611Z-self-owned-markdown-wysiwyg-kernel/finish-report.md; file: .loopx/finish/20260618T055611Z-self-owned-markdown-wysiwyg-kernel/finish-state.json; file: .loopx/finish/baselines/latest.json; file: .loopx/finish/baselines/self-owned-markdown-wysiwyg-kernel.json; file: .loopx/memory/MEMORY.md
+- spec-review-change-window: Review the committed finish change window for a repo-tracked spec candidate.
+  - kind: spec
+  - status: pending-review
+  - target: docs/loopx/specs/inbox.md
+  - reason: Committed workflow, skill, runtime, documentation, or test changes may define a stable team rule that belongs in specs.
+  - evidence: change_window.source=baseline; change_window.range=69eb098..HEAD; change_window.commit_count=142; commit: docs(editor): record syntax plugin kernel contract; commit: fix(editor): remove node view placeholder export; commit: test(editor): add syntax plugin golden coverage; commit: refactor(editor): migrate callers to kernel api; commit: fix(editor): sanitize clipboard html metadata; file: .loopx/finish/20260618T055611Z-self-owned-markdown-wysiwyg-kernel/finish-report.md; file: .loopx/finish/20260618T055611Z-self-owned-markdown-wysiwyg-kernel/finish-state.json; file: .loopx/finish/baselines/latest.json; file: .loopx/finish/baselines/self-owned-markdown-wysiwyg-kernel.json; file: .loopx/memory/MEMORY.md
+
+## Accepted Candidates
+
+- memory-local-review-change-window: Workspace stale-WebView recovery must not auto-reload dirty workspaces; preserving unsaved edits takes priority over automatic recovery.
+  - evidence: uncommitted_status includes src-tauri/src/cli_server.rs; uncommitted_status includes src-tauri/src/lib.rs; uncommitted_status includes .loopx/issues/issue-llm-wiki-background-white-screen-20260624T095432.md; file: .loopx/memory/MEMORY.md
+  - target: .loopx/memory/entries/2026-06-24-workspace-webview-recovery.md
+
+## Rejected Candidates
+
+- memory-shared-review-change-window: No shared memory written for this finish audit.
+  - rejection_reason: The reusable learning is an implementation-local recovery guard recorded in local memory; it is not yet a cross-machine project rule requiring repo-tracked shared memory.
+  - target: docs/loopx/memory/
+- spec-review-change-window: No spec candidate written for this finish audit.
+  - rejection_reason: The change does not define a stable team-level spec beyond the existing issue ledger and local recovery guard memory; installed App Nap validation remains deferred.
+  - target: docs/loopx/specs/inbox.md
+
+## No Candidates Reason
+
+- none
+
+## Choice
+
+- action: keep
+- status: done
+- summary: Committed on main: fix(app): recover stale workspace webviews
+- url: null
+
+## Choice History
+
+- none
+
+## Next Steps
+
+- Agent review the audit evidence and decide whether the finish state can advance.
+- Record the final audit decision once the audit is complete.
