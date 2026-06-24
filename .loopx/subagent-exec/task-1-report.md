@@ -5,8 +5,7 @@ anchor_coverage:
   infrastructure: implemented
 implemented_anchor_ids:
   - infrastructure
-tests_for_anchor_ids:
-  - infrastructure
+tests_for_anchor_ids: []
 extra_behavior: temporary font-core placeholder crate for workspace resolution only
 missing_context: none
 ```
@@ -19,7 +18,7 @@ missing_context: none
 - Added `src-tauri/crates/layout-core/Cargo.toml` with the dependency set specified in the task brief.
 - Added `src-tauri/crates/layout-core/src/lib.rs` with the shared type skeleton and the declared module structure from the brief.
 - Added skeletal placeholder module files under `src-tauri/crates/layout-core/src/` so the crate compiles with the declared `pub mod` tree.
-- Added `src-tauri/crates/layout-core/src/wasm_bridge.rs` exporting the required function names as bootstrap WASM placeholders with serialized request/response string transport:
+- Added `src-tauri/crates/layout-core/src/wasm_bridge.rs` exporting the required function names as bootstrap WASM placeholders with a transport-agnostic serialized byte boundary:
   - `layout_initialize_document`
   - `layout_update_document`
   - `layout_get_viewport_snapshot`
@@ -63,9 +62,15 @@ Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.39s
 
 ## Review fix follow-up
 
-- Corrected the five WASM bridge exports to use a serialized request/response boundary aligned to the design contract in `docs/loopx/design/TeX风格Canvas自绘编辑器需求设计文档.md:667-788`.
-- Kept the bridge bootstrap-only: each function currently returns a placeholder JSON payload plus diagnostics rather than performing layout work.
+- Replaced the JSON-shaped WASM bridge placeholders with transport-only exports that accept serialized request bytes and return placeholder response bytes.
+- Kept the bridge bootstrap-only: the functions currently expose a conservative binary request/response boundary for future flatbuffer/msgpack wiring and still perform no layout work.
+- This narrows the implementation claim: the bridge now matches the intended serialized WASM boundary shape, but it does not yet implement the concrete protocol named in the design contract.
 - Preserved the temporary `font-core` placeholder crate behavior as workspace-resolution-only bootstrap support.
+
+## Evidence limits
+
+- `anchor_coverage.infrastructure: implemented` is supported by successful wasm-target compilation of the bootstrap crate surface.
+- No automated test currently exercises the anchor IDs or bridge behavior, so `tests_for_anchor_ids` remains empty.
 
 ## Files changed
 

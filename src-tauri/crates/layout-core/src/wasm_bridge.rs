@@ -1,87 +1,30 @@
-use serde_json::{json, Value};
 use wasm_bindgen::prelude::wasm_bindgen;
 
-fn placeholder_response(operation: &str, request_json: &str, payload: Value) -> String {
-    let request: Value = serde_json::from_str(request_json).unwrap_or_else(|_| {
-        json!({
-            "raw": request_json,
-            "decodeError": "INVALID_JSON_PLACEHOLDER_REQUEST"
-        })
-    });
-
-    serde_json::to_string(&json!({
-        "operation": operation,
-        "status": "placeholder",
-        "request": request,
-        "payload": payload,
-        "diagnostics": [{
-            "code": "BOOTSTRAP_PLACEHOLDER",
-            "message": "layout-core WASM bridge is scaffolded but not implemented"
-        }]
-    }))
-    .expect("placeholder bridge responses must serialize")
+fn placeholder_response(_request_bytes: &[u8]) -> Vec<u8> {
+    Vec::new()
 }
 
 #[wasm_bindgen]
-pub fn layout_initialize_document(request_json: &str) -> String {
-    placeholder_response(
-        "layout_initialize_document",
-        request_json,
-        json!({
-            "documentRevision": 0,
-            "initialSnapshot": null
-        }),
-    )
+pub fn layout_initialize_document(request_bytes: &[u8]) -> Vec<u8> {
+    placeholder_response(request_bytes)
 }
 
 #[wasm_bindgen]
-pub fn layout_update_document(request_json: &str) -> String {
-    placeholder_response(
-        "layout_update_document",
-        request_json,
-        json!({
-            "nextRevision": null,
-            "invalidatedRegions": [],
-            "snapshotHints": null
-        }),
-    )
+pub fn layout_update_document(request_bytes: &[u8]) -> Vec<u8> {
+    placeholder_response(request_bytes)
 }
 
 #[wasm_bindgen]
-pub fn layout_get_viewport_snapshot(request_json: &str) -> String {
-    placeholder_response(
-        "layout_get_viewport_snapshot",
-        request_json,
-        json!({
-            "snapshot": null,
-            "selectionAnchors": [],
-            "caretAnchors": []
-        }),
-    )
+pub fn layout_get_viewport_snapshot(request_bytes: &[u8]) -> Vec<u8> {
+    placeholder_response(request_bytes)
 }
 
 #[wasm_bindgen]
-pub fn layout_hit_test(request_json: &str) -> String {
-    placeholder_response(
-        "layout_hit_test",
-        request_json,
-        json!({
-            "pmPosition": null,
-            "bias": null,
-            "blockId": null
-        }),
-    )
+pub fn layout_hit_test(request_bytes: &[u8]) -> Vec<u8> {
+    placeholder_response(request_bytes)
 }
 
 #[wasm_bindgen]
-pub fn layout_get_selection_geometry(request_json: &str) -> String {
-    placeholder_response(
-        "layout_get_selection_geometry",
-        request_json,
-        json!({
-            "rects": [],
-            "lineRects": [],
-            "caretRect": null
-        }),
-    )
+pub fn layout_get_selection_geometry(request_bytes: &[u8]) -> Vec<u8> {
+    placeholder_response(request_bytes)
 }
