@@ -8,6 +8,52 @@ use crate::window_sessions::{
 };
 
 #[test]
+fn macos_window_appearance_prefers_overlay_titlebar() {
+    #[cfg(target_os = "macos")]
+    {
+        assert_eq!(
+            crate::window_appearance::workspace_title_bar_style(),
+            tauri::TitleBarStyle::Overlay
+        );
+        assert_eq!(
+            crate::window_appearance::document_title_bar_style(),
+            tauri::TitleBarStyle::Overlay
+        );
+        assert_eq!(
+            crate::window_appearance::document_error_title_bar_style(),
+            tauri::TitleBarStyle::Overlay
+        );
+        assert!(crate::window_appearance::workspace_hidden_title());
+        assert!(crate::window_appearance::document_hidden_title());
+        assert!(crate::window_appearance::document_error_hidden_title());
+        assert!(crate::window_appearance::macos_window_effects_enabled());
+    }
+}
+
+#[test]
+fn non_macos_window_appearance_keeps_visible_titlebar_defaults() {
+    #[cfg(not(target_os = "macos"))]
+    {
+        assert_eq!(
+            crate::window_appearance::workspace_title_bar_style(),
+            tauri::TitleBarStyle::Visible
+        );
+        assert_eq!(
+            crate::window_appearance::document_title_bar_style(),
+            tauri::TitleBarStyle::Visible
+        );
+        assert_eq!(
+            crate::window_appearance::document_error_title_bar_style(),
+            tauri::TitleBarStyle::Visible
+        );
+        assert!(!crate::window_appearance::workspace_hidden_title());
+        assert!(!crate::window_appearance::document_hidden_title());
+        assert!(!crate::window_appearance::document_error_hidden_title());
+        assert!(!crate::window_appearance::macos_window_effects_enabled());
+    }
+}
+
+#[test]
 fn registry_keeps_one_workspace_window() {
     let mut registry = WindowSessionRegistry::default();
 

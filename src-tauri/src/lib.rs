@@ -63,6 +63,7 @@ mod models;
 mod path_guard;
 mod search_index;
 mod state_store;
+mod window_appearance;
 mod window_sessions;
 mod workspace_fs;
 mod workspace_search;
@@ -509,12 +510,12 @@ fn new_workspace_window_with_route(app: &AppHandle, route: &str) -> tauri::Resul
         return Ok(label);
     }
 
-    let window = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(route.into()))
+    let builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(route.into()))
         .title("MDX")
         .inner_size(1480.0, 860.0)
         .min_inner_size(1100.0, 640.0)
-        .resizable(true)
-        .build()?;
+        .resizable(true);
+    let window = window_appearance::configure_workspace_window(builder).build()?;
     let _ = window.set_focus();
     Ok(label)
 }
@@ -546,12 +547,12 @@ pub(crate) fn new_document_window(
         .map(|name| format!("{name} - MDX"))
         .unwrap_or_else(|| "MDX".to_string());
 
-    let window = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(route.into()))
+    let builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(route.into()))
         .title(&title)
         .inner_size(1280.0, 820.0)
         .min_inner_size(760.0, 520.0)
-        .resizable(true)
-        .build()?;
+        .resizable(true);
+    let window = window_appearance::configure_document_window(builder).build()?;
     let _ = window.set_focus();
     Ok(label)
 }
@@ -574,12 +575,12 @@ fn new_document_error_window(
         route.push_str(&encode_query_component(&path.to_string_lossy()));
     }
 
-    let window = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(route.into()))
+    let builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(route.into()))
         .title("无法打开文档 - MDX")
         .inner_size(720.0, 420.0)
         .min_inner_size(520.0, 320.0)
-        .resizable(true)
-        .build()?;
+        .resizable(true);
+    let window = window_appearance::configure_document_error_window(builder).build()?;
     let _ = window.set_focus();
     Ok(label)
 }
