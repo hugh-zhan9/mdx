@@ -469,12 +469,14 @@ function EditorPaneInner({
                 />
             ) : null}
             <div
+                data-mdx-editor-shell=""
                 ref={handleViewportRef}
-                className="min-h-0 flex-1 overflow-auto bg-base-100"
+                className="flex min-h-0 flex-1 justify-center overflow-auto bg-[var(--mdx-content-bg)]"
             >
                 <div
+                    data-mdx-editor-column=""
                     ref={handleEditorContentRef}
-                    className="mx-auto min-h-full w-full max-w-4xl px-6 pb-[35vh] pt-6 sm:px-8 sm:pb-[35vh] sm:pt-8"
+                    className="min-h-full w-full max-w-[var(--mdx-editor-max-width)] px-6 pb-[35vh] pt-7 sm:px-8 sm:pb-[35vh] sm:pt-10"
                     onClickCapture={handleEditorClickCapture}
                     onDragOverCapture={handleDragOverCapture}
                     onDropCapture={handleDropCapture}

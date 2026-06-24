@@ -266,6 +266,32 @@ describe("editor pane image paste", () => {
         expect(event.defaultPrevented).toBe(true);
     });
 
+    it("wraps markdown content in the reading shell", async () => {
+        const tab = {
+            tabId: "tab-1",
+            path: "/tmp/note.md",
+            title: "note.md",
+            dirty: false,
+            needsRenameOnFirstSave: false,
+            markdown: "",
+            baseFingerprint: "base",
+        };
+
+        await act(async () => {
+            root.render(
+                <EditorPane
+                    rootPath="/tmp"
+                    tab={tab}
+                    onMarkdownChange={vi.fn()}
+                />,
+            );
+        });
+
+        expect(host.querySelector("[data-mdx-editor-shell]")).not.toBeNull();
+        expect(host.querySelector("[data-mdx-editor-column]")).not.toBeNull();
+        expect(host.querySelector("[data-mdx-editor-root]")).not.toBeNull();
+    });
+
     it("rebuilds find ranges when editor text mounts after markdown fallback", async () => {
         bridgeMocks.currentMarkdown = "# Markdown 语法支持检查";
         const tab = {
