@@ -1,3 +1,9 @@
+[workspace]
+members = [
+    "crates/layout-core",
+    "crates/font-core",
+]
+
 [package]
 name = "mdx"
 version = "0.3.0"
