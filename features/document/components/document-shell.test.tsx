@@ -171,7 +171,7 @@ describe("DocumentShell draft recovery", () => {
     readDocumentFile.mockResolvedValueOnce(
       documentFile("# Disk", "fingerprint-disk"),
     );
-    draftGet.mockResolvedValueOnce(null);
+    draftGet.mockResolvedValueOnce({ draft: null, fileExists: true });
 
     await renderDocumentShell(root);
 
@@ -192,11 +192,23 @@ describe("DocumentShell draft recovery", () => {
     expect(stageClassName).toContain("overflow-hidden");
   });
 
+  it("renders macos document shell chrome regions", async () => {
+    readDocumentFile.mockResolvedValueOnce(
+      documentFile("# Disk", "fingerprint-disk"),
+    );
+    draftGet.mockResolvedValueOnce({ draft: null, fileExists: true });
+
+    await renderDocumentShell(root);
+
+    expect(host.querySelector("[data-mdx-document-shell]")).not.toBeNull();
+    expect(host.querySelector("[data-mdx-document-toolbar]")).not.toBeNull();
+  });
+
   it("destroys clean document windows explicitly on close request", async () => {
     readDocumentFile.mockResolvedValueOnce(
       documentFile("# Disk", "fingerprint-disk"),
     );
-    draftGet.mockResolvedValueOnce(null);
+    draftGet.mockResolvedValueOnce({ draft: null, fileExists: true });
 
     await renderDocumentShell(root);
     const closeHandler = onCloseRequested.mock.calls[0]?.[0];
@@ -216,7 +228,7 @@ describe("DocumentShell draft recovery", () => {
     readDocumentFile.mockResolvedValueOnce(
       documentFile("# Disk", "fingerprint-disk"),
     );
-    draftGet.mockResolvedValueOnce(null);
+    draftGet.mockResolvedValueOnce({ draft: null, fileExists: true });
 
     await renderDocumentShell(root);
     const closeHandler = onCloseRequested.mock.calls[0]?.[0];

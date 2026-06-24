@@ -22,7 +22,7 @@ export function OutlinePanel({
     }
 
     return (
-        <aside className="relative h-full min-h-0 overflow-hidden border-l border-base-300 bg-base-100">
+        <aside className="relative h-full min-h-0 overflow-hidden border-l border-base-content/10 bg-[var(--mdx-sidebar-bg)]">
             <div className="h-full overflow-auto py-2 text-sm">
                 {headings.length === 0 ? (
                     <div className="flex min-h-36 items-center">
@@ -36,7 +36,7 @@ export function OutlinePanel({
                         <button
                             key={heading.id}
                             type="button"
-                            className="block w-full truncate py-1 pr-3 text-left text-base-content/70 hover:bg-base-200"
+                            className="block w-full truncate py-1 pr-3 text-left text-base-content/70 hover:bg-[var(--mdx-control-hover-bg)] hover:text-base-content"
                             style={{ paddingLeft: 10 + heading.level * 10 }}
                             title={heading.text}
                             onClick={() => onHeadingClick?.(heading, index)}
@@ -49,7 +49,7 @@ export function OutlinePanel({
 
             <div
                 {...resizeHandleProps}
-                className="absolute left-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-primary/40"
+                className="absolute left-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-base-content/10"
             />
         </aside>
     );

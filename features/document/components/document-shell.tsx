@@ -928,10 +928,17 @@ export function DocumentShell({
   }
 
   return (
-    <main className="grid h-dvh min-h-0 overflow-hidden grid-rows-[44px_minmax(0,1fr)] bg-base-100 text-base-content">
-      <header className="flex min-w-0 items-center justify-between border-b border-base-300 bg-base-200 px-3">
+    <main
+      data-mdx-document-shell=""
+      className="grid h-dvh min-h-0 overflow-hidden grid-rows-[var(--mdx-window-toolbar-height)_minmax(0,1fr)] bg-[var(--mdx-content-bg)] text-base-content"
+    >
+      <header
+        data-mdx-document-toolbar=""
+        className="flex min-w-0 items-center justify-between border-b border-base-content/10 bg-[var(--mdx-chrome-bg)] px-3"
+      >
         <div
-          className="min-w-0 truncate text-sm font-medium"
+          data-tauri-drag-region
+          className="min-w-0 truncate pl-16 text-sm font-medium"
           title={state.displayPath}
         >
           {state.dirty ? "● " : ""}
@@ -955,7 +962,7 @@ export function DocumentShell({
       </header>
 
       <div
-        className="flex min-h-0 min-w-0 flex-col overflow-hidden"
+        className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--mdx-content-bg)]"
         data-document-editor-body=""
       >
         <div className="relative z-10 shrink-0">
