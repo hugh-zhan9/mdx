@@ -62,9 +62,9 @@ Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.39s
 
 ## Review fix follow-up
 
-- Replaced the JSON-shaped WASM bridge placeholders with transport-only exports that accept serialized request bytes and return placeholder response bytes.
-- Kept the bridge bootstrap-only: the functions currently expose a conservative binary request/response boundary for future flatbuffer/msgpack wiring and still perform no layout work.
-- This narrows the implementation claim: the bridge now matches the intended serialized WASM boundary shape, but it does not yet implement the concrete protocol named in the design contract.
+- Replaced the uniform `&[u8] -> Vec<u8>` WASM bridge placeholders with per-operation exported signatures that preserve each documented request shape.
+- Kept serialized nested payloads transport-agnostic by representing them as opaque byte buffers for now.
+- Kept the bridge bootstrap-only: the functions still return placeholder bytes and do not implement any concrete codec or layout behavior yet.
 - Preserved the temporary `font-core` placeholder crate behavior as workspace-resolution-only bootstrap support.
 
 ## Evidence limits
