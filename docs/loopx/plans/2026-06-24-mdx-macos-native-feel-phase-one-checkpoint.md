@@ -2,7 +2,7 @@
 
 - Plan: docs/loopx/plans/2026-06-24-mdx-macos-native-feel-phase-one.md
 - Baseline SHA: 020dafb
-- Current SHA: a0ee019
+- Current SHA: fd407c7
 - Last updated: 2026-06-24 16:36:24 +0800
 
 ## Progress
@@ -15,6 +15,7 @@
 | 4 | completed | ca03477 | document toolbar/shell markers and shared outline styling; document/workspace tests and lint passed |
 | 5 | completed | a8cb694 | editor reading shell, centered column, typography rhythm; focused and broader editor regressions passed |
 | 6 | completed | a0ee019 | README note, verification fixes, full lint/test/build/Rust validation |
+| docs | completed | fd407c7 | design, plan, and checkpoint records committed |
 
 ## Context for Resume
 
