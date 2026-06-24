@@ -52,3 +52,4 @@ src-tauri/binaries/*
 *.tsbuildinfo
 next-env.d.ts
 .idea/
+.loopx
