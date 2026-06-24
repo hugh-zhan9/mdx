@@ -1,5 +1,1 @@
-use crate::FontDescriptor;
-
-pub fn build_fallback_chain(_fonts: &[FontDescriptor]) -> Vec<String> {
-    Vec::new()
-}
+// Compile-only module scaffold for the planned fallback-chain implementation.

@@ -1,12 +1,9 @@
-pub mod discovery;
-pub mod fallback;
-pub mod glyph;
-pub mod math_table;
+mod discovery;
+mod fallback;
+mod glyph;
+mod math_table;
 
 use std::num::NonZeroUsize;
-use std::sync::Arc;
-
-use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,11 +31,9 @@ pub struct SystemMetrics {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GlyphMetricsMap {
+pub struct GlyphMetrics {
     pub entries: Vec<GlyphMetricsEntry>,
 }
-
-pub type GlyphMetrics = GlyphMetricsMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlyphMetricsEntry {
@@ -110,9 +105,9 @@ pub struct GlyphPart {
 }
 
 pub(crate) struct FontSystem {
-    pub(crate) fonts: Arc<RwLock<Vec<LoadedFont>>>,
-    pub(crate) metrics_cache: Arc<RwLock<lru::LruCache<(String, u32, u32), GlyphMetricsEntry>>>,
-    pub(crate) math_cache: Arc<RwLock<lru::LruCache<String, MathConstants>>>,
+    pub(crate) fonts: Vec<LoadedFont>,
+    pub(crate) metrics_cache: lru::LruCache<(String, u32, u32), GlyphMetricsEntry>,
+    pub(crate) math_cache: lru::LruCache<String, MathConstants>,
 }
 
 pub(crate) struct LoadedFont {
@@ -129,9 +124,9 @@ impl FontSystem {
             NonZeroUsize::new(50).expect("math constants cache capacity must be non-zero");
 
         Self {
-            fonts: Arc::new(RwLock::new(Vec::new())),
-            metrics_cache: Arc::new(RwLock::new(lru::LruCache::new(metrics_capacity))),
-            math_cache: Arc::new(RwLock::new(lru::LruCache::new(math_capacity))),
+            fonts: Vec::new(),
+            metrics_cache: lru::LruCache::new(metrics_capacity),
+            math_cache: lru::LruCache::new(math_capacity),
         }
     }
 }

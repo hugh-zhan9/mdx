@@ -1,5 +1,1 @@
-use crate::{GlyphMetricsEntry, GlyphMetricsRequest};
-
-pub fn get_glyph_metrics(_request: &GlyphMetricsRequest) -> Vec<Option<GlyphMetricsEntry>> {
-    Vec::new()
-}
+// Compile-only module scaffold for the planned glyph metrics implementation.
