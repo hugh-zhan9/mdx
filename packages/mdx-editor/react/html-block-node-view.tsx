@@ -12,7 +12,7 @@ export function HtmlBlockNodeView({
     const html = String(node.attrs.html || node.textContent || "");
     const tag = String(node.attrs.tag || "");
     const [editing, setEditing] = useState(false);
-    const [collapsed, setCollapsed] = useState(Boolean(node.attrs.collapsed));
+    const collapsed = Boolean(node.attrs.collapsed);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     const rootRef = useRef<HTMLDivElement | null>(null);
     const lastEditingRequestRef = useRef(editingRequest ?? 0);
@@ -30,7 +30,7 @@ export function HtmlBlockNodeView({
         }
 
         lastEditingRequestRef.current = nextRequest;
-        setEditing(true);
+        queueMicrotask(() => setEditing(true));
     }, [editingRequest]);
 
     function handleChange(event: ChangeEvent<HTMLTextAreaElement>) {
@@ -90,15 +90,6 @@ export function HtmlBlockNodeView({
         event.preventDefault();
         event.stopPropagation();
         openEditor();
-    }
-
-    function handleDetailsToggle(event: MouseEvent) {
-        const target = event.target as HTMLElement;
-        if (target.tagName === "SUMMARY") {
-            const newCollapsed = !collapsed;
-            setCollapsed(newCollapsed);
-            updateAttrs({ collapsed: newCollapsed });
-        }
     }
 
     return (

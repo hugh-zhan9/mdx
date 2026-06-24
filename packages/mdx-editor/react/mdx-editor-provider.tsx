@@ -73,6 +73,7 @@ export function MdxEditorProvider({
     const runtimeKernel = useMemo(
         () =>
             kernel ??
+            // eslint-disable-next-line react-hooks/refs -- The kernel receives stable service adapters; they read refs only when editor plugins/node views run after render.
             createMdxEditorKernel({
                 syntax: defaultMarkdownSyntax(),
                 services: {
@@ -200,7 +201,7 @@ export function MdxEditorProvider({
         }
 
         appliedInitialMarkdownRef.current = initialMarkdown;
-        rebuildEditorFromMarkdown(initialMarkdown, false);
+        queueMicrotask(() => rebuildEditorFromMarkdown(initialMarkdown, false));
     }, [initialMarkdown, rebuildEditorFromMarkdown]);
 
     useEffect(() => {

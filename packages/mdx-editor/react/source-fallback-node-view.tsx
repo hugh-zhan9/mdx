@@ -28,7 +28,7 @@ export function SourceFallbackNodeView({
         }
 
         lastEditingRequestRef.current = nextRequest;
-        setEditing(true);
+        queueMicrotask(() => setEditing(true));
     }, [editingRequest]);
 
     function handleChange(event: ChangeEvent<HTMLTextAreaElement>) {

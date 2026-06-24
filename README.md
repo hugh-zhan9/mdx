@@ -127,6 +127,7 @@ This only starts the Next.js renderer. Opening `http://localhost:3000` in a brow
 ### Native Target
 
 macOS is the supported native target for this MVP.
+The desktop shell uses macOS-first window chrome, quiet toolbar/sidebar surfaces, and a centered Markdown reading column.
 
 ```bash
 npm install

@@ -71,7 +71,6 @@ export function InlineHtmlNodeView({ node, updateAttrs }: NodeViewProps) {
 
 function inlineHtmlPreview(html: string) {
     const tag = firstHtmlTag(html);
-    const text = inlineHtmlText(html);
 
     // 白名单标签直接渲染
     const safeRenderTags = ["kbd", "mark", "sup", "sub", "abbr", "cite", "var", "samp", "time", "small", "code"];

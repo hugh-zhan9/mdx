@@ -39,6 +39,7 @@ vi.mock("../hooks/use-workspace-bootstrap", () => ({
 }));
 
 vi.mock("../lib/cli-sync", () => ({
+  syncCliFrontendHeartbeat: vi.fn(async () => {}),
   syncCliWorkspaceSnapshot: vi.fn(async () => {}),
 }));
 

@@ -736,7 +736,7 @@ describe("parseMarkdown", () => {
         const paragraph = parsed.doc.child(0);
 
         // 找到所有 inline_html 节点
-        const inlineHtmlNodes: any[] = [];
+        const inlineHtmlNodes: Array<(typeof paragraph)["firstChild"]> = [];
         paragraph.forEach((child) => {
             if (child.type.name === "inline_html") {
                 inlineHtmlNodes.push(child);
