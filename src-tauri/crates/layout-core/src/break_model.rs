@@ -21,7 +21,11 @@ pub enum BreakKind {
     GlyphStretch,
 }
 
-pub fn find_break_opportunities(text: &str, font_size: f32, is_code: bool) -> Vec<BreakOpportunity> {
+pub fn find_break_opportunities(
+    text: &str,
+    font_size: f32,
+    is_code: bool,
+) -> Vec<BreakOpportunity> {
     let chars: Vec<char> = text.chars().collect();
     let byte_offsets: Vec<usize> = text.char_indices().map(|(offset, _)| offset).collect();
     let mut breaks = Vec::new();
@@ -66,7 +70,11 @@ pub fn find_break_opportunities(text: &str, font_size: f32, is_code: bool) -> Ve
             breaks.push(BreakOpportunity {
                 pos: next_byte_pos,
                 kind: BreakKind::Punctuation,
-                penalty: Some(if is_opening_punctuation(next) { 1000.0 } else { 100.0 }),
+                penalty: Some(if is_opening_punctuation(next) {
+                    1000.0
+                } else {
+                    100.0
+                }),
                 glue_stretch: 0.0,
                 glue_shrink: 0.0,
             });
@@ -117,8 +125,7 @@ fn is_latin(c: char) -> bool {
 fn is_cjk_punctuation(c: char) -> bool {
     matches!(
         c,
-        '、'
-            | '。'
+        '、' | '。'
             | '，'
             | '：'
             | '；'

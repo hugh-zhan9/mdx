@@ -1,11 +1,11 @@
-pub mod ir;
 pub mod break_model;
-pub mod paragraph;
-pub mod math;
-pub mod position;
-pub mod hit_test;
-pub mod selection;
 pub mod font_api;
+pub mod hit_test;
+pub mod ir;
+pub mod math;
+pub mod paragraph;
+pub mod position;
+pub mod selection;
 
 #[cfg(target_arch = "wasm32")]
 pub mod wasm_bridge;
