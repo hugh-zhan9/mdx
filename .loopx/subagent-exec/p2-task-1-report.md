@@ -37,6 +37,7 @@ Replaced the temporary `font-core` placeholder with the Task 1 crate skeleton an
 2. `lru = "0.12"` requires `NonZeroUsize` capacities. The cache initialization was updated accordingly.
 3. The sample internal cache key used `f32`, which is not `Eq + Hash`. I used `(String, u32, u32)` for the placeholder internal cache key shape so the crate compiles. This is internal-only and can be refined when the real glyph cache behavior lands in later tasks.
 4. The brief’s sample `FontSystem` used plain owned containers. The internal skeleton now follows that simpler shape instead of wrapping the members in `Arc<RwLock<_>>`.
+5. `parking_lot` was removed after the internal skeleton no longer used synchronization wrappers, keeping the dependency surface minimal.
 
 ## Verification
 
