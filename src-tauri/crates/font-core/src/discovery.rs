@@ -50,7 +50,9 @@ fn discover_with_font_kit() -> Vec<FontDescriptor> {
 
 fn enrich_math_metadata(fonts: Vec<FontDescriptor>) -> Vec<FontDescriptor> {
     let source = SystemSource::new();
-    enrich_math_metadata_with_probe(fonts, |postscript_name| probe_math_font(&source, postscript_name))
+    enrich_math_metadata_with_probe(fonts, |postscript_name| {
+        probe_math_font(&source, postscript_name)
+    })
 }
 
 fn probe_math_font(source: &SystemSource, postscript_name: &str) -> Option<bool> {
