@@ -42,5 +42,12 @@ describe("HybridEditorHost", () => {
 
         expect(html).toContain("Hello");
         expect(html).toContain("data-layout-canvas-layer");
+        expect(html).toContain("data-layout-svg-layer");
+        expect(html).toContain("data-hybrid-editor-content");
+        expect(html).toContain("height:20px");
+        expect(html).toContain("width:40px");
+        expect(html).toContain('data-canvas-draw-op-count="0"');
+        expect(html).toContain('data-caret-anchor-count="0"');
+        expect(html).toContain('data-selection-geometry-count="0"');
     });
 });

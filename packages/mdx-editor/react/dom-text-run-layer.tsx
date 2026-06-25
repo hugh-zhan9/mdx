@@ -12,7 +12,7 @@ export function DomTextRunLayer({ lines }: DomTextRunLayerProps) {
             {lines.flatMap((line) =>
                 line.textRuns.map((run, index) => (
                     <span
-                        key={`${line.id}-${index}`}
+                        key={`${line.id}-${run.blockId}-${run.pmFrom}-${run.pmTo}-${index}`}
                         style={{
                             position: "absolute",
                             left: run.left,
