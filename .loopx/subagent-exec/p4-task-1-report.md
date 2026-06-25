@@ -80,3 +80,20 @@
 ## Commit
 
 - Commit message used: `feat(editor): add layout ir normalizer`
+
+## Review Follow-up Fix
+
+- Fixed duplicate block source mapping in `normalizeLayoutDocument()` by walking block matches in source order and using each match's stable `index` for `pmFrom`/`pmTo`.
+- Fixed inline math runs to preserve prefix, math payload, and suffix as separate runs with `from`/`to` offsets derived from the actual `$x^2$` token position inside the block content.
+- Expanded `packages/mdx-editor/layout-ir/normalizer.test.ts` to cover:
+  - duplicate block text with distinct source ranges
+  - concrete heading/paragraph block offsets
+  - inline math run offsets for surrounding text and math payload
+
+### Review Verification
+
+1. Ran:
+   - `npm test -- packages/mdx-editor/layout-ir/normalizer.test.ts`
+2. Result:
+   - `Test Files  1 passed (1)`
+   - `Tests  3 passed (3)`

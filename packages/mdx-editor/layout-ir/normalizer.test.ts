@@ -15,5 +15,60 @@ describe("normalizeLayoutDocument", () => {
                 (run) => run.kind === "math_inline",
             ),
         ).toBe(true);
+        expect(document.blocks[0]?.pmFrom).toBe(0);
+        expect(document.blocks[0]?.pmTo).toBe(9);
+        expect(document.blocks[1]?.pmFrom).toBe(11);
+        expect(document.blocks[1]?.pmTo).toBe(31);
+    });
+
+    it("tracks duplicate block text with stable ordered source ranges", () => {
+        const markdown = "Repeat\n\nRepeat\n";
+        const document = normalizeLayoutDocument(markdown, {
+            width: 800,
+            height: 600,
+            devicePixelRatio: 1,
+        });
+
+        expect(document.blocks).toHaveLength(2);
+        expect(document.blocks[0]).toMatchObject({
+            pmFrom: 0,
+            pmTo: 6,
+        });
+        expect(document.blocks[1]).toMatchObject({
+            pmFrom: 8,
+            pmTo: 14,
+        });
+    });
+
+    it("preserves inline math and surrounding text offsets", () => {
+        const document = normalizeLayoutDocument("Before $x^2$ after\n", {
+            width: 800,
+            height: 600,
+            devicePixelRatio: 1,
+        });
+
+        expect(document.blocks[0]?.inlines).toEqual([
+            {
+                text: "Before ",
+                kind: "text",
+                from: 0,
+                to: 7,
+                style: { bold: false, italic: false, code: false },
+            },
+            {
+                text: "x^2",
+                kind: "math_inline",
+                from: 8,
+                to: 11,
+                style: { bold: false, italic: false, code: false },
+            },
+            {
+                text: " after",
+                kind: "text",
+                from: 12,
+                to: 18,
+                style: { bold: false, italic: false, code: false },
+            },
+        ]);
     });
 });

@@ -16,10 +16,7 @@ export function normalizeLayoutDocument(
     markdown: string,
     viewport: LayoutViewport,
 ): LayoutDocument {
-    const blocks = markdown
-        .split(/\n{2,}/u)
-        .filter(Boolean)
-        .map((line, index) => createLayoutBlock(markdown, line, index));
+    const blocks = createLayoutBlocks(markdown);
 
     return {
         documentId: "active-document",
@@ -36,23 +33,45 @@ export function normalizeLayoutDocument(
     };
 }
 
-function createLayoutBlock(
-    markdown: string,
-    line: string,
-    index: number,
-): LayoutBlock {
-    const isHeading = line.startsWith("#");
-    const headingText = line.replace(/^#+\s*/u, "");
-    const pmFrom = markdown.indexOf(line);
+function createLayoutBlocks(markdown: string): LayoutBlock[] {
+    const blocks: LayoutBlock[] = [];
+    const blockMatcher = /\S[\s\S]*?(?=\n{2,}|\s*$)/gu;
+
+    for (const [index, match] of Array.from(
+        markdown.matchAll(blockMatcher),
+    ).entries()) {
+        blocks.push(
+            createLayoutBlock({
+                index,
+                content: match[0].replace(/\n+$/u, ""),
+                pmFrom: match.index ?? 0,
+            }),
+        );
+    }
+
+    return blocks;
+}
+
+function createLayoutBlock({
+    content,
+    index,
+    pmFrom,
+}: {
+    content: string;
+    index: number;
+    pmFrom: number;
+}): LayoutBlock {
+    const isHeading = content.startsWith("#");
+    const headingText = content.replace(/^#+\s*/u, "");
 
     return {
         blockId: `block-${index}`,
         kind: isHeading ? "heading" : "paragraph",
         pmFrom,
-        pmTo: pmFrom + line.length,
+        pmTo: pmFrom + content.length,
         depth: 0,
-        inlines: line.includes(INLINE_MATH_TOKEN)
-            ? createMathInlineRuns(line)
+        inlines: content.includes(INLINE_MATH_TOKEN)
+            ? createMathInlineRuns(content)
             : [
                   {
                       text: headingText,
@@ -72,20 +91,47 @@ function createLayoutBlock(
 }
 
 function createMathInlineRuns(line: string): LayoutInlineRun[] {
-    return [
-        {
-            text: line.replace(INLINE_MATH_TOKEN, ""),
-            kind: "text",
-            from: 0,
-            to: line.length - 4,
-            style: { ...INLINE_STYLE },
-        },
-        {
-            text: "x^2",
+    const runs: LayoutInlineRun[] = [];
+    let searchFrom = 0;
+
+    while (searchFrom < line.length) {
+        const mathStart = line.indexOf(INLINE_MATH_TOKEN, searchFrom);
+
+        if (mathStart === -1) {
+            if (searchFrom < line.length) {
+                runs.push(createTextRun(line.slice(searchFrom), searchFrom));
+            }
+            break;
+        }
+
+        if (mathStart > searchFrom) {
+            runs.push(
+                createTextRun(line.slice(searchFrom, mathStart), searchFrom),
+            );
+        }
+
+        const mathContentFrom = mathStart + 1;
+        const mathContentTo = mathStart + INLINE_MATH_TOKEN.length - 1;
+        runs.push({
+            text: line.slice(mathContentFrom, mathContentTo),
             kind: "math_inline",
-            from: line.length - 4,
-            to: line.length - 1,
+            from: mathContentFrom,
+            to: mathContentTo,
             style: { ...INLINE_STYLE },
-        },
-    ];
+        });
+
+        searchFrom = mathStart + INLINE_MATH_TOKEN.length;
+    }
+
+    return runs;
+}
+
+function createTextRun(text: string, from: number): LayoutInlineRun {
+    return {
+        text,
+        kind: "text",
+        from,
+        to: from + text.length,
+        style: { ...INLINE_STYLE },
+    };
 }
