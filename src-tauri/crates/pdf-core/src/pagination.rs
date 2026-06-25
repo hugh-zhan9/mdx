@@ -1,5 +1,5 @@
 use crate::model::{PageMargins, PageSize};
-use layout_core::LayoutSnapshot;
+use layout_core::{CanvasDrawOp, LayoutLine, LayoutSnapshot};
 
 pub use crate::model::{PaginatedDocument, PaginatedPage};
 
@@ -14,12 +14,12 @@ pub fn paginate_snapshot(
     let mut current_height = 0.0_f32;
 
     for line in &snapshot.lines {
-        if !current_lines.is_empty() && current_height + line.height >= available_height {
-            pages.push(PaginatedPage {
-                number: pages.len() + 1,
-                lines: std::mem::take(&mut current_lines),
-                draw_ops: Vec::new(),
-            });
+        if !current_lines.is_empty() && current_height + line.height > available_height {
+            pages.push(build_page(
+                pages.len() + 1,
+                std::mem::take(&mut current_lines),
+                &snapshot.canvas_draw_ops,
+            ));
             current_height = 0.0;
         }
 
@@ -28,11 +28,11 @@ pub fn paginate_snapshot(
     }
 
     if !current_lines.is_empty() {
-        pages.push(PaginatedPage {
-            number: pages.len() + 1,
-            lines: current_lines,
-            draw_ops: Vec::new(),
-        });
+        pages.push(build_page(
+            pages.len() + 1,
+            current_lines,
+            &snapshot.canvas_draw_ops,
+        ));
     }
 
     PaginatedDocument {
@@ -41,4 +41,32 @@ pub fn paginate_snapshot(
         margins: margins.clone(),
         pages,
     }
+}
+
+fn build_page(
+    number: usize,
+    lines: Vec<LayoutLine>,
+    canvas_draw_ops: &[CanvasDrawOp],
+) -> PaginatedPage {
+    let (start_y, end_y) = page_vertical_bounds(&lines);
+    let draw_ops = canvas_draw_ops
+        .iter()
+        .filter(|op| op.y >= start_y && op.y < end_y)
+        .cloned()
+        .collect();
+
+    PaginatedPage {
+        number,
+        lines,
+        draw_ops,
+    }
+}
+
+fn page_vertical_bounds(lines: &[LayoutLine]) -> (f32, f32) {
+    let start_y = lines.first().map(|line| line.y).unwrap_or_default();
+    let end_y = lines
+        .last()
+        .map(|line| line.y + line.height)
+        .unwrap_or(start_y);
+    (start_y, end_y.max(start_y))
 }
