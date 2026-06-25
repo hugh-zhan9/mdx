@@ -4,6 +4,7 @@ export {
     type MdxEditorContextValue,
 } from "./mdx-editor-context";
 export {
+    createLayoutBridge,
     getSelectionGeometry,
     getViewportSnapshot,
     hitTestLayout,
