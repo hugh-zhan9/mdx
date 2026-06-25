@@ -51,8 +51,11 @@ fn build_page(
     let (start_y, end_y) = page_vertical_bounds(&lines);
     let draw_ops = canvas_draw_ops
         .iter()
-        .filter(|op| op.y >= start_y && op.y < end_y)
-        .cloned()
+        .filter(|op| op.y < end_y && op.y + op.height > start_y)
+        .map(|op| CanvasDrawOp {
+            y: op.y - start_y,
+            ..op.clone()
+        })
         .collect();
 
     PaginatedPage {
