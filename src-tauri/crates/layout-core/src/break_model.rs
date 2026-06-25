@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BreakOpportunity {
+    /// Character-boundary index into `text.chars()`, not a byte offset.
+    /// This keeps break opportunities aligned with higher-level layout tokenization.
     pub pos: usize,
     pub kind: BreakKind,
     pub penalty: Option<f32>,
@@ -61,7 +63,7 @@ pub fn find_break_opportunities(text: &str, font_size: f32, is_code: bool) -> Ve
 
         if is_cjk_punctuation(next) {
             breaks.push(BreakOpportunity {
-                pos: i,
+                pos: next_pos,
                 kind: BreakKind::Punctuation,
                 penalty: Some(if is_opening_punctuation(next) { 1000.0 } else { 100.0 }),
                 glue_stretch: 0.0,
@@ -73,7 +75,7 @@ pub fn find_break_opportunities(text: &str, font_size: f32, is_code: bool) -> Ve
             breaks.push(BreakOpportunity {
                 pos: next_pos,
                 kind: BreakKind::LatinBoundary,
-                penalty: Some(200.0),
+                penalty: None,
                 glue_stretch: font_size * 0.25,
                 glue_shrink: font_size * 0.1,
             });
