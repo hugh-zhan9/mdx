@@ -1,4 +1,4 @@
-use crate::{CanvasDrawOp, LayoutLine, LayoutSnapshot};
+use layout_core::{CanvasDrawOp, LayoutLine, LayoutSnapshot};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
