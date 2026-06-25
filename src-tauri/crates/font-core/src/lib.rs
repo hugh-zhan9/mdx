@@ -1,7 +1,7 @@
-mod discovery;
-mod fallback;
-mod glyph;
-mod math_table;
+pub mod discovery;
+pub mod fallback;
+pub mod glyph;
+pub mod math_table;
 
 use std::num::NonZeroUsize;
 use serde::{Deserialize, Serialize};
