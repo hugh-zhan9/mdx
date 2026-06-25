@@ -2,8 +2,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BreakOpportunity {
-    /// Character-boundary index into `text.chars()`, not a byte offset.
-    /// This keeps break opportunities aligned with higher-level layout tokenization.
+    /// UTF-8 byte offset at the break boundary.
     pub pos: usize,
     pub kind: BreakKind,
     pub penalty: Option<f32>,
@@ -24,16 +23,18 @@ pub enum BreakKind {
 
 pub fn find_break_opportunities(text: &str, font_size: f32, is_code: bool) -> Vec<BreakOpportunity> {
     let chars: Vec<char> = text.chars().collect();
+    let byte_offsets: Vec<usize> = text.char_indices().map(|(offset, _)| offset).collect();
     let mut breaks = Vec::new();
 
     for i in 0..chars.len().saturating_sub(1) {
         let current = chars[i];
         let next = chars[i + 1];
         let next_pos = i + 1;
+        let next_byte_pos = byte_offsets[next_pos];
 
         if is_cjk(current) {
             breaks.push(BreakOpportunity {
-                pos: next_pos,
+                pos: next_byte_pos,
                 kind: BreakKind::CjkChar,
                 penalty: Some(0.0),
                 glue_stretch: font_size * 0.5,
@@ -43,7 +44,7 @@ pub fn find_break_opportunities(text: &str, font_size: f32, is_code: bool) -> Ve
 
         if current.is_whitespace() && current != '\u{00A0}' {
             breaks.push(BreakOpportunity {
-                pos: next_pos,
+                pos: next_byte_pos,
                 kind: BreakKind::LatinSpace,
                 penalty: Some(0.0),
                 glue_stretch: font_size,
@@ -53,7 +54,7 @@ pub fn find_break_opportunities(text: &str, font_size: f32, is_code: bool) -> Ve
 
         if current == '-' && !is_code {
             breaks.push(BreakOpportunity {
-                pos: next_pos,
+                pos: next_byte_pos,
                 kind: BreakKind::LatinHyphen,
                 penalty: Some(50.0),
                 glue_stretch: 0.0,
@@ -63,7 +64,7 @@ pub fn find_break_opportunities(text: &str, font_size: f32, is_code: bool) -> Ve
 
         if is_cjk_punctuation(next) {
             breaks.push(BreakOpportunity {
-                pos: next_pos,
+                pos: next_byte_pos,
                 kind: BreakKind::Punctuation,
                 penalty: Some(if is_opening_punctuation(next) { 1000.0 } else { 100.0 }),
                 glue_stretch: 0.0,
@@ -73,7 +74,7 @@ pub fn find_break_opportunities(text: &str, font_size: f32, is_code: bool) -> Ve
 
         if (is_cjk(current) && is_latin(next)) || (is_latin(current) && is_cjk(next)) {
             breaks.push(BreakOpportunity {
-                pos: next_pos,
+                pos: next_byte_pos,
                 kind: BreakKind::LatinBoundary,
                 penalty: None,
                 glue_stretch: font_size * 0.25,
@@ -86,7 +87,7 @@ pub fn find_break_opportunities(text: &str, font_size: f32, is_code: bool) -> Ve
         for (i, ch) in chars.iter().enumerate() {
             if matches!(ch, '/' | '.' | '_' | '&' | '?') {
                 breaks.push(BreakOpportunity {
-                    pos: i,
+                    pos: byte_offsets[i],
                     kind: BreakKind::UrlOverflow,
                     penalty: Some(500.0),
                     glue_stretch: 0.0,

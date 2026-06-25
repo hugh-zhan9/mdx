@@ -9,14 +9,16 @@ fn test_cjk_break_after_each_char() {
         .filter(|b| b.kind == BreakKind::CjkChar)
         .collect();
 
-    assert!(
-        cjk_breaks.len() >= 3,
-        "should have breaks for CJK chars, got {}",
-        cjk_breaks.len()
+    assert_eq!(
+        cjk_breaks.len(),
+        text.chars().count() - 1,
+        "should have one CJK break after each non-final character"
     );
 
-    for b in cjk_breaks {
+    let expected_positions = [3, 6, 9, 12, 15];
+    for (b, expected_pos) in cjk_breaks.iter().zip(expected_positions) {
         assert_eq!(b.kind, BreakKind::CjkChar);
+        assert_eq!(b.pos, expected_pos);
         assert_eq!(b.penalty, Some(0.0));
         assert_eq!(b.glue_stretch, 7.0);
         assert_eq!(b.glue_shrink, 3.5);
@@ -43,7 +45,7 @@ fn test_cjk_latin_boundary() {
     let breaks = find_break_opportunities(text, 14.0, false);
     let boundary_break = breaks
         .iter()
-        .find(|b| b.kind == BreakKind::LatinBoundary && b.pos == 2);
+        .find(|b| b.kind == BreakKind::LatinBoundary && b.pos == 6);
 
     assert!(
         boundary_break.is_some(),
@@ -62,7 +64,7 @@ fn test_punctuation_no_break_before() {
     let breaks = find_break_opportunities(text, 14.0, false);
     let before_quote: Vec<_> = breaks
         .iter()
-        .filter(|b| b.kind == BreakKind::Punctuation && text.chars().nth(b.pos) == Some('“'))
+        .filter(|b| b.kind == BreakKind::Punctuation && text[b.pos..].starts_with('“'))
         .collect();
 
     assert_eq!(
