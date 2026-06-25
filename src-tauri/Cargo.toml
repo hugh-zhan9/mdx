@@ -2,6 +2,7 @@
 members = [
     "crates/layout-core",
     "crates/font-core",
+    "crates/pdf-core",
 ]
 
 [package]
