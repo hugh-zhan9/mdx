@@ -120,6 +120,19 @@ describe("EditorStage preview routing", () => {
     );
   });
 
+  it("routes markdown tabs to the hybrid editor host", async () => {
+    await renderStage({
+      tabId: "tab-4",
+      path: "/tmp/ws/note.md",
+      title: "note.md",
+      dirty: false,
+      needsRenameOnFirstSave: false,
+      markdown: "# Note",
+    });
+
+    expect(host.querySelector("[data-testid='markdown-editor']")).not.toBeNull();
+  });
+
   async function renderStage(activeTab: WorkspaceTab) {
     await act(async () => {
       root.render(

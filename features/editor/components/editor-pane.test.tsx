@@ -43,6 +43,10 @@ vi.mock("./editor-kernel-adapter", () => ({
     useRenderData: () => null,
 }));
 
+vi.mock("../../../packages/mdx-editor/react/hybrid-editor-host", () => ({
+    HybridEditorHost: () => <div data-hybrid-editor-host data-testid="hybrid-editor-host" />,
+}));
+
 vi.mock("./editor-mermaid-preview-layer", () => ({
     EditorMermaidPreviewLayer: () => null,
 }));
@@ -226,7 +230,7 @@ describe("editor pane image paste", () => {
             );
         });
 
-        const target = host.querySelector("[data-testid='domd']")?.parentElement;
+        const target = host.querySelector("[data-mdx-editor-column]");
         expect(target).not.toBeNull();
 
         const event = new Event("paste", {
@@ -289,6 +293,10 @@ describe("editor pane image paste", () => {
 
         expect(host.querySelector("[data-mdx-editor-shell]")).not.toBeNull();
         expect(host.querySelector("[data-mdx-editor-column]")).not.toBeNull();
+        expect(host.querySelector("[data-hybrid-editor-host]")).not.toBeNull();
+        expect(
+            host.querySelector("[data-legacy-editor-fixture] [data-mdx-editor-root]"),
+        ).not.toBeNull();
         expect(host.querySelector("[data-mdx-editor-root]")).not.toBeNull();
     });
 
@@ -317,7 +325,7 @@ describe("editor pane image paste", () => {
         const editorRoot = host.querySelector<HTMLElement>(
             "[data-mdx-editor-root]",
         );
-        const contentRoot = editorRoot?.parentElement;
+        const contentRoot = host.querySelector<HTMLElement>("[data-mdx-editor-column]");
         expect(editorRoot).not.toBeNull();
         expect(contentRoot).not.toBeNull();
 
@@ -383,7 +391,7 @@ describe("editor pane image paste", () => {
         const editorRoot = host.querySelector<HTMLElement>(
             "[data-mdx-editor-root]",
         );
-        const contentRoot = editorRoot?.parentElement;
+        const contentRoot = host.querySelector<HTMLElement>("[data-mdx-editor-column]");
         const paragraph = document.createElement("p");
         paragraph.textContent = "语法 A 语法 B";
         paragraph.scrollIntoView = vi.fn();

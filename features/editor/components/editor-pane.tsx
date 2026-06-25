@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import type { DocumentSelectionRange } from "../../../packages/mdx-editor";
+import { HybridEditorHost } from "../../../packages/mdx-editor/react/hybrid-editor-host";
+import type { LayoutSnapshot } from "../../../packages/mdx-editor/react/wasm-layout-bridge";
 import { loadImage } from "../../../common/lib/image-storage";
 import { tokenize } from "../../../common/lib/prism";
 import type {
@@ -28,6 +30,16 @@ import {
 } from "../lib/keyboard-selection-scope";
 import { scrollMarkdownLineIntoView } from "../lib/markdown-line-scroll";
 import { wikilinkTargetFromEditorHref } from "../lib/wikilink-markdown";
+
+const EMPTY_LAYOUT_SNAPSHOT: LayoutSnapshot = {
+    revision: 0,
+    lines: [],
+    canvasDrawOps: [],
+    hitTestEntries: [],
+    caretAnchors: [],
+    selectionGeometries: [],
+    mirrorBlocks: [],
+};
 
 interface EditorPaneProps {
     rootPath: string | null;
@@ -483,7 +495,12 @@ function EditorPaneInner({
                     onKeyDownCapture={handleEditorKeyDownCapture}
                     onPasteCapture={handlePasteCapture}
                 >
-                    <DOMD />
+                    <div className="relative h-full w-full">
+                        <HybridEditorHost snapshot={EMPTY_LAYOUT_SNAPSHOT} />
+                        <div className="sr-only" data-legacy-editor-fixture="">
+                            <DOMD />
+                        </div>
+                    </div>
                     <EditorMermaidPreviewLayer
                         editorRoot={editorRoot}
                         markdown={bridge.currentMarkdown}
