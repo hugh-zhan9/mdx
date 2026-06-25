@@ -1,5 +1,6 @@
 use pdf_core::export_pdf;
 use pdf_core::model::{PageMargins, PageSize, PdfExportRequest};
+use lopdf::content::Content;
 use lopdf::Document;
 use tempfile::tempdir;
 
@@ -45,14 +46,14 @@ fn writes_multi_page_pdf_with_text_content() {
                 {
                     "id":"l2",
                     "blockId":"b2",
-                    "y":40.0,
-                    "baseline":56.0,
+                    "y":240.0,
+                    "baseline":256.0,
                     "height":40.0,
-                    "textRuns":[{"blockId":"b2","pmFrom":6,"pmTo":11,"left":12.0,"baseline":56.0,"width":40.0,"height":20.0,"fontFamily":"Helvetica","fontSize":14.0,"text":"World"}]
+                    "textRuns":[{"blockId":"b2","pmFrom":6,"pmTo":11,"left":12.0,"baseline":256.0,"width":40.0,"height":20.0,"fontFamily":"Helvetica","fontSize":14.0,"text":"World"}]
                 }
             ],
             "canvasDrawOps":[
-                {"blockId":"grid-1","kind":"TableGrid","x":10.0,"y":45.0,"width":20.0,"height":10.0,"data":"{}"}
+                {"blockId":"grid-1","kind":"TableGrid","x":10.0,"y":245.0,"width":20.0,"height":10.0,"data":"{}"}
             ],
             "hitTestEntries":[],
             "caretAnchors":[],
@@ -78,6 +79,21 @@ fn writes_multi_page_pdf_with_text_content() {
     let first_page_content = pdf.get_page_content(*pages.get(&1).expect("page 1 id")).unwrap();
     let second_page_content = pdf.get_page_content(*pages.get(&2).expect("page 2 id")).unwrap();
 
-    assert!(!first_page_content.is_empty());
-    assert!(!second_page_content.is_empty());
+    let first_ops = Content::decode(&first_page_content).expect("decode page 1");
+    let second_ops = Content::decode(&second_page_content).expect("decode page 2");
+
+    assert!(first_ops.operations.iter().any(|op| op.operator == "Tj"));
+    assert!(second_ops.operations.iter().any(|op| op.operator == "Tj"));
+
+    let second_td = second_ops
+        .operations
+        .iter()
+        .find(|op| op.operator == "Td")
+        .expect("page 2 text position");
+    let second_y = second_td
+        .operands
+        .get(1)
+        .and_then(|operand| operand.as_float().ok())
+        .expect("page 2 y operand");
+    assert!(second_y > 0.0, "page 2 text should be rebased into page-local coordinates");
 }
