@@ -113,7 +113,6 @@ pub(crate) struct FontSystem {
 pub(crate) struct LoadedFont {
     pub descriptor: FontDescriptor,
     pub font_data: Vec<u8>,
-    pub face: ttf_parser::Face<'static>,
 }
 
 impl FontSystem {

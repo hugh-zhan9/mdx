@@ -27,8 +27,8 @@ Replaced the temporary `font-core` placeholder with the Task 1 crate skeleton an
    - `MathConstants`
    - `GlyphAssembly`
    - `GlyphPart`
-3. Kept the task’s planned file layout with internal module declarations only; the module files are compile-only scaffolding and do not export placeholder behavior.
-4. Added internal `FontSystem` and `LoadedFont` types with cache initialization.
+3. Kept the task’s planned file layout with public module declarations; the module files are compile-only scaffolding and do not export placeholder behavior.
+4. Added internal `FontSystem` and `LoadedFont` types with cache initialization. `LoadedFont` stores owned font bytes only; later tasks can construct `ttf_parser::Face` on demand from those bytes without a self-referential struct.
 5. Kept the compile-safe cache key shape `(String, u32, u32)` to avoid the `Eq + Hash` issue from `f32`.
 
 ## Plan Deviations
