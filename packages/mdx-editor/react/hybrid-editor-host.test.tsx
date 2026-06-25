@@ -1,0 +1,46 @@
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+import { HybridEditorHost } from "./hybrid-editor-host";
+
+describe("HybridEditorHost", () => {
+    it("renders text runs and a canvas overlay", () => {
+        const html = renderToStaticMarkup(
+            <HybridEditorHost
+                snapshot={{
+                    revision: 1,
+                    lines: [
+                        {
+                            id: "l1",
+                            blockId: "b1",
+                            y: 0,
+                            baseline: 16,
+                            height: 20,
+                            textRuns: [
+                                {
+                                    blockId: "b1",
+                                    pmFrom: 0,
+                                    pmTo: 5,
+                                    left: 0,
+                                    baseline: 16,
+                                    width: 40,
+                                    height: 20,
+                                    fontFamily: "Inter",
+                                    fontSize: 14,
+                                    text: "Hello",
+                                },
+                            ],
+                        },
+                    ],
+                    canvasDrawOps: [],
+                    hitTestEntries: [],
+                    caretAnchors: [],
+                    selectionGeometries: [],
+                    mirrorBlocks: [],
+                }}
+            />,
+        );
+
+        expect(html).toContain("Hello");
+        expect(html).toContain("data-layout-canvas-layer");
+    });
+});
