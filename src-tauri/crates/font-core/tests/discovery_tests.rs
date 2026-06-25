@@ -1,7 +1,7 @@
-use font_core::discovery::{discover_system_fonts, get_default_font};
-use font_kit::handle::Handle;
-use font_kit::source::SystemSource;
-use ttf_parser::Face;
+use font_core::discovery::{
+    apply_math_probe_result, discover_system_fonts, enrich_math_metadata_with_probe,
+    get_default_font, select_preferred_font_for_family,
+};
 
 #[test]
 fn test_discover_fonts() {
@@ -20,41 +20,152 @@ fn test_default_font() {
 }
 
 #[test]
-fn test_math_font_detection() {
-    let fonts = discover_system_fonts();
-    let math_fonts: Vec<_> = fonts.iter().filter(|font| font.math_available).collect();
+fn test_reopen_failure_keeps_descriptor() {
+    let descriptor = font_core::FontDescriptor {
+        font_id: "demo-math".into(),
+        family_name: "Demo Math".into(),
+        weight: 400,
+        style: "normal".into(),
+        postscript_name: "DemoMath-Regular".into(),
+        math_checked: true,
+        math_available: true,
+    };
 
-    if math_fonts.is_empty() {
-        eprintln!("No system font with a MATH table was discoverable in this environment.");
-        return;
-    }
-
-    let source = SystemSource::new();
-    for font in math_fonts {
-        let handle = source
-            .select_by_postscript_name(&font.postscript_name)
-            .unwrap_or_else(|_| panic!("missing handle for {}", font.postscript_name));
-
-        assert!(
-            handle_has_math_table(&handle),
-            "font {} was marked as math-enabled without a MATH table",
-            font.postscript_name
-        );
-    }
+    let recovered = apply_math_probe_result(descriptor.clone(), false, false);
+    assert_eq!(recovered.font_id, descriptor.font_id);
+    assert_eq!(recovered.family_name, descriptor.family_name);
+    assert_eq!(recovered.postscript_name, descriptor.postscript_name);
+    assert!(!recovered.math_checked);
+    assert!(!recovered.math_available);
 }
 
-fn handle_has_math_table(handle: &Handle) -> bool {
-    match handle {
-        Handle::Path { path, font_index } => std::fs::read(path)
-            .ok()
-            .and_then(|bytes| face_has_math_table(&bytes, *font_index)),
-        Handle::Memory { bytes, font_index } => face_has_math_table(bytes, *font_index),
-    }
-    .unwrap_or(false)
+#[test]
+fn test_unprobed_descriptor_keeps_unknown_math_state() {
+    let fonts = vec![font_core::FontDescriptor {
+        font_id: "demo-basic".into(),
+        family_name: "Demo Basic".into(),
+        weight: 400,
+        style: "normal".into(),
+        postscript_name: "DemoBasic-Regular".into(),
+        math_checked: false,
+        math_available: false,
+    }];
+
+    let selected = select_preferred_font_for_family(&fonts, "Demo Basic")
+        .expect("expected a preferred font for the synthetic family");
+
+    assert_eq!(selected.postscript_name, "DemoBasic-Regular");
+    assert!(!selected.math_checked);
+    assert!(!selected.math_available);
 }
 
-fn face_has_math_table(data: &[u8], font_index: u32) -> Option<bool> {
-    Face::parse(data, font_index)
-        .ok()
-        .map(|face| face.tables().math.is_some())
+#[test]
+fn test_math_metadata_probe_runs_for_every_discovered_font() {
+    let fonts = vec![
+        font_core::FontDescriptor {
+            font_id: "demo-a".into(),
+            family_name: "Demo Math".into(),
+            weight: 400,
+            style: "normal".into(),
+            postscript_name: "DemoMath-A".into(),
+            math_checked: false,
+            math_available: false,
+        },
+        font_core::FontDescriptor {
+            font_id: "demo-b".into(),
+            family_name: "Demo Math".into(),
+            weight: 500,
+            style: "italic".into(),
+            postscript_name: "DemoMath-B".into(),
+            math_checked: false,
+            math_available: false,
+        },
+        font_core::FontDescriptor {
+            font_id: "demo-c".into(),
+            family_name: "Demo Math".into(),
+            weight: 300,
+            style: "oblique".into(),
+            postscript_name: "DemoMath-C".into(),
+            math_checked: false,
+            math_available: false,
+        },
+    ];
+
+    let mut probed = Vec::new();
+    let enriched = enrich_math_metadata_with_probe(fonts.clone(), |postscript_name| {
+        probed.push(postscript_name.to_string());
+        Some(postscript_name == "DemoMath-B")
+    });
+
+    assert_eq!(
+        probed,
+        vec![
+            "DemoMath-A".to_string(),
+            "DemoMath-B".to_string(),
+            "DemoMath-C".to_string(),
+        ]
+    );
+    assert_eq!(enriched.len(), fonts.len());
+    assert!(enriched.iter().all(|font| font.math_checked));
+    assert!(!enriched[0].math_available);
+    assert!(enriched[1].math_available);
+    assert!(!enriched[2].math_available);
+}
+
+#[test]
+fn test_default_font_selection_prefers_normal_regular_and_weight_400_nearby() {
+    let fonts = vec![
+        font_core::FontDescriptor {
+            font_id: "demo-italic-400".into(),
+            family_name: "Demo Sans".into(),
+            weight: 400,
+            style: "italic".into(),
+            postscript_name: "DemoSans-Italic".into(),
+            math_checked: false,
+            math_available: false,
+        },
+        font_core::FontDescriptor {
+            font_id: "demo-normal-500".into(),
+            family_name: "Demo Sans".into(),
+            weight: 500,
+            style: "normal".into(),
+            postscript_name: "DemoSans-Regular-500".into(),
+            math_checked: false,
+            math_available: false,
+        },
+        font_core::FontDescriptor {
+            font_id: "demo-normal-399".into(),
+            family_name: "Demo Sans".into(),
+            weight: 399,
+            style: "normal".into(),
+            postscript_name: "DemoSans-Regular-399".into(),
+            math_checked: false,
+            math_available: false,
+        },
+        font_core::FontDescriptor {
+            font_id: "demo-regular-400-b".into(),
+            family_name: "Demo Sans".into(),
+            weight: 400,
+            style: "Regular".into(),
+            postscript_name: "DemoSans-Regular-B".into(),
+            math_checked: false,
+            math_available: false,
+        },
+        font_core::FontDescriptor {
+            font_id: "demo-normal-400".into(),
+            family_name: "Demo Sans".into(),
+            weight: 400,
+            style: "normal".into(),
+            postscript_name: "DemoSans-Regular-A".into(),
+            math_checked: false,
+            math_available: false,
+        },
+    ];
+
+    let selected = select_preferred_font_for_family(&fonts, "Demo Sans")
+        .expect("expected a preferred font for the synthetic family");
+
+    assert_eq!(selected.style.to_lowercase(), "normal");
+    assert_eq!(selected.weight, 400);
+    assert_eq!(selected.postscript_name, "DemoSans-Regular-A");
 }

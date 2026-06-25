@@ -3,8 +3,8 @@ pub mod fallback;
 pub mod glyph;
 pub mod math_table;
 
-use std::num::NonZeroUsize;
 use serde::{Deserialize, Serialize};
+use std::num::NonZeroUsize;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FontInitResult {
@@ -20,6 +20,7 @@ pub struct FontDescriptor {
     pub weight: u16,
     pub style: String,
     pub postscript_name: String,
+    pub math_checked: bool,
     pub math_available: bool,
 }
 

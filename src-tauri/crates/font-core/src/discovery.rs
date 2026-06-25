@@ -2,6 +2,7 @@ use crate::FontDescriptor;
 use font_kit::handle::Handle;
 use font_kit::properties::Style;
 use font_kit::source::SystemSource;
+use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::fs;
 use ttf_parser::Face;
@@ -11,11 +12,11 @@ pub fn discover_system_fonts() -> Vec<FontDescriptor> {
     {
         let fonts = platform::discover_system_fonts();
         if !fonts.is_empty() {
-            return fonts;
+            return enrich_math_metadata(fonts);
         }
     }
 
-    discover_with_font_kit()
+    enrich_math_metadata(discover_with_font_kit())
 }
 
 pub fn get_default_font() -> Option<FontDescriptor> {
@@ -26,7 +27,7 @@ pub fn get_default_font() -> Option<FontDescriptor> {
         }
     }
 
-    select_default_from_discovered(discover_with_font_kit())
+    select_default_from_discovered(&discover_with_font_kit())
 }
 
 fn discover_with_font_kit() -> Vec<FontDescriptor> {
@@ -47,6 +48,18 @@ fn discover_with_font_kit() -> Vec<FontDescriptor> {
     descriptors
 }
 
+fn enrich_math_metadata(fonts: Vec<FontDescriptor>) -> Vec<FontDescriptor> {
+    let source = SystemSource::new();
+    enrich_math_metadata_with_probe(fonts, |postscript_name| probe_math_font(&source, postscript_name))
+}
+
+fn probe_math_font(source: &SystemSource, postscript_name: &str) -> Option<bool> {
+    source
+        .select_by_postscript_name(postscript_name)
+        .ok()
+        .and_then(|handle| handle_has_math_table(&handle))
+}
+
 fn font_descriptor_from_handle(handle: &Handle) -> Option<FontDescriptor> {
     let font = handle.load().ok()?;
     let postscript_name = font.postscript_name()?;
@@ -55,27 +68,65 @@ fn font_descriptor_from_handle(handle: &Handle) -> Option<FontDescriptor> {
     Some(FontDescriptor {
         font_id: postscript_name.clone(),
         family_name: font.family_name(),
-        weight: properties.weight.0.round().clamp(1.0, u16::MAX as f32) as u16,
+        weight: css_weight_from_font_kit_weight(properties.weight.0),
         style: style_label(properties.style),
         postscript_name,
-        math_available: handle_has_math_table(handle),
+        math_checked: false,
+        math_available: false,
     })
 }
 
-fn handle_has_math_table(handle: &Handle) -> bool {
+fn handle_has_math_table(handle: &Handle) -> Option<bool> {
     match handle {
         Handle::Path { path, font_index } => fs::read(path)
             .ok()
             .and_then(|bytes| face_has_math_table(&bytes, *font_index)),
         Handle::Memory { bytes, font_index } => face_has_math_table(bytes, *font_index),
     }
-    .unwrap_or(false)
 }
 
 fn face_has_math_table(data: &[u8], font_index: u32) -> Option<bool> {
     Face::parse(data, font_index)
         .ok()
         .map(|face| face.tables().math.is_some())
+}
+
+fn css_weight_from_normalized_weight(normalized_weight: f64) -> u16 {
+    (400.0 + normalized_weight * 300.0)
+        .round()
+        .clamp(1.0, 900.0) as u16
+}
+
+fn css_weight_from_font_kit_weight(weight: f32) -> u16 {
+    weight.round().clamp(1.0, 900.0) as u16
+}
+
+pub fn enrich_math_metadata_with_probe<F>(
+    mut fonts: Vec<FontDescriptor>,
+    mut probe: F,
+) -> Vec<FontDescriptor>
+where
+    F: FnMut(&str) -> Option<bool>,
+{
+    for font in &mut fonts {
+        let (math_checked, math_available) = match probe(&font.postscript_name) {
+            Some(math_available) => (true, math_available),
+            None => (false, false),
+        };
+        *font = apply_math_probe_result(font.clone(), math_checked, math_available);
+    }
+
+    fonts
+}
+
+pub fn apply_math_probe_result(
+    mut descriptor: FontDescriptor,
+    math_checked: bool,
+    math_available: bool,
+) -> FontDescriptor {
+    descriptor.math_checked = math_checked;
+    descriptor.math_available = math_available;
+    descriptor
 }
 
 fn style_label(style: Style) -> String {
@@ -101,30 +152,66 @@ fn default_family_candidates() -> &'static [&'static str] {
 
     #[cfg(not(target_os = "macos"))]
     {
-        &["Arial", "Helvetica", "DejaVu Sans", "Noto Sans", "Liberation Sans"]
+        &[
+            "Arial",
+            "Helvetica",
+            "DejaVu Sans",
+            "Noto Sans",
+            "Liberation Sans",
+        ]
     }
 }
 
-fn select_default_from_discovered(fonts: Vec<FontDescriptor>) -> Option<FontDescriptor> {
+pub fn select_preferred_font_for_family(
+    fonts: &[FontDescriptor],
+    family_name: &str,
+) -> Option<FontDescriptor> {
+    fonts
+        .iter()
+        .filter(|font| font.family_name == family_name)
+        .min_by(|left, right| compare_font_preference(left, right))
+        .cloned()
+}
+
+fn select_default_from_discovered(fonts: &[FontDescriptor]) -> Option<FontDescriptor> {
     for family in default_family_candidates() {
-        if let Some(font) = fonts.iter().find(|font| font.family_name == *family) {
-            return Some(font.clone());
+        if let Some(font) = select_preferred_font_for_family(fonts, family) {
+            return Some(font);
         }
     }
 
-    fonts.into_iter().next()
+    fonts
+        .iter()
+        .min_by(|left, right| compare_font_preference(left, right))
+        .cloned()
+}
+
+fn compare_font_preference(left: &FontDescriptor, right: &FontDescriptor) -> Ordering {
+    font_preference_rank(left)
+        .cmp(&font_preference_rank(right))
+        .then_with(|| left.weight.abs_diff(400).cmp(&right.weight.abs_diff(400)))
+        .then_with(|| left.postscript_name.cmp(&right.postscript_name))
+        .then_with(|| left.font_id.cmp(&right.font_id))
+        .then_with(|| left.family_name.cmp(&right.family_name))
+}
+
+fn font_preference_rank(font: &FontDescriptor) -> u8 {
+    if font.style.eq_ignore_ascii_case("normal") || font.style.eq_ignore_ascii_case("regular") {
+        0
+    } else {
+        1
+    }
 }
 
 #[cfg(target_os = "macos")]
 mod platform {
-    use super::font_descriptor_from_handle;
+    use super::apply_math_probe_result;
     use crate::FontDescriptor;
     use core_text::font_collection;
-    use font_kit::source::SystemSource;
+    use core_text::font_descriptor::TraitAccessors;
     use std::collections::HashSet;
 
     pub fn discover_system_fonts() -> Vec<FontDescriptor> {
-        let source = SystemSource::new();
         let collection = font_collection::create_for_all_families();
         let mut seen_postscript = HashSet::new();
         let mut descriptors = Vec::new();
@@ -137,11 +224,21 @@ mod platform {
                     continue;
                 }
 
-                if let Ok(handle) = source.select_by_postscript_name(&postscript_name) {
-                    if let Some(font) = font_descriptor_from_handle(&handle) {
-                        descriptors.push(font);
-                    }
-                }
+                descriptors.push(apply_math_probe_result(
+                    FontDescriptor {
+                        font_id: postscript_name.clone(),
+                        family_name: descriptor.family_name(),
+                        weight: super::css_weight_from_normalized_weight(
+                            descriptor.traits().normalized_weight(),
+                        ),
+                        style: descriptor.style_name(),
+                        postscript_name,
+                        math_checked: false,
+                        math_available: false,
+                    },
+                    false,
+                    false,
+                ));
             }
         }
 
@@ -149,6 +246,6 @@ mod platform {
     }
 
     pub fn get_default_font() -> Option<FontDescriptor> {
-        super::select_default_from_discovered(discover_system_fonts())
+        super::select_default_from_discovered(&discover_system_fonts())
     }
 }

@@ -24,8 +24,8 @@ Verification
 
 Truthful Concerns
 - The Knuth-Plass path is a minimal optimization scaffold, not a complete TeX box/glue/penalty implementation. It satisfies the bootstrap surface and fallback contract, but later tasks will still need to deepen justification quality.
-- Font family selection is still placeholder-only because the current task brief does not provide shaped-run or style-context family data on this surface.
-- Multi-run styling is preserved only via PM ranges and text content today; `TextRunPosition.font_family` remains `"default"` until later font and shaping work lands.
+- Font family selection now consumes `StyleContext.default_font_family` and emits that value in `TextRunPosition.font_family`; later shaping work can replace this with per-run resolved families.
+- Adjacent token coalescing now preserves source `InlineRun` and style boundaries, with a regression test for contiguous runs.
 
 ```yaml
 anchor_coverage:
@@ -37,3 +37,59 @@ tests_for_anchor_ids:
 extra_behavior: none
 missing_context: none
 ```
+
+Fix update:
+- Threaded `StyleContext` through `ParagraphInput`.
+- Preserved input `InlineRun` boundaries by carrying source-run and style identity into token merging.
+- Added a regression test for adjacent inline runs that must remain separate `TextRunPosition` values.
+
+Fix verification:
+- `cd src-tauri && cargo test --package layout-core --test paragraph_tests` -> pass
+- `cd src-tauri && cargo test --package layout-core` -> pass
+
+P1 Task 3 Fix Addendum
+
+Summary
+- Fixed line-building so trimming only affects break evaluation, not emitted `text_runs`; boundary whitespace now stays in output runs and PM ranges.
+- Added a hard assertion that every `InlineRun` satisfies `run.to == run.from + run.text.len()`, so malformed spans fail fast instead of leaking invalid layout ranges.
+- Strengthened paragraph tests to assert concrete line/run boundaries for greedy, Knuth-Plass, and Auto behavior, including whitespace-at-boundary coverage and a panic regression for invalid UTF-8 span fixtures.
+
+Files Changed
+- `src-tauri/crates/layout-core/src/paragraph.rs`
+- `src-tauri/crates/layout-core/tests/paragraph_tests.rs`
+- `.loopx/subagent-exec/p1-task-3-report.md`
+
+Fix verification
+- `cd src-tauri && cargo fmt --all -- --check` -> failed before formatting, then `cd src-tauri && cargo fmt --all` -> pass
+- `cd src-tauri && cargo test --package layout-core --test paragraph_tests` -> pass
+- `cd src-tauri && cargo test --package layout-core` -> pass
+
+Controller follow-up:
+- Strengthened the Auto/Knuth-Plass/Greedy fallback regression to assert complete line signatures for all modes.
+- `cd src-tauri && cargo fmt --all -- --check` -> pass
+- `cd src-tauri && cargo test --package layout-core --test paragraph_tests` -> pass
+- `cd src-tauri && cargo test --package layout-core` -> pass
+
+Controller follow-up 2:
+- Switched boundary whitespace back to source-faithful visual width so geometry matches emitted text and PM ranges.
+- Replaced the malformed-span panic check with a non-panicking layout regression.
+- `cd src-tauri && cargo fmt --all -- --check` -> pass
+- `cd src-tauri && cargo test --package layout-core --test paragraph_tests` -> pass
+- `cd src-tauri && cargo test --package layout-core` -> pass
+
+P1 Task 3 Fix Addendum 2
+
+Summary
+- Fixed hard break handling so consecutive and trailing `InlineKind::HardBreak` inputs can emit explicit blank `LayoutLine` rows instead of being dropped.
+- Fixed boundary whitespace handling so line-fit evaluation can keep leading/trailing whitespace in emitted text/PM ranges while excluding that whitespace from visual width and `left` advancement.
+- Added regression coverage for consecutive hard breaks, trailing hard breaks, and boundary whitespace width accounting.
+
+Files Changed
+- `src-tauri/crates/layout-core/src/paragraph.rs`
+- `src-tauri/crates/layout-core/tests/paragraph_tests.rs`
+- `.loopx/subagent-exec/p1-task-3-report.md`
+
+Fix verification
+- `cd src-tauri && cargo fmt --all -- --check` -> pass
+- `cd src-tauri && cargo test --package layout-core --test paragraph_tests` -> pass
+- `cd src-tauri && cargo test --package layout-core` -> pass

@@ -297,8 +297,14 @@ fn storage_migration_copies_records_and_switches_config_after_success() {
     let mut migrated =
         crate::memory_storage_sqlite::SqliteMemoryStorage::open_workspace(target.path()).unwrap();
     migrated.initialize().unwrap();
-    assert_eq!(migrated.list_memory_records_for_migration().unwrap().len(), 1);
-    assert_eq!(migrated.list_thread_records_for_migration().unwrap().len(), 1);
+    assert_eq!(
+        migrated.list_memory_records_for_migration().unwrap().len(),
+        1
+    );
+    assert_eq!(
+        migrated.list_thread_records_for_migration().unwrap().len(),
+        1
+    );
 }
 
 #[test]

@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "slug": "self-owned-markdown-wysiwyg-kernel",
-  "created_at": "2026-06-17T08:31:39.415Z",
+  "slug": "finish-audit",
+  "created_at": "2026-06-25T04:52:17.807Z",
   "worktree": "/Users/zhangyukun/project/mdx",
   "branch": "main",
-  "head": "69eb098ad99921137e1ee9c1723915e0e622f142",
-  "head_short": "69eb098",
-  "source": "docs/loopx/plans/2026-06-17-self-owned-markdown-wysiwyg-kernel.md"
+  "head": "fb0537deee175bf7de3642c437f728a828959349",
+  "head_short": "fb0537d",
+  "source": null
 }
