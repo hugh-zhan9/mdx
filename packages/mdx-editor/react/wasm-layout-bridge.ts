@@ -129,18 +129,10 @@ export interface InitializeLayoutRequest extends LayoutDocument {
     platform?: JsonValue;
 }
 
-export interface UpdateLayoutRequest {
-    documentId: string;
-    revision: number;
-    updatedBlocks: LayoutDocument["blocks"];
-    removedBlockIds?: string[];
-    viewport?: LayoutViewport;
-}
+export interface UpdateLayoutRequest extends LayoutDocument {}
 
-export interface ViewportSnapshotRequest {
-    documentId: string;
-    revision: number;
-    viewport: LayoutViewport;
+export interface ViewportSnapshotRequest extends LayoutDocument {
+    viewport?: LayoutViewport;
     devicePixelRatio?: number;
 }
 
@@ -171,6 +163,101 @@ export interface LayoutBridge {
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+
+const BLOCK_KIND_TO_RUST: Record<LayoutDocument["blocks"][number]["kind"], string> = {
+    paragraph: "Paragraph",
+    heading: "Heading",
+    list: "List",
+    table: "Table",
+    code: "Code",
+    image: "Image",
+    mermaid: "Mermaid",
+    html: "Html",
+    math_block: "MathBlock",
+    fallback: "Fallback",
+};
+
+const INLINE_KIND_TO_RUST = {
+    text: "Text",
+    math_inline: "MathInline",
+    hard_break: "HardBreak",
+    image_inline: "ImageInline",
+    html_inline: "HtmlInline",
+} as const;
+
+type FrontendInlineKind = keyof typeof INLINE_KIND_TO_RUST;
+
+interface RustLayoutTextRunPosition {
+    block_id: string;
+    pm_from: number;
+    pm_to: number;
+    left: number;
+    baseline: number;
+    width: number;
+    height: number;
+    font_family: string;
+    font_size: number;
+    text: string;
+}
+
+interface RustLayoutLineSnapshot {
+    id: string;
+    block_id: string;
+    y: number;
+    baseline: number;
+    height: number;
+    text_runs: RustLayoutTextRunPosition[];
+}
+
+interface RustLayoutViewport {
+    width: number;
+    height: number;
+    device_pixel_ratio: number;
+}
+
+interface RustStyleContext {
+    default_font_size: number;
+    default_font_family: string;
+    default_line_height: number;
+    viewport_width: number;
+    viewport_height: number;
+    device_pixel_ratio: number;
+}
+
+interface RustLayoutDocument {
+    document_id: string;
+    revision: number;
+    blocks: Array<{
+        block_id: string;
+        kind: string;
+        pm_from: number;
+        pm_to: number;
+        style: {
+            heading_level: number | null;
+            text_align: string;
+            font_size: number;
+            font_family: string;
+            line_height: number;
+            math_display: string;
+        };
+        inlines: Array<{
+            text: string;
+            kind: string;
+            from: number;
+            to: number;
+            style: {
+                bold: boolean;
+                italic: boolean;
+                code: boolean;
+                link: string | null;
+                strike: boolean;
+                underline: boolean;
+            };
+        }>;
+        depth: number;
+    }>;
+    style_context: RustStyleContext;
+}
 
 function encodeJson(value: unknown): number[] {
     return Array.from(encoder.encode(JSON.stringify(value)));
@@ -219,6 +306,86 @@ function resolveViewport(
     );
 }
 
+function toRustStyleContext(
+    styleContext: LayoutDocument["styleContext"],
+): RustStyleContext {
+    return {
+        default_font_size: styleContext.defaultFontSize,
+        default_font_family: styleContext.defaultFontFamily,
+        default_line_height: styleContext.defaultLineHeight,
+        viewport_width: styleContext.viewportWidth,
+        viewport_height: styleContext.viewportHeight,
+        device_pixel_ratio: styleContext.devicePixelRatio,
+    };
+}
+
+function toRustViewport(viewport: LayoutViewport): RustLayoutViewport {
+    return {
+        width: viewport.width,
+        height: viewport.height,
+        device_pixel_ratio: viewport.devicePixelRatio,
+    };
+}
+
+function toRustDocument(document: LayoutDocument): RustLayoutDocument {
+    return {
+        document_id: document.documentId,
+        revision: document.revision,
+        blocks: document.blocks.map((block) => ({
+            block_id: block.blockId,
+            kind: BLOCK_KIND_TO_RUST[block.kind],
+            pm_from: block.pmFrom,
+            pm_to: block.pmTo,
+            style: {
+                heading_level: block.style.headingLevel ?? null,
+                text_align: "Left",
+                font_size: block.style.fontSize,
+                font_family: block.style.fontFamily,
+                line_height: block.style.lineHeight,
+                math_display: block.style.mathDisplay === "block" ? "Block" : "Inline",
+            },
+            inlines: block.inlines.map((inline) => ({
+                text: inline.text,
+                kind: INLINE_KIND_TO_RUST[inline.kind as FrontendInlineKind] ?? "Text",
+                from: inline.from,
+                to: inline.to,
+                style: {
+                    bold: inline.style.bold,
+                    italic: inline.style.italic,
+                    code: inline.style.code,
+                    link: null,
+                    strike: false,
+                    underline: false,
+                },
+            })),
+            depth: block.depth,
+        })),
+        style_context: toRustStyleContext(document.styleContext),
+    };
+}
+
+function toRustLineSnapshot(line: LayoutLineSnapshot): RustLayoutLineSnapshot {
+    return {
+        id: line.id,
+        block_id: line.blockId,
+        y: line.y,
+        baseline: line.baseline,
+        height: line.height,
+        text_runs: line.textRuns.map((run) => ({
+            block_id: run.blockId,
+            pm_from: run.pmFrom,
+            pm_to: run.pmTo,
+            left: run.left,
+            baseline: run.baseline,
+            width: run.width,
+            height: run.height,
+            font_family: run.fontFamily,
+            font_size: run.fontSize,
+            text: run.text,
+        })),
+    };
+}
+
 export function createLayoutBridge(wasmModule: LayoutBridgeModule): LayoutBridge {
     return {
         async initialize(document) {
@@ -226,34 +393,38 @@ export function createLayoutBridge(wasmModule: LayoutBridgeModule): LayoutBridge
                 document.styleContext,
                 document.viewport,
             );
+            const rustDocument = toRustDocument(document);
             const bytes = wasmModule.layout_initialize_document(
                 document.documentId,
-                encodeJson(document),
-                encodeJson(document.styleContext),
-                encodeJson(viewport),
+                encodeJson(rustDocument),
+                encodeJson(rustDocument.style_context),
+                encodeJson(toRustViewport(viewport)),
                 encodeJson(document.platform ?? {}),
             );
             return decodeCamelCaseJson<LayoutSnapshot>(bytes);
         },
 
         async update(request) {
-            const viewport = request.viewport ?? [];
             const bytes = wasmModule.layout_update_document(
                 request.documentId,
                 request.revision,
-                encodeJson(request.updatedBlocks),
-                encodeJson(request.removedBlockIds ?? []),
-                Array.isArray(viewport) ? viewport : encodeJson(viewport),
+                encodeJson(toRustDocument(request)),
+                [],
+                [],
             );
             return decodeCamelCaseJson<LayoutSnapshot>(bytes);
         },
 
         async getViewportSnapshot(request) {
+            const viewport = resolveViewport(
+                request.styleContext,
+                request.viewport,
+            );
             const bytes = wasmModule.layout_get_viewport_snapshot(
                 request.documentId,
                 request.revision,
-                encodeJson(request.viewport),
-                request.devicePixelRatio ?? request.viewport.devicePixelRatio,
+                encodeJson(toRustDocument(request)),
+                request.devicePixelRatio ?? viewport.devicePixelRatio,
             );
             return decodeCamelCaseJson<LayoutSnapshot>(bytes);
         },
@@ -264,7 +435,7 @@ export function createLayoutBridge(wasmModule: LayoutBridgeModule): LayoutBridge
                 request.revision,
                 request.x,
                 request.y,
-                encodeJson(request.granularity),
+                encodeJson(request.granularity.map(toRustLineSnapshot)),
             );
 
             if (bytes.length === 0) {

@@ -49,3 +49,28 @@
 
 - The initial failure differed slightly from the brief’s expected error text. Because the test file did not yet exist, Vitest failed earlier with `No test files found` rather than `Cannot find module './wasm-layout-bridge'`.
 - The bridge currently normalizes Rust `snake_case` JSON into camelCase frontend structures. This keeps the JS surface aligned with the existing TypeScript naming conventions without changing Rust in this task.
+
+## Review Follow-up for `b62a33e`
+
+- Updated `packages/mdx-editor/react/wasm-layout-bridge.ts` so the frontend now serializes request payloads in the current Rust `serde` shape:
+  - `documentId` / `styleContext` / `blockId` / `pmFrom` fields are converted to `snake_case`
+  - frontend enum strings are converted to the Rust variant names currently deserialized by `layout-core` such as `Heading`, `Text`, and `MathBlock`
+  - missing Rust-required style fields are filled with the current bridge defaults (`text_align: "Left"`, `math_display`, `link`, `strike`, `underline`)
+- Changed `update` and `getViewportSnapshot` to send a full serialized `LayoutDocument`, matching the current Rust implementation in `src-tauri/crates/layout-core/src/wasm_bridge.rs`, which reparses those byte arguments as a complete document instead of incremental update payloads.
+- Narrowed the public React barrel export in `packages/mdx-editor/react/index.ts` to the task brief surface:
+  - `initializeLayoutDocument`
+  - `updateLayoutDocument`
+  - `getViewportSnapshot`
+  - `hitTestLayout`
+  - `getSelectionGeometry`
+- Expanded `packages/mdx-editor/react/wasm-layout-bridge.test.ts` to cover:
+  - initialize request serialization against the real Rust wire shape
+  - update helper behavior sending a full document
+  - viewport snapshot helper behavior sending a full document
+  - hit-test granularity serialization in `snake_case`
+  - helper response decoding for snapshot, hit-test, and selection geometry
+
+## Follow-up Verification
+
+- Command: `npm test -- packages/mdx-editor/react/wasm-layout-bridge.test.ts`
+- Result: PASS (`1 passed`, `3 tests passed`)
