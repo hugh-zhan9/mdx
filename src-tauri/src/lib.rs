@@ -29,6 +29,7 @@ mod llm_wiki_models;
 mod llm_wiki_operation;
 mod llm_wiki_query;
 mod llm_wiki_raw;
+mod layout_pdf;
 #[cfg(target_os = "macos")]
 mod macos_launch;
 pub mod memory;
@@ -412,6 +413,8 @@ mod draft_store_tests;
 mod file_watch_tests;
 #[cfg(test)]
 mod llm_wiki_tests;
+#[cfg(test)]
+mod layout_pdf_tests;
 #[cfg(test)]
 mod memory_tests;
 #[cfg(test)]
@@ -1083,6 +1086,7 @@ pub fn run() {
             llm_wiki::llm_config_get,
             llm_wiki::llm_config_set,
             llm_wiki::llm_config_update,
+            layout_pdf::layout_export_pdf,
             memory_detect_workspace,
             memory_initialize_workspace,
             memory_repair_workspace,
