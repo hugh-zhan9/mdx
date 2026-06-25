@@ -33,8 +33,13 @@ pub fn export_pdf(request: &PdfExportRequest) -> Result<PdfExportResult, String>
         let mut content = Content {
             operations: Vec::new(),
         };
+        let page_start_y = page
+            .and_then(|page| page.lines.first())
+            .map(|line| line.y)
+            .unwrap_or_default();
 
         for line in page.map(|page| page.lines.as_slice()).unwrap_or(&[]) {
+            let line_local_y = line.y - page_start_y;
             for run in &line.text_runs {
                 content.operations.push(Operation::new("BT", vec![]));
                 content.operations.push(Operation::new(
@@ -47,7 +52,7 @@ pub fn export_pdf(request: &PdfExportRequest) -> Result<PdfExportResult, String>
                         run.left.into(),
                         (request.page_size.height_pt
                             - request.margins.top_pt
-                            - (line.y + (run.baseline - line.baseline)))
+                            - (line_local_y + (run.baseline - line.baseline)))
                             .into(),
                     ],
                 ));

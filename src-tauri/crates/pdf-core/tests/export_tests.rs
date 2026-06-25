@@ -1,5 +1,6 @@
 use pdf_core::export_pdf;
 use pdf_core::model::{PageMargins, PageSize, PdfExportRequest};
+use lopdf::Document;
 use tempfile::tempdir;
 
 #[test]
@@ -20,4 +21,63 @@ fn writes_non_empty_pdf_file() {
     let result = export_pdf(&request).expect("export succeeds");
     assert_eq!(result.page_count, 1);
     assert!(std::fs::metadata(out).unwrap().len() > 0);
+}
+
+#[test]
+fn writes_multi_page_pdf_with_text_content() {
+    let dir = tempdir().unwrap();
+    let out = dir.path().join("multi-page.pdf");
+    let request = PdfExportRequest::new(
+        "doc-2".into(),
+        2,
+        "{}".into(),
+        r#"{
+            "revision":2,
+            "lines":[
+                {
+                    "id":"l1",
+                    "blockId":"b1",
+                    "y":0.0,
+                    "baseline":16.0,
+                    "height":40.0,
+                    "textRuns":[{"blockId":"b1","pmFrom":0,"pmTo":5,"left":12.0,"baseline":16.0,"width":40.0,"height":20.0,"fontFamily":"Helvetica","fontSize":14.0,"text":"Hello"}]
+                },
+                {
+                    "id":"l2",
+                    "blockId":"b2",
+                    "y":40.0,
+                    "baseline":56.0,
+                    "height":40.0,
+                    "textRuns":[{"blockId":"b2","pmFrom":6,"pmTo":11,"left":12.0,"baseline":56.0,"width":40.0,"height":20.0,"fontFamily":"Helvetica","fontSize":14.0,"text":"World"}]
+                }
+            ],
+            "canvasDrawOps":[
+                {"blockId":"grid-1","kind":"TableGrid","x":10.0,"y":45.0,"width":20.0,"height":10.0,"data":"{}"}
+            ],
+            "hitTestEntries":[],
+            "caretAnchors":[],
+            "selectionGeometries":[],
+            "mirrorBlocks":[]
+        }"#.into(),
+        out.to_string_lossy().into_owned(),
+        PageSize {
+            width_pt: 200.0,
+            height_pt: 119.0,
+        },
+        PageMargins::uniform(20.0),
+        "subset".into(),
+    );
+
+    let result = export_pdf(&request).expect("export succeeds");
+    assert_eq!(result.page_count, 2);
+
+    let pdf = Document::load(&out).expect("pdf loads");
+    let pages = pdf.get_pages();
+    assert_eq!(pages.len(), 2);
+
+    let first_page_content = pdf.get_page_content(*pages.get(&1).expect("page 1 id")).unwrap();
+    let second_page_content = pdf.get_page_content(*pages.get(&2).expect("page 2 id")).unwrap();
+
+    assert!(!first_page_content.is_empty());
+    assert!(!second_page_content.is_empty());
 }
