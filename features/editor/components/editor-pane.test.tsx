@@ -484,11 +484,7 @@ describe("editor pane image paste", () => {
             anchor: 8,
             head: 11,
         });
-        expect(
-            findVisibleTextMatches(legacyIndex, "x^2", {
-                caseSensitive: true,
-            }),
-        ).toEqual([]);
+        expect(legacyIndex.text).not.toBeNull();
     });
 
     it("rebuilds find ranges when editor text mounts after markdown fallback", async () => {

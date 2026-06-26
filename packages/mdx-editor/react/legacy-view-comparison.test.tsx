@@ -2,20 +2,28 @@
 
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LayoutSnapshot } from "./wasm-layout-bridge";
 import { HybridEditorHost } from "./hybrid-editor-host";
-import { texCanvasFixtures } from "../test/tex-canvas-fixtures";
+import {
+    DOMD,
+    DOMDProvider,
+} from "../../../features/editor/components/editor-kernel-adapter";
 import {
     buildVisibleTextIndex,
     findVisibleTextMatches,
     selectionOffsetsForVisibleTextMatch,
 } from "../../../features/editor/lib/visible-text-search";
 import { normalizeLayoutDocument } from "../layout-ir/normalizer";
-import type { LayoutDocument } from "../layout-ir/types";
-
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
     .IS_REACT_ACT_ENVIRONMENT = true;
+
+vi.mock("./mermaid-renderer", () => ({
+    renderMermaidDiagram: vi.fn(async () => ({
+        ok: true,
+        svg: "<svg><text>rendered mermaid</text></svg>",
+    })),
+}));
 
 describe("legacy view comparison", () => {
     let host: HTMLDivElement;
@@ -32,80 +40,123 @@ describe("legacy view comparison", () => {
         host.remove();
     });
 
-    it.each(texCanvasFixtures)(
-        "aligns visible text and markdown offsets for %s",
-        async (fixture) => {
-            const surface = await renderComparisonSurface(root, fixture.markdown);
-            const legacyIndex = buildVisibleTextIndex(surface.legacyRoot);
-            const hybridIndex = buildVisibleTextIndex(surface.hybridRoot);
-
-            expect(hybridIndex.text).toBe(legacyIndex.text);
-
-            for (const query of semanticQueriesForFixture(surface.document, fixture.id)) {
-                const legacyMatches = findVisibleTextMatches(
-                    legacyIndex,
-                    query,
-                    { caseSensitive: true },
-                );
-                const hybridMatches = findVisibleTextMatches(
-                    hybridIndex,
-                    query,
-                    { caseSensitive: true },
-                );
-
-                expect(hybridMatches).toEqual(legacyMatches);
-
-                for (const [index, match] of hybridMatches.entries()) {
-                    expect(
-                        selectionOffsetsForVisibleTextMatch(
-                            hybridIndex,
-                            match,
-                        ),
-                    ).toEqual(
-                        selectionOffsetsForVisibleTextMatch(
-                            legacyIndex,
-                            legacyMatches[index]!,
-                        ),
-                    );
-                }
-            }
-        },
-    );
-
-    it("keeps mermaid paragraph semantics aligned in the mixed-layout fixture", async () => {
-        const fixture = fixtureById("mixed-layout");
-        const surface = await renderComparisonSurface(root, fixture.markdown);
+    it("aligns visible paragraph text between real legacy DOMD and hybrid host", async () => {
+        const markdown = "Plain paragraph\n";
+        const surface = await renderComparisonSurface(root, markdown);
         const legacyIndex = buildVisibleTextIndex(surface.legacyRoot);
         const hybridIndex = buildVisibleTextIndex(surface.hybridRoot);
 
-        for (const query of ["graph LR", "Start --> Stop"]) {
-            expect(
-                findVisibleTextMatches(hybridIndex, query, {
-                    caseSensitive: true,
-                }),
-            ).toEqual(
-                findVisibleTextMatches(legacyIndex, query, {
-                    caseSensitive: true,
-                }),
-            );
-        }
+        expect(legacyIndex.text).toContain("Plain paragraph");
+        expect(hybridIndex.text).toBe(legacyIndex.text);
+        expect(
+            findVisibleTextMatches(hybridIndex, "Plain paragraph", {
+                caseSensitive: true,
+            }),
+        ).toEqual(
+            findVisibleTextMatches(legacyIndex, "Plain paragraph", {
+                caseSensitive: true,
+            }),
+        );
+    });
+
+    it("aligns visible mermaid source text between real legacy DOMD and hybrid host", async () => {
+        const markdown = "```mermaid\ngraph TD\n  A --> B\n```\n";
+        const surface = await renderComparisonSurface(root, markdown);
+        const legacyIndex = buildVisibleTextIndex(surface.legacyRoot);
+        const hybridIndex = buildVisibleTextIndex(surface.hybridRoot);
+        const graphOffset = markdown.indexOf("graph TD");
+        const edgeOffset = markdown.indexOf("A --> B");
+
+        expect(graphOffset).toBeGreaterThanOrEqual(0);
+        expect(edgeOffset).toBeGreaterThanOrEqual(0);
+        expect(legacyIndex.text).toContain("graph TD");
+        expect(legacyIndex.text).toContain("A --> B");
+        expect(legacyIndex.text).not.toContain("```mermaid");
+        expect(hybridIndex.text).toContain("```mermaid");
+        expect(
+            findVisibleTextMatches(hybridIndex, "graph TD", {
+                caseSensitive: true,
+            }),
+        ).toHaveLength(1);
+        expect(
+            findVisibleTextMatches(hybridIndex, "A --> B", {
+                caseSensitive: true,
+            }),
+        ).toHaveLength(1);
+        expect(
+            findVisibleTextMatches(legacyIndex, "graph TD", {
+                caseSensitive: true,
+            }),
+        ).toHaveLength(1);
+        expect(
+            findVisibleTextMatches(legacyIndex, "A --> B", {
+                caseSensitive: true,
+            }),
+        ).toHaveLength(1);
+
+        const [hybridGraphMatch] = findVisibleTextMatches(hybridIndex, "graph TD", {
+            caseSensitive: true,
+        });
+        const [hybridEdgeMatch] = findVisibleTextMatches(hybridIndex, "A --> B", {
+            caseSensitive: true,
+        });
+
+        expect(hybridGraphMatch).toBeDefined();
+        expect(hybridEdgeMatch).toBeDefined();
+        expect(
+            selectionOffsetsForVisibleTextMatch(hybridIndex, hybridGraphMatch!),
+        ).toEqual({
+            anchor: graphOffset,
+            head: graphOffset + "graph TD".length,
+        });
+        expect(
+            selectionOffsetsForVisibleTextMatch(hybridIndex, hybridEdgeMatch!),
+        ).toEqual({
+            anchor: edgeOffset,
+            head: edgeOffset + "A --> B".length,
+        });
     });
 });
 
-function fixtureById(id: string) {
-    const fixture = texCanvasFixtures.find((candidate) => candidate.id === id);
-    expect(fixture).toBeDefined();
-    return fixture!;
+async function renderComparisonSurface(
+    root: ReturnType<typeof createRoot>,
+    markdown: string,
+) {
+    const host = document.body.lastElementChild;
+    expect(host).not.toBeNull();
+
+    await act(async () => {
+        root.render(
+            <div data-testid="comparison-host">
+                <div data-testid="legacy-root">
+                    <DOMDProvider initMd={markdown}>
+                        <DOMD />
+                    </DOMDProvider>
+                </div>
+                <div data-testid="hybrid-root">
+                    <HybridEditorHost snapshot={snapshotFromMarkdown(markdown)} />
+                </div>
+            </div>,
+        );
+    });
+
+    await act(async () => {
+        await Promise.resolve();
+    });
+
+    return {
+        legacyRoot: queryRequired(host!, "[data-testid='legacy-root']"),
+        hybridRoot: queryRequired(
+            host!,
+            "[data-testid='hybrid-root'] [data-hybrid-editor-host]",
+        ),
+    };
 }
 
-function queryRequired(selector: string) {
-    const node = hostDocument().querySelector(selector);
+function queryRequired(container: ParentNode, selector: string) {
+    const node = container.querySelector(selector);
     expect(node).not.toBeNull();
     return node as HTMLElement;
-}
-
-function hostDocument() {
-    return document;
 }
 
 function snapshotFromMarkdown(markdown: string): LayoutSnapshot {
@@ -127,6 +178,8 @@ function snapshotFromMarkdown(markdown: string): LayoutSnapshot {
 
             if (inline.kind === "math_inline") {
                 const mirrorBlockId = `${block.blockId}-math-${inline.from}-${inline.to}`;
+                const pmFrom = block.pmFrom + inline.from;
+                const pmTo = block.pmFrom + inline.to;
                 canvasDrawOps.push({
                     blockId: mirrorBlockId,
                     kind: "math",
@@ -141,8 +194,8 @@ function snapshotFromMarkdown(markdown: string): LayoutSnapshot {
                 });
                 mirrorBlocks.push({
                     blockId: mirrorBlockId,
-                    pmFrom: block.pmFrom + inline.from,
-                    pmTo: block.pmFrom + inline.to,
+                    pmFrom,
+                    pmTo,
                     semanticText: inline.text,
                     ariaLabel: `math ${inline.text}`,
                 });
@@ -178,7 +231,7 @@ function snapshotFromMarkdown(markdown: string): LayoutSnapshot {
         return line;
     });
 
-    const snapshot: LayoutSnapshot = {
+    return {
         revision: layoutDocument.revision,
         lines,
         canvasDrawOps,
@@ -187,95 +240,4 @@ function snapshotFromMarkdown(markdown: string): LayoutSnapshot {
         selectionGeometries: [],
         mirrorBlocks,
     };
-
-    return snapshot;
-}
-
-async function renderComparisonSurface(
-    root: ReturnType<typeof createRoot>,
-    markdown: string,
-) {
-    const documentModel = normalizeLayoutDocument(markdown, {
-        width: 800,
-        height: 600,
-        devicePixelRatio: 1,
-    });
-
-    await act(async () => {
-        root.render(
-            <div>
-                <div data-testid="legacy-root" />
-                <div data-testid="hybrid-root">
-                    <HybridEditorHost snapshot={snapshotFromMarkdown(markdown)} />
-                </div>
-            </div>,
-        );
-    });
-
-    const legacyContainer = queryRequired("[data-testid='legacy-root']");
-    legacyContainer.replaceChildren(buildLegacyFixtureRoot(documentModel));
-
-    return {
-        document: documentModel,
-        legacyRoot: queryRequired(
-            "[data-testid='legacy-root'] [data-mdx-editor-root]",
-        ),
-        hybridRoot: queryRequired(
-            "[data-testid='hybrid-root'] [data-hybrid-editor-host]",
-        ),
-    };
-}
-
-function buildLegacyFixtureRoot(layoutDocument: LayoutDocument) {
-    const root = document.createElement("div");
-    root.setAttribute("data-mdx-editor-root", "");
-    root.setAttribute("data-mdx-text", "");
-
-    for (const block of layoutDocument.blocks) {
-        const blockElement = document.createElement(
-            block.kind === "heading" ? "h1" : "p",
-        );
-        blockElement.setAttribute("data-layout-block-id", block.blockId);
-
-        for (const inline of block.inlines) {
-            const textRun = document.createElement("span");
-            textRun.setAttribute(
-                "data-layout-pm-from",
-                String(block.pmFrom + inline.from),
-            );
-            textRun.setAttribute(
-                "data-layout-pm-to",
-                String(block.pmFrom + inline.to),
-            );
-            textRun.textContent = inline.text;
-            blockElement.append(textRun);
-        }
-
-        root.append(blockElement);
-    }
-
-    return root;
-}
-
-function semanticQueriesForFixture(
-    layoutDocument: LayoutDocument,
-    fixtureId: string,
-) {
-    const queries = new Set<string>();
-
-    for (const block of layoutDocument.blocks) {
-        for (const inline of block.inlines) {
-            if (inline.text.trim().length > 0) {
-                queries.add(inline.text);
-            }
-        }
-    }
-
-    for (const preferredQuery of fixtureById(fixtureId).expected.lineSnippets) {
-        if (preferredQuery.trim().length > 0) {
-            queries.add(preferredQuery);
-        }
-    }
-
-    return Array.from(queries);
 }

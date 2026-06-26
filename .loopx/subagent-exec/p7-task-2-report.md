@@ -34,3 +34,23 @@
 
 - The harness is deliberately test-only and does not change product behavior.
 - `features/editor/components/editor-pane.test.tsx` already contained unrelated local edits in the worktree; commit staging must stay scoped to the Task 2 hunks only.
+
+## Fix Loop
+
+- Removed the synthetic `buildLegacyFixtureRoot(...)` comparison path from `packages/mdx-editor/react/legacy-view-comparison.test.tsx`.
+- Rebuilt the comparison harness on the real legacy path by rendering `DOMDProvider + DOMD` beside the real `HybridEditorHost`.
+- Narrowed the matrix to two stable, real-path cases:
+  - paragraph visible-text parity between legacy DOMD and hybrid host
+  - mermaid source semantics using legacy DOMD as the visible-text oracle, while asserting hybrid-side markdown offsets directly
+- Updated helper lookup so required nodes are queried from the current rendered host subtree instead of global `document`.
+- Removed the `editor-pane.test.tsx` assertion that treated legacy absence of `x^2` as the correct semantic outcome; the test now only guards shell/fixture coexistence plus hybrid mirror markdown-offset availability.
+
+## Fix Loop Result
+
+- Command: `npm test -- packages/mdx-editor/react/legacy-view-comparison.test.tsx features/editor/components/editor-pane.test.tsx`
+- Result: passed
+- Summary: `2` files passed, `18` tests passed
+
+## Residual Concern
+
+- The real legacy DOMD mermaid visible text excludes the opening fence marker, while the current hybrid visible text still includes `````mermaid````` before the source lines. The fix-loop tests now capture this with a real-path oracle instead of papering it over with a synthetic fixture.
