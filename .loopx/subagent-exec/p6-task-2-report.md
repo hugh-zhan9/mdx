@@ -63,3 +63,21 @@
 ### Remaining Concerns
 
 - `html` complex block overlays now prefer safe escaped source rendering over live HTML preview. This keeps the fix scoped and removes the caller-trust requirement, but it is a deliberate behavior tightening versus the previous Task 2 implementation.
+
+## Fix Loop 3
+
+- Reviewer rereview finding fixed: `html` complex block overlays no longer degrade unconditionally to source fallback.
+- `HtmlFallbackBlock` now reuses the existing kernel HTML sanitizer and renders sanitized HTML for `kind: "html"`, while keeping `fallback` on escaped source text.
+- Extended tests now prove:
+  - `html` overlays remain visual adapters
+  - dangerous HTML payload parts like inline event handlers and `<script>` tags are stripped
+  - `CanvasSvgLayer` carries `html` through the overlay path with existing markers intact
+
+### Latest Verification
+
+- `npm test -- packages/mdx-editor/react/complex-blocks/complex-blocks.test.tsx packages/mdx-editor/react/hybrid-editor-host.test.tsx`
+  - Passed: 2 files, 8 tests
+
+### Remaining Concerns After Fix Loop 3
+
+- `html` overlays currently trust the shared clipboard/kernel sanitizer contract rather than introducing a task-local HTML policy. That keeps behavior aligned with existing editor HTML handling, but the exact allowed HTML subset is inherited from that shared sanitizer.

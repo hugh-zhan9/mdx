@@ -64,15 +64,16 @@ describe("renderComplexBlock", () => {
                 kind: "html",
                 rect: { x: 0, y: 0, width: 120, height: 40 },
                 data: {
-                    html: "<details><summary>Open</summary><p>Body</p></details>",
+                    html: "<details onclick=\"alert(1)\"><summary>Open</summary><p>Body</p><script>alert(1)</script></details>",
                 },
             }),
         );
 
         expect(html).toContain('data-complex-block-kind="html"');
-        expect(html).toContain("&lt;details&gt;");
+        expect(html).toContain("<details");
         expect(html).toContain("Open");
-        expect(html).not.toContain("<details>");
+        expect(html).not.toContain("onclick=");
+        expect(html).not.toContain("<script");
     });
 
     it("renders fallback ops through the fallback adapter", () => {
@@ -110,6 +111,17 @@ describe("renderComplexBlock", () => {
                         },
                     },
                     {
+                        blockId: "html-1",
+                        kind: "html",
+                        x: 32,
+                        y: 180,
+                        width: 220,
+                        height: 64,
+                        data: {
+                            html: "<details><summary>Safe</summary><p>Html</p></details>",
+                        },
+                    },
+                    {
                         blockId: "fallback-1",
                         kind: "fallback",
                         x: 20,
@@ -130,13 +142,16 @@ describe("renderComplexBlock", () => {
         expect(html).toContain("data-layout-canvas-layer");
         expect(html).toContain("data-layout-svg-layer");
         expect(html).toContain('data-layout-complex-block-overlay="table"');
+        expect(html).toContain('data-layout-complex-block-overlay="html"');
         expect(html).toContain('data-layout-complex-block-overlay="fallback"');
         expect(html).toContain('data-complex-block-kind="table"');
+        expect(html).toContain('data-complex-block-kind="html"');
         expect(html).toContain('data-complex-block-kind="fallback"');
         expect(html).toContain("pointer-events-auto");
         expect(html).toContain("left:12px");
         expect(html).toContain("top:24px");
         expect(html).toContain("width:200px");
         expect(html).toContain("height:72px");
+        expect(html).toContain("<details");
     });
 });
