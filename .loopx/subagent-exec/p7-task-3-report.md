@@ -102,6 +102,26 @@ Result: pass; checklist prints the updated hybrid-editor, PDF export, and perfor
 - The smoke test reuses the real normalizer and shared fixture corpus, matching the brief's no-duplication guidance.
 - The threshold is intentionally generous relative to the measured local baseline to reduce flake risk while still catching obvious regressions.
 
+## Review Follow-up
+
+- Addressed review feedback that `scripts/measure-tex-canvas-layout.mjs` depended on the caller's current working directory for runtime TypeScript source paths.
+- The measurement helper now resolves repository source files relative to `import.meta.url`, and converts URL inputs to filesystem paths for the TypeScript `fileName` option.
+- Strengthened the performance smoke structure checks from non-zero output to the stable `mixed-layout` summary: `4` normalized blocks and `4` inline runs.
+- Re-ran the measurement helper from `/tmp` using its absolute script path to verify it is cwd-independent.
+- Guarded the CLI entrypoint check so importing the helper in environments without `process.argv[1]` does not execute `pathToFileURL(undefined)`.
+
+Follow-up verification:
+
+```bash
+node -e "import('./scripts/measure-tex-canvas-layout.mjs').then(() => console.log('import ok'))"
+npm test -- features/editor/lib/tex-canvas-performance.test.ts
+node scripts/measure-tex-canvas-layout.mjs
+node scripts/verify-editor-browser.mjs
+cd /tmp && node /Users/zhangyukun/project/mdx/scripts/measure-tex-canvas-layout.mjs
+```
+
+Result: all commands passed; the import-only check printed `import ok`, and both measurement invocations reported `mixed-layout`, `4` normalized blocks, `4` inline runs, and `PASS` within the `80 ms` budget.
+
 ## Concerns
 
 - The measurement helper transpiles the current TypeScript sources into temporary ESM modules at runtime so `node scripts/measure-tex-canvas-layout.mjs` can execute without adding a new package script. That keeps the smoke local and dependency-light, but the helper should remain scoped to verification usage rather than production paths.

@@ -17,8 +17,8 @@ describe("tex canvas layout performance smoke", () => {
         });
 
         expect(measurement.iterations).toBe(200);
-        expect(measurement.blockCount).toBeGreaterThan(0);
-        expect(measurement.inlineCount).toBeGreaterThan(0);
+        expect(measurement.blockCount).toBe(4);
+        expect(measurement.inlineCount).toBe(4);
         expect(measurement.elapsedMs).toBeLessThanOrEqual(80);
     });
 });

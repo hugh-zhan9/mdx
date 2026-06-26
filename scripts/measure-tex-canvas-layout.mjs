@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import process from "node:process";
 
 import ts from "typescript";
@@ -15,6 +15,7 @@ const DEFAULT_VIEWPORT = {
 const DEFAULT_FIXTURE_ID = "mixed-layout";
 const DEFAULT_ITERATIONS = 200;
 const DEFAULT_BUDGET_MS = 80;
+const REPOSITORY_ROOT = new URL("../", import.meta.url);
 
 let cachedModulesPromise = null;
 
@@ -74,11 +75,17 @@ async function transpileAndImportRuntimeModules() {
 
     try {
         const normalizerModulePath = transpileTypeScriptModule(
-            path.resolve("packages/mdx-editor/layout-ir/normalizer.ts"),
+            new URL(
+                "packages/mdx-editor/layout-ir/normalizer.ts",
+                REPOSITORY_ROOT,
+            ),
             path.join(tempDir, "normalizer.mjs"),
         );
         const fixturesModulePath = transpileTypeScriptModule(
-            path.resolve("packages/mdx-editor/test/tex-canvas-fixtures.ts"),
+            new URL(
+                "packages/mdx-editor/test/tex-canvas-fixtures.ts",
+                REPOSITORY_ROOT,
+            ),
             path.join(tempDir, "tex-canvas-fixtures.mjs"),
         );
 
@@ -97,13 +104,15 @@ async function transpileAndImportRuntimeModules() {
 }
 
 function transpileTypeScriptModule(sourcePath, outputPath) {
+    const fileName =
+        sourcePath instanceof URL ? fileURLToPath(sourcePath) : sourcePath;
     const source = readFileSync(sourcePath, "utf8");
     const transpiled = ts.transpileModule(source, {
         compilerOptions: {
             module: ts.ModuleKind.ESNext,
             target: ts.ScriptTarget.ES2022,
         },
-        fileName: sourcePath,
+        fileName,
     });
 
     writeFileSync(outputPath, transpiled.outputText, "utf8");
@@ -146,6 +155,9 @@ async function main() {
     }
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+    typeof process.argv[1] === "string" &&
+    import.meta.url === pathToFileURL(process.argv[1]).href
+) {
     await main();
 }
