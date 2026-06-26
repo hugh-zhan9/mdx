@@ -15,7 +15,6 @@ import type {
 import { findWikilinkAtTextOffset } from "../../workspace/lib/wikilink";
 import { EditorKernelProvider } from "./editor-kernel-adapter";
 import { EditorFindBar } from "./editor-find-bar";
-import { EditorMermaidPreviewLayer } from "./editor-mermaid-preview-layer";
 import { useEditorBridge } from "../hooks/use-editor-bridge";
 import { useEditorFindReplace } from "../hooks/use-editor-find-replace";
 import { MDX_EDITOR_ROOT_SELECTOR } from "../lib/editor-dom-contract";
@@ -286,12 +285,6 @@ export function resolveEditorRootFromContent(
     );
 }
 
-function resolveSearchRootFromContent(
-    contentRoot: HTMLElement | null,
-): HTMLElement | null {
-    return contentRoot;
-}
-
 export function assignEditorViewportRef(
     editorViewportRef: RefObject<HTMLDivElement | null> | undefined,
     node: HTMLDivElement | null,
@@ -380,19 +373,13 @@ function EditorPaneInner({
     const contentRootRef = useRef<HTMLDivElement | null>(null);
     const [contentRootNode, setContentRootNode] =
         useState<HTMLDivElement | null>(null);
-    const [editorRoot, setEditorRoot] = useState<HTMLElement | null>(null);
     const [editorDomRevision, setEditorDomRevision] = useState(0);
-    const [mermaidVisibilityRevision, setMermaidVisibilityRevision] =
-        useState(0);
-    const handleMermaidVisibilityChange = useCallback(() => {
-        setMermaidVisibilityRevision((revision) => revision + 1);
-    }, []);
     const findReplace = useEditorFindReplace({
         editorRoot: contentRootNode,
         focusEditor: focus,
         markdown: bridge.currentMarkdown,
         replaceSelectedText: insertText,
-        visibilityRevision: mermaidVisibilityRevision + editorDomRevision,
+        visibilityRevision: editorDomRevision,
     });
     const {
         close,
@@ -407,13 +394,6 @@ function EditorPaneInner({
         toggleCaseSensitive,
         toggleReplaceExpanded,
     } = findReplace.actions;
-    const refreshEditorRoot = useCallback(() => {
-        const nextRoot = resolveSearchRootFromContent(contentRootRef.current);
-
-        setEditorRoot((currentRoot) =>
-            currentRoot === nextRoot ? currentRoot : nextRoot,
-        );
-    }, []);
     const handleViewportRef = useCallback(
         (node: HTMLDivElement | null) => {
             assignEditorViewportRef(editorViewportRef, node);
@@ -426,9 +406,8 @@ function EditorPaneInner({
             setContentRootNode((currentNode) =>
                 currentNode === node ? currentNode : node,
             );
-            refreshEditorRoot();
         },
-        [refreshEditorRoot],
+        [],
     );
     const storeAndInsertImages = useCallback(
         async (files: File[]) => {
@@ -619,17 +598,14 @@ function EditorPaneInner({
     );
 
     useEffect(() => {
-        refreshEditorRoot();
-    }, [bridge.currentMarkdown, contentRootNode, refreshEditorRoot]);
-
-    useEffect(() => {
         if (!contentRootNode) {
             return;
         }
 
-        const observer = new MutationObserver(() => {
-            refreshEditorRoot();
-            setEditorDomRevision((revision) => revision + 1);
+        const observer = new MutationObserver((mutations) => {
+            if (mutations.some(isSearchRelevantContentMutation)) {
+                setEditorDomRevision((revision) => revision + 1);
+            }
         });
 
         observer.observe(contentRootNode, {
@@ -637,12 +613,10 @@ function EditorPaneInner({
             subtree: true,
         });
 
-        refreshEditorRoot();
-
         return () => {
             observer.disconnect();
         };
-    }, [contentRootNode, refreshEditorRoot]);
+    }, [contentRootNode]);
 
     useEffect(() => {
         if (!onSelectionChange) {
@@ -737,11 +711,6 @@ function EditorPaneInner({
                     <div className="relative h-full w-full">
                         <HybridEditorHost snapshot={layoutSnapshot} />
                     </div>
-                    <EditorMermaidPreviewLayer
-                        editorRoot={editorRoot}
-                        markdown={bridge.currentMarkdown}
-                        onVisibilityChange={handleMermaidVisibilityChange}
-                    />
                 </div>
             </div>
         </div>
@@ -867,4 +836,27 @@ function textOffsetWithin(
     }
 
     return null;
+}
+
+function isSearchRelevantContentMutation(mutation: MutationRecord) {
+    return !mutationNodesAreInsideHybridHost(mutation);
+}
+
+function mutationNodesAreInsideHybridHost(mutation: MutationRecord) {
+    const changedNodes = [
+        ...Array.from(mutation.addedNodes),
+        ...Array.from(mutation.removedNodes),
+    ];
+
+    if (changedNodes.length > 0) {
+        return changedNodes.every((node) => isNodeInsideHybridHost(node));
+    }
+
+    return isNodeInsideHybridHost(mutation.target);
+}
+
+function isNodeInsideHybridHost(node: Node) {
+    return node instanceof HTMLElement
+        ? Boolean(node.closest("[data-hybrid-editor-host]"))
+        : Boolean(node.parentElement?.closest("[data-hybrid-editor-host]"));
 }

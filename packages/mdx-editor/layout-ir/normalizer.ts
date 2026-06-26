@@ -227,7 +227,15 @@ function readMermaidBlock(markdown: string, cursor: number) {
 
 function readHtmlFallbackBlock(markdown: string, cursor: number) {
     const rest = markdown.slice(cursor);
-    const match = rest.match(/^<section\b[\s\S]*?<\/section>/u);
+    const openingTagMatch = rest.match(/^<([a-zA-Z][\w:-]*)\b[^>]*>/u);
+    const tag = openingTagMatch?.[1]?.toLowerCase();
+    if (!tag || tag === "details") {
+        return null;
+    }
+
+    const match = rest.match(
+        new RegExp(`^<${tag}\\b[\\s\\S]*?<\\/${tag}>`, "u"),
+    );
     if (!match?.[0]) {
         return null;
     }

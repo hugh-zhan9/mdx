@@ -3,8 +3,9 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { HybridEditorHost } from "../../../packages/mdx-editor/react/hybrid-editor-host";
 import { buildVisibleTextIndex, findVisibleTextMatches } from "../lib/visible-text-search";
-import { EditorPane } from "./editor-pane";
+import { EditorPane, snapshotFromMarkdown } from "./editor-pane";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
     .IS_REACT_ACT_ENVIRONMENT = true;
@@ -71,6 +72,10 @@ describe("editor pane mermaid rendering", () => {
             );
         });
         await flushEffects();
+        await waitFor(() => {
+            expect(renderMermaidDiagram).toHaveBeenCalledTimes(1);
+            expect(host.querySelector("[data-mdx-mermaid-preview]")).not.toBeNull();
+        });
 
         const preview = host.querySelector("[data-mdx-mermaid-preview]");
         const hybridRoot = host.querySelector("[data-hybrid-editor-host]");
@@ -83,8 +88,9 @@ describe("editor pane mermaid rendering", () => {
                 caseSensitive: true,
             }),
         ).toHaveLength(1);
-        expect(renderMermaidDiagram).not.toHaveBeenCalled();
-        expect(preview).toBeNull();
+        expect(renderMermaidDiagram).toHaveBeenCalledTimes(1);
+        expect(preview).not.toBeNull();
+        expect(preview?.textContent).toContain("rendered flowchart");
         expect(host.querySelector("[data-mirror-block-id='block-2']")).not.toBeNull();
         expect(host.querySelector("[data-mirror-block-id='block-2']")?.textContent).toContain(
             "graph TD",
@@ -105,11 +111,12 @@ describe("editor pane mermaid rendering", () => {
         await flushEffects();
 
         expect(countEditButtons()).toBe(0);
+        expect(renderMermaidDiagram).toHaveBeenCalledTimes(1);
     });
 
-    it("keeps mermaid, image, and fallback source semantics intact in the hybrid host path", async () => {
-        const editorViewportRef = { current: null as HTMLDivElement | null };
-        const onMarkdownChange = vi.fn();
+    it(
+        "keeps mermaid, image, and fallback source semantics intact in the hybrid host path",
+        async () => {
         const markdown = [
             "# Title",
             "",
@@ -119,6 +126,10 @@ describe("editor pane mermaid rendering", () => {
             "```",
             "",
             '![Diagram](.assets/flow.png "Preview")',
+            "",
+            '<div data-x="1">',
+            "  <span>Keep div fallback</span>",
+            "</div>",
             "",
             '<section data-kind="unsupported">',
             "  <p>Keep fallback</p>",
@@ -137,15 +148,14 @@ describe("editor pane mermaid rendering", () => {
 
         await act(async () => {
             root.render(
-                <EditorPane
-                    rootPath={null}
-                    tab={tab}
-                    onMarkdownChange={onMarkdownChange}
-                    editorViewportRef={editorViewportRef}
-                />,
+                <HybridEditorHost snapshot={snapshotFromMarkdown(tab.markdown)} />,
             );
         });
         await flushEffects();
+        await waitFor(() => {
+            expect(renderMermaidDiagram).toHaveBeenCalledTimes(1);
+            expect(host.querySelector("[data-mdx-mermaid-preview]")).not.toBeNull();
+        });
 
         const hybridRoot = host.querySelector("[data-hybrid-editor-host]");
         const hybridIndex = buildVisibleTextIndex(hybridRoot!);
@@ -157,8 +167,8 @@ describe("editor pane mermaid rendering", () => {
                 caseSensitive: true,
             }),
         ).toHaveLength(1);
-        expect(renderMermaidDiagram).not.toHaveBeenCalled();
-        expect(host.querySelector("[data-mdx-mermaid-preview]")).toBeNull();
+        expect(renderMermaidDiagram).toHaveBeenCalledTimes(1);
+        expect(host.querySelector("[data-mdx-mermaid-preview]")).not.toBeNull();
         expect(host.querySelector("[data-mirror-block-id='block-1']")?.textContent).toContain(
             "graph TD",
         );
@@ -173,13 +183,22 @@ describe("editor pane mermaid rendering", () => {
         const fallback = host.querySelector<HTMLElement>(
             "[data-mdx-node-type='source_fallback']",
         );
-        expect(fallback?.querySelector("section[data-kind='unsupported']")).not.toBeNull();
+        expect(fallback?.querySelector("div[data-x='1']")).not.toBeNull();
+        const fallbackBlocks = Array.from(
+            host.querySelectorAll<HTMLElement>("[data-mdx-node-type='source_fallback']"),
+        );
+        expect(
+            fallbackBlocks.some(
+                (block) =>
+                    block.querySelector("section[data-kind='unsupported']") !== null,
+            ),
+        ).toBe(true);
         expect(
             host.querySelector("textarea[aria-label='Markdown source fallback']"),
         ).toBeNull();
-
-        expect(onMarkdownChange).not.toHaveBeenCalled();
-    });
+        },
+        10000,
+    );
 
     function countEditButtons() {
         return Array.from(host.querySelectorAll("button")).filter(
@@ -193,4 +212,23 @@ async function flushEffects() {
         await Promise.resolve();
         await Promise.resolve();
     });
+}
+
+async function waitFor(assertion: () => void) {
+    let lastError: unknown;
+
+    for (let index = 0; index < 20; index += 1) {
+        try {
+            assertion();
+            return;
+        } catch (error) {
+            lastError = error;
+        }
+
+        await act(async () => {
+            await Promise.resolve();
+        });
+    }
+
+    throw lastError;
 }

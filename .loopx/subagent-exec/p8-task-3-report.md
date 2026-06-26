@@ -95,3 +95,8 @@ surface_change:
     - command: rg "MdxEditorView|DOMD|data-mdx-editor-view|data-legacy-editor-fixture" packages features scripts docs/loopx/specs
       result: no matches
 ```
+
+## Task 3 fix evidence
+
+- Restored hybrid Mermaid rendering by moving the live preview behavior back onto the current hybrid complex-block path, while keeping markdown/light-mirror semantics authoritative for search and selection.
+- Restored generic unsupported HTML fallback preservation in the layout normalizer and hybrid fallback preview path; coverage now includes both `<div>` and `<section>` fixtures.

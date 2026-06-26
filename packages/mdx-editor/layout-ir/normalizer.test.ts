@@ -96,4 +96,37 @@ describe("normalizeLayoutDocument", () => {
             },
         ]);
     });
+
+    it("preserves unsupported block html fallbacks beyond section tags", () => {
+        const markdown = [
+            '<div data-x="1">',
+            "  <span>HTML</span>",
+            "</div>",
+            "",
+            '<section data-kind="unsupported">',
+            "  <p>Keep fallback</p>",
+            "</section>",
+            "",
+        ].join("\n");
+        const document = normalizeLayoutDocument(markdown, {
+            width: 800,
+            height: 600,
+            devicePixelRatio: 1,
+        });
+
+        expect(document.blocks).toHaveLength(2);
+        expect(document.blocks[0]).toMatchObject({
+            kind: "fallback",
+            pmFrom: 0,
+        });
+        expect(document.blocks[0]?.inlines[0]?.text).toBe(
+            '<div data-x="1">\n  <span>HTML</span>\n</div>',
+        );
+        expect(document.blocks[1]).toMatchObject({
+            kind: "fallback",
+        });
+        expect(document.blocks[1]?.inlines[0]?.text).toBe(
+            '<section data-kind="unsupported">\n  <p>Keep fallback</p>\n</section>',
+        );
+    });
 });
