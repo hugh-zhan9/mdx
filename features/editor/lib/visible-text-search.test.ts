@@ -3,6 +3,7 @@ import {
     buildVisibleTextIndex,
     findVisibleTextMatches,
     rangeForVisibleTextMatch,
+    selectionOffsetsForVisibleTextMatch,
 } from "./visible-text-search";
 
 describe("visible text search", () => {
@@ -123,6 +124,29 @@ describe("visible text search", () => {
                 caseSensitive: false,
             }),
         ).toHaveLength(1);
+    });
+
+    it("maps mirror matches back to markdown selection offsets", () => {
+        const root = editorRoot();
+        paragraph(root, "Visible body text");
+
+        const mirror = child(root, "div");
+        mirror.setAttribute("data-layout-light-mirror", "");
+        mirror.style.display = "none";
+        const mirrorBlock = child(mirror, "div", "", "x^2");
+        mirrorBlock.setAttribute("data-mirror-block-id", "math-1");
+        mirrorBlock.setAttribute("data-mirror-pm-from", "8");
+        mirrorBlock.setAttribute("data-mirror-pm-to", "11");
+
+        const index = buildVisibleTextIndex(root);
+        const [match] = findVisibleTextMatches(index, "x^2", {
+            caseSensitive: false,
+        });
+
+        expect(selectionOffsetsForVisibleTextMatch(index, match)).toEqual({
+            anchor: 8,
+            head: 11,
+        });
     });
 
     it("keeps user-authored advanced node text while excluding generated previews", () => {

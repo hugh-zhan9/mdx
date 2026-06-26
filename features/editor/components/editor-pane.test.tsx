@@ -364,6 +364,83 @@ describe("editor pane image paste", () => {
         expect(onMarkdownChange).not.toHaveBeenCalled();
     });
 
+    it("populates mirror blocks for runtime math content in the hybrid host path", async () => {
+        bridgeMocks.currentMarkdown = "Before $x^2$ after";
+        const tab = {
+            tabId: "tab-1",
+            path: "/tmp/note.md",
+            title: "note.md",
+            dirty: false,
+            needsRenameOnFirstSave: false,
+            markdown: bridgeMocks.currentMarkdown,
+            baseFingerprint: "base",
+        };
+
+        await act(async () => {
+            root.render(
+                <EditorPane
+                    rootPath="/tmp"
+                    tab={tab}
+                    onMarkdownChange={vi.fn()}
+                />,
+            );
+        });
+
+        const hostNode = host.querySelector("[data-hybrid-editor-host]");
+        expect(hostNode?.getAttribute("data-mirror-block-count")).toBe("1");
+        expect(hostNode?.getAttribute("data-canvas-draw-op-count")).toBe("1");
+        expect(hostNode?.textContent).toContain("x^2");
+    });
+
+    it("bridges copy events from mirror selections through clipboard text", async () => {
+        bridgeMocks.currentMarkdown = "Before $x^2$ after";
+        const tab = {
+            tabId: "tab-1",
+            path: "/tmp/note.md",
+            title: "note.md",
+            dirty: false,
+            needsRenameOnFirstSave: false,
+            markdown: bridgeMocks.currentMarkdown,
+            baseFingerprint: "base",
+        };
+
+        await act(async () => {
+            root.render(
+                <EditorPane
+                    rootPath="/tmp"
+                    tab={tab}
+                    onMarkdownChange={vi.fn()}
+                />,
+            );
+        });
+
+        const mirrorTextNode = host.querySelector(
+            "[data-mirror-block-id]",
+        )?.firstChild;
+        expect(mirrorTextNode?.textContent).toBe("x^2");
+
+        const range = document.createRange();
+        range.selectNodeContents(mirrorTextNode as Node);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+
+        const setData = vi.fn();
+        const event = new Event("copy", {
+            bubbles: true,
+            cancelable: true,
+        }) as ClipboardEvent;
+        Object.defineProperty(event, "clipboardData", {
+            value: { setData },
+        });
+
+        await act(async () => {
+            (mirrorTextNode?.parentNode as Node | null)?.dispatchEvent(event);
+        });
+
+        expect(setData).toHaveBeenCalledWith("text/plain", "x^2");
+    });
+
     it("keeps hybrid mirror markdown offsets available alongside the legacy fixture root", async () => {
         bridgeMocks.currentMarkdown = "Before $x^2$ after";
         const tab = {
@@ -436,11 +513,7 @@ describe("editor pane image paste", () => {
             );
         });
 
-        const editorRoot = host.querySelector<HTMLElement>(
-            "[data-mdx-editor-root]",
-        );
         const contentRoot = host.querySelector<HTMLElement>("[data-mdx-editor-column]");
-        expect(editorRoot).not.toBeNull();
         expect(contentRoot).not.toBeNull();
 
         await act(async () => {
@@ -472,7 +545,7 @@ describe("editor pane image paste", () => {
         paragraph.scrollIntoView = vi.fn();
 
         await act(async () => {
-            editorRoot!.append(paragraph);
+            contentRoot!.append(paragraph);
             await flushPromises();
         });
 

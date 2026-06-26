@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
+import { normalizeLayoutDocument } from "../../../packages/mdx-editor/layout-ir/normalizer";
 import type { DocumentSelectionRange } from "../../../packages/mdx-editor";
 import { HybridEditorHost } from "../../../packages/mdx-editor/react/hybrid-editor-host";
 import type { LayoutSnapshot } from "../../../packages/mdx-editor/react/wasm-layout-bridge";
@@ -40,6 +41,88 @@ const EMPTY_LAYOUT_SNAPSHOT: LayoutSnapshot = {
     selectionGeometries: [],
     mirrorBlocks: [],
 };
+
+function snapshotFromMarkdown(markdown: string): LayoutSnapshot {
+    const document = normalizeLayoutDocument(markdown, {
+        width: 800,
+        height: 600,
+        devicePixelRatio: 1,
+    });
+    let y = 0;
+    const canvasDrawOps: LayoutSnapshot["canvasDrawOps"] = [];
+    const mirrorBlocks: LayoutSnapshot["mirrorBlocks"] = [];
+    const lines = document.blocks.map((block, index) => {
+        let left = 0;
+        const textRuns = block.inlines.flatMap((inline, inlineIndex) => {
+            const width = Math.max(
+                inline.text.length * (block.style.fontSize * 0.6),
+                1,
+            );
+
+            if (inline.kind === "math_inline") {
+                const mirrorBlockId = `${block.blockId}-math-${inline.from}-${inline.to}`;
+                const pmFrom = block.pmFrom + inline.from;
+                const pmTo = block.pmFrom + inline.to;
+                canvasDrawOps.push({
+                    blockId: mirrorBlockId,
+                    kind: "math",
+                    x: left,
+                    y,
+                    width,
+                    height: block.style.fontSize * block.style.lineHeight,
+                    data: {
+                        content: inline.text,
+                        latex: inline.text,
+                    },
+                });
+                mirrorBlocks.push({
+                    blockId: mirrorBlockId,
+                    pmFrom,
+                    pmTo,
+                    semanticText: inline.text,
+                    ariaLabel: `math ${inline.text}`,
+                });
+                left += width;
+                return [];
+            }
+
+            const run = {
+                blockId: block.blockId,
+                pmFrom: block.pmFrom + inline.from,
+                pmTo: block.pmFrom + inline.to,
+                left,
+                baseline: y + block.style.fontSize,
+                width,
+                height: block.style.fontSize * block.style.lineHeight,
+                fontFamily: block.style.fontFamily,
+                fontSize: block.style.fontSize,
+                text: inline.text,
+            };
+            left += width;
+            return [run];
+        });
+        const line = {
+            id: `line-${index}`,
+            blockId: block.blockId,
+            y,
+            baseline: y + block.style.fontSize,
+            height: block.style.fontSize * block.style.lineHeight,
+            textRuns,
+        };
+        y += line.height;
+        return line;
+    });
+
+    return {
+        revision: document.revision,
+        lines,
+        canvasDrawOps,
+        hitTestEntries: [],
+        caretAnchors: [],
+        selectionGeometries: [],
+        mirrorBlocks,
+    };
+}
 
 interface EditorPaneProps {
     rootPath: string | null;
@@ -86,6 +169,12 @@ export function resolveEditorRootFromContent(
         contentRoot?.querySelector<HTMLElement>(MDX_EDITOR_ROOT_SELECTOR) ??
         contentRoot
     );
+}
+
+function resolveSearchRootFromContent(
+    contentRoot: HTMLElement | null,
+): HTMLElement | null {
+    return contentRoot;
 }
 
 export function assignEditorViewportRef(
@@ -184,7 +273,7 @@ function EditorPaneInner({
         setMermaidVisibilityRevision((revision) => revision + 1);
     }, []);
     const findReplace = useEditorFindReplace({
-        editorRoot,
+        editorRoot: contentRootNode,
         focusEditor: focus,
         markdown: bridge.currentMarkdown,
         replaceSelectedText: insertText,
@@ -204,7 +293,7 @@ function EditorPaneInner({
         toggleReplaceExpanded,
     } = findReplace.actions;
     const refreshEditorRoot = useCallback(() => {
-        const nextRoot = resolveEditorRootFromContent(contentRootRef.current);
+        const nextRoot = resolveSearchRootFromContent(contentRootRef.current);
 
         setEditorRoot((currentRoot) =>
             currentRoot === nextRoot ? currentRoot : nextRoot,
@@ -355,6 +444,35 @@ function EditorPaneInner({
         },
         [storeAndInsertImages, storeImage],
     );
+    const handleCopyCapture = useCallback(
+        (event: React.ClipboardEvent<HTMLDivElement>) => {
+            const selection = window.getSelection?.();
+            if (!selection || selection.rangeCount === 0) {
+                return;
+            }
+
+            const anchorNode = selection.anchorNode;
+            const anchorElement =
+                anchorNode instanceof Element
+                    ? anchorNode
+                    : anchorNode?.parentElement ?? null;
+            if (
+                !anchorElement?.closest("[data-layout-light-mirror]") ||
+                !event.clipboardData
+            ) {
+                return;
+            }
+
+            const text = selection.toString();
+            if (text.length === 0) {
+                return;
+            }
+
+            event.preventDefault();
+            event.clipboardData.setData("text/plain", text);
+        },
+        [],
+    );
     const handleDragOverCapture = useCallback(
         (event: React.DragEvent<HTMLDivElement>) => {
             if (!storeImage || !dataTransferHasImage(event.dataTransfer)) {
@@ -459,6 +577,11 @@ function EditorPaneInner({
         tab.tabId,
     ]);
 
+    const layoutSnapshot =
+        bridge.currentMarkdown.trim().length > 0
+            ? snapshotFromMarkdown(bridge.currentMarkdown)
+            : EMPTY_LAYOUT_SNAPSHOT;
+
     return (
         <div className="flex h-full min-h-0 flex-col">
             {findReplace.state.isOpen ? (
@@ -490,14 +613,19 @@ function EditorPaneInner({
                     ref={handleEditorContentRef}
                     className="min-h-full w-full max-w-[var(--mdx-editor-max-width)] px-6 pb-[35vh] pt-7 sm:px-8 sm:pb-[35vh] sm:pt-10"
                     onClickCapture={handleEditorClickCapture}
+                    onCopyCapture={handleCopyCapture}
                     onDragOverCapture={handleDragOverCapture}
                     onDropCapture={handleDropCapture}
                     onKeyDownCapture={handleEditorKeyDownCapture}
                     onPasteCapture={handlePasteCapture}
                 >
                     <div className="relative h-full w-full">
-                        <HybridEditorHost snapshot={EMPTY_LAYOUT_SNAPSHOT} />
-                        <div className="sr-only" data-legacy-editor-fixture="">
+                        <HybridEditorHost snapshot={layoutSnapshot} />
+                        <div
+                            className="sr-only"
+                            data-legacy-editor-fixture=""
+                            aria-hidden="true"
+                        >
                             <DOMD />
                         </div>
                     </div>

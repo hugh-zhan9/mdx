@@ -1,3 +1,4 @@
+import type { MarkdownSelectionOffsets } from "../../../packages/mdx-editor";
 import {
     isMdxSyntaxElement,
     MDX_MERMAID_PREVIEW_SELECTOR,
@@ -5,6 +6,8 @@ import {
 
 export interface VisibleTextSegment {
     end: number;
+    sourceTextLength: number | null;
+    selectionOffsets: MarkdownSelectionOffsets | null;
     isMirror: boolean;
     node: Text;
     start: number;
@@ -70,6 +73,8 @@ function buildVisibleTextIndexInternal(
             text += value;
             segments.push({
                 end: text.length,
+                sourceTextLength: sourceTextLengthForTextNode(node as Text),
+                selectionOffsets: selectionOffsetsForTextNode(node as Text),
                 isMirror: isMirrorTextNode(node),
                 node: node as Text,
                 start,
@@ -165,6 +170,57 @@ export function rangeForVisibleTextMatch(
     range.setStart(start.node, match.start - start.start);
     range.setEnd(end.node, match.end - end.start);
     return range;
+}
+
+export function selectionOffsetsForVisibleTextMatch(
+    index: VisibleTextIndex,
+    match: VisibleTextMatch,
+): MarkdownSelectionOffsets | null {
+    const start = segmentAt(index.segments, match.start);
+    const end = segmentAt(index.segments, Math.max(match.end - 1, match.start));
+    if (!start || !end) {
+        return null;
+    }
+
+    const startOffsets = start.selectionOffsets;
+    const endOffsets = end.selectionOffsets;
+    if (!startOffsets || !endOffsets) {
+        return null;
+    }
+
+    if (!isReplaceSafeMatch(index, match)) {
+        return null;
+    }
+
+    return {
+        anchor: startOffsets.anchor + (match.start - start.start),
+        head: endOffsets.anchor + (match.end - end.start),
+    };
+}
+
+export function isReplaceSafeMatch(
+    index: VisibleTextIndex,
+    match: VisibleTextMatch,
+): boolean {
+    const start = segmentAt(index.segments, match.start);
+    const end = segmentAt(index.segments, Math.max(match.end - 1, match.start));
+    if (!start || !end) {
+        return false;
+    }
+
+    if (!start.isMirror && !end.isMirror) {
+        return true;
+    }
+
+    if (start !== end) {
+        return false;
+    }
+
+    if (!start.isMirror || start.sourceTextLength === null) {
+        return false;
+    }
+
+    return match.end - match.start === start.sourceTextLength;
 }
 
 function findMatchAtOrAfter(
@@ -362,6 +418,70 @@ function blockIdForTextNode(node: Text): string | null {
         ) ??
         null
     );
+}
+
+function selectionOffsetsForTextNode(
+    node: Text,
+): MarkdownSelectionOffsets | null {
+    const parent = node.parentNode;
+    if (!isElement(parent)) {
+        return null;
+    }
+
+    const host =
+        closestWithAttributes(parent, "data-layout-pm-from", "data-layout-pm-to") ??
+        closestWithAttributes(parent, "data-mirror-pm-from", "data-mirror-pm-to");
+    if (!host) {
+        return null;
+    }
+
+    const startAttribute =
+        host.getAttribute("data-layout-pm-from") ??
+        host.getAttribute("data-mirror-pm-from");
+    const endAttribute =
+        host.getAttribute("data-layout-pm-to") ??
+        host.getAttribute("data-mirror-pm-to");
+    if (!startAttribute || !endAttribute) {
+        return null;
+    }
+
+    const anchor = Number.parseInt(startAttribute, 10);
+    const head = Number.parseInt(endAttribute, 10);
+    if (!Number.isFinite(anchor) || !Number.isFinite(head) || head < anchor) {
+        return null;
+    }
+
+    return { anchor, head };
+}
+
+function sourceTextLengthForTextNode(node: Text): number | null {
+    const offsets = selectionOffsetsForTextNode(node);
+    if (!offsets) {
+        return null;
+    }
+
+    return Math.max(0, offsets.head - offsets.anchor);
+}
+
+function closestWithAttributes(
+    element: Element,
+    startAttribute: string,
+    endAttribute: string,
+): Element | null {
+    let current: Element | null = element;
+
+    while (current) {
+        if (
+            current.getAttribute(startAttribute) !== null &&
+            current.getAttribute(endAttribute) !== null
+        ) {
+            return current;
+        }
+
+        current = current.parentElement;
+    }
+
+    return null;
 }
 
 function isHtmlElement(element: Element): element is HTMLElement {

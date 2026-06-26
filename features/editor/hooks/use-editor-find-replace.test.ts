@@ -3,6 +3,7 @@
 import { act, createElement, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
+import type { MarkdownSelectionOffsets } from "../../../packages/mdx-editor";
 import type { VisibleTextMatch } from "../lib/visible-text-search";
 import { findVisibleTextMatches } from "../lib/visible-text-search";
 import {
@@ -378,6 +379,193 @@ describe("editor find replace visible text index", () => {
         const stateAfterClose = latestState as FindReplaceState | null;
         expect(stateAfterClose?.isOpen).toBe(false);
         expect(stateAfterClose?.query).toBe("");
+
+        act(() => reactRoot.unmount());
+        editorRoot.remove();
+        host.remove();
+    });
+
+    it("replaces mirror matches with explicit markdown selection offsets", async () => {
+        const host = document.createElement("div");
+        const editorRoot = document.createElement("div");
+        document.body.append(host, editorRoot);
+        const reactRoot = createRoot(host);
+        const replaceSelectedText = vi.fn();
+        const paragraph = document.createElement("span");
+        paragraph.textContent = "Before ";
+        paragraph.setAttribute("data-layout-block-id", "paragraph-1");
+        paragraph.setAttribute("data-layout-pm-from", "0");
+        paragraph.setAttribute("data-layout-pm-to", "7");
+        editorRoot.append(paragraph);
+        const mirror = document.createElement("div");
+        mirror.setAttribute("data-layout-light-mirror", "");
+        mirror.style.display = "none";
+        const mirrorBlock = document.createElement("div");
+        mirrorBlock.textContent = "x^2";
+        mirrorBlock.setAttribute("data-mirror-block-id", "math-1");
+        mirrorBlock.setAttribute("data-mirror-pm-from", "8");
+        mirrorBlock.setAttribute("data-mirror-pm-to", "11");
+        mirror.append(mirrorBlock);
+        editorRoot.append(mirror);
+        let replaceCurrent: (() => boolean) | null = null;
+
+        function Harness() {
+            const findReplace = useEditorFindReplace({
+                editorRoot,
+                focusEditor: () => {},
+                markdown: "Before $x^2$ after",
+                replaceSelectedText,
+            });
+            const { openReplace, setQuery, setReplacement } = findReplace.actions;
+            useEffect(() => {
+                openReplace();
+                setQuery("x^2");
+                setReplacement("z^2");
+            }, [openReplace, setQuery, setReplacement]);
+            useEffect(() => {
+                replaceCurrent = findReplace.actions.replaceCurrent;
+            }, [findReplace.actions.replaceCurrent]);
+            return null;
+        }
+
+        await act(async () => {
+            reactRoot.render(createElement(Harness));
+        });
+        await act(async () => {});
+
+        await act(async () => {
+            replaceCurrent?.();
+        });
+        await act(async () => {});
+
+        expect(replaceSelectedText).toHaveBeenCalledWith(
+            "z^2",
+            {
+                anchor: 8,
+                head: 11,
+            } satisfies MarkdownSelectionOffsets,
+        );
+
+        act(() => reactRoot.unmount());
+        editorRoot.remove();
+        host.remove();
+    });
+
+    it("replaces all matches in markdown-offset order when mirror and ordinary matches interleave", async () => {
+        const host = document.createElement("div");
+        const editorRoot = document.createElement("div");
+        document.body.append(host, editorRoot);
+        const reactRoot = createRoot(host);
+        const replaceSelectedText = vi.fn();
+        const ordinary = document.createElement("span");
+        ordinary.textContent = "x^2";
+        ordinary.setAttribute("data-layout-block-id", "paragraph-1");
+        ordinary.setAttribute("data-layout-pm-from", "6");
+        ordinary.setAttribute("data-layout-pm-to", "9");
+        editorRoot.append(ordinary);
+        const mirror = document.createElement("div");
+        mirror.setAttribute("data-layout-light-mirror", "");
+        mirror.style.display = "none";
+        const mirrorBlock = document.createElement("div");
+        mirrorBlock.textContent = "x^2";
+        mirrorBlock.setAttribute("data-mirror-block-id", "math-1");
+        mirrorBlock.setAttribute("data-mirror-pm-from", "1");
+        mirrorBlock.setAttribute("data-mirror-pm-to", "4");
+        mirror.append(mirrorBlock);
+        editorRoot.append(mirror);
+        let replaceAll: (() => number) | null = null;
+
+        function Harness() {
+            const findReplace = useEditorFindReplace({
+                editorRoot,
+                focusEditor: () => {},
+                markdown: "$x^2$ x^2",
+                replaceSelectedText,
+            });
+            const { openReplace, setQuery, setReplacement } = findReplace.actions;
+            useEffect(() => {
+                openReplace();
+                setQuery("x^2");
+                setReplacement("zz^22");
+            }, [openReplace, setQuery, setReplacement]);
+            useEffect(() => {
+                replaceAll = findReplace.actions.replaceAll;
+            }, [findReplace.actions.replaceAll]);
+            return null;
+        }
+
+        await act(async () => {
+            reactRoot.render(createElement(Harness));
+        });
+        await act(async () => {});
+
+        let count = 0;
+        await act(async () => {
+            count = replaceAll?.() ?? 0;
+        });
+        await act(async () => {});
+
+        expect(count).toBe(2);
+        expect(replaceSelectedText.mock.calls).toEqual([
+            ["zz^22", { anchor: 6, head: 9 }],
+            ["zz^22", { anchor: 1, head: 4 }],
+        ]);
+
+        act(() => reactRoot.unmount());
+        editorRoot.remove();
+        host.remove();
+    });
+
+    it("refuses replaceCurrent for semantic mirror text that is not source-equivalent", async () => {
+        const host = document.createElement("div");
+        const editorRoot = document.createElement("div");
+        document.body.append(host, editorRoot);
+        const reactRoot = createRoot(host);
+        const replaceSelectedText = vi.fn();
+        const mirror = document.createElement("div");
+        mirror.setAttribute("data-layout-light-mirror", "");
+        mirror.style.display = "none";
+        const mirrorBlock = document.createElement("div");
+        mirrorBlock.textContent = "x squared";
+        mirrorBlock.setAttribute("data-mirror-block-id", "math-1");
+        mirrorBlock.setAttribute("data-mirror-pm-from", "1");
+        mirrorBlock.setAttribute("data-mirror-pm-to", "4");
+        mirror.append(mirrorBlock);
+        editorRoot.append(mirror);
+        let replaceCurrent: (() => boolean) | null = null;
+
+        function Harness() {
+            const findReplace = useEditorFindReplace({
+                editorRoot,
+                focusEditor: () => {},
+                markdown: "$x^2$",
+                replaceSelectedText,
+            });
+            const { openReplace, setQuery, setReplacement } = findReplace.actions;
+            useEffect(() => {
+                openReplace();
+                setQuery("x squared");
+                setReplacement("z squared");
+            }, [openReplace, setQuery, setReplacement]);
+            useEffect(() => {
+                replaceCurrent = findReplace.actions.replaceCurrent;
+            }, [findReplace.actions.replaceCurrent]);
+            return null;
+        }
+
+        await act(async () => {
+            reactRoot.render(createElement(Harness));
+        });
+        await act(async () => {});
+
+        let replaced = true;
+        await act(async () => {
+            replaced = replaceCurrent?.() ?? true;
+        });
+        await act(async () => {});
+
+        expect(replaced).toBe(false);
+        expect(replaceSelectedText).not.toHaveBeenCalled();
 
         act(() => reactRoot.unmount());
         editorRoot.remove();

@@ -1,10 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { MarkdownSelectionOffsets } from "../../../packages/mdx-editor";
 import {
     buildVisibleTextIndex,
     findVisibleTextMatches,
+    isReplaceSafeMatch,
     rangeForVisibleTextMatch,
+    selectionOffsetsForVisibleTextMatch,
 } from "../lib/visible-text-search";
 import type { VisibleTextMatch } from "../lib/visible-text-search";
 
@@ -21,7 +24,10 @@ export interface UseEditorFindReplaceOptions {
     editorRoot: HTMLElement | null;
     focusEditor: () => void;
     markdown: string;
-    replaceSelectedText: (replacement: string) => void;
+    replaceSelectedText: (
+        replacement: string,
+        selectionOffsets?: MarkdownSelectionOffsets | null,
+    ) => void;
     visibilityRevision?: number;
 }
 
@@ -107,6 +113,11 @@ export function replaceAllMatchesFromEnd(
     return replacementCount;
 }
 
+interface ReplaceTarget {
+    match: VisibleTextMatch;
+    selectionOffsets: MarkdownSelectionOffsets;
+}
+
 export function useEditorFindReplace({
     editorRoot,
     focusEditor,
@@ -172,10 +183,18 @@ export function useEditorFindReplace({
                 return false;
             }
 
-            replaceSelectedText(state.replacement);
+            const selectionOffsets = selectionOffsetsForVisibleTextMatch(
+                visibleTextIndex,
+                match,
+            );
+            if (!selectionOffsets) {
+                return false;
+            }
+
+            replaceSelectedText(state.replacement, selectionOffsets);
             return true;
         },
-        [replaceSelectedText, selectMatch, state.replacement],
+        [replaceSelectedText, selectMatch, state.replacement, visibleTextIndex],
     );
 
     useEffect(() => {
@@ -249,17 +268,50 @@ export function useEditorFindReplace({
     }, []);
 
     const replaceAll = useCallback(() => {
-        const replacementCount = replaceAllMatchesFromEnd(matches, replaceMatch);
+        const replacementTargets = matches
+            .map((match) => ({
+                match,
+                selectionOffsets: selectionOffsetsForVisibleTextMatch(
+                    visibleTextIndex,
+                    match,
+                ),
+            }))
+            .filter(
+                (target): target is ReplaceTarget =>
+                    target.selectionOffsets !== null,
+            )
+            .sort(
+                (left, right) =>
+                    Math.max(
+                        right.selectionOffsets.anchor,
+                        right.selectionOffsets.head,
+                    ) -
+                    Math.max(
+                        left.selectionOffsets.anchor,
+                        left.selectionOffsets.head,
+                    ),
+            );
+        let replacementCount = 0;
+
+        for (const target of replacementTargets) {
+            replaceSelectedText(state.replacement, target.selectionOffsets);
+            replacementCount += 1;
+        }
+
         setState((current) => ({
             ...current,
             currentMatchIndex: 0,
         }));
         focusEditor();
         return replacementCount;
-    }, [focusEditor, matches, replaceMatch]);
+    }, [focusEditor, matches, replaceSelectedText, state.replacement, visibleTextIndex]);
 
     const replaceCurrent = useCallback(() => {
-        if (!activeMatch || !replaceMatch(activeMatch)) {
+        if (
+            !activeMatch ||
+            !isReplaceSafeMatch(visibleTextIndex, activeMatch) ||
+            !replaceMatch(activeMatch)
+        ) {
             return false;
         }
 
@@ -332,15 +384,19 @@ export function buildVisibleTextIndexForMarkdown(
 ) {
     const index = buildVisibleTextIndex(editorRoot);
 
-    if (
-        index.text.length > 0 ||
-        markdown.length === 0 ||
-        editorRoot.childNodes.length > 0
-    ) {
+    if (index.text.length > 0 || markdown.length === 0) {
         return index;
     }
 
-    return markdownFallbackIndex(markdown);
+    if (editorRoot.childNodes.length === 0) {
+        return markdownFallbackIndex(markdown);
+    }
+
+    if (isHybridShell(editorRoot) && !hasSearchableSurface(editorRoot)) {
+        return markdownFallbackIndex(markdown);
+    }
+
+    return index;
 }
 
 export function markdownToSearchableText(markdown: string) {
@@ -355,4 +411,20 @@ function markdownFallbackIndex(markdown: string) {
         segments: [],
         text: markdownToSearchableText(markdown),
     };
+}
+
+function hasSearchableSurface(editorRoot: HTMLElement): boolean {
+    return Boolean(
+        editorRoot.querySelector("[data-layout-dom-text-layer] *") ||
+            editorRoot.querySelector("[data-layout-light-mirror] [data-mirror-block-id]") ||
+            editorRoot.querySelector("[data-layout-canvas-layer]") ||
+            editorRoot.querySelector("[data-layout-svg-layer]"),
+    );
+}
+
+function isHybridShell(editorRoot: HTMLElement): boolean {
+    return (
+        editorRoot.hasAttribute("data-mdx-editor-column") ||
+        editorRoot.querySelector("[data-hybrid-editor-host]") !== null
+    );
 }

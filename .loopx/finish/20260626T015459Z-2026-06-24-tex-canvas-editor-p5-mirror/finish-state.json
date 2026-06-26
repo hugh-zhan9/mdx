@@ -1,0 +1,227 @@
+{
+  "schema_version": 1,
+  "audit_id": "20260626T015459Z-2026-06-24-tex-canvas-editor-p5-mirror",
+  "slug": "2026-06-24-tex-canvas-editor-p5-mirror",
+  "status": "audited",
+  "updated_at": "2026-06-26T02:00:00.000Z",
+  "inputs": {
+    "scanned": [
+      "slug=2026-06-24-tex-canvas-editor-p5-mirror",
+      "worktree=/Users/zhangyukun/project/mdx",
+      "branch=main",
+      "base_branch=main",
+      "head=8d23b84",
+      "change_window_source=baseline",
+      "change_range=d514ac7..HEAD",
+      "committed_change_count=12",
+      "changed_files_count=24",
+      "uncommitted_change_count=17",
+      "cwd=/Users/zhangyukun/project/mdx",
+      "env.LOOPX_DEVELOPER=unknown"
+    ]
+  },
+  "audit": {
+    "branch": "main",
+    "base_branch": "main",
+    "worktree": "/Users/zhangyukun/project/mdx",
+    "head": "8d23b84",
+    "accepted_candidates": [],
+    "rejected_candidates": [],
+    "extraction_candidates": [],
+    "no_candidates_reason": "Reviewed the scoped P5 mirror/runtime replacement changes, final-review findings, and verification evidence; no separate durable memory/spec candidate beyond the committed behavior and tests was worth recording.",
+    "change_window": {
+      "source": "baseline",
+      "baseline_ref": "d514ac7fe7729bbaf62865e0e0aa98da1e6fde48",
+      "baseline_ref_short": "d514ac7",
+      "range": "d514ac7..HEAD",
+      "commit_count": 12,
+      "commits": [
+        {
+          "sha": "8d23b84315f71eb13bbff974672228128a6f1e60",
+          "subject": "test: add legacy hybrid view comparison harness"
+        },
+        {
+          "sha": "e6311da830917c0328d9fc4459620cd417db81f4",
+          "subject": "fix(p7-task-1): add mixed tex canvas fixture semantics"
+        },
+        {
+          "sha": "0c16e40eeeb58291b79363d41e43714a6700b6a8",
+          "subject": "fix(editor): share tex canvas fixture corpus"
+        },
+        {
+          "sha": "94ac22b2502ba5107c8cf4fbb0c2210addf8ef7c",
+          "subject": "test(editor): add tex-canvas fixture corpus"
+        },
+        {
+          "sha": "3873ff67eed1f83756cb6102956c768a10ca3bec",
+          "subject": "test: lock mermaid hybrid markdown truth"
+        },
+        {
+          "sha": "45ce98fa8c2fc5ccd647ece5ad724c953a60e6ff",
+          "subject": "fix(editor): scope mirror dedupe by block"
+        },
+        {
+          "sha": "4bb166d08557f6948f9ad7c128ececd9d20e2958",
+          "subject": "fix(mdx-editor): restore safe html complex block previews"
+        },
+        {
+          "sha": "46061e514eddaebefa3e1a938c359e9e54f7c60e",
+          "subject": "fix(editor): dedupe mirror text in visible search"
+        },
+        {
+          "sha": "eacc197cdaf8fb9da7fd0349c9d0d34be3dc6168",
+          "subject": "fix(mdx-editor): harden complex block overlays"
+        },
+        {
+          "sha": "c8d1b3b6929b7a5d15f7bb0b12cd02b9ea4b8830",
+          "subject": "feat(editor): mount light mirror with hybrid host"
+        },
+        {
+          "sha": "98c97aa4d8fbbd8ca595e91a8d0fd45054d5b8a6",
+          "subject": "feat(editor): bridge browser find through canvas mirror text"
+        },
+        {
+          "sha": "ecfc21f9ca22789a2925ded6e749894a15631d1c",
+          "subject": "feat(mdx-editor): add table and fallback complex block overlays"
+        }
+      ],
+      "changed_files": [
+        {
+          "status": "A",
+          "path": ".loopx/subagent-exec/p5-task-2-report.md"
+        },
+        {
+          "status": "A",
+          "path": ".loopx/subagent-exec/p5-task-3-report.md"
+        },
+        {
+          "status": "A",
+          "path": ".loopx/subagent-exec/p6-task-2-report.md"
+        },
+        {
+          "status": "A",
+          "path": ".loopx/subagent-exec/p7-task-1-report.md"
+        },
+        {
+          "status": "A",
+          "path": ".loopx/subagent-exec/p7-task-2-report.md"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/components/editor-pane-mermaid-regression.test.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/components/editor-pane.test.tsx"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/hooks/use-editor-find-replace.test.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/lib/visible-text-search.test.ts"
+        },
+        {
+          "status": "M",
+          "path": "features/editor/lib/visible-text-search.ts"
+        },
+        {
+          "status": "M",
+          "path": "packages/mdx-editor/react/canvas-svg-layer.tsx"
+        },
+        {
+          "status": "M",
+          "path": "packages/mdx-editor/react/complex-blocks/complex-blocks.test.tsx"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/complex-blocks/html-fallback-block.tsx"
+        },
+        {
+          "status": "M",
+          "path": "packages/mdx-editor/react/complex-blocks/index.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/complex-blocks/table-block.tsx"
+        },
+        {
+          "status": "M",
+          "path": "packages/mdx-editor/react/dom-text-run-layer.tsx"
+        },
+        {
+          "status": "M",
+          "path": "packages/mdx-editor/react/hybrid-editor-host.test.tsx"
+        },
+        {
+          "status": "M",
+          "path": "packages/mdx-editor/react/hybrid-editor-host.tsx"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/react/legacy-view-comparison.test.tsx"
+        },
+        {
+          "status": "M",
+          "path": "packages/mdx-editor/serializer/markdown-roundtrip-fixtures.test.ts"
+        },
+        {
+          "status": "M",
+          "path": "packages/mdx-editor/serializer/serialize-markdown.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/test/tex-canvas-fixtures.test.ts"
+        },
+        {
+          "status": "A",
+          "path": "packages/mdx-editor/test/tex-canvas-fixtures.ts"
+        },
+        {
+          "status": "A",
+          "path": "src-tauri/crates/layout-core/tests/golden_layout_tests.rs"
+        }
+      ],
+      "diff_stat": ".loopx/subagent-exec/p5-task-2-report.md           | 110 ++++++++\n .loopx/subagent-exec/p5-task-3-report.md           |  38 +++\n .loopx/subagent-exec/p6-task-2-report.md           |  83 ++++++\n .loopx/subagent-exec/p7-task-1-report.md           |  99 ++++++++\n .loopx/subagent-exec/p7-task-2-report.md           |  36 +++\n .../editor-pane-mermaid-regression.test.tsx        |  76 ++++++\n features/editor/components/editor-pane.test.tsx    | 116 ++++++++-\n .../editor/hooks/use-editor-find-replace.test.ts   |  74 ++++++\n features/editor/lib/visible-text-search.test.ts    |  78 +++++-\n features/editor/lib/visible-text-search.ts         | 146 +++++++++++\n packages/mdx-editor/react/canvas-svg-layer.tsx     |  37 +++\n .../react/complex-blocks/complex-blocks.test.tsx   | 139 ++++++++++\n .../react/complex-blocks/html-fallback-block.tsx   |  39 +++\n packages/mdx-editor/react/complex-blocks/index.ts  |   8 +\n .../react/complex-blocks/table-block.tsx           |  64 +++++\n packages/mdx-editor/react/dom-text-run-layer.tsx   |   1 +\n .../mdx-editor/react/hybrid-editor-host.test.tsx   |  52 ++++\n packages/mdx-editor/react/hybrid-editor-host.tsx   |   2 +\n .../react/legacy-view-comparison.test.tsx          | 281 +++++++++++++++++++++\n .../serializer/markdown-roundtrip-fixtures.test.ts |  22 ++\n .../serializer/serialize-markdown.test.ts          |  23 ++\n .../mdx-editor/test/tex-canvas-fixtures.test.ts    |  90 +++++++\n packages/mdx-editor/test/tex-canvas-fixtures.ts    | 102 ++++++++\n .../layout-core/tests/golden_layout_tests.rs       | 134 ++++++++++\n 24 files changed, 1848 insertions(+), 2 deletions(-)",
+      "uncommitted_status": [
+        "M .loopx/finish/baselines/latest.json",
+        " M features/editor/components/editor-pane.test.tsx",
+        " M features/editor/components/editor-pane.tsx",
+        " M features/editor/hooks/use-editor-find-replace.test.ts",
+        " M features/editor/hooks/use-editor-find-replace.ts",
+        " M features/editor/lib/visible-text-search.test.ts",
+        " M features/editor/lib/visible-text-search.ts",
+        " M packages/mdx-editor/react/dom-text-run-layer.tsx",
+        " M packages/mdx-editor/react/light-mirror.test.tsx",
+        " M packages/mdx-editor/react/light-mirror.tsx",
+        " M src-tauri/Cargo.lock",
+        "?? docs/loopx/plans/2026-06-24-tex-canvas-editor-p3-pdf.md",
+        "?? docs/loopx/plans/2026-06-24-tex-canvas-editor-p4-view.md",
+        "?? docs/loopx/plans/2026-06-24-tex-canvas-editor-p5-mirror.md",
+        "?? docs/loopx/plans/2026-06-24-tex-canvas-editor-p6-blocks.md",
+        "?? docs/loopx/plans/2026-06-24-tex-canvas-editor-p7-test.md",
+        "?? docs/loopx/plans/2026-06-24-tex-canvas-editor-p8-cleanup.md"
+      ],
+      "source_artifacts": []
+    },
+    "report_candidates": {
+      "accepted": [
+        {
+          "id": "audit-evidence",
+          "summary": "Finish audit evidence collected from the current worktree."
+        }
+      ],
+      "rejected": []
+    }
+  },
+  "choice": {
+    "action": null,
+    "status": null,
+    "summary": null,
+    "url": null,
+    "recorded_at": null,
+    "updated_at": null
+  },
+  "choice_history": []
+}

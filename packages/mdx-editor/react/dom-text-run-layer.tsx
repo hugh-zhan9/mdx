@@ -14,6 +14,8 @@ export function DomTextRunLayer({ lines }: DomTextRunLayerProps) {
                     <span
                         key={`${line.id}-${run.blockId}-${run.pmFrom}-${run.pmTo}-${index}`}
                         data-layout-block-id={run.blockId}
+                        data-layout-pm-from={run.pmFrom}
+                        data-layout-pm-to={run.pmTo}
                         style={{
                             position: "absolute",
                             left: run.left,
