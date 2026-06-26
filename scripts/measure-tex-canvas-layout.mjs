@@ -159,5 +159,14 @@ if (
     typeof process.argv[1] === "string" &&
     import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
-    await main();
+    try {
+        await main();
+    } catch (error) {
+        console.error(
+            error instanceof Error
+                ? `Error: ${error.message}`
+                : `Error: ${String(error)}`,
+        );
+        process.exitCode = 1;
+    }
 }

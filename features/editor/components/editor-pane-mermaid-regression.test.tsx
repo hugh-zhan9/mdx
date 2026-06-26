@@ -137,6 +137,8 @@ describe("editor pane mermaid rendering", () => {
             "[data-mdx-editor-root]",
         );
         expect(editorRoot).not.toBeNull();
+        expect(editorRoot?.getAttribute("aria-hidden")).toBe("true");
+        expect(editorRoot?.tabIndex).toBe(-1);
 
         const paragraph = editorRoot?.querySelector<HTMLElement>(
             "p[data-mdx-node-type='paragraph']",

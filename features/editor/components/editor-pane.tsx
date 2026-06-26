@@ -304,7 +304,7 @@ function CurrentProductEditorRoot() {
             data-mdx-editor-root
             aria-hidden="true"
             className="absolute inset-0 z-10 opacity-0 caret-transparent"
-            tabIndex={0}
+            tabIndex={-1}
         />
     );
 }
