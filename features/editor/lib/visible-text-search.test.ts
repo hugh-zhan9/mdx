@@ -99,6 +99,31 @@ describe("visible text search", () => {
         expect(index.text).not.toContain("GeneratedLabel");
     });
 
+    it("includes hidden mirror text for canvas blocks while excluding preview garbage", () => {
+        const root = editorRoot();
+        paragraph(root, "Visible body text");
+
+        const mirror = child(root, "div");
+        mirror.setAttribute("data-layout-light-mirror", "");
+        mirror.style.display = "none";
+        child(mirror, "div", "", "x squared");
+
+        const preview = child(root, "div", "mdx-mermaid-preview");
+        preview.setAttribute("data-mdx-mermaid-preview", "mermaid-2");
+        child(preview, "span", "", "GeneratedLabel");
+
+        const index = buildVisibleTextIndex(root);
+
+        expect(index.text).toContain("Visible body text");
+        expect(index.text).toContain("x squared");
+        expect(index.text).not.toContain("GeneratedLabel");
+        expect(
+            findVisibleTextMatches(index, "x squared", {
+                caseSensitive: false,
+            }),
+        ).toHaveLength(1);
+    });
+
     it("keeps user-authored advanced node text while excluding generated previews", () => {
         const root = editorRoot();
         const callout = child(root, "aside");
@@ -152,6 +177,24 @@ describe("visible text search", () => {
                 caseSensitive: false,
             }),
         ).toEqual([]);
+    });
+
+    it("does not duplicate ordinary DOM text runs from mirror content", () => {
+        const root = editorRoot();
+        paragraph(root, "Plain paragraph");
+
+        const mirror = child(root, "div");
+        mirror.setAttribute("data-layout-light-mirror", "");
+        mirror.style.display = "none";
+        child(mirror, "div", "", "x squared");
+
+        const index = buildVisibleTextIndex(root);
+
+        expect(
+            findVisibleTextMatches(index, "Plain paragraph", {
+                caseSensitive: false,
+            }),
+        ).toHaveLength(1);
     });
 
     it("excludes display-none nodes", () => {

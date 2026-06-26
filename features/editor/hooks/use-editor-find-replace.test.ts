@@ -161,6 +161,44 @@ describe("editor find replace visible text index", () => {
         root.remove();
     });
 
+    it("includes hidden mirror semantic text without duplicating ordinary DOM matches", () => {
+        const root = document.createElement("div");
+        document.body.append(root);
+
+        const paragraph = document.createElement("p");
+        paragraph.textContent = "Plain paragraph";
+        root.append(paragraph);
+
+        const mirror = document.createElement("div");
+        mirror.setAttribute("data-layout-light-mirror", "");
+        mirror.style.display = "none";
+        const mirrorBlock = document.createElement("div");
+        mirrorBlock.textContent = "x squared";
+        mirror.append(mirrorBlock);
+        root.append(mirror);
+
+        const preview = document.createElement("div");
+        preview.setAttribute("data-mdx-mermaid-preview", "mermaid-3");
+        preview.textContent = "GeneratedLabel";
+        root.append(preview);
+
+        const index = buildVisibleTextIndexForMarkdown(root, "# ignored fallback");
+
+        expect(
+            findVisibleTextMatches(index, "x squared", {
+                caseSensitive: false,
+            }),
+        ).toHaveLength(1);
+        expect(
+            findVisibleTextMatches(index, "Plain paragraph", {
+                caseSensitive: false,
+            }),
+        ).toHaveLength(1);
+        expect(index.text).not.toContain("GeneratedLabel");
+
+        root.remove();
+    });
+
     it("invalidates hook matches when visibility revision changes", async () => {
         const host = document.createElement("div");
         const editorRoot = document.createElement("div");

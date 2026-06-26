@@ -181,6 +181,10 @@ function segmentAt(
 }
 
 function shouldSkipElement(element: Element): boolean {
+    if (element.getAttribute("data-layout-light-mirror") !== null) {
+        return false;
+    }
+
     if (isHtmlElement(element)) {
         const style = element.style;
         const computedStyle = getComputedStyleForElement(element);
