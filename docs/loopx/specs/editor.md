@@ -24,7 +24,7 @@ The self-owned Markdown editor is composed through `createMdxEditorKernel(...)` 
 
 The current product editor surface is the hybrid DOM text-run plus Canvas/SVG host.
 
-Legacy DOM visible editor code is not part of the current product surface, and public `packages/mdx-editor/react` exports must not continue exposing `MdxEditorView` once deletion lands.
+Legacy DOM visible editor code is not part of the current product surface, and public `packages/mdx-editor/react` exports must not continue exposing the removed visible editor component once deletion lands.
 
 Syntax families that have been extracted into independent plugins own their schema contribution, parser contribution, serializer, NodeView, clipboard behavior, and focused tests. The first extracted syntax families are fallback/source blocks, HTML, footnotes, code fences/frontmatter, and Mermaid.
 

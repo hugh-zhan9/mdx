@@ -3,8 +3,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createRoot } from "react-dom/client";
 import { act } from "react";
+import { useEffect, useRef } from "react";
+import { useMdxEditor } from "../../../packages/mdx-editor";
 import {
-    DOMD,
     DOMDProvider,
     useEditor,
     useEditorStoreApi,
@@ -18,6 +19,21 @@ import {
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
     .IS_REACT_ACT_ENVIRONMENT = true;
+
+function EditorRootFixture() {
+    const { registerRoot } = useMdxEditor();
+    const rootRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        registerRoot(rootRef.current);
+
+        return () => {
+            registerRoot(null);
+        };
+    }, [registerRoot]);
+
+    return <div ref={rootRef} data-mdx-editor-root tabIndex={0} />;
+}
 
 function Probe() {
     const editor = useEditor();
@@ -68,12 +84,12 @@ describe("editor kernel adapter", () => {
         delete window.__probeSelection;
     });
 
-    it("renders the editor root contract through the legacy adapter surface", async () => {
+    it("renders the editor root contract through the adapter surface", async () => {
         await act(async () => {
             root.render(
                 <DOMDProvider editable initMd="Hello">
                     <Probe />
-                    <DOMD />
+                    <EditorRootFixture />
                 </DOMDProvider>,
             );
         });
@@ -97,7 +113,7 @@ describe("editor kernel adapter", () => {
                 <DOMDProvider
                     initMd={"| A | B |\n|---|---|\n| 1 | 2 |\n\n- [x] Done\n"}
                 >
-                    <DOMD />
+                    <EditorRootFixture />
                     <AdapterProbe />
                 </DOMDProvider>,
             );
@@ -119,7 +135,7 @@ describe("editor kernel adapter", () => {
                     initMd={'![Diagram](.assets/a.png)\n'}
                     imageLoader={async (src) => `loaded:${src}`}
                 >
-                    <DOMD />
+                    <EditorRootFixture />
                 </DOMDProvider>,
             );
         });

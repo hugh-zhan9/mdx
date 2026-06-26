@@ -2,8 +2,9 @@
 
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { useEffect, useRef } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MdxEditorProvider, MdxEditorView } from "./index";
+import { MdxEditorProvider, useMdxEditor } from "./index";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
     .IS_REACT_ACT_ENVIRONMENT = true;
@@ -15,6 +16,21 @@ vi.mock("./mermaid-renderer", () => ({
         request: Parameters<typeof renderMermaidDiagram>[0],
     ) => renderMermaidDiagram(request),
 }));
+
+function EditorRootFixture() {
+    const { registerRoot } = useMdxEditor();
+    const rootRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        registerRoot(rootRef.current);
+
+        return () => {
+            registerRoot(null);
+        };
+    }, [registerRoot]);
+
+    return <div ref={rootRef} data-mdx-editor-root tabIndex={0} />;
+}
 
 describe("mdx editor browser behaviors", () => {
     beforeEach(() => {
@@ -34,7 +50,7 @@ describe("mdx editor browser behaviors", () => {
             await act(async () => {
                 root.render(
                     <MdxEditorProvider initialMarkdown={"# Title\n\nA **bold** link.\n"}>
-                        <MdxEditorView />
+                        <EditorRootFixture />
                     </MdxEditorProvider>,
                 );
             });
@@ -61,7 +77,7 @@ describe("mdx editor browser behaviors", () => {
                     <MdxEditorProvider
                         initialMarkdown={"```mermaid\ngraph TD\n  A --> B\n```\n"}
                     >
-                        <MdxEditorView />
+                        <EditorRootFixture />
                     </MdxEditorProvider>,
                 );
             });
@@ -117,7 +133,7 @@ describe("mdx editor browser behaviors", () => {
                             ].join("\n")
                         }
                     >
-                        <MdxEditorView />
+                        <EditorRootFixture />
                     </MdxEditorProvider>,
                 );
             });
@@ -175,7 +191,7 @@ describe("mdx editor browser behaviors", () => {
                             ].join("\n")
                         }
                     >
-                        <MdxEditorView />
+                        <EditorRootFixture />
                     </MdxEditorProvider>,
                 );
             });

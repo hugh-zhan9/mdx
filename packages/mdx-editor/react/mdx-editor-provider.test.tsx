@@ -2,13 +2,29 @@
 
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { useEffect, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMdxEditorKernel } from "../kernel";
 import { defaultMarkdownSyntax } from "../syntax/default";
-import { MdxEditorProvider, MdxEditorView, useMdxEditor } from "./index";
+import { MdxEditorProvider, useMdxEditor } from "./index";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
     .IS_REACT_ACT_ENVIRONMENT = true;
+
+function EditorRootFixture() {
+    const editor = useMdxEditor();
+    const rootRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        editor.registerRoot(rootRef.current);
+
+        return () => {
+            editor.registerRoot(null);
+        };
+    }, [editor]);
+
+    return <div ref={rootRef} data-mdx-editor-root tabIndex={0} />;
+}
 
 function Probe() {
     const editor = useMdxEditor();
@@ -96,14 +112,13 @@ describe("MdxEditorProvider", () => {
                     initialMarkdown="Hello"
                     onMarkdownChange={onMarkdownChange}
                 >
-                    <MdxEditorView />
+                    <EditorRootFixture />
                     <Probe />
                 </MdxEditorProvider>,
             );
         });
 
         expect(host.querySelector("[data-mdx-editor-root]")).not.toBeNull();
-        expect(host.querySelector("[data-mdx-editor-view]")).not.toBeNull();
 
         await act(async () => {
             host
@@ -131,7 +146,7 @@ describe("MdxEditorProvider", () => {
         await act(async () => {
             root.render(
                 <MdxEditorProvider initialMarkdown={"# Title\n\n---\n\nBody.\n"}>
-                    <MdxEditorView />
+                    <EditorRootFixture />
                 </MdxEditorProvider>,
             );
         });
@@ -160,7 +175,7 @@ describe("MdxEditorProvider", () => {
                     kernel={kernel}
                     onMarkdownChange={onMarkdownChange}
                 >
-                    <MdxEditorView />
+                    <EditorRootFixture />
                 </MdxEditorProvider>,
             );
         });
@@ -185,7 +200,7 @@ describe("MdxEditorProvider", () => {
                     initialMarkdown={'![Kernel](.assets/a.png)\n'}
                     kernel={kernel}
                 >
-                    <MdxEditorView />
+                    <EditorRootFixture />
                 </MdxEditorProvider>,
             );
         });
@@ -216,7 +231,7 @@ describe("MdxEditorProvider", () => {
                     imageLoader={propImageLoader}
                     kernel={kernel}
                 >
-                    <MdxEditorView />
+                    <EditorRootFixture />
                 </MdxEditorProvider>,
             );
         });
@@ -238,7 +253,7 @@ describe("MdxEditorProvider", () => {
                         "```ts\nconst value = 1;\n```\n\n```inline sample```\n"
                     }
                 >
-                    <MdxEditorView />
+                    <EditorRootFixture />
                 </MdxEditorProvider>,
             );
         });
@@ -264,7 +279,7 @@ describe("MdxEditorProvider", () => {
                         ";\n",
                     ]}
                 >
-                    <MdxEditorView />
+                    <EditorRootFixture />
                 </MdxEditorProvider>,
             );
         });
@@ -296,7 +311,7 @@ describe("MdxEditorProvider", () => {
                         ].join("\n")
                     }
                 >
-                    <MdxEditorView />
+                    <EditorRootFixture />
                 </MdxEditorProvider>,
             );
         });
@@ -326,7 +341,7 @@ describe("MdxEditorProvider", () => {
                     initialMarkdown={"A $x$ B\n"}
                     onMarkdownChange={onMarkdownChange}
                 >
-                    <MdxEditorView />
+                    <EditorRootFixture />
                     <Probe />
                 </MdxEditorProvider>,
             );
@@ -350,7 +365,7 @@ describe("MdxEditorProvider", () => {
                     initialMarkdown="[百度](http://baidu.com)"
                     onMarkdownChange={onMarkdownChange}
                 >
-                    <MdxEditorView />
+                    <EditorRootFixture />
                     <Probe />
                 </MdxEditorProvider>,
             );
@@ -378,7 +393,7 @@ describe("MdxEditorProvider", () => {
                     initialMarkdown={"A [^n] B\n"}
                     onMarkdownChange={onMarkdownChange}
                 >
-                    <MdxEditorView />
+                    <EditorRootFixture />
                     <Probe />
                 </MdxEditorProvider>,
             );
@@ -403,7 +418,7 @@ describe("MdxEditorProvider", () => {
                     imageLoader={async (src) => `resolved:${src}`}
                     onMarkdownChange={(markdown) => onMarkdownChange(markdown)}
                 >
-                    <MdxEditorView />
+                    <EditorRootFixture />
                 </MdxEditorProvider>
             );
         }
@@ -434,7 +449,7 @@ describe("MdxEditorProvider", () => {
                     initialMarkdown={"# Title\n\nBody\n"}
                     onMarkdownChange={onMarkdownChange}
                 >
-                    <MdxEditorView />
+                    <EditorRootFixture />
                 </MdxEditorProvider>,
             );
         });
@@ -464,7 +479,7 @@ describe("MdxEditorProvider", () => {
                 <MdxEditorProvider
                     initialMarkdown={"| A | B |\n|---|---|\n| A \\| B | C |\n"}
                 >
-                    <MdxEditorView />
+                    <EditorRootFixture />
                 </MdxEditorProvider>,
             );
         });
@@ -487,7 +502,7 @@ describe("MdxEditorProvider", () => {
                     initialMarkdown={markdown}
                     onMarkdownChange={onMarkdownChange}
                 >
-                    <MdxEditorView />
+                    <EditorRootFixture />
                 </MdxEditorProvider>,
             );
         });
@@ -551,7 +566,7 @@ describe("MdxEditorProvider", () => {
         await act(async () => {
             root.render(
                 <MdxEditorProvider initialMarkdown={markdown}>
-                    <MdxEditorView />
+                    <EditorRootFixture />
                 </MdxEditorProvider>,
             );
         });
@@ -584,7 +599,7 @@ describe("MdxEditorProvider", () => {
                     initialMarkdown={markdown}
                     onMarkdownChange={onMarkdownChange}
                 >
-                    <MdxEditorView />
+                    <EditorRootFixture />
                     <Probe />
                 </MdxEditorProvider>,
             );
@@ -634,7 +649,7 @@ describe("MdxEditorProvider", () => {
                     initialMarkdown={'![Diagram](.assets/a.png)\n'}
                     imageLoader={imageLoader}
                 >
-                    <MdxEditorView />
+                    <EditorRootFixture />
                 </MdxEditorProvider>,
             );
         });
@@ -654,7 +669,7 @@ describe("MdxEditorProvider", () => {
         await act(async () => {
             root.render(
                 <MdxEditorProvider initialMarkdown={'![Diagram](.assets/a.png)\n'}>
-                    <MdxEditorView />
+                    <EditorRootFixture />
                 </MdxEditorProvider>,
             );
         });
@@ -670,7 +685,7 @@ describe("MdxEditorProvider", () => {
                     initialMarkdown={'![Diagram](.assets/a.png)\n'}
                     imageLoader={imageLoader}
                 >
-                    <MdxEditorView />
+                    <EditorRootFixture />
                 </MdxEditorProvider>,
             );
         });
@@ -696,7 +711,7 @@ describe("MdxEditorProvider", () => {
                     initialMarkdown={'![Diagram](.assets/a.png)\n'}
                     imageLoader={imageLoader}
                 >
-                    <MdxEditorView />
+                    <EditorRootFixture />
                     <Probe />
                 </MdxEditorProvider>,
             );
@@ -739,7 +754,7 @@ describe("MdxEditorProvider", () => {
                     initialMarkdown={'![Diagram](.assets/a.png)\n'}
                     imageLoader={firstLoader}
                 >
-                    <MdxEditorView />
+                    <EditorRootFixture />
                 </MdxEditorProvider>,
             );
         });
@@ -757,7 +772,7 @@ describe("MdxEditorProvider", () => {
                     initialMarkdown={'![Diagram](.assets/a.png)\n'}
                     imageLoader={secondLoader}
                 >
-                    <MdxEditorView />
+                    <EditorRootFixture />
                 </MdxEditorProvider>,
             );
         });
@@ -781,7 +796,7 @@ describe("MdxEditorProvider", () => {
                     initialMarkdown=""
                     placeholder="Start writing"
                 >
-                    <MdxEditorView />
+                    <EditorRootFixture />
                 </MdxEditorProvider>,
             );
         });
@@ -803,7 +818,7 @@ describe("MdxEditorProvider", () => {
                     initialMarkdown="Hello"
                     onMarkdownChange={onMarkdownChange}
                 >
-                    <MdxEditorView />
+                    <EditorRootFixture />
                     <Probe />
                     <div data-testid="snapshot-target" />
                 </MdxEditorProvider>,

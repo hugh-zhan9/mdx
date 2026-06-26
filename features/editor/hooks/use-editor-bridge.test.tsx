@@ -2,12 +2,29 @@
 
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { useEffect, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DOMD, DOMDProvider } from "../components/editor-kernel-adapter";
+import { useMdxEditor } from "../../../packages/mdx-editor";
+import { DOMDProvider } from "../components/editor-kernel-adapter";
 import { useEditorBridge } from "./use-editor-bridge";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
     .IS_REACT_ACT_ENVIRONMENT = true;
+
+function EditorRootFixture() {
+    const { registerRoot } = useMdxEditor();
+    const rootRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        registerRoot(rootRef.current);
+
+        return () => {
+            registerRoot(null);
+        };
+    }, [registerRoot]);
+
+    return <div ref={rootRef} data-mdx-editor-root tabIndex={0} />;
+}
 
 describe("useEditorBridge", () => {
     let host: HTMLDivElement;
@@ -36,7 +53,7 @@ describe("useEditorBridge", () => {
 
             return (
                 <>
-                    <DOMD />
+                    <EditorRootFixture />
                     <button
                         type="button"
                         data-testid="insert"
