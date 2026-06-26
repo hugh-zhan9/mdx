@@ -69,3 +69,31 @@
 ## Current concerns
 
 - The Rust test extracts JSON from a TypeScript source export rather than from a dedicated `.json` artifact. This satisfies the shared-corpus requirement within the allowed file set, but it remains format-coupled to that export wrapper.
+
+## Final fix loop 2026-06-26
+
+- Added a sixth shared fixture, `mixed-layout`, on top of the required five base ids instead of replacing any of them.
+- Kept Rust on the TS-owned corpus by continuing to deserialize `TEX_CANVAS_FIXTURE_CORPUS_JSON` from `packages/mdx-editor/test/tex-canvas-fixtures.ts`.
+- Made `mixed-layout` a real mixed markdown document combining:
+  - paragraph content
+  - inline math
+  - mermaid block
+  - raw HTML fallback block
+  - table block
+- Strengthened `html-fallback` so `mirrorText` now preserves readable/copyable source-like fallback text:
+  - from `HTML`
+  - to `<div data-x="1"> <span>HTML</span> </div>`
+- Tightened TS checks to pin:
+  - inline math source and rendered mirror semantics for `math-inline`
+  - mixed fixture composition and inline math signal
+  - source-preserving mirror semantics for `html-fallback`
+- Tightened Rust checks to pin the same reviewed semantics against the same shared corpus.
+
+## Final verification
+
+- Passed `npm test -- packages/mdx-editor/test/tex-canvas-fixtures.test.ts`
+- Passed `cargo test -p layout-core --test golden_layout_tests`
+
+## Final concerns
+
+- The corpus is still embedded as JSON inside a TypeScript source file because the allowed-file scope does not permit factoring it into a dedicated shared artifact. The data is shared across TS/Rust, but the Rust extractor remains coupled to the export wrapper shape.

@@ -49,6 +49,7 @@ fn golden_fixture_scaffold_covers_required_block_families() {
     assert!(fixture_ids.contains(&"table-basic"));
     assert!(fixture_ids.contains(&"mermaid-basic"));
     assert!(fixture_ids.contains(&"html-fallback"));
+    assert!(fixture_ids.contains(&"mixed-layout"));
 
     let kind_names: Vec<_> = fixtures
         .iter()
@@ -109,5 +110,25 @@ fn golden_fixture_scaffold_pins_reviewed_semantics() {
     );
     assert_eq!(fallback.expected.block_kinds, vec!["fallback"]);
     assert_eq!(fallback.expected.canvas_block_kinds, vec!["fallback"]);
-    assert_eq!(fallback.expected.mirror_text, "HTML");
+    assert_eq!(
+        fallback.expected.mirror_text,
+        "<div data-x=\"1\"> <span>HTML</span> </div>"
+    );
+
+    let mixed = fixture_by_id(&fixtures, "mixed-layout");
+    assert_eq!(
+        mixed.expected.block_kinds,
+        vec!["paragraph", "mermaid", "fallback", "table"]
+    );
+    assert_eq!(
+        mixed.expected.canvas_block_kinds,
+        vec!["mermaid", "fallback", "table"]
+    );
+    assert_eq!(mixed.expected.has_math_inline, Some(true));
+    assert!(mixed.markdown.contains("$a+b$"));
+    assert!(
+        mixed.expected
+            .mirror_text
+            .contains("<div class=\"unsupported\">raw html block</div>")
+    );
 }

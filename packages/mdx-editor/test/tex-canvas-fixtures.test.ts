@@ -16,6 +16,7 @@ describe("texCanvasFixtures", () => {
                 "table-basic",
                 "mermaid-basic",
                 "html-fallback",
+                "mixed-layout",
             ]),
         );
 
@@ -61,15 +62,29 @@ describe("texCanvasFixtures", () => {
             blockKinds: ["paragraph"],
             canvasBlockKinds: [],
             hasMathInline: true,
+            mirrorText: "公式 x^2 + y^2 = z^2 跟正文混排。",
         });
+        expect(byId.get("math-inline")?.markdown).toContain("$x^2 + y^2 = z^2$");
 
         expect(byId.get("html-fallback")).toMatchObject({
             markdown: "<div data-x=\"1\">\n  <span>HTML</span>\n</div>\n",
             expected: {
                 blockKinds: ["fallback"],
                 canvasBlockKinds: ["fallback"],
-                mirrorText: "HTML",
+                mirrorText: "<div data-x=\"1\"> <span>HTML</span> </div>",
             },
         });
+
+        expect(byId.get("mixed-layout")).toMatchObject({
+            expected: {
+                blockKinds: ["paragraph", "mermaid", "fallback", "table"],
+                canvasBlockKinds: ["mermaid", "fallback", "table"],
+                hasMathInline: true,
+            },
+        });
+        expect(byId.get("mixed-layout")?.markdown).toContain("$a+b$");
+        expect(byId.get("mixed-layout")?.expected.mirrorText).toContain(
+            "<div class=\"unsupported\">raw html block</div>",
+        );
     });
 });

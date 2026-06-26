@@ -72,7 +72,25 @@ export const TEX_CANVAS_FIXTURE_CORPUS_JSON = String.raw`[
       "blockKinds": ["fallback"],
       "canvasBlockKinds": ["fallback"],
       "lineSnippets": ["<div data-x=\"1\">", "<span>HTML</span>"],
-      "mirrorText": "HTML"
+      "mirrorText": "<div data-x=\"1\"> <span>HTML</span> </div>"
+    }
+  },
+  {
+    "id": "mixed-layout",
+    "markdown": "开场段落里有行内公式 $a+b$，后面接一个流程图。\n\n\u0060\u0060\u0060mermaid\ngraph LR\n  Start --> Stop\n\u0060\u0060\u0060\n\n<div class=\"unsupported\">raw html block</div>\n\n| 列 A | 列 B |\n| --- | --- |\n| 左 | 右 |\n",
+    "expected": {
+      "blockKinds": ["paragraph", "mermaid", "fallback", "table"],
+      "canvasBlockKinds": ["mermaid", "fallback", "table"],
+      "lineSnippets": [
+        "开场段落里有行内公式 ",
+        "graph LR",
+        "<div class=\"unsupported\">raw html block</div>",
+        "列 A",
+        "左",
+        "右"
+      ],
+      "mirrorText": "开场段落里有行内公式 a+b，后面接一个流程图。 graph LR Start --> Stop <div class=\"unsupported\">raw html block</div> 列 A 列 B 左 右",
+      "hasMathInline": true
     }
   }
 ]`;
