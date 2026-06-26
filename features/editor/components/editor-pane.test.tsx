@@ -330,7 +330,6 @@ describe("editor pane image paste", () => {
         expect(host.querySelector("[data-mdx-editor-shell]")).not.toBeNull();
         expect(host.querySelector("[data-mdx-editor-column]")).not.toBeNull();
         expect(host.querySelector("[data-hybrid-editor-host]")).not.toBeNull();
-        expect(host.querySelector("[data-legacy-editor-fixture]")).toBeNull();
         expect(host.querySelector("[data-mdx-editor-root]")).toBeNull();
     });
 
@@ -438,7 +437,7 @@ describe("editor pane image paste", () => {
         expect(setData).toHaveBeenCalledWith("text/plain", "x^2");
     });
 
-    it("keeps hybrid mirror markdown offsets available without the legacy fixture root", async () => {
+    it("keeps hybrid mirror markdown offsets available without a mounted editor root", async () => {
         bridgeMocks.currentMarkdown = "Before $x^2$ after";
         const tab = {
             tabId: "tab-1",
@@ -476,7 +475,44 @@ describe("editor pane image paste", () => {
             anchor: 8,
             head: 11,
         });
-        expect(host.querySelector("[data-legacy-editor-fixture]")).toBeNull();
+    });
+
+    it("renders mermaid source semantics through the hybrid snapshot path", async () => {
+        bridgeMocks.currentMarkdown = "```mermaid\ngraph TD\n  A --> B\n```\n";
+        const tab = {
+            tabId: "tab-1",
+            path: "/tmp/note.md",
+            title: "note.md",
+            dirty: false,
+            needsRenameOnFirstSave: false,
+            markdown: bridgeMocks.currentMarkdown,
+            baseFingerprint: "base",
+        };
+
+        await act(async () => {
+            root.render(
+                <EditorPane
+                    rootPath="/tmp"
+                    tab={tab}
+                    onMarkdownChange={vi.fn()}
+                />,
+            );
+        });
+
+        const hybridRoot = host.querySelector("[data-hybrid-editor-host]");
+        const hybridIndex = buildVisibleTextIndex(hybridRoot!);
+        const [graphMatch] = findVisibleTextMatches(hybridIndex, "graph TD", {
+            caseSensitive: true,
+        });
+
+        expect(hybridRoot).not.toBeNull();
+        expect(hybridRoot?.textContent).toContain("graph TD");
+        expect(hybridRoot?.textContent).toContain("A --> B");
+        expect(hybridRoot?.textContent).not.toContain("```mermaid");
+        expect(graphMatch).toBeDefined();
+        expect(host.querySelector("[data-mirror-block-id]")?.textContent).toContain(
+            "graph TD",
+        );
     });
 
     it("rebuilds find ranges when editor text mounts after markdown fallback", async () => {

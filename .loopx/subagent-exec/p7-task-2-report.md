@@ -54,3 +54,34 @@
 ## Residual Concern
 
 - The real legacy DOMD mermaid visible text excludes the opening fence marker, while the current hybrid visible text still includes `````mermaid````` before the source lines. The fix-loop tests now capture this with a real-path oracle instead of papering it over with a synthetic fixture.
+
+## Expanded Scope Fix
+
+- Scope expanded to allow the minimum product-path changes needed for Task 2.
+- `packages/mdx-editor/layout-ir/normalizer.ts`
+  - added minimal mermaid fence recognition using existing `isMermaidFenceLanguage(...)`
+  - normalizes mermaid fences into `kind: "mermaid"` blocks whose source range starts at the code body, not the opening fence
+- `features/editor/components/editor-pane.tsx`
+  - exported the real `snapshotFromMarkdown(...)` helper so comparison tests consume the product snapshot path directly
+  - taught the snapshot path to render mermaid blocks as hybrid complex-block overlays plus light-mirror semantic text, instead of plain paragraph text runs
+  - aligned hybrid mermaid mirror text with real legacy visible-text semantics, including the trailing newline visible in the old path
+- `packages/mdx-editor/react/canvas-svg-layer.tsx`
+  - hid mermaid overlay text from visible-text indexing so semantic text comes from the mirror only and is not double-counted
+- `packages/mdx-editor/react/legacy-view-comparison.test.tsx`
+  - removed synthetic legacy-root construction entirely
+  - comparison harness now mounts the real legacy provider path and a real registered legacy root contract div, then compares that real old DOM path against the real hybrid snapshot path
+  - paragraph and mermaid cases now assert visible-text semantic alignment rather than tolerating divergence
+- `features/editor/components/editor-pane.test.tsx`
+  - kept integration scope narrow: hybrid shell/snapshot smoke and hybrid markdown-offset coverage, without blessing legacy/hybrid divergence
+- `packages/mdx-editor/layout-ir/normalizer.test.ts`
+  - added a focused mermaid normalization regression
+
+## Expanded Scope Result
+
+- Command: `npm test -- packages/mdx-editor/layout-ir/normalizer.test.ts packages/mdx-editor/react/legacy-view-comparison.test.tsx features/editor/components/editor-pane.test.tsx`
+- Result: passed
+- Summary: `3` files passed, `23` tests passed
+
+## Remaining Concern
+
+- The real legacy mermaid comparison still emits React `flushSync` warnings during mount/unmount in jsdom, but the semantic assertions now pass and the warnings did not fail the test run.

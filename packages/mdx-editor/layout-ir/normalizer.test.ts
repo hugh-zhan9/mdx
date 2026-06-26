@@ -71,4 +71,29 @@ describe("normalizeLayoutDocument", () => {
             },
         ]);
     });
+
+    it("normalizes mermaid fences into mermaid blocks without fence markers", () => {
+        const markdown = "```mermaid\ngraph TD\n  A --> B\n```\n";
+        const document = normalizeLayoutDocument(markdown, {
+            width: 800,
+            height: 600,
+            devicePixelRatio: 1,
+        });
+
+        expect(document.blocks).toHaveLength(1);
+        expect(document.blocks[0]).toMatchObject({
+            kind: "mermaid",
+            pmFrom: markdown.indexOf("graph TD"),
+            pmTo: markdown.indexOf("graph TD") + "graph TD\n  A --> B".length,
+        });
+        expect(document.blocks[0]?.inlines).toEqual([
+            {
+                text: "graph TD\n  A --> B",
+                kind: "text",
+                from: 0,
+                to: "graph TD\n  A --> B".length,
+                style: { bold: false, italic: false, code: false },
+            },
+        ]);
+    });
 });

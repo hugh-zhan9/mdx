@@ -39,7 +39,7 @@ const EMPTY_LAYOUT_SNAPSHOT: LayoutSnapshot = {
     mirrorBlocks: [],
 };
 
-function snapshotFromMarkdown(markdown: string): LayoutSnapshot {
+export function snapshotFromMarkdown(markdown: string): LayoutSnapshot {
     const document = normalizeLayoutDocument(markdown, {
         width: 800,
         height: 600,
@@ -50,7 +50,51 @@ function snapshotFromMarkdown(markdown: string): LayoutSnapshot {
     const mirrorBlocks: LayoutSnapshot["mirrorBlocks"] = [];
     const lines = document.blocks.map((block, index) => {
         let left = 0;
-        const textRuns = block.inlines.flatMap((inline, inlineIndex) => {
+        if (block.kind === "mermaid") {
+            const code = block.inlines.map((inline) => inline.text).join("");
+            const semanticCode = `${code}\n`;
+            const width = Math.max(
+                Math.max(...code.split("\n").map((line) => line.length), 1) *
+                    (block.style.fontSize * 0.6),
+                1,
+            );
+            const lineCount = Math.max(code.split("\n").length, 1);
+            const height =
+                block.style.fontSize * block.style.lineHeight * lineCount;
+
+            canvasDrawOps.push({
+                blockId: block.blockId,
+                kind: "mermaid",
+                x: 0,
+                y,
+                width,
+                height,
+                data: {
+                    code,
+                    ariaHiddenText: true,
+                },
+            });
+            mirrorBlocks.push({
+                blockId: block.blockId,
+                pmFrom: block.pmFrom,
+                pmTo: block.pmTo,
+                semanticText: semanticCode,
+                ariaLabel: `mermaid ${code}`,
+            });
+
+            const line = {
+                id: `line-${index}`,
+                blockId: block.blockId,
+                y,
+                baseline: y + block.style.fontSize,
+                height,
+                textRuns: [],
+            };
+            y += line.height;
+            return line;
+        }
+
+        const textRuns = block.inlines.flatMap((inline) => {
             const width = Math.max(
                 inline.text.length * (block.style.fontSize * 0.6),
                 1,

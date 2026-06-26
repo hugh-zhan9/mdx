@@ -56,6 +56,7 @@ export function CanvasSvgLayer({
                     <div
                         key={`${op.blockId}-${op.kind}-${op.x}-${op.y}`}
                         data-layout-complex-block-overlay={op.kind}
+                        aria-hidden={op.kind === "mermaid" ? "true" : undefined}
                         className="absolute pointer-events-auto"
                         style={{
                             left: op.x,

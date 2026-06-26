@@ -4,6 +4,7 @@ import type {
     LayoutInlineRun,
     LayoutViewport,
 } from "./types";
+import { isMermaidFenceLanguage } from "../../../features/editor/lib/mermaid-code-fences";
 
 const DEFAULT_FONT_FAMILY = "Inter";
 const DEFAULT_FONT_SIZE = 14;
@@ -35,18 +36,49 @@ export function normalizeLayoutDocument(
 
 function createLayoutBlocks(markdown: string): LayoutBlock[] {
     const blocks: LayoutBlock[] = [];
-    const blockMatcher = /\S[\s\S]*?(?=\n{2,}|\s*$)/gu;
+    let index = 0;
+    let cursor = 0;
 
-    for (const [index, match] of Array.from(
-        markdown.matchAll(blockMatcher),
-    ).entries()) {
+    while (cursor < markdown.length) {
+        const blankLines = markdown
+            .slice(cursor)
+            .match(/^(?:\r?\n)+/u)?.[0];
+        if (blankLines) {
+            cursor += blankLines.length;
+            continue;
+        }
+
+        const mermaidBlock = readMermaidBlock(markdown, cursor);
+        if (mermaidBlock) {
+            blocks.push(
+                createLayoutBlock({
+                    index,
+                    content: mermaidBlock.code,
+                    kind: "mermaid",
+                    pmFrom: mermaidBlock.codeStart,
+                }),
+            );
+            cursor = mermaidBlock.nextCursor;
+            index += 1;
+            continue;
+        }
+
+        const blockMatch = markdown
+            .slice(cursor)
+            .match(/\S[\s\S]*?(?=(?:\r?\n){2,}|\s*$)/u)?.[0];
+        if (!blockMatch) {
+            break;
+        }
+
         blocks.push(
             createLayoutBlock({
                 index,
-                content: match[0].replace(/\n+$/u, ""),
-                pmFrom: match.index ?? 0,
+                content: blockMatch.replace(/(?:\r?\n)+$/u, ""),
+                pmFrom: cursor,
             }),
         );
+        cursor += blockMatch.length;
+        index += 1;
     }
 
     return blocks;
@@ -55,32 +87,38 @@ function createLayoutBlocks(markdown: string): LayoutBlock[] {
 function createLayoutBlock({
     content,
     index,
+    kind,
     pmFrom,
 }: {
     content: string;
     index: number;
+    kind?: LayoutBlock["kind"];
     pmFrom: number;
 }): LayoutBlock {
-    const isHeading = content.startsWith("#");
+    const isHeading = kind === undefined && content.startsWith("#");
     const headingText = content.replace(/^#+\s*/u, "");
+    const blockKind = kind ?? (isHeading ? "heading" : "paragraph");
 
     return {
         blockId: `block-${index}`,
-        kind: isHeading ? "heading" : "paragraph",
+        kind: blockKind,
         pmFrom,
         pmTo: pmFrom + content.length,
         depth: 0,
-        inlines: content.includes(INLINE_MATH_TOKEN)
-            ? createMathInlineRuns(content)
-            : [
-                  {
-                      text: headingText,
-                      kind: "text",
-                      from: 0,
-                      to: headingText.length,
-                      style: { ...INLINE_STYLE },
-                  },
-              ],
+        inlines:
+            blockKind === "mermaid"
+                ? [createTextRun(content, 0)]
+                : content.includes(INLINE_MATH_TOKEN)
+                  ? createMathInlineRuns(content)
+                  : [
+                        {
+                            text: headingText,
+                            kind: "text",
+                            from: 0,
+                            to: headingText.length,
+                            style: { ...INLINE_STYLE },
+                        },
+                    ],
         style: {
             fontSize: isHeading ? HEADING_FONT_SIZE : DEFAULT_FONT_SIZE,
             fontFamily: DEFAULT_FONT_FAMILY,
@@ -134,4 +172,64 @@ function createTextRun(text: string, from: number): LayoutInlineRun {
         to: from + text.length,
         style: { ...INLINE_STYLE },
     };
+}
+
+function readMermaidBlock(markdown: string, cursor: number) {
+    const openingLine = readLine(markdown, cursor);
+    const openingMatch = openingLine.text.match(/^(`{3,})([^\n`]*)$/u);
+    if (!openingMatch || !isMermaidFenceLanguage(openingMatch[2] ?? "")) {
+        return null;
+    }
+
+    const fenceLength = openingMatch[1]?.length ?? 0;
+    let searchCursor = openingLine.next;
+
+    while (searchCursor <= markdown.length) {
+        const line = readLine(markdown, searchCursor);
+        if (isClosingFence(line.text, fenceLength)) {
+            const rawCode = markdown.slice(openingLine.next, line.start);
+            const code = rawCode.replace(/\r?\n$/u, "");
+
+            return {
+                code,
+                codeStart: openingLine.next,
+                nextCursor: line.next,
+            };
+        }
+
+        if (line.next <= searchCursor) {
+            break;
+        }
+
+        searchCursor = line.next;
+    }
+
+    return null;
+}
+
+function readLine(markdown: string, start: number) {
+    const newlineIndex = markdown.indexOf("\n", start);
+    if (newlineIndex === -1) {
+        return {
+            text: markdown.slice(start),
+            start,
+            next: markdown.length,
+        };
+    }
+
+    const end =
+        newlineIndex > start && markdown[newlineIndex - 1] === "\r"
+            ? newlineIndex - 1
+            : newlineIndex;
+
+    return {
+        text: markdown.slice(start, end),
+        start,
+        next: newlineIndex + 1,
+    };
+}
+
+function isClosingFence(line: string, fenceLength: number) {
+    const match = line.match(/^( {0,3})(`+)[ \t]*$/u);
+    return (match?.[2]?.length ?? 0) >= fenceLength;
 }
