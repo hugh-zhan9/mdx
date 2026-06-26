@@ -40,7 +40,7 @@ vi.mock("../hooks/use-editor-bridge", () => ({
 }));
 
 vi.mock("./editor-kernel-adapter", () => ({
-    DOMDProvider: ({ children }: { children: React.ReactNode }) => children,
+    EditorKernelProvider: ({ children }: { children: React.ReactNode }) => children,
     toMarkdown: () => "",
     useEditor: () => null,
     useEditorStoreApi: () => null,

@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import { useEffect, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useMdxEditor } from "../../../packages/mdx-editor";
-import { DOMDProvider } from "../components/editor-kernel-adapter";
+import { EditorKernelProvider } from "../components/editor-kernel-adapter";
 import { useEditorBridge } from "./use-editor-bridge";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
@@ -72,9 +72,9 @@ describe("useEditorBridge", () => {
 
         await act(async () => {
             root.render(
-                <DOMDProvider initMd="Hello">
+                <EditorKernelProvider initMd="Hello">
                     <Harness />
-                </DOMDProvider>,
+                </EditorKernelProvider>,
             );
         });
 

@@ -19,7 +19,7 @@ import type {
 
 type StoreListener = (newState: unknown, prevState: unknown) => void;
 
-export interface DOMDProviderProps
+export interface EditorKernelProviderProps
     extends Pick<
         MdxEditorProviderProps,
         "children" | "editable" | "placeholder" | "imageLoader" | "codeTokenizer"
@@ -53,14 +53,14 @@ export interface RenderData {
     selection: SelectionState | null;
 }
 
-export function DOMDProvider({
+export function EditorKernelProvider({
     children,
     editable = true,
     initMd = "",
     placeholder,
     imageLoader,
     codeTokenizer,
-}: DOMDProviderProps) {
+}: EditorKernelProviderProps) {
     const kernel = useMemo(
         () =>
             createMdxEditorKernel({

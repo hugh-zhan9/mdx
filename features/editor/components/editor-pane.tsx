@@ -13,7 +13,7 @@ import type {
     WorkspaceTab,
 } from "../../workspace/lib/types";
 import { findWikilinkAtTextOffset } from "../../workspace/lib/wikilink";
-import { DOMDProvider } from "./editor-kernel-adapter";
+import { EditorKernelProvider } from "./editor-kernel-adapter";
 import { EditorFindBar } from "./editor-find-bar";
 import { EditorMermaidPreviewLayer } from "./editor-mermaid-preview-layer";
 import { useEditorBridge } from "../hooks/use-editor-bridge";
@@ -38,6 +38,8 @@ const EMPTY_LAYOUT_SNAPSHOT: LayoutSnapshot = {
     selectionGeometries: [],
     mirrorBlocks: [],
 };
+
+type SnapshotData = { [key: string]: boolean | number | string | null | SnapshotData };
 
 export function snapshotFromMarkdown(markdown: string): LayoutSnapshot {
     const document = normalizeLayoutDocument(markdown, {
@@ -80,6 +82,68 @@ export function snapshotFromMarkdown(markdown: string): LayoutSnapshot {
                 pmTo: block.pmTo,
                 semanticText: semanticCode,
                 ariaLabel: `mermaid ${code}`,
+            });
+
+            const line = {
+                id: `line-${index}`,
+                blockId: block.blockId,
+                y,
+                baseline: y + block.style.fontSize,
+                height,
+                textRuns: [],
+            };
+            y += line.height;
+            return line;
+        }
+
+        if (block.kind === "image") {
+            const markdown = block.inlines.map((inline) => inline.text).join("");
+            const image = parseImageBlockMarkdown(markdown);
+            const width = 240;
+            const height = 160;
+
+            canvasDrawOps.push({
+                blockId: block.blockId,
+                kind: "image",
+                x: 0,
+                y,
+                width,
+                height,
+                data: {
+                    src: image.src,
+                    alt: image.alt,
+                    title: image.title,
+                },
+            });
+
+            const line = {
+                id: `line-${index}`,
+                blockId: block.blockId,
+                y,
+                baseline: y + block.style.fontSize,
+                height,
+                textRuns: [],
+            };
+            y += line.height;
+            return line;
+        }
+
+        if (block.kind === "fallback" || block.kind === "html") {
+            const markdown = block.inlines.map((inline) => inline.text).join("");
+            const width = Math.max(markdown.length * (block.style.fontSize * 0.6), 1);
+            const height = block.style.fontSize * block.style.lineHeight;
+
+            const data: SnapshotData =
+                block.kind === "html" ? { markdown, html: markdown } : { markdown };
+
+            canvasDrawOps.push({
+                blockId: block.blockId,
+                kind: block.kind,
+                x: 0,
+                y,
+                width,
+                height,
+                data,
             });
 
             const line = {
@@ -162,6 +226,16 @@ export function snapshotFromMarkdown(markdown: string): LayoutSnapshot {
         caretAnchors: [],
         selectionGeometries: [],
         mirrorBlocks,
+    };
+}
+
+function parseImageBlockMarkdown(markdown: string) {
+    const match = markdown.match(/^!\[([^\]]*)\]\((\S+)(?:\s+"([^"]*)")?\)$/u);
+
+    return {
+        alt: match?.[1] ?? "",
+        src: match?.[2] ?? "",
+        title: match?.[3] ?? "",
     };
 }
 
@@ -253,7 +327,7 @@ export function EditorPane({
     );
 
     return (
-        <DOMDProvider
+        <EditorKernelProvider
             key={tab.tabId}
             editable
             initMd={initMd}
@@ -271,7 +345,7 @@ export function EditorPane({
                 onOpenWikilink={onOpenWikilink}
                 onSelectionChange={onSelectionChange}
             />
-        </DOMDProvider>
+        </EditorKernelProvider>
     );
 }
 

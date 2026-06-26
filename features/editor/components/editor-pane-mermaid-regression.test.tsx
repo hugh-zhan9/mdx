@@ -3,6 +3,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildVisibleTextIndex, findVisibleTextMatches } from "../lib/visible-text-search";
 import { EditorPane } from "./editor-pane";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
@@ -71,21 +72,23 @@ describe("editor pane mermaid rendering", () => {
         });
         await flushEffects();
 
-        const mermaidSource = host.querySelector<HTMLTextAreaElement>(
-            "textarea[aria-label='Mermaid source']",
-        );
         const preview = host.querySelector("[data-mdx-mermaid-preview]");
+        const hybridRoot = host.querySelector("[data-hybrid-editor-host]");
+        const hybridIndex = buildVisibleTextIndex(hybridRoot!);
 
-        expect(mermaidSource?.value).toBe("graph TD\n  A --> B\n");
-        expect(renderMermaidDiagram).toHaveBeenCalledWith(
-            expect.objectContaining({
-                code: "graph TD\n  A --> B\n",
-                theme: "light",
+        expect(hybridRoot?.textContent).toContain("graph TD");
+        expect(hybridRoot?.textContent).toContain("A --> B");
+        expect(
+            findVisibleTextMatches(hybridIndex, "graph TD", {
+                caseSensitive: true,
             }),
+        ).toHaveLength(1);
+        expect(renderMermaidDiagram).not.toHaveBeenCalled();
+        expect(preview).toBeNull();
+        expect(host.querySelector("[data-mirror-block-id='block-2']")).not.toBeNull();
+        expect(host.querySelector("[data-mirror-block-id='block-2']")?.textContent).toContain(
+            "graph TD",
         );
-        expect(preview?.innerHTML).toContain("<svg");
-        expect(preview?.textContent).toContain("rendered flowchart");
-        expect(host.querySelector("pre[data-mdx-node-type='mermaid_block']")).toBeNull();
         expect(countEditButtons()).toBe(0);
 
         await act(async () => {
@@ -144,23 +147,21 @@ describe("editor pane mermaid rendering", () => {
         });
         await flushEffects();
 
+        const hybridRoot = host.querySelector("[data-hybrid-editor-host]");
+        const hybridIndex = buildVisibleTextIndex(hybridRoot!);
+
+        expect(hybridRoot?.textContent).toContain("graph TD");
+        expect(hybridRoot?.textContent).toContain("Start --> Stop");
         expect(
-            host.querySelector<HTMLTextAreaElement>(
-                "textarea[aria-label='Mermaid source']",
-            )?.value,
-        ).toBe("graph TD\n  Start --> Stop\n");
-        expect(renderMermaidDiagram).toHaveBeenCalledWith(
-            expect.objectContaining({
-                code: "graph TD\n  Start --> Stop\n",
-                theme: "light",
+            findVisibleTextMatches(hybridIndex, "Start --> Stop", {
+                caseSensitive: true,
             }),
+        ).toHaveLength(1);
+        expect(renderMermaidDiagram).not.toHaveBeenCalled();
+        expect(host.querySelector("[data-mdx-mermaid-preview]")).toBeNull();
+        expect(host.querySelector("[data-mirror-block-id='block-1']")?.textContent).toContain(
+            "graph TD",
         );
-        expect(host.querySelector("[data-mdx-mermaid-preview]")?.innerHTML).toContain(
-            "<svg",
-        );
-        expect(
-            host.querySelector("pre[data-mdx-node-type='mermaid_block']"),
-        ).toBeNull();
 
         const image = host.querySelector<HTMLImageElement>(
             "img[data-mdx-node-type='image']",

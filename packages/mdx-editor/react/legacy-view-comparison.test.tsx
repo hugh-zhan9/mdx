@@ -4,7 +4,7 @@ import { act } from "react";
 import { useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DOMDProvider } from "../../../features/editor/components/editor-kernel-adapter";
+import { EditorKernelProvider } from "../../../features/editor/components/editor-kernel-adapter";
 import { HybridEditorHost } from "./hybrid-editor-host";
 import { useMdxEditor } from "./index";
 import { snapshotFromMarkdown } from "../../../features/editor/components/editor-pane";
@@ -118,9 +118,9 @@ async function renderComparisonSurface(
         root.render(
             <div data-testid="comparison-host">
                 <div data-testid="legacy-root">
-                    <DOMDProvider initMd={markdown}>
+                    <EditorKernelProvider initMd={markdown}>
                         <LegacyEditorRootFixture />
-                    </DOMDProvider>
+                    </EditorKernelProvider>
                 </div>
                 <div data-testid="hybrid-root">
                     <HybridEditorHost snapshot={snapshotFromMarkdown(markdown)} />

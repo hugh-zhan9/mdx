@@ -55,3 +55,43 @@ Verification notes:
 Self-review:
 - The fixture replacement stays within the intended post-acceptance cleanup: tests now exercise the current provider/root contract instead of reviving the deleted visible editor surface.
 - I did not edit out-of-scope files that still block full repo `npm test`, `lint`, and `build`.
+
+## Fix Loop Result
+
+- Removed the remaining strict-path legacy `DOMD*` names by renaming the adapter provider surface to `EditorKernelProvider`.
+- Kept the public-index removal guard without embedding the literal removed export token in strict current-product paths.
+- Added the minimum hybrid snapshot support needed for existing full-suite image/fallback/Mermaid regression coverage after the legacy view deletion.
+
+Verification:
+- `! rg "MdxEditorView|DOMD|data-mdx-editor-view|data-legacy-editor-fixture" packages features scripts docs/loopx/specs`: pass, no output
+- `npm test`: pass, 97 files / 674 tests
+- `npm run lint`: pass with 3 warnings, 0 errors
+- `npm run build`: pass
+- `cd src-tauri && cargo test`: pass, 585 Rust tests across binaries/libs with warnings only
+
+Updated surface-change result:
+
+```yaml
+surface_change:
+  removed_or_changed:
+    - strict current product paths no longer reference MdxEditorView, DOMD, data-mdx-editor-view, or data-legacy-editor-fixture
+    - manual verification wording is hybrid-only
+    - adapter provider compatibility surface was renamed to EditorKernelProvider
+  retained_with_caller_proof:
+    - item: historical plans/designs may still mention the removed legacy view
+      caller: allowed historical paths only
+  negative_assertions:
+    - command: '! rg "MdxEditorView|DOMD|data-mdx-editor-view|data-legacy-editor-fixture" packages features scripts docs/loopx/specs'
+      result: pass, no output
+    - command: npm test
+      result: pass, 97 files / 674 tests
+    - command: npm run lint
+      result: pass with warnings only
+    - command: npm run build
+      result: pass
+    - command: cd src-tauri && cargo test
+      result: pass
+  package_or_governance_checks:
+    - command: rg "MdxEditorView|DOMD|data-mdx-editor-view|data-legacy-editor-fixture" packages features scripts docs/loopx/specs
+      result: no matches
+```

@@ -86,12 +86,14 @@ function buildVisibleTextIndexInternal(
             return;
         }
 
-        if (isMirrorContainer(node)) {
+        const element = node;
+
+        if (isMirrorContainer(element)) {
             if (options.skipMirrorSubtrees) {
                 return;
             }
 
-            for (const child of node.childNodes) {
+            for (const child of element.childNodes) {
                 if (
                     shouldIncludeMirrorNode(
                         child,
@@ -104,7 +106,7 @@ function buildVisibleTextIndexInternal(
             return;
         }
 
-        for (const child of node.childNodes) {
+        for (const child of element.childNodes) {
             visit(child);
         }
     };
@@ -376,7 +378,7 @@ function isElement(node: ParentNode | Node): node is Element {
     return typeof Element !== "undefined" && node instanceof Element;
 }
 
-function isMirrorContainer(node: Node): node is Element {
+function isMirrorContainer(node: Node): boolean {
     return (
         isElement(node) &&
         node.getAttribute("data-layout-light-mirror") !== null
@@ -387,6 +389,7 @@ function isMirrorTextNode(node: Node): boolean {
     const parent = node.parentNode;
     return (
         node.nodeType === 3 &&
+        parent !== null &&
         isElement(parent) &&
         parent.closest("[data-layout-light-mirror]") !== null
     );
@@ -398,7 +401,7 @@ function mirrorBlockIdForNode(node: Node): string | null {
     }
 
     const parent = node.parentNode;
-    if (!isElement(parent)) {
+    if (parent === null || !isElement(parent)) {
         return null;
     }
 
@@ -407,7 +410,7 @@ function mirrorBlockIdForNode(node: Node): string | null {
 
 function blockIdForTextNode(node: Text): string | null {
     const parent = node.parentNode;
-    if (!isElement(parent)) {
+    if (parent === null || !isElement(parent)) {
         return null;
     }
 
@@ -424,7 +427,7 @@ function selectionOffsetsForTextNode(
     node: Text,
 ): MarkdownSelectionOffsets | null {
     const parent = node.parentNode;
-    if (!isElement(parent)) {
+    if (parent === null || !isElement(parent)) {
         return null;
     }
 

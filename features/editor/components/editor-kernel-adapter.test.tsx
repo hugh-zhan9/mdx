@@ -6,7 +6,7 @@ import { act } from "react";
 import { useEffect, useRef } from "react";
 import { useMdxEditor } from "../../../packages/mdx-editor";
 import {
-    DOMDProvider,
+    EditorKernelProvider,
     useEditor,
     useEditorStoreApi,
     useRenderData,
@@ -87,10 +87,10 @@ describe("editor kernel adapter", () => {
     it("renders the editor root contract through the adapter surface", async () => {
         await act(async () => {
             root.render(
-                <DOMDProvider editable initMd="Hello">
+                <EditorKernelProvider editable initMd="Hello">
                     <Probe />
                     <EditorRootFixture />
-                </DOMDProvider>,
+                </EditorKernelProvider>,
             );
         });
 
@@ -110,12 +110,12 @@ describe("editor kernel adapter", () => {
     it("keeps advanced markdown nodes compatible with the app adapter surface", async () => {
         await act(async () => {
             root.render(
-                <DOMDProvider
+                <EditorKernelProvider
                     initMd={"| A | B |\n|---|---|\n| 1 | 2 |\n\n- [x] Done\n"}
                 >
                     <EditorRootFixture />
                     <AdapterProbe />
-                </DOMDProvider>,
+                </EditorKernelProvider>,
             );
         });
 
@@ -131,12 +131,12 @@ describe("editor kernel adapter", () => {
     it("routes image loading through the adapter kernel", async () => {
         await act(async () => {
             root.render(
-                <DOMDProvider
+                <EditorKernelProvider
                     initMd={'![Diagram](.assets/a.png)\n'}
                     imageLoader={async (src) => `loaded:${src}`}
                 >
                     <EditorRootFixture />
-                </DOMDProvider>,
+                </EditorKernelProvider>,
             );
         });
 

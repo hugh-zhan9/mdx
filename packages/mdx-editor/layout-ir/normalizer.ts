@@ -62,6 +62,21 @@ function createLayoutBlocks(markdown: string): LayoutBlock[] {
             continue;
         }
 
+        const fallbackBlock = readHtmlFallbackBlock(markdown, cursor);
+        if (fallbackBlock) {
+            blocks.push(
+                createLayoutBlock({
+                    index,
+                    content: fallbackBlock.markdown,
+                    kind: "fallback",
+                    pmFrom: fallbackBlock.start,
+                }),
+            );
+            cursor = fallbackBlock.nextCursor;
+            index += 1;
+            continue;
+        }
+
         const blockMatch = markdown
             .slice(cursor)
             .match(/\S[\s\S]*?(?=(?:\r?\n){2,}|\s*$)/u)?.[0];
@@ -69,10 +84,12 @@ function createLayoutBlocks(markdown: string): LayoutBlock[] {
             break;
         }
 
+        const image = parseImageMarkdown(blockMatch.replace(/(?:\r?\n)+$/u, ""));
         blocks.push(
             createLayoutBlock({
                 index,
-                content: blockMatch.replace(/(?:\r?\n)+$/u, ""),
+                content: image?.markdown ?? blockMatch.replace(/(?:\r?\n)+$/u, ""),
+                kind: image ? "image" : undefined,
                 pmFrom: cursor,
             }),
         );
@@ -107,6 +124,8 @@ function createLayoutBlock({
         inlines:
             blockKind === "mermaid"
                 ? [createTextRun(content, 0)]
+                : blockKind === "image" || blockKind === "fallback"
+                  ? [createTextRun(content, 0)]
                 : content.includes(INLINE_MATH_TOKEN)
                   ? createMathInlineRuns(content)
                   : [
@@ -204,6 +223,34 @@ function readMermaidBlock(markdown: string, cursor: number) {
     }
 
     return null;
+}
+
+function readHtmlFallbackBlock(markdown: string, cursor: number) {
+    const rest = markdown.slice(cursor);
+    const match = rest.match(/^<section\b[\s\S]*?<\/section>/u);
+    if (!match?.[0]) {
+        return null;
+    }
+
+    return {
+        markdown: match[0],
+        start: cursor,
+        nextCursor: cursor + match[0].length,
+    };
+}
+
+function parseImageMarkdown(markdown: string) {
+    const match = markdown.match(/^!\[([^\]]*)\]\((\S+)(?:\s+"([^"]*)")?\)$/u);
+    if (!match) {
+        return null;
+    }
+
+    return {
+        markdown,
+        alt: match[1] ?? "",
+        src: match[2] ?? "",
+        title: match[3] ?? "",
+    };
 }
 
 function readLine(markdown: string, start: number) {
