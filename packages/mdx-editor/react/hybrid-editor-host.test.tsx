@@ -50,4 +50,55 @@ describe("HybridEditorHost", () => {
         expect(html).toContain('data-caret-anchor-count="0"');
         expect(html).toContain('data-selection-geometry-count="0"');
     });
+
+    it("mounts the light mirror for canvas blocks without replacing text runs", () => {
+        const html = renderToStaticMarkup(
+            <HybridEditorHost
+                snapshot={{
+                    revision: 1,
+                    lines: [
+                        {
+                            id: "l1",
+                            blockId: "b1",
+                            y: 0,
+                            baseline: 16,
+                            height: 20,
+                            textRuns: [
+                                {
+                                    blockId: "b1",
+                                    pmFrom: 0,
+                                    pmTo: 5,
+                                    left: 0,
+                                    baseline: 16,
+                                    width: 40,
+                                    height: 20,
+                                    fontFamily: "Inter",
+                                    fontSize: 14,
+                                    text: "Hello",
+                                },
+                            ],
+                        },
+                    ],
+                    canvasDrawOps: [],
+                    hitTestEntries: [],
+                    caretAnchors: [],
+                    selectionGeometries: [],
+                    mirrorBlocks: [
+                        {
+                            blockId: "math-1",
+                            pmFrom: 0,
+                            pmTo: 4,
+                            semanticText: "x squared",
+                            ariaLabel: "math x squared",
+                        },
+                    ],
+                }}
+            />,
+        );
+
+        expect(html).toContain("Hello");
+        expect(html).toContain("data-layout-light-mirror");
+        expect(html).toContain("x squared");
+        expect(html).toContain('aria-label="math x squared"');
+    });
 });

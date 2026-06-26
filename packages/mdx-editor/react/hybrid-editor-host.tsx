@@ -2,6 +2,7 @@
 
 import { CanvasSvgLayer } from "./canvas-svg-layer";
 import { DomTextRunLayer } from "./dom-text-run-layer";
+import { LightMirror } from "./light-mirror";
 import type { LayoutSnapshot } from "./wasm-layout-bridge";
 
 export interface HybridEditorHostProps {
@@ -46,6 +47,7 @@ export function HybridEditorHost({ snapshot }: HybridEditorHostProps) {
                     hitTestEntries={snapshot.hitTestEntries}
                     selectionGeometries={snapshot.selectionGeometries}
                 />
+                <LightMirror blocks={snapshot.mirrorBlocks} />
             </div>
         </div>
     );

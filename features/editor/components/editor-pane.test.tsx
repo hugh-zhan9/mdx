@@ -300,6 +300,33 @@ describe("editor pane image paste", () => {
         expect(host.querySelector("[data-mdx-editor-root]")).not.toBeNull();
     });
 
+    it("does not emit markdown persistence changes when rendering the hybrid host snapshot", async () => {
+        bridgeMocks.currentMarkdown = "# Markdown shell";
+        const onMarkdownChange = vi.fn();
+        const tab = {
+            tabId: "tab-1",
+            path: "/tmp/note.md",
+            title: "note.md",
+            dirty: false,
+            needsRenameOnFirstSave: false,
+            markdown: bridgeMocks.currentMarkdown,
+            baseFingerprint: "base",
+        };
+
+        await act(async () => {
+            root.render(
+                <EditorPane
+                    rootPath="/tmp"
+                    tab={tab}
+                    onMarkdownChange={onMarkdownChange}
+                />,
+            );
+        });
+
+        expect(host.querySelector("[data-hybrid-editor-host]")).not.toBeNull();
+        expect(onMarkdownChange).not.toHaveBeenCalled();
+    });
+
     it("rebuilds find ranges when editor text mounts after markdown fallback", async () => {
         bridgeMocks.currentMarkdown = "# Markdown 语法支持检查";
         const tab = {
