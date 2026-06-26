@@ -13,6 +13,7 @@ export function DomTextRunLayer({ lines }: DomTextRunLayerProps) {
                 line.textRuns.map((run, index) => (
                     <span
                         key={`${line.id}-${run.blockId}-${run.pmFrom}-${run.pmTo}-${index}`}
+                        data-layout-block-id={run.blockId}
                         style={{
                             position: "absolute",
                             left: run.left,

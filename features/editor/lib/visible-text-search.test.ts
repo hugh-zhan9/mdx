@@ -106,7 +106,8 @@ describe("visible text search", () => {
         const mirror = child(root, "div");
         mirror.setAttribute("data-layout-light-mirror", "");
         mirror.style.display = "none";
-        child(mirror, "div", "", "x squared");
+        const mirrorBlock = child(mirror, "div", "", "x squared");
+        mirrorBlock.setAttribute("data-mirror-block-id", "math-1");
 
         const preview = child(root, "div", "mdx-mermaid-preview");
         preview.setAttribute("data-mdx-mermaid-preview", "mermaid-2");
@@ -179,15 +180,18 @@ describe("visible text search", () => {
         ).toEqual([]);
     });
 
-    it("does not duplicate ordinary DOM text runs from mirror content", () => {
+    it("does not duplicate ordinary DOM text runs from mirror content in the same block", () => {
         const root = editorRoot();
-        paragraph(root, "Plain paragraph");
+        const paragraphNode = paragraph(root, "Plain paragraph");
+        paragraphNode.setAttribute("data-layout-block-id", "paragraph-1");
 
         const mirror = child(root, "div");
         mirror.setAttribute("data-layout-light-mirror", "");
         mirror.style.display = "none";
-        child(mirror, "div", "", "Plain paragraph");
-        child(mirror, "div", "", "x squared");
+        const duplicateMirrorBlock = child(mirror, "div", "", "Plain paragraph");
+        duplicateMirrorBlock.setAttribute("data-mirror-block-id", "paragraph-1");
+        const mirrorCanvasOnly = child(mirror, "div", "", "x squared");
+        mirrorCanvasOnly.setAttribute("data-mirror-block-id", "math-1");
 
         const index = buildVisibleTextIndex(root);
 
@@ -201,6 +205,26 @@ describe("visible text search", () => {
                 caseSensitive: false,
             }),
         ).toHaveLength(1);
+    });
+
+    it("preserves mirror text when the same ordinary DOM text belongs to a different block", () => {
+        const root = editorRoot();
+        const paragraphNode = paragraph(root, "x squared");
+        paragraphNode.setAttribute("data-layout-block-id", "paragraph-1");
+
+        const mirror = child(root, "div");
+        mirror.setAttribute("data-layout-light-mirror", "");
+        mirror.style.display = "none";
+        const mirrorBlock = child(mirror, "div", "", "x squared");
+        mirrorBlock.setAttribute("data-mirror-block-id", "math-1");
+
+        const index = buildVisibleTextIndex(root);
+
+        expect(
+            findVisibleTextMatches(index, "x squared", {
+                caseSensitive: false,
+            }),
+        ).toHaveLength(2);
     });
 
     it("excludes display-none nodes", () => {
@@ -412,6 +436,7 @@ function uninstallDomFixture(): void {
 class TestNode {
     static readonly TEXT_NODE = 3;
     readonly nodeType: number;
+    parentNode: TestElement | null = null;
 
     constructor(nodeType: number) {
         this.nodeType = nodeType;
@@ -482,7 +507,9 @@ class TestElement extends TestNode {
     set textContent(value: string) {
         this.childNodes.length = 0;
         if (value) {
-            this.childNodes.push(new TestText(value));
+            const textNode = new TestText(value);
+            textNode.parentNode = this;
+            this.childNodes.push(textNode);
         }
     }
 

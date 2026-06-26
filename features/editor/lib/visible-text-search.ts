@@ -26,25 +26,25 @@ export interface VisibleTextSearchOptions {
 
 export function buildVisibleTextIndex(root: ParentNode): VisibleTextIndex {
     const ordinaryIndex = buildVisibleTextIndexInternal(root, {
-        ordinaryText: "",
+        ordinaryTextByBlockId: new Map(),
         skipMirrorSubtrees: true,
     });
 
     if (ordinaryIndex.text.length === 0) {
         return buildVisibleTextIndexInternal(root, {
-            ordinaryText: "",
+            ordinaryTextByBlockId: new Map(),
             skipMirrorSubtrees: false,
         });
     }
 
     return buildVisibleTextIndexInternal(root, {
-        ordinaryText: ordinaryIndex.text,
+        ordinaryTextByBlockId: buildOrdinaryTextByBlockId(ordinaryIndex.segments),
         skipMirrorSubtrees: false,
     });
 }
 
 interface VisibleTextBuildOptions {
-    ordinaryText: string;
+    ordinaryTextByBlockId: Map<string, string>;
     skipMirrorSubtrees: boolean;
 }
 
@@ -87,7 +87,12 @@ function buildVisibleTextIndexInternal(
             }
 
             for (const child of node.childNodes) {
-                if (shouldIncludeMirrorNode(child, options.ordinaryText)) {
+                if (
+                    shouldIncludeMirrorNode(
+                        child,
+                        options.ordinaryTextByBlockId,
+                    )
+                ) {
                     visit(child);
                 }
             }
@@ -260,17 +265,55 @@ function shouldSkipElement(element: Element): boolean {
     return false;
 }
 
-function shouldIncludeMirrorNode(node: Node, ordinaryText: string): boolean {
-    if (ordinaryText.length === 0) {
-        return true;
-    }
-
+function shouldIncludeMirrorNode(
+    node: Node,
+    ordinaryTextByBlockId: Map<string, string>,
+): boolean {
     const value = node.textContent ?? "";
     if (!value) {
         return false;
     }
 
+    const blockId = mirrorBlockIdForNode(node);
+    if (!blockId) {
+        return true;
+    }
+
+    const ordinaryText = ordinaryTextByBlockId.get(blockId);
+    if (!ordinaryText) {
+        return true;
+    }
+
     return !ordinaryText.includes(value);
+}
+
+function buildOrdinaryTextByBlockId(
+    segments: VisibleTextSegment[],
+): Map<string, string> {
+    const ordinaryTextByBlockId = new Map<string, string>();
+
+    for (const segment of segments) {
+        if (segment.isMirror) {
+            continue;
+        }
+
+        const blockId = blockIdForTextNode(segment.node);
+        if (!blockId) {
+            continue;
+        }
+
+        const value = segment.node.textContent ?? "";
+        if (!value) {
+            continue;
+        }
+
+        ordinaryTextByBlockId.set(
+            blockId,
+            `${ordinaryTextByBlockId.get(blockId) ?? ""}${value}`,
+        );
+    }
+
+    return ordinaryTextByBlockId;
 }
 
 function isElement(node: ParentNode | Node): node is Element {
@@ -290,6 +333,34 @@ function isMirrorTextNode(node: Node): boolean {
         node.nodeType === 3 &&
         isElement(parent) &&
         parent.closest("[data-layout-light-mirror]") !== null
+    );
+}
+
+function mirrorBlockIdForNode(node: Node): string | null {
+    if (isElement(node)) {
+        return node.getAttribute("data-mirror-block-id");
+    }
+
+    const parent = node.parentNode;
+    if (!isElement(parent)) {
+        return null;
+    }
+
+    return parent.getAttribute("data-mirror-block-id");
+}
+
+function blockIdForTextNode(node: Text): string | null {
+    const parent = node.parentNode;
+    if (!isElement(parent)) {
+        return null;
+    }
+
+    return (
+        parent.getAttribute("data-layout-block-id") ??
+        parent.closest("[data-layout-block-id]")?.getAttribute(
+            "data-layout-block-id",
+        ) ??
+        null
     );
 }
 

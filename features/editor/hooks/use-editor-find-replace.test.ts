@@ -167,6 +167,7 @@ describe("editor find replace visible text index", () => {
 
         const paragraph = document.createElement("p");
         paragraph.textContent = "Plain paragraph";
+        paragraph.setAttribute("data-layout-block-id", "paragraph-1");
         root.append(paragraph);
 
         const mirror = document.createElement("div");
@@ -174,9 +175,11 @@ describe("editor find replace visible text index", () => {
         mirror.style.display = "none";
         const mirrorBlock = document.createElement("div");
         mirrorBlock.textContent = "Plain paragraph";
+        mirrorBlock.setAttribute("data-mirror-block-id", "paragraph-1");
         mirror.append(mirrorBlock);
         const mirrorCanvasOnly = document.createElement("div");
         mirrorCanvasOnly.textContent = "x squared";
+        mirrorCanvasOnly.setAttribute("data-mirror-block-id", "math-1");
         mirror.append(mirrorCanvasOnly);
         root.append(mirror);
 
@@ -199,6 +202,35 @@ describe("editor find replace visible text index", () => {
         ).toHaveLength(1);
         expect(index.text).toContain("x squared");
         expect(index.text).not.toContain("GeneratedLabel");
+
+        root.remove();
+    });
+
+    it("preserves mirror matches when the same ordinary DOM text belongs to a different block", () => {
+        const root = document.createElement("div");
+        document.body.append(root);
+
+        const paragraph = document.createElement("p");
+        paragraph.textContent = "x squared";
+        paragraph.setAttribute("data-layout-block-id", "paragraph-1");
+        root.append(paragraph);
+
+        const mirror = document.createElement("div");
+        mirror.setAttribute("data-layout-light-mirror", "");
+        mirror.style.display = "none";
+        const mirrorBlock = document.createElement("div");
+        mirrorBlock.textContent = "x squared";
+        mirrorBlock.setAttribute("data-mirror-block-id", "math-1");
+        mirror.append(mirrorBlock);
+        root.append(mirror);
+
+        const index = buildVisibleTextIndexForMarkdown(root, "");
+
+        expect(
+            findVisibleTextMatches(index, "x squared", {
+                caseSensitive: false,
+            }),
+        ).toHaveLength(2);
 
         root.remove();
     });

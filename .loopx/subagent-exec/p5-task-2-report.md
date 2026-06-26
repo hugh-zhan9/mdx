@@ -85,3 +85,26 @@ Implementation details:
 Verification:
 - `npm test -- features/editor/lib/visible-text-search.test.ts features/editor/hooks/use-editor-find-replace.test.ts`
   - Result: PASS (`2` files, `31` tests)
+
+## Review fix follow-up 2
+
+Summary:
+Replaced the coarse document-wide mirror dedupe with block-local dedupe. Ordinary DOM text runs now expose `data-layout-block-id`, and mirror text is suppressed only when the same searchable text already exists in ordinary DOM for that same block id. Identical ordinary text in a different block no longer suppresses mirror-only Canvas matches.
+
+Files changed:
+- `packages/mdx-editor/react/dom-text-run-layer.tsx`
+- `packages/mdx-editor/react/hybrid-editor-host.test.tsx`
+- `features/editor/lib/visible-text-search.ts`
+- `features/editor/lib/visible-text-search.test.ts`
+- `features/editor/hooks/use-editor-find-replace.test.ts`
+
+Implementation details:
+- Added `data-layout-block-id={run.blockId}` to ordinary text run spans in `DomTextRunLayer`.
+- Updated `buildVisibleTextIndex` to collect ordinary searchable text by block id from non-mirror segments, then dedupe mirror blocks only against the ordinary text for the matching `data-mirror-block-id`.
+- Preserved mirror inclusion when no same-block ordinary text exists, including the case where the same string appears in an unrelated ordinary block elsewhere in the document.
+- Left `features/editor/hooks/use-editor-find-replace.ts` unchanged again because the hook behavior remained correct once the indexer used block-local dedupe.
+- Tightened the low-level fixture so synthetic text nodes track `parentNode`, matching the production traversal contract used by the indexer.
+
+Verification:
+- `npm test -- features/editor/lib/visible-text-search.test.ts features/editor/hooks/use-editor-find-replace.test.ts packages/mdx-editor/react/hybrid-editor-host.test.tsx`
+  - Result: PASS (`3` files, `35` tests)

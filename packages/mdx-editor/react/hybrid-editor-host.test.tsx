@@ -44,6 +44,7 @@ describe("HybridEditorHost", () => {
         expect(html).toContain("data-layout-canvas-layer");
         expect(html).toContain("data-layout-svg-layer");
         expect(html).toContain("data-hybrid-editor-content");
+        expect(html).toContain('data-layout-block-id="b1"');
         expect(html).toContain("height:20px");
         expect(html).toContain("width:40px");
         expect(html).toContain('data-canvas-draw-op-count="0"');
