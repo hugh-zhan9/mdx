@@ -5,16 +5,6 @@ export function HtmlFallbackBlock({ op }: { op: ComplexBlockOp }) {
     const markdown = readString(op.data, "markdown");
     const content = html || markdown;
 
-    if (op.kind === "html" && html.length > 0) {
-        return (
-            <div
-                data-complex-block-id={op.blockId}
-                data-complex-block-kind="html"
-                dangerouslySetInnerHTML={{ __html: html }}
-            />
-        );
-    }
-
     return (
         <pre
             data-complex-block-id={op.blockId}

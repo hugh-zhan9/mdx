@@ -47,3 +47,19 @@
 
 - The new html adapter intentionally keeps behavior minimal for Task 2: raw HTML draw ops render provided `html`, while fallback draw ops render source text preservation via escaped code content.
 - No Mermaid integration logic or serializer behavior was changed.
+
+## Fix Loop 2
+
+- Reviewer finding 1 fixed: complex block overlay wrappers now opt back into pointer hit testing with `pointer-events-auto`, while the root overlay layer remains `pointer-events-none` and the canvas/svg layers stay non-interactive.
+- Reviewer finding 2 fixed: the `html` fallback block no longer uses `dangerouslySetInnerHTML`; both `html` and `fallback` now render through escaped text content, so arbitrary `op.data.html` is not executed.
+- Reviewer finding 3 fixed: added explicit `table_grid` coverage to `complex-blocks.test.tsx`.
+- Reviewer finding 4 fixed: overlay rendering test now asserts `data-layout-complex-block-overlay` markers.
+
+### Latest Verification
+
+- `npm test -- packages/mdx-editor/react/complex-blocks/complex-blocks.test.tsx packages/mdx-editor/react/hybrid-editor-host.test.tsx`
+  - Passed: 2 files, 8 tests
+
+### Remaining Concerns
+
+- `html` complex block overlays now prefer safe escaped source rendering over live HTML preview. This keeps the fix scoped and removes the caller-trust requirement, but it is a deliberate behavior tightening versus the previous Task 2 implementation.

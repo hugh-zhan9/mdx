@@ -38,6 +38,25 @@ describe("renderComplexBlock", () => {
         expect(html).toContain("42");
     });
 
+    it("renders table_grid ops through the table adapter", () => {
+        const html = renderToStaticMarkup(
+            renderComplexBlock({
+                blockId: "table-grid-1",
+                kind: "table_grid",
+                rect: { x: 10, y: 20, width: 180, height: 60 },
+                data: {
+                    headers: ["Name", "Score"],
+                    cells: [["Ada", "42"]],
+                },
+            }),
+        );
+
+        expect(html).toContain('data-complex-block-kind="table"');
+        expect(html).toContain("<table");
+        expect(html).toContain("Name");
+        expect(html).toContain("42");
+    });
+
     it("renders html ops through the fallback adapter", () => {
         const html = renderToStaticMarkup(
             renderComplexBlock({
@@ -51,7 +70,9 @@ describe("renderComplexBlock", () => {
         );
 
         expect(html).toContain('data-complex-block-kind="html"');
+        expect(html).toContain("&lt;details&gt;");
         expect(html).toContain("Open");
+        expect(html).not.toContain("<details>");
     });
 
     it("renders fallback ops through the fallback adapter", () => {
@@ -108,8 +129,11 @@ describe("renderComplexBlock", () => {
 
         expect(html).toContain("data-layout-canvas-layer");
         expect(html).toContain("data-layout-svg-layer");
+        expect(html).toContain('data-layout-complex-block-overlay="table"');
+        expect(html).toContain('data-layout-complex-block-overlay="fallback"');
         expect(html).toContain('data-complex-block-kind="table"');
         expect(html).toContain('data-complex-block-kind="fallback"');
+        expect(html).toContain("pointer-events-auto");
         expect(html).toContain("left:12px");
         expect(html).toContain("top:24px");
         expect(html).toContain("width:200px");

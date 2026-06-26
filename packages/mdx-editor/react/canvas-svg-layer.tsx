@@ -56,7 +56,7 @@ export function CanvasSvgLayer({
                     <div
                         key={`${op.blockId}-${op.kind}-${op.x}-${op.y}`}
                         data-layout-complex-block-overlay={op.kind}
-                        className="absolute"
+                        className="absolute pointer-events-auto"
                         style={{
                             left: op.x,
                             top: op.y,
