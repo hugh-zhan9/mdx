@@ -16,7 +16,7 @@ export function MermaidBlock({ op }: { op: ComplexBlockOp }) {
     const renderId = useMermaidRenderId(op.blockId);
     const [themeRevision, setThemeRevision] = useState(0);
     const [state, setState] = useState<RenderState>({
-        code: "",
+        code,
         error: null,
         svg: null,
     });
@@ -46,11 +46,6 @@ export function MermaidBlock({ op }: { op: ComplexBlockOp }) {
         let cancelled = false;
 
         if (code.trim().length === 0) {
-            setState({
-                code,
-                error: null,
-                svg: null,
-            });
             return;
         }
 

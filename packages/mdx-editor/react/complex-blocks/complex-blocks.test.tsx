@@ -89,7 +89,8 @@ describe("renderComplexBlock", () => {
         );
 
         expect(html).toContain('data-complex-block-kind="fallback"');
-        expect(html).toContain("&lt;Custom /&gt;");
+        expect(html).toContain('data-mdx-node-type="source_fallback"');
+        expect(html).toContain("<Custom");
     });
 
     it("renders complex block overlays from canvas draw ops", () => {

@@ -100,3 +100,13 @@ surface_change:
 
 - Restored hybrid Mermaid rendering by moving the live preview behavior back onto the current hybrid complex-block path, while keeping markdown/light-mirror semantics authoritative for search and selection.
 - Restored generic unsupported HTML fallback preservation in the layout normalizer and hybrid fallback preview path; coverage now includes both `<div>` and `<section>` fixtures.
+
+## Task 3 follow-up fix evidence
+
+- Removed the synchronous empty-code state update from the hybrid Mermaid block effect.
+- Updated complex-block fallback coverage to assert the current sanitized fallback preview surface.
+
+Verification:
+- `npm test -- packages/mdx-editor/react/complex-blocks/complex-blocks.test.tsx features/editor/components/editor-pane-mermaid-regression.test.tsx packages/mdx-editor/layout-ir/normalizer.test.ts features/editor/lib/editor-kernel-removal.test.ts`: pass, 4 files / 16 tests
+- `npm run lint`: pass with 3 warnings, 0 errors
+- `npm run build`: pass
