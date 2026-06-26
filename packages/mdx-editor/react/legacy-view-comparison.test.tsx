@@ -11,6 +11,7 @@ import { snapshotFromMarkdown } from "../../../features/editor/components/editor
 import {
     buildVisibleTextIndex,
     findVisibleTextMatches,
+    selectionOffsetsForVisibleTextMatch,
 } from "../../../features/editor/lib/visible-text-search";
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
     .IS_REACT_ACT_ENVIRONMENT = true;
@@ -63,6 +64,12 @@ describe("legacy view comparison", () => {
         const hybridIndex = buildVisibleTextIndex(surface.hybridRoot);
         const graphOffset = markdown.indexOf("graph TD");
         const edgeOffset = markdown.indexOf("A --> B");
+        const graphMatches = findVisibleTextMatches(hybridIndex, "graph TD", {
+            caseSensitive: true,
+        });
+        const edgeMatches = findVisibleTextMatches(hybridIndex, "A --> B", {
+            caseSensitive: true,
+        });
 
         expect(graphOffset).toBeGreaterThanOrEqual(0);
         expect(edgeOffset).toBeGreaterThanOrEqual(0);
@@ -78,28 +85,30 @@ describe("legacy view comparison", () => {
         expect(legacyIndex.text).toContain("A --> B");
         expect(legacyIndex.text).not.toContain("```mermaid");
         expect(hybridIndex.text).toBe(legacyIndex.text);
-        expect(
-            findVisibleTextMatches(hybridIndex, "graph TD", {
-                caseSensitive: true,
-            }),
-        ).toEqual(
+        expect(graphMatches).toEqual(
             findVisibleTextMatches(legacyIndex, "graph TD", {
                 caseSensitive: true,
             }),
         );
-        expect(
-            findVisibleTextMatches(hybridIndex, "A --> B", {
-                caseSensitive: true,
-            }),
-        ).toHaveLength(1);
-        expect(
-            findVisibleTextMatches(hybridIndex, "A --> B", {
-                caseSensitive: true,
-            }),
-        ).toEqual(
+        expect(edgeMatches).toHaveLength(1);
+        expect(edgeMatches).toEqual(
             findVisibleTextMatches(legacyIndex, "A --> B", {
                 caseSensitive: true,
             }),
+        );
+        expect(
+            selectionOffsetsForVisibleTextMatch(hybridIndex, graphMatches[0]!),
+        ).toEqual({
+            anchor: graphOffset,
+            head: graphOffset + "graph TD".length,
+        });
+        expect(
+            selectionOffsetsForVisibleTextMatch(hybridIndex, edgeMatches[0]!),
+        ).toEqual(
+            {
+                anchor: edgeOffset,
+                head: edgeOffset + "A --> B".length,
+            },
         );
 
         expect(graphOffset).toBe(11);

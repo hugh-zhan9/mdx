@@ -4,19 +4,25 @@
 
 - Modified `packages/mdx-editor/react/legacy-view-comparison.test.tsx`
 - Modified `features/editor/components/editor-pane.test.tsx`
-- No production code changes
+- Modified `features/editor/components/editor-pane.tsx`
+- Modified `packages/mdx-editor/layout-ir/normalizer.ts`
+- Modified `packages/mdx-editor/layout-ir/normalizer.test.ts`
+- Modified `packages/mdx-editor/react/canvas-svg-layer.tsx`
+- Modified `features/editor/lib/visible-text-search.ts`
+- Modified `features/editor/lib/visible-text-search.test.ts`
+- Product-path changes are limited to hybrid snapshot semantics, mermaid/fallback block normalization, mirror visible-text offset mapping, and removal of the obsolete DOMD-based mermaid preview layer from the current hybrid `EditorPane` path.
 
 ## Brief Compliance
 
 1. Wrote a failing baseline comparison test in `packages/mdx-editor/react/legacy-view-comparison.test.tsx`.
 2. Ran `npm test -- packages/mdx-editor/react/legacy-view-comparison.test.tsx` and captured the failure.
-3. Replaced the baseline with a test-only comparison harness that:
-   - builds a synthetic legacy fixture root from the same normalized layout document
-   - renders the real `HybridEditorHost`
-   - compares visible text matches and markdown selection offsets across fixture corpus cases
-   - adds an explicit mixed-layout mermaid semantics regression
-4. Extended `features/editor/components/editor-pane.test.tsx` with an integration assertion that the hybrid host keeps mirror markdown offsets available while the hidden legacy fixture root remains mounted.
-5. Ran `npm test -- packages/mdx-editor/react/legacy-view-comparison.test.tsx features/editor/components/editor-pane.test.tsx`.
+3. Replaced the baseline with a real-path comparison harness that:
+   - renders the real legacy provider/root-registration path through `EditorKernelProvider` and `useMdxEditor().registerRoot(...)`
+   - renders the real `HybridEditorHost` from `snapshotFromMarkdown(...)`
+   - compares paragraph and mermaid visible-text matches between legacy and hybrid paths
+   - asserts mermaid mirror selection offsets map back to the markdown code body, not the fence marker
+4. Extended `features/editor/components/editor-pane.test.tsx` and `features/editor/lib/visible-text-search.test.ts` with hybrid mirror/offset regression coverage.
+5. Ran focused tests covering normalizer, comparison, EditorPane, mermaid regression, and visible-text search.
 
 ## Failing Baseline
 
@@ -32,7 +38,7 @@
 
 ## Notes
 
-- The harness is deliberately test-only and does not change product behavior.
+- Earlier fix-loop sections below are chronological records of rejected intermediate implementations; the current effective result is described in `Scope`, `Brief Compliance`, `Expanded Scope Fix`, and the latest fix-review section.
 - `features/editor/components/editor-pane.test.tsx` already contained unrelated local edits in the worktree; commit staging must stay scoped to the Task 2 hunks only.
 
 ## Fix Loop
@@ -92,7 +98,7 @@
   - `features/editor/components/editor-kernel-adapter.tsx` no longer exports `DOMD`, so the comparison test was importing an undefined component and failing before it could exercise the legacy path.
   - `packages/mdx-editor/layout-ir/normalizer.ts` depended upward on `features/editor/lib/mermaid-code-fences`, creating the cross-layer dependency identified in review.
 - Replaced the comparison harness with the real legacy provider/root registration contract:
-  - renders `DOMDProvider`
+  - renders `EditorKernelProvider`
   - registers a local `[data-mdx-editor-root]` through `useMdxEditor().registerRoot(...)`
   - asserts the mermaid node view actually mounted via `textarea[aria-label='Mermaid source']` and `[data-mdx-mermaid-preview]`
 - Removed the upward normalizer dependency by keeping the minimal mermaid fence-language predicate local to `packages/mdx-editor/layout-ir/normalizer.ts`.
@@ -102,3 +108,36 @@
 - Command: `npm test -- packages/mdx-editor/layout-ir/normalizer.test.ts packages/mdx-editor/react/legacy-view-comparison.test.tsx features/editor/components/editor-pane.test.tsx`
 - Result: passed
 - Summary: `3` files passed, `23` tests passed
+
+## Fix Review Follow-up 2
+
+- Verified reviewer feedback:
+  - `EditorPane` no longer renders the hidden DOMD root, while `EditorMermaidPreviewLayer` still depended on DOMD `<pre>` nodes; leaving it mounted in the hybrid product path was stale and misleading.
+  - Mermaid visible-text parity was covered, but partial mirror matches did not map back to markdown offsets, so `graph TD` and `A --> B` offset drift could pass undetected.
+- Removed the obsolete `EditorMermaidPreviewLayer` mount and its related visibility-revision state from `EditorPane`.
+- Added comparison-test assertions for mermaid partial-match markdown offsets.
+- Updated `visible-text-search` so substring matches inside one mirror segment can map to markdown offsets while cross-segment mirror matches remain unsafe.
+- Added a direct visible-text-search regression for mermaid-style mirror substring offsets.
+
+## Fix Review Follow-up 2 Result
+
+- Command: `npm test -- features/editor/lib/visible-text-search.test.ts packages/mdx-editor/layout-ir/normalizer.test.ts packages/mdx-editor/react/legacy-view-comparison.test.tsx features/editor/components/editor-pane.test.tsx features/editor/components/editor-pane-mermaid-regression.test.tsx`
+- Result: passed
+- Summary: `5` files passed, `45` tests passed
+
+## Fix Review Follow-up 3
+
+- Verified reviewer feedback against the parser implementation:
+  - the real mermaid parser accepts opening fences with `0..3` leading spaces
+  - the real parser treats an unclosed mermaid fence as running through EOF
+- Updated `packages/mdx-editor/layout-ir/normalizer.ts` to match those parser boundaries for hybrid snapshot semantics.
+- Added normalizer regressions for indented mermaid fences and unclosed mermaid fences through EOF.
+
+## Fix Review Follow-up 3 Result
+
+- Command: `npm test -- packages/mdx-editor/layout-ir/normalizer.test.ts`
+- Result: passed
+- Summary: `1` file passed, `7` tests passed
+- Command: `npm test -- features/editor/lib/visible-text-search.test.ts packages/mdx-editor/layout-ir/normalizer.test.ts packages/mdx-editor/react/legacy-view-comparison.test.tsx features/editor/components/editor-pane.test.tsx features/editor/components/editor-pane-mermaid-regression.test.tsx`
+- Result: passed
+- Summary: `5` files passed, `48` tests passed

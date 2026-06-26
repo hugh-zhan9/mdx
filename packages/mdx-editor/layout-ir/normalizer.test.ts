@@ -97,6 +97,42 @@ describe("normalizeLayoutDocument", () => {
         ]);
     });
 
+    it("normalizes indented mermaid fences like the parser", () => {
+        const markdown = "   ```mermaid title='Flow'\ngraph TD\n```\n";
+        const document = normalizeLayoutDocument(markdown, {
+            width: 800,
+            height: 600,
+            devicePixelRatio: 1,
+        });
+
+        expect(document.blocks).toHaveLength(1);
+        expect(document.blocks[0]).toMatchObject({
+            kind: "mermaid",
+            pmFrom: markdown.indexOf("graph TD"),
+            pmTo: markdown.indexOf("graph TD") + "graph TD".length,
+        });
+        expect(document.blocks[0]?.inlines[0]?.text).toBe("graph TD");
+    });
+
+    it("normalizes unclosed mermaid fences through EOF like the parser", () => {
+        const markdown = "```mermaid\ngraph TD\n  A --> B";
+        const document = normalizeLayoutDocument(markdown, {
+            width: 800,
+            height: 600,
+            devicePixelRatio: 1,
+        });
+
+        expect(document.blocks).toHaveLength(1);
+        expect(document.blocks[0]).toMatchObject({
+            kind: "mermaid",
+            pmFrom: markdown.indexOf("graph TD"),
+            pmTo: markdown.length,
+        });
+        expect(document.blocks[0]?.inlines[0]?.text).toBe(
+            "graph TD\n  A --> B",
+        );
+    });
+
     it("preserves unsupported block html fallbacks beyond section tags", () => {
         const markdown = [
             '<div data-x="1">',

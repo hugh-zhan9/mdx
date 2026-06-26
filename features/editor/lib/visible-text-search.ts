@@ -222,7 +222,13 @@ export function isReplaceSafeMatch(
         return false;
     }
 
-    return match.end - match.start === start.sourceTextLength;
+    const mirrorRelativeStart = match.start - start.start;
+    const mirrorRelativeEnd = match.end - start.start;
+
+    return (
+        mirrorRelativeStart >= 0 &&
+        mirrorRelativeEnd <= start.sourceTextLength
+    );
 }
 
 function findMatchAtOrAfter(

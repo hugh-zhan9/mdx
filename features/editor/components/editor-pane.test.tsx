@@ -27,6 +27,7 @@ const bridgeMocks = vi.hoisted(() => ({
     insertImage: vi.fn(),
     insertText: vi.fn(),
 }));
+const editorMermaidPreviewLayerMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../hooks/use-editor-bridge", () => ({
     useEditorBridge: () => ({
@@ -84,11 +85,15 @@ vi.mock("../../../packages/mdx-editor/react/hybrid-editor-host", () => ({
 }));
 
 vi.mock("./editor-mermaid-preview-layer", () => ({
-    EditorMermaidPreviewLayer: () => null,
+    EditorMermaidPreviewLayer: () => {
+        editorMermaidPreviewLayerMock();
+        return null;
+    },
 }));
 
 beforeEach(() => {
     bridgeMocks.currentMarkdown = "";
+    editorMermaidPreviewLayerMock.mockReset();
 });
 
 describe("editor find/replace shortcuts", () => {
@@ -510,6 +515,7 @@ describe("editor pane image paste", () => {
         expect(hybridRoot?.textContent).toContain("A --> B");
         expect(hybridRoot?.textContent).not.toContain("```mermaid");
         expect(graphMatch).toBeDefined();
+        expect(editorMermaidPreviewLayerMock).not.toHaveBeenCalled();
         expect(host.querySelector("[data-mirror-block-id]")?.textContent).toContain(
             "graph TD",
         );

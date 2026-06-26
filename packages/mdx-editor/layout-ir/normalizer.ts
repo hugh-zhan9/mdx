@@ -194,7 +194,7 @@ function createTextRun(text: string, from: number): LayoutInlineRun {
 
 function readMermaidBlock(markdown: string, cursor: number) {
     const openingLine = readLine(markdown, cursor);
-    const openingMatch = openingLine.text.match(/^(`{3,})([^\n`]*)$/u);
+    const openingMatch = openingLine.text.match(/^ {0,3}(`{3,})([^`]*)$/u);
     if (!openingMatch || !isMermaidFenceLanguage(openingMatch[2] ?? "")) {
         return null;
     }
@@ -222,7 +222,14 @@ function readMermaidBlock(markdown: string, cursor: number) {
         searchCursor = line.next;
     }
 
-    return null;
+    const rawCode = markdown.slice(openingLine.next);
+    const code = rawCode.replace(/\r?\n$/u, "");
+
+    return {
+        code,
+        codeStart: openingLine.next,
+        nextCursor: markdown.length,
+    };
 }
 
 function readHtmlFallbackBlock(markdown: string, cursor: number) {
@@ -284,8 +291,8 @@ function readLine(markdown: string, start: number) {
 }
 
 function isClosingFence(line: string, fenceLength: number) {
-    const match = line.match(/^( {0,3})(`+)[ \t]*$/u);
-    return (match?.[2]?.length ?? 0) >= fenceLength;
+    const match = line.match(/^ {0,3}(`+)[ \t]*$/u);
+    return (match?.[1]?.length ?? 0) >= fenceLength;
 }
 
 function isMermaidFenceLanguage(info: string): boolean {

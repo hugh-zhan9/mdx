@@ -149,6 +149,27 @@ describe("visible text search", () => {
         });
     });
 
+    it("maps mirror substring matches back to markdown selection offsets", () => {
+        const root = editorRoot();
+        const mirror = child(root, "div");
+        mirror.setAttribute("data-layout-light-mirror", "");
+        mirror.style.display = "none";
+        const mirrorBlock = child(mirror, "div", "", "graph TD\n  A --> B\n");
+        mirrorBlock.setAttribute("data-mirror-block-id", "mermaid-1");
+        mirrorBlock.setAttribute("data-mirror-pm-from", "11");
+        mirrorBlock.setAttribute("data-mirror-pm-to", "29");
+
+        const index = buildVisibleTextIndex(root);
+        const [match] = findVisibleTextMatches(index, "A --> B", {
+            caseSensitive: true,
+        });
+
+        expect(selectionOffsetsForVisibleTextMatch(index, match)).toEqual({
+            anchor: 22,
+            head: 29,
+        });
+    });
+
     it("keeps user-authored advanced node text while excluding generated previews", () => {
         const root = editorRoot();
         const callout = child(root, "aside");
