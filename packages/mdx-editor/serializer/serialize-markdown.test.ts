@@ -199,6 +199,29 @@ describe("serializeMarkdown", () => {
         expect(serializeMarkdown(parsed)).toBe(markdown);
     });
 
+    it("preserves mermaid, image, and fallback markdown together as the document truth", () => {
+        const markdown = [
+            "```mermaid",
+            "graph TD",
+            "  Start --> Stop",
+            "```",
+            "",
+            '![Diagram](.assets/flow.png "Preview")',
+            "",
+            '<section data-kind="unsupported">',
+            "  <p>Keep fallback</p>",
+            "</section>",
+            "",
+        ].join("\n");
+        const parsed = parseMarkdown(markdown);
+
+        expect(parsed.doc.child(0).type.name).toBe("mermaid_block");
+        expect(parsed.doc.child(1).type.name).toBe("paragraph");
+        expect(parsed.doc.child(1).child(0).type.name).toBe("image");
+        expect(parsed.doc.child(2).type.name).toBe("source_fallback");
+        expect(serializeMarkdown(parsed)).toBe(markdown);
+    });
+
     it("serializes inline marks, math, and footnote refs", () => {
         const kernel = createMdxEditorKernel({
             syntax: defaultMarkdownSyntax(),

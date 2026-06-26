@@ -36,4 +36,26 @@ describe("Markdown round-trip fixtures", () => {
             expect(serializeMarkdown(parseMarkdown(markdown))).toBe(markdown);
         }
     });
+
+    it("round-trips mixed mermaid, image, and fallback blocks without rewriting markdown truth", () => {
+        const markdown = [
+            "# Canvas",
+            "",
+            "```mermaid",
+            "graph TD",
+            "  Start --> Stop",
+            "```",
+            "",
+            '![Diagram](.assets/flow.png "Preview")',
+            "",
+            '<section data-kind="unsupported">',
+            "  <p>Keep fallback</p>",
+            "</section>",
+            "",
+        ].join("\n");
+        const parsed = parseMarkdown(markdown);
+
+        expect(parsed.diagnostics).toEqual([]);
+        expect(serializeMarkdown(parsed)).toBe(markdown);
+    });
 });

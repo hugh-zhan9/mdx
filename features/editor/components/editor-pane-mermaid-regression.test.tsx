@@ -104,6 +104,82 @@ describe("editor pane mermaid rendering", () => {
         expect(countEditButtons()).toBe(0);
     });
 
+    it("keeps mermaid, image, and fallback source semantics intact in the hybrid host path", async () => {
+        const editorViewportRef = { current: null as HTMLDivElement | null };
+        const onMarkdownChange = vi.fn();
+        const markdown = [
+            "# Title",
+            "",
+            "```mermaid",
+            "graph TD",
+            "  Start --> Stop",
+            "```",
+            "",
+            '![Diagram](.assets/flow.png "Preview")',
+            "",
+            '<section data-kind="unsupported">',
+            "  <p>Keep fallback</p>",
+            "</section>",
+            "",
+        ].join("\n");
+        const tab = {
+            tabId: "tab-1",
+            path: "/tmp/note.md",
+            title: "note.md",
+            dirty: false,
+            needsRenameOnFirstSave: false,
+            markdown,
+            baseFingerprint: "base",
+        };
+
+        await act(async () => {
+            root.render(
+                <EditorPane
+                    rootPath={null}
+                    tab={tab}
+                    onMarkdownChange={onMarkdownChange}
+                    editorViewportRef={editorViewportRef}
+                />,
+            );
+        });
+        await flushEffects();
+
+        expect(
+            host.querySelector<HTMLTextAreaElement>(
+                "textarea[aria-label='Mermaid source']",
+            )?.value,
+        ).toBe("graph TD\n  Start --> Stop\n");
+        expect(renderMermaidDiagram).toHaveBeenCalledWith(
+            expect.objectContaining({
+                code: "graph TD\n  Start --> Stop\n",
+                theme: "light",
+            }),
+        );
+        expect(host.querySelector("[data-mdx-mermaid-preview]")?.innerHTML).toContain(
+            "<svg",
+        );
+        expect(
+            host.querySelector("pre[data-mdx-node-type='mermaid_block']"),
+        ).toBeNull();
+
+        const image = host.querySelector<HTMLImageElement>(
+            "img[data-mdx-node-type='image']",
+        );
+        expect(image?.getAttribute("src")).toBe(".assets/flow.png");
+        expect(image?.getAttribute("alt")).toBe("Diagram");
+        expect(image?.getAttribute("title")).toBe("Preview");
+
+        const fallback = host.querySelector<HTMLElement>(
+            "[data-mdx-node-type='source_fallback']",
+        );
+        expect(fallback?.querySelector("section[data-kind='unsupported']")).not.toBeNull();
+        expect(
+            host.querySelector("textarea[aria-label='Markdown source fallback']"),
+        ).toBeNull();
+
+        expect(onMarkdownChange).not.toHaveBeenCalled();
+    });
+
     function countEditButtons() {
         return Array.from(host.querySelectorAll("button")).filter(
             (button) => button.textContent?.trim() === "编辑",
