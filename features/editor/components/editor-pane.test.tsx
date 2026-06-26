@@ -4,6 +4,11 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+    buildVisibleTextIndex,
+    findVisibleTextMatches,
+    selectionOffsetsForVisibleTextMatch,
+} from "../lib/visible-text-search";
+import {
     EditorPane,
     assignEditorViewportRef,
     imageFilesFromDataTransfer,
@@ -44,7 +49,39 @@ vi.mock("./editor-kernel-adapter", () => ({
 }));
 
 vi.mock("../../../packages/mdx-editor/react/hybrid-editor-host", () => ({
-    HybridEditorHost: () => <div data-hybrid-editor-host data-testid="hybrid-editor-host" />,
+    HybridEditorHost: ({
+        snapshot,
+    }: {
+        snapshot: {
+            mirrorBlocks: Array<{
+                blockId: string;
+                semanticText: string;
+                pmFrom: number;
+                pmTo: number;
+            }>;
+            canvasDrawOps: Array<{ blockId: string; kind: string }>;
+        };
+    }) => (
+        <div
+            data-hybrid-editor-host
+            data-testid="hybrid-editor-host"
+            data-mirror-block-count={snapshot.mirrorBlocks.length}
+            data-canvas-draw-op-count={snapshot.canvasDrawOps.length}
+        >
+            <div data-layout-light-mirror="">
+                {snapshot.mirrorBlocks.map((block) => (
+                    <div
+                        key={block.blockId}
+                        data-mirror-block-id={block.blockId}
+                        data-mirror-pm-from={block.pmFrom}
+                        data-mirror-pm-to={block.pmTo}
+                    >
+                        {block.semanticText}
+                    </div>
+                ))}
+            </div>
+        </div>
+    ),
 }));
 
 vi.mock("./editor-mermaid-preview-layer", () => ({
@@ -325,6 +362,56 @@ describe("editor pane image paste", () => {
 
         expect(host.querySelector("[data-hybrid-editor-host]")).not.toBeNull();
         expect(onMarkdownChange).not.toHaveBeenCalled();
+    });
+
+    it("keeps hybrid mirror markdown offsets available alongside the legacy fixture root", async () => {
+        bridgeMocks.currentMarkdown = "Before $x^2$ after";
+        const tab = {
+            tabId: "tab-1",
+            path: "/tmp/note.md",
+            title: "note.md",
+            dirty: false,
+            needsRenameOnFirstSave: false,
+            markdown: bridgeMocks.currentMarkdown,
+            baseFingerprint: "base",
+        };
+
+        await act(async () => {
+            root.render(
+                <EditorPane
+                    rootPath="/tmp"
+                    tab={tab}
+                    onMarkdownChange={vi.fn()}
+                />,
+            );
+        });
+
+        const hybridRoot = host.querySelector("[data-hybrid-editor-host]");
+        const legacyRoot = host.querySelector(
+            "[data-legacy-editor-fixture] [data-mdx-editor-root]",
+        );
+
+        expect(hybridRoot).not.toBeNull();
+        expect(legacyRoot).not.toBeNull();
+
+        const hybridIndex = buildVisibleTextIndex(hybridRoot!);
+        const legacyIndex = buildVisibleTextIndex(legacyRoot!);
+        const [hybridMatch] = findVisibleTextMatches(hybridIndex, "x^2", {
+            caseSensitive: true,
+        });
+
+        expect(hybridMatch).toBeDefined();
+        expect(
+            selectionOffsetsForVisibleTextMatch(hybridIndex, hybridMatch!),
+        ).toEqual({
+            anchor: 8,
+            head: 11,
+        });
+        expect(
+            findVisibleTextMatches(legacyIndex, "x^2", {
+                caseSensitive: true,
+            }),
+        ).toEqual([]);
     });
 
     it("rebuilds find ranges when editor text mounts after markdown fallback", async () => {
