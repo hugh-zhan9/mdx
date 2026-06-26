@@ -1,12 +1,10 @@
-import { existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-describe("closed editor kernel removal", () => {
-    it("does not keep the removed proprietary editor kernel artifacts", () => {
-        const removedDistPath = `.packages/@do-md/${"dist"}`;
-        const removedTypePath = `types/${"do-md-react.d.ts"}`;
+describe("legacy editor removal governance", () => {
+    it("does not expose legacy editor-view symbols from the public react index", () => {
+        const source = readFileSync("packages/mdx-editor/react/index.ts", "utf8");
 
-        expect(existsSync(removedDistPath)).toBe(false);
-        expect(existsSync(removedTypePath)).toBe(false);
+        expect(source).not.toContain("MdxEditorView");
     });
 });

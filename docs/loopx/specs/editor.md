@@ -22,6 +22,10 @@ Markdown text remains the authoritative document format. If the editor encounter
 
 The self-owned Markdown editor is composed through `createMdxEditorKernel(...)` and `defaultMarkdownSyntax()`. Current app and feature callers must use the kernel API rather than the old direct parser, serializer, schema, or editor-plugin factory exports from `packages/mdx-editor`.
 
+The current product editor surface is the hybrid DOM text-run plus Canvas/SVG host.
+
+Legacy DOM visible editor code is not part of the current product surface, and public `packages/mdx-editor/react` exports must not continue exposing `MdxEditorView` once deletion lands.
+
 Syntax families that have been extracted into independent plugins own their schema contribution, parser contribution, serializer, NodeView, clipboard behavior, and focused tests. The first extracted syntax families are fallback/source blocks, HTML, footnotes, code fences/frontmatter, and Mermaid.
 
 Mermaid fence parsing is intentionally independent from ordinary code-fence parsing. Clipboard HTML must be sanitized before it can rehydrate raw Markdown HTML or syntax-owned clipboard metadata.
