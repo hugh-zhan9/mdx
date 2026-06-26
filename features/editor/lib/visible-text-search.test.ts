@@ -186,12 +186,18 @@ describe("visible text search", () => {
         const mirror = child(root, "div");
         mirror.setAttribute("data-layout-light-mirror", "");
         mirror.style.display = "none";
+        child(mirror, "div", "", "Plain paragraph");
         child(mirror, "div", "", "x squared");
 
         const index = buildVisibleTextIndex(root);
 
         expect(
             findVisibleTextMatches(index, "Plain paragraph", {
+                caseSensitive: false,
+            }),
+        ).toHaveLength(1);
+        expect(
+            findVisibleTextMatches(index, "x squared", {
                 caseSensitive: false,
             }),
         ).toHaveLength(1);

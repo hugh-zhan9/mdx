@@ -5,6 +5,7 @@ import {
 
 export interface VisibleTextSegment {
     end: number;
+    isMirror: boolean;
     node: Text;
     start: number;
 }
@@ -24,6 +25,33 @@ export interface VisibleTextSearchOptions {
 }
 
 export function buildVisibleTextIndex(root: ParentNode): VisibleTextIndex {
+    const ordinaryIndex = buildVisibleTextIndexInternal(root, {
+        ordinaryText: "",
+        skipMirrorSubtrees: true,
+    });
+
+    if (ordinaryIndex.text.length === 0) {
+        return buildVisibleTextIndexInternal(root, {
+            ordinaryText: "",
+            skipMirrorSubtrees: false,
+        });
+    }
+
+    return buildVisibleTextIndexInternal(root, {
+        ordinaryText: ordinaryIndex.text,
+        skipMirrorSubtrees: false,
+    });
+}
+
+interface VisibleTextBuildOptions {
+    ordinaryText: string;
+    skipMirrorSubtrees: boolean;
+}
+
+function buildVisibleTextIndexInternal(
+    root: ParentNode,
+    options: VisibleTextBuildOptions,
+): VisibleTextIndex {
     const segments: VisibleTextSegment[] = [];
     let text = "";
 
@@ -42,6 +70,7 @@ export function buildVisibleTextIndex(root: ParentNode): VisibleTextIndex {
             text += value;
             segments.push({
                 end: text.length,
+                isMirror: isMirrorTextNode(node),
                 node: node as Text,
                 start,
             });
@@ -49,6 +78,19 @@ export function buildVisibleTextIndex(root: ParentNode): VisibleTextIndex {
         }
 
         if (!isElement(node) || shouldSkipElement(node)) {
+            return;
+        }
+
+        if (isMirrorContainer(node)) {
+            if (options.skipMirrorSubtrees) {
+                return;
+            }
+
+            for (const child of node.childNodes) {
+                if (shouldIncludeMirrorNode(child, options.ordinaryText)) {
+                    visit(child);
+                }
+            }
             return;
         }
 
@@ -181,7 +223,7 @@ function segmentAt(
 }
 
 function shouldSkipElement(element: Element): boolean {
-    if (element.getAttribute("data-layout-light-mirror") !== null) {
+    if (isMirrorContainer(element)) {
         return false;
     }
 
@@ -218,8 +260,37 @@ function shouldSkipElement(element: Element): boolean {
     return false;
 }
 
+function shouldIncludeMirrorNode(node: Node, ordinaryText: string): boolean {
+    if (ordinaryText.length === 0) {
+        return true;
+    }
+
+    const value = node.textContent ?? "";
+    if (!value) {
+        return false;
+    }
+
+    return !ordinaryText.includes(value);
+}
+
 function isElement(node: ParentNode | Node): node is Element {
     return typeof Element !== "undefined" && node instanceof Element;
+}
+
+function isMirrorContainer(node: Node): node is Element {
+    return (
+        isElement(node) &&
+        node.getAttribute("data-layout-light-mirror") !== null
+    );
+}
+
+function isMirrorTextNode(node: Node): boolean {
+    const parent = node.parentNode;
+    return (
+        node.nodeType === 3 &&
+        isElement(parent) &&
+        parent.closest("[data-layout-light-mirror]") !== null
+    );
 }
 
 function isHtmlElement(element: Element): element is HTMLElement {

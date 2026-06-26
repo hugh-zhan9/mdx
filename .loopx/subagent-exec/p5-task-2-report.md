@@ -65,3 +65,23 @@ surface_change:
     - command: npm test -- features/editor/lib/visible-text-search.test.ts features/editor/hooks/use-editor-find-replace.test.ts
       result: PASS (2 files, 31 tests)
 ```
+
+## Review fix follow-up
+
+Summary:
+Addressed the review finding that `data-layout-light-mirror` content was indexed unconditionally and could duplicate ordinary DOM matches. The indexer now builds ordinary visible text first, then includes mirror content only when it contributes text not already represented by ordinary searchable DOM. This preserves Canvas-only semantic text searchability without changing markdown fallback behavior in `use-editor-find-replace.ts`.
+
+Files changed:
+- `features/editor/lib/visible-text-search.ts`
+- `features/editor/lib/visible-text-search.test.ts`
+- `features/editor/hooks/use-editor-find-replace.test.ts`
+
+Implementation details:
+- Refactored `buildVisibleTextIndex` into an ordinary-first pass plus a selective mirror pass.
+- Kept `data-layout-light-mirror` searchable even when hidden, but only admitted mirror child text when it adds new searchable content beyond the ordinary DOM index.
+- Left `features/editor/hooks/use-editor-find-replace.ts` unchanged because the focused hook regression passed against the indexer fix and markdown fallback behavior remained intact.
+- Updated both prior “no duplicate” regressions so the visible paragraph text is actually duplicated inside the mirror subtree, and asserted that only one ordinary-body match is returned while Canvas-only mirror text remains searchable.
+
+Verification:
+- `npm test -- features/editor/lib/visible-text-search.test.ts features/editor/hooks/use-editor-find-replace.test.ts`
+  - Result: PASS (`2` files, `31` tests)

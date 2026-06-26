@@ -173,8 +173,11 @@ describe("editor find replace visible text index", () => {
         mirror.setAttribute("data-layout-light-mirror", "");
         mirror.style.display = "none";
         const mirrorBlock = document.createElement("div");
-        mirrorBlock.textContent = "x squared";
+        mirrorBlock.textContent = "Plain paragraph";
         mirror.append(mirrorBlock);
+        const mirrorCanvasOnly = document.createElement("div");
+        mirrorCanvasOnly.textContent = "x squared";
+        mirror.append(mirrorCanvasOnly);
         root.append(mirror);
 
         const preview = document.createElement("div");
@@ -194,6 +197,7 @@ describe("editor find replace visible text index", () => {
                 caseSensitive: false,
             }),
         ).toHaveLength(1);
+        expect(index.text).toContain("x squared");
         expect(index.text).not.toContain("GeneratedLabel");
 
         root.remove();
