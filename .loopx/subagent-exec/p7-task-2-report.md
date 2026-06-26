@@ -85,3 +85,20 @@
 ## Remaining Concern
 
 - The real legacy mermaid comparison still emits React `flushSync` warnings during mount/unmount in jsdom, but the semantic assertions now pass and the warnings did not fail the test run.
+
+## Fix Review Follow-up
+
+- Verified the reviewer feedback against the current codebase before editing:
+  - `features/editor/components/editor-kernel-adapter.tsx` no longer exports `DOMD`, so the comparison test was importing an undefined component and failing before it could exercise the legacy path.
+  - `packages/mdx-editor/layout-ir/normalizer.ts` depended upward on `features/editor/lib/mermaid-code-fences`, creating the cross-layer dependency identified in review.
+- Replaced the comparison harness with the real legacy provider/root registration contract:
+  - renders `DOMDProvider`
+  - registers a local `[data-mdx-editor-root]` through `useMdxEditor().registerRoot(...)`
+  - asserts the mermaid node view actually mounted via `textarea[aria-label='Mermaid source']` and `[data-mdx-mermaid-preview]`
+- Removed the upward normalizer dependency by keeping the minimal mermaid fence-language predicate local to `packages/mdx-editor/layout-ir/normalizer.ts`.
+
+## Fix Review Result
+
+- Command: `npm test -- packages/mdx-editor/layout-ir/normalizer.test.ts packages/mdx-editor/react/legacy-view-comparison.test.tsx features/editor/components/editor-pane.test.tsx`
+- Result: passed
+- Summary: `3` files passed, `23` tests passed

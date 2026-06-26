@@ -1,14 +1,12 @@
 // @vitest-environment jsdom
 
 import { act } from "react";
-import { createRoot } from "react-dom/client";
 import { useEffect, useRef } from "react";
+import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-    MdxEditorProvider,
-    useMdxEditor,
-} from "./index";
+import { DOMDProvider } from "../../../features/editor/components/editor-kernel-adapter";
 import { HybridEditorHost } from "./hybrid-editor-host";
+import { useMdxEditor } from "./index";
 import { snapshotFromMarkdown } from "../../../features/editor/components/editor-pane";
 import {
     buildVisibleTextIndex,
@@ -23,21 +21,6 @@ vi.mock("./mermaid-renderer", () => ({
         svg: "<svg><text>rendered mermaid</text></svg>",
     })),
 }));
-
-function EditorRootFixture() {
-    const { registerRoot } = useMdxEditor();
-    const rootRef = useRef<HTMLDivElement | null>(null);
-
-    useEffect(() => {
-        registerRoot(rootRef.current);
-
-        return () => {
-            registerRoot(null);
-        };
-    }, [registerRoot]);
-
-    return <div ref={rootRef} data-mdx-editor-root tabIndex={0} />;
-}
 
 describe("legacy view comparison", () => {
     let host: HTMLDivElement;
@@ -83,6 +66,14 @@ describe("legacy view comparison", () => {
 
         expect(graphOffset).toBeGreaterThanOrEqual(0);
         expect(edgeOffset).toBeGreaterThanOrEqual(0);
+        expect(
+            surface.legacyRoot.querySelector(
+                "textarea[aria-label='Mermaid source']",
+            ),
+        ).not.toBeNull();
+        expect(
+            surface.legacyRoot.querySelector("[data-mdx-mermaid-preview]"),
+        ).not.toBeNull();
         expect(legacyIndex.text).toContain("graph TD");
         expect(legacyIndex.text).toContain("A --> B");
         expect(legacyIndex.text).not.toContain("```mermaid");
@@ -127,9 +118,9 @@ async function renderComparisonSurface(
         root.render(
             <div data-testid="comparison-host">
                 <div data-testid="legacy-root">
-                    <MdxEditorProvider initialMarkdown={markdown}>
-                        <EditorRootFixture />
-                    </MdxEditorProvider>
+                    <DOMDProvider initMd={markdown}>
+                        <LegacyEditorRootFixture />
+                    </DOMDProvider>
                 </div>
                 <div data-testid="hybrid-root">
                     <HybridEditorHost snapshot={snapshotFromMarkdown(markdown)} />
@@ -149,6 +140,21 @@ async function renderComparisonSurface(
             "[data-testid='hybrid-root'] [data-hybrid-editor-host]",
         ),
     };
+}
+
+function LegacyEditorRootFixture() {
+    const { registerRoot } = useMdxEditor();
+    const rootRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        registerRoot(rootRef.current);
+
+        return () => {
+            registerRoot(null);
+        };
+    }, [registerRoot]);
+
+    return <div ref={rootRef} data-mdx-editor-root tabIndex={0} />;
 }
 
 function queryRequired(container: ParentNode, selector: string) {

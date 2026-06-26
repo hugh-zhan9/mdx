@@ -4,7 +4,6 @@ import type {
     LayoutInlineRun,
     LayoutViewport,
 } from "./types";
-import { isMermaidFenceLanguage } from "../../../features/editor/lib/mermaid-code-fences";
 
 const DEFAULT_FONT_FAMILY = "Inter";
 const DEFAULT_FONT_SIZE = 14;
@@ -232,4 +231,9 @@ function readLine(markdown: string, start: number) {
 function isClosingFence(line: string, fenceLength: number) {
     const match = line.match(/^( {0,3})(`+)[ \t]*$/u);
     return (match?.[2]?.length ?? 0) >= fenceLength;
+}
+
+function isMermaidFenceLanguage(info: string): boolean {
+    const firstToken = info.trim().split(/\s+/, 1)[0] ?? "";
+    return firstToken.toLowerCase() === "mermaid";
 }
