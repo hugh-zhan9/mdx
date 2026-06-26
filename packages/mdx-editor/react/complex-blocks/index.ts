@@ -1,8 +1,10 @@
 import { createElement } from "react";
 import { CodeBlock } from "./code-block";
+import { HtmlFallbackBlock } from "./html-fallback-block";
 import { ImageBlock } from "./image-block";
 import { MathBlock } from "./math-block";
 import { MermaidBlock } from "./mermaid-block";
+import { TableBlock } from "./table-block";
 
 export interface ComplexBlockOp {
     blockId?: string;
@@ -26,6 +28,12 @@ export function renderComplexBlock(op: ComplexBlockOp) {
             return createElement(ImageBlock, { op });
         case "mermaid":
             return createElement(MermaidBlock, { op });
+        case "table":
+        case "table_grid":
+            return createElement(TableBlock, { op });
+        case "html":
+        case "fallback":
+            return createElement(HtmlFallbackBlock, { op });
         default:
             return null;
     }

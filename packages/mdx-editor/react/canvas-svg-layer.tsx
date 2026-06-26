@@ -1,5 +1,6 @@
 "use client";
 
+import { renderComplexBlock } from "./complex-blocks";
 import type {
     LayoutCanvasDrawOp,
     LayoutCaretAnchor,
@@ -31,6 +32,42 @@ export function CanvasSvgLayer({
         >
             <canvas data-layout-canvas-layer className="absolute inset-0" />
             <svg data-layout-svg-layer className="absolute inset-0" aria-hidden="true" />
+            {canvasDrawOps.map((op) => {
+                const block = renderComplexBlock({
+                    blockId: op.blockId,
+                    kind: op.kind,
+                    rect: {
+                        x: op.x,
+                        y: op.y,
+                        width: op.width,
+                        height: op.height,
+                    },
+                    data:
+                        op.data && typeof op.data === "object"
+                            ? (op.data as Record<string, unknown>)
+                            : undefined,
+                });
+
+                if (block === null) {
+                    return null;
+                }
+
+                return (
+                    <div
+                        key={`${op.blockId}-${op.kind}-${op.x}-${op.y}`}
+                        data-layout-complex-block-overlay={op.kind}
+                        className="absolute"
+                        style={{
+                            left: op.x,
+                            top: op.y,
+                            width: op.width,
+                            height: op.height,
+                        }}
+                    >
+                        {block}
+                    </div>
+                );
+            })}
         </div>
     );
 }
