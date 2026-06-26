@@ -40,7 +40,6 @@ vi.mock("../hooks/use-editor-bridge", () => ({
 }));
 
 vi.mock("./editor-kernel-adapter", () => ({
-    DOMD: () => <div data-mdx-editor-root data-testid="domd" />,
     DOMDProvider: ({ children }: { children: React.ReactNode }) => children,
     toMarkdown: () => "",
     useEditor: () => null,
@@ -331,10 +330,8 @@ describe("editor pane image paste", () => {
         expect(host.querySelector("[data-mdx-editor-shell]")).not.toBeNull();
         expect(host.querySelector("[data-mdx-editor-column]")).not.toBeNull();
         expect(host.querySelector("[data-hybrid-editor-host]")).not.toBeNull();
-        expect(
-            host.querySelector("[data-legacy-editor-fixture] [data-mdx-editor-root]"),
-        ).not.toBeNull();
-        expect(host.querySelector("[data-mdx-editor-root]")).not.toBeNull();
+        expect(host.querySelector("[data-legacy-editor-fixture]")).toBeNull();
+        expect(host.querySelector("[data-mdx-editor-root]")).toBeNull();
     });
 
     it("does not emit markdown persistence changes when rendering the hybrid host snapshot", async () => {
@@ -441,7 +438,7 @@ describe("editor pane image paste", () => {
         expect(setData).toHaveBeenCalledWith("text/plain", "x^2");
     });
 
-    it("keeps hybrid mirror markdown offsets available alongside the legacy fixture root", async () => {
+    it("keeps hybrid mirror markdown offsets available without the legacy fixture root", async () => {
         bridgeMocks.currentMarkdown = "Before $x^2$ after";
         const tab = {
             tabId: "tab-1",
@@ -464,15 +461,10 @@ describe("editor pane image paste", () => {
         });
 
         const hybridRoot = host.querySelector("[data-hybrid-editor-host]");
-        const legacyRoot = host.querySelector(
-            "[data-legacy-editor-fixture] [data-mdx-editor-root]",
-        );
 
         expect(hybridRoot).not.toBeNull();
-        expect(legacyRoot).not.toBeNull();
 
         const hybridIndex = buildVisibleTextIndex(hybridRoot!);
-        const legacyIndex = buildVisibleTextIndex(legacyRoot!);
         const [hybridMatch] = findVisibleTextMatches(hybridIndex, "x^2", {
             caseSensitive: true,
         });
@@ -484,7 +476,7 @@ describe("editor pane image paste", () => {
             anchor: 8,
             head: 11,
         });
-        expect(legacyIndex.text).not.toBeNull();
+        expect(host.querySelector("[data-legacy-editor-fixture]")).toBeNull();
     });
 
     it("rebuilds find ranges when editor text mounts after markdown fallback", async () => {
@@ -571,16 +563,13 @@ describe("editor pane image paste", () => {
             );
         });
 
-        const editorRoot = host.querySelector<HTMLElement>(
-            "[data-mdx-editor-root]",
-        );
         const contentRoot = host.querySelector<HTMLElement>("[data-mdx-editor-column]");
         const paragraph = document.createElement("p");
         paragraph.textContent = "语法 A 语法 B";
         paragraph.scrollIntoView = vi.fn();
 
         await act(async () => {
-            editorRoot!.append(paragraph);
+            contentRoot!.append(paragraph);
             await flushPromises();
         });
 

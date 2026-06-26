@@ -13,10 +13,7 @@ import type {
     WorkspaceTab,
 } from "../../workspace/lib/types";
 import { findWikilinkAtTextOffset } from "../../workspace/lib/wikilink";
-import {
-    DOMD,
-    DOMDProvider,
-} from "./editor-kernel-adapter";
+import { DOMDProvider } from "./editor-kernel-adapter";
 import { EditorFindBar } from "./editor-find-bar";
 import { EditorMermaidPreviewLayer } from "./editor-mermaid-preview-layer";
 import { useEditorBridge } from "../hooks/use-editor-bridge";
@@ -621,13 +618,6 @@ function EditorPaneInner({
                 >
                     <div className="relative h-full w-full">
                         <HybridEditorHost snapshot={layoutSnapshot} />
-                        <div
-                            className="sr-only"
-                            data-legacy-editor-fixture=""
-                            aria-hidden="true"
-                        >
-                            <DOMD />
-                        </div>
                     </div>
                     <EditorMermaidPreviewLayer
                         editorRoot={editorRoot}

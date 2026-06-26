@@ -5,7 +5,6 @@ import {
     createMdxEditorKernel,
     defaultMarkdownSyntax,
     MdxEditorProvider,
-    MdxEditorView,
     useMdxEditor,
 } from "../../../packages/mdx-editor";
 import type {
@@ -85,8 +84,6 @@ export function DOMDProvider({
         </MdxEditorProvider>
     );
 }
-
-export const DOMD = MdxEditorView;
 
 export function useEditor(): Editor | null {
     const { focus } = useMdxEditor();
