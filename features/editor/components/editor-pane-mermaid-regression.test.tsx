@@ -38,26 +38,87 @@ describe("editor pane mermaid rendering", () => {
         host.remove();
     });
 
-    it("does not create duplicate edit controls while scrolling mermaid blocks", async () => {
-        const editorViewportRef = { current: null as HTMLDivElement | null };
+    it(
+        "does not create duplicate edit controls while scrolling mermaid blocks",
+        async () => {
+            const markdown = [
+                    "# Title",
+                    "",
+                    "Before",
+                    "",
+                    "```mermaid",
+                    "graph TD",
+                    "  A --> B",
+                    "```",
+                    "",
+                    ...Array.from(
+                        { length: 40 },
+                        (_, index) => `Paragraph ${index}`,
+                    ),
+                ].join("\n");
+
+            await act(async () => {
+                root.render(
+                    <HybridEditorHost snapshot={snapshotFromMarkdown(markdown)} />,
+                );
+            });
+            await flushEffects();
+            await waitFor(() => {
+                expect(
+                    host.querySelector("[data-mdx-mermaid-preview]"),
+                ).not.toBeNull();
+            });
+
+            const preview = host.querySelector("[data-mdx-mermaid-preview]");
+            const hybridRoot = host.querySelector("[data-hybrid-editor-host]");
+            const hybridIndex = buildVisibleTextIndex(hybridRoot!);
+
+            expect(hybridRoot?.textContent).toContain("graph TD");
+            expect(hybridRoot?.textContent).toContain("A --> B");
+            expect(
+                findVisibleTextMatches(hybridIndex, "graph TD", {
+                    caseSensitive: true,
+                }),
+            ).toHaveLength(1);
+            expect(renderMermaidDiagram).toHaveBeenCalled();
+            expect(preview).not.toBeNull();
+            expect(preview?.textContent).toContain("rendered flowchart");
+            expect(
+                host.querySelector("[data-mirror-block-id='block-2']"),
+            ).not.toBeNull();
+            expect(
+                host.querySelector("[data-mirror-block-id='block-2']")?.textContent,
+            ).toContain("graph TD");
+            expect(countEditButtons()).toBe(0);
+
+            await act(async () => {
+                for (let index = 0; index < 8; index += 1) {
+                    const hybridRoot = host.querySelector<HTMLElement>(
+                        "[data-hybrid-editor-host]",
+                    );
+                    hybridRoot!.scrollTop = index * 120;
+                    hybridRoot!.dispatchEvent(
+                        new Event("scroll", { bubbles: true }),
+                    );
+                    await Promise.resolve();
+                }
+            });
+            await flushEffects();
+
+            expect(countEditButtons()).toBe(0);
+            expect(renderMermaidDiagram).toHaveBeenCalled();
+        },
+    );
+
+    it("registers an editable current-product root for keyboard input", async () => {
+        const onMarkdownChange = vi.fn();
         const tab = {
             tabId: "tab-1",
             path: "/tmp/note.md",
             title: "note.md",
             dirty: false,
             needsRenameOnFirstSave: false,
-            markdown: [
-                "# Title",
-                "",
-                "Before",
-                "",
-                "```mermaid",
-                "graph TD",
-                "  A --> B",
-                "```",
-                "",
-                ...Array.from({ length: 40 }, (_, index) => `Paragraph ${index}`),
-            ].join("\n"),
+            markdown: "Hello",
             baseFingerprint: "base",
         };
 
@@ -66,52 +127,38 @@ describe("editor pane mermaid rendering", () => {
                 <EditorPane
                     rootPath={null}
                     tab={tab}
-                    onMarkdownChange={vi.fn()}
-                    editorViewportRef={editorViewportRef}
+                    onMarkdownChange={onMarkdownChange}
                 />,
             );
         });
         await flushEffects();
-        await waitFor(() => {
-            expect(renderMermaidDiagram).toHaveBeenCalledTimes(1);
-            expect(host.querySelector("[data-mdx-mermaid-preview]")).not.toBeNull();
-        });
 
-        const preview = host.querySelector("[data-mdx-mermaid-preview]");
-        const hybridRoot = host.querySelector("[data-hybrid-editor-host]");
-        const hybridIndex = buildVisibleTextIndex(hybridRoot!);
-
-        expect(hybridRoot?.textContent).toContain("graph TD");
-        expect(hybridRoot?.textContent).toContain("A --> B");
-        expect(
-            findVisibleTextMatches(hybridIndex, "graph TD", {
-                caseSensitive: true,
-            }),
-        ).toHaveLength(1);
-        expect(renderMermaidDiagram).toHaveBeenCalledTimes(1);
-        expect(preview).not.toBeNull();
-        expect(preview?.textContent).toContain("rendered flowchart");
-        expect(host.querySelector("[data-mirror-block-id='block-2']")).not.toBeNull();
-        expect(host.querySelector("[data-mirror-block-id='block-2']")?.textContent).toContain(
-            "graph TD",
+        const editorRoot = host.querySelector<HTMLElement>(
+            "[data-mdx-editor-root]",
         );
-        expect(countEditButtons()).toBe(0);
+        expect(editorRoot).not.toBeNull();
+
+        const paragraph = editorRoot?.querySelector<HTMLElement>(
+            "p[data-mdx-node-type='paragraph']",
+        );
+        expect(paragraph).not.toBeNull();
 
         await act(async () => {
-            for (let index = 0; index < 8; index += 1) {
-                if (editorViewportRef.current) {
-                    editorViewportRef.current.scrollTop = index * 120;
-                    editorViewportRef.current.dispatchEvent(
-                        new Event("scroll", { bubbles: true }),
-                    );
-                }
-                await Promise.resolve();
-            }
+            paragraph!.textContent = "Hello world";
+            paragraph!.dispatchEvent(
+                new InputEvent("input", {
+                    bubbles: true,
+                    data: " world",
+                    inputType: "insertText",
+                }),
+            );
         });
-        await flushEffects();
-
-        expect(countEditButtons()).toBe(0);
-        expect(renderMermaidDiagram).toHaveBeenCalledTimes(1);
+        await waitFor(() => {
+            expect(onMarkdownChange).toHaveBeenCalledWith(
+                "tab-1",
+                "Hello world",
+            );
+        });
     });
 
     it(

@@ -335,7 +335,7 @@ describe("editor pane image paste", () => {
         expect(host.querySelector("[data-mdx-editor-shell]")).not.toBeNull();
         expect(host.querySelector("[data-mdx-editor-column]")).not.toBeNull();
         expect(host.querySelector("[data-hybrid-editor-host]")).not.toBeNull();
-        expect(host.querySelector("[data-mdx-editor-root]")).toBeNull();
+        expect(host.querySelector("[data-mdx-editor-root]")).not.toBeNull();
     });
 
     it("does not emit markdown persistence changes when rendering the hybrid host snapshot", async () => {

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { normalizeLayoutDocument } from "../../../packages/mdx-editor/layout-ir/normalizer";
 import type { DocumentSelectionRange } from "../../../packages/mdx-editor";
+import { useMdxEditor } from "../../../packages/mdx-editor";
 import { HybridEditorHost } from "../../../packages/mdx-editor/react/hybrid-editor-host";
 import type { LayoutSnapshot } from "../../../packages/mdx-editor/react/wasm-layout-bridge";
 import { loadImage } from "../../../common/lib/image-storage";
@@ -282,6 +283,29 @@ export function resolveEditorRootFromContent(
     return (
         contentRoot?.querySelector<HTMLElement>(MDX_EDITOR_ROOT_SELECTOR) ??
         contentRoot
+    );
+}
+
+function CurrentProductEditorRoot() {
+    const { registerRoot } = useMdxEditor();
+    const rootRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        registerRoot(rootRef.current);
+
+        return () => {
+            registerRoot(null);
+        };
+    }, [registerRoot]);
+
+    return (
+        <div
+            ref={rootRef}
+            data-mdx-editor-root
+            aria-hidden="true"
+            className="absolute inset-0 z-10 opacity-0 caret-transparent"
+            tabIndex={0}
+        />
     );
 }
 
@@ -710,6 +734,7 @@ function EditorPaneInner({
                 >
                     <div className="relative h-full w-full">
                         <HybridEditorHost snapshot={layoutSnapshot} />
+                        <CurrentProductEditorRoot />
                     </div>
                 </div>
             </div>
