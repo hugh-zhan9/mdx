@@ -1,4 +1,4 @@
-use crate::FontDescriptor;
+use crate::{FontDescriptor, FontError};
 use font_kit::handle::Handle;
 use font_kit::properties::Style;
 use font_kit::source::SystemSource;
@@ -28,6 +28,30 @@ pub fn get_default_font() -> Option<FontDescriptor> {
     }
 
     select_default_from_discovered(&discover_with_font_kit())
+}
+
+pub fn resolve_font_descriptor(font_id: &str) -> Result<FontDescriptor, FontError> {
+    discover_system_fonts()
+        .into_iter()
+        .find(|font| {
+            font.font_id == font_id
+                || font.postscript_name == font_id
+                || font.family_name == font_id
+        })
+        .ok_or_else(|| FontError::UnknownFontId {
+            font_id: font_id.to_string(),
+        })
+}
+
+pub fn load_font_bytes(descriptor: &FontDescriptor) -> Result<Vec<u8>, FontError> {
+    let source = SystemSource::new();
+    let handle = source
+        .select_by_postscript_name(&descriptor.postscript_name)
+        .map_err(|_| FontError::FontDataUnavailable {
+            font_id: descriptor.font_id.clone(),
+        })?;
+
+    load_font_bytes_from_handle(&handle, &descriptor.font_id)
 }
 
 fn discover_with_font_kit() -> Vec<FontDescriptor> {
@@ -76,6 +100,19 @@ fn font_descriptor_from_handle(handle: &Handle) -> Option<FontDescriptor> {
         math_checked: false,
         math_available: false,
     })
+}
+
+fn load_font_bytes_from_handle(handle: &Handle, font_id: &str) -> Result<Vec<u8>, FontError> {
+    let font = handle.load().map_err(|_| FontError::FontDataUnavailable {
+        font_id: font_id.to_string(),
+    })?;
+    let bytes = font
+        .copy_font_data()
+        .ok_or_else(|| FontError::FontDataUnavailable {
+            font_id: font_id.to_string(),
+        })?;
+
+    Ok((*bytes).clone())
 }
 
 fn handle_has_math_table(handle: &Handle) -> Option<bool> {

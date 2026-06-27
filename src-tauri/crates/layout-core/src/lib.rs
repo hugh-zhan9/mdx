@@ -7,7 +7,6 @@ pub mod paragraph;
 pub mod position;
 pub mod selection;
 
-#[cfg(target_arch = "wasm32")]
 pub mod wasm_bridge;
 
 use serde::{Deserialize, Serialize};

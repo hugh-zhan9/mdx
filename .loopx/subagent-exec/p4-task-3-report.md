@@ -91,3 +91,27 @@ Tests       1 passed (1)
 ## Concerns
 
 - The host currently consumes only `LayoutSnapshot` directly. Integration with `MdxEditorProvider` and `createLayoutBridge` is intentionally deferred to downstream tasks, consistent with the task brief's narrow scope.
+
+
+## Review Follow-up Fix
+
+- Added a measurable content box (`data-hybrid-editor-content`) with computed width/height so the host establishes a real scroll/content-size contract.
+- Passed `canvasDrawOps`, `caretAnchors`, `hitTestEntries`, and `selectionGeometries` into `CanvasSvgLayer` and surfaced their counts for contract verification.
+- Strengthened the host test to assert content box presence, overlay layers, and snapshot-carried overlay state.
+
+### Verification
+
+- Command: `npm test -- packages/mdx-editor/react/hybrid-editor-host.test.tsx`
+- Result: pass, `1 file, 1 test`
+
+
+## Review Follow-up Fix
+
+- Added a measurable content box (`data-hybrid-editor-content`) with computed width/height so the host establishes a real scroll/content-size contract.
+- Passed `canvasDrawOps`, `caretAnchors`, `hitTestEntries`, and `selectionGeometries` into `CanvasSvgLayer` and surfaced their counts for contract verification.
+- Strengthened the host test to assert content box presence, overlay layers, and snapshot-carried overlay state.
+
+### Verification
+
+- Command: `npm test -- packages/mdx-editor/react/hybrid-editor-host.test.tsx`
+- Result: pass, `1 file, 1 test`

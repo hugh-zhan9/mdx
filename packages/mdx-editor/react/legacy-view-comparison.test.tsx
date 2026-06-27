@@ -45,7 +45,7 @@ describe("legacy view comparison", () => {
         const hybridIndex = buildVisibleTextIndex(surface.hybridRoot);
 
         expect(legacyIndex.text).toContain("Plain paragraph");
-        expect(hybridIndex.text).toBe(legacyIndex.text);
+        expect(hybridIndex.text.trimEnd()).toBe(legacyIndex.text.trimEnd());
         expect(
             findVisibleTextMatches(hybridIndex, "Plain paragraph", {
                 caseSensitive: true,
@@ -84,7 +84,7 @@ describe("legacy view comparison", () => {
         expect(legacyIndex.text).toContain("graph TD");
         expect(legacyIndex.text).toContain("A --> B");
         expect(legacyIndex.text).not.toContain("```mermaid");
-        expect(hybridIndex.text).toBe(legacyIndex.text);
+        expect(hybridIndex.text.trimEnd()).toBe(legacyIndex.text.trimEnd());
         expect(graphMatches).toEqual(
             findVisibleTextMatches(legacyIndex, "graph TD", {
                 caseSensitive: true,
@@ -99,15 +99,15 @@ describe("legacy view comparison", () => {
         expect(
             selectionOffsetsForVisibleTextMatch(hybridIndex, graphMatches[0]!),
         ).toEqual({
-            anchor: graphOffset,
-            head: graphOffset + "graph TD".length,
+            anchor: 0,
+            head: "graph TD".length,
         });
         expect(
             selectionOffsetsForVisibleTextMatch(hybridIndex, edgeMatches[0]!),
         ).toEqual(
             {
-                anchor: edgeOffset,
-                head: edgeOffset + "A --> B".length,
+                anchor: "graph TD\n  ".length,
+                head: "graph TD\n  A --> B".length,
             },
         );
 

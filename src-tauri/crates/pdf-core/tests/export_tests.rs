@@ -1,7 +1,7 @@
-use pdf_core::export_pdf;
-use pdf_core::model::{PageMargins, PageSize, PdfExportRequest};
 use lopdf::content::Content;
 use lopdf::Document;
+use pdf_core::export_pdf;
+use pdf_core::model::{PageMargins, PageSize, PdfExportRequest};
 use tempfile::tempdir;
 
 #[test]
@@ -22,6 +22,45 @@ fn writes_non_empty_pdf_file() {
     let result = export_pdf(&request).expect("export succeeds");
     assert_eq!(result.page_count, 1);
     assert!(std::fs::metadata(out).unwrap().len() > 0);
+}
+
+#[test]
+fn exports_non_text_draw_ops_as_content_without_placeholder_warnings() {
+    let dir = tempdir().unwrap();
+    let out = dir.path().join("draw-ops.pdf");
+    let request = PdfExportRequest::new(
+        "doc-3".into(),
+        3,
+        "{}".into(),
+        r#"{
+            "revision":3,
+            "lines":[],
+            "canvasDrawOps":[
+                {"blockId":"math-1","kind":"Math","x":10.0,"y":20.0,"width":40.0,"height":20.0,"data":"{\"type\":\"text\",\"content\":\"x^2\"}"},
+                {"blockId":"chart-1","kind":"Mermaid","x":20.0,"y":50.0,"width":80.0,"height":30.0,"data":"{\"text\":\"graph TD\"}"}
+            ],
+            "hitTestEntries":[],
+            "caretAnchors":[],
+            "selectionGeometries":[],
+            "mirrorBlocks":[]
+        }"#.into(),
+        out.to_string_lossy().into_owned(),
+        PageSize::a4_points(),
+        PageMargins::uniform(72.0),
+        "subset".into(),
+    );
+
+    let result = export_pdf(&request).expect("export succeeds");
+
+    assert!(result.warnings.is_empty());
+
+    let pdf = Document::load(&out).expect("pdf loads");
+    let pages = pdf.get_pages();
+    let page_content = pdf
+        .get_page_content(*pages.get(&1).expect("page 1 id"))
+        .unwrap();
+    let ops = Content::decode(&page_content).expect("decode page");
+    assert!(ops.operations.iter().any(|op| op.operator == "Tj"));
 }
 
 #[test]
@@ -76,8 +115,12 @@ fn writes_multi_page_pdf_with_text_content() {
     let pages = pdf.get_pages();
     assert_eq!(pages.len(), 2);
 
-    let first_page_content = pdf.get_page_content(*pages.get(&1).expect("page 1 id")).unwrap();
-    let second_page_content = pdf.get_page_content(*pages.get(&2).expect("page 2 id")).unwrap();
+    let first_page_content = pdf
+        .get_page_content(*pages.get(&1).expect("page 1 id"))
+        .unwrap();
+    let second_page_content = pdf
+        .get_page_content(*pages.get(&2).expect("page 2 id"))
+        .unwrap();
 
     let first_ops = Content::decode(&first_page_content).expect("decode page 1");
     let second_ops = Content::decode(&second_page_content).expect("decode page 2");
@@ -95,5 +138,8 @@ fn writes_multi_page_pdf_with_text_content() {
         .get(1)
         .and_then(|operand| operand.as_float().ok())
         .expect("page 2 y operand");
-    assert!(second_y > 0.0, "page 2 text should be rebased into page-local coordinates");
+    assert!(
+        second_y > 0.0,
+        "page 2 text should be rebased into page-local coordinates"
+    );
 }

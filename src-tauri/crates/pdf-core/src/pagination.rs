@@ -35,6 +35,10 @@ pub fn paginate_snapshot(
         ));
     }
 
+    if pages.is_empty() && !snapshot.canvas_draw_ops.is_empty() {
+        pages = build_draw_op_only_pages(&snapshot.canvas_draw_ops, available_height);
+    }
+
     PaginatedDocument {
         snapshot: snapshot.clone(),
         page_size: page_size.clone(),
@@ -63,6 +67,39 @@ fn build_page(
         lines,
         draw_ops,
     }
+}
+
+fn build_draw_op_only_pages(
+    canvas_draw_ops: &[CanvasDrawOp],
+    available_height: f32,
+) -> Vec<PaginatedPage> {
+    let page_height = available_height.max(1.0);
+    let max_bottom = canvas_draw_ops
+        .iter()
+        .map(|op| op.y + op.height)
+        .fold(0.0_f32, f32::max);
+    let page_count = ((max_bottom / page_height).ceil() as usize).max(1);
+
+    (0..page_count)
+        .map(|page_index| {
+            let start_y = page_index as f32 * page_height;
+            let end_y = start_y + page_height;
+            let draw_ops = canvas_draw_ops
+                .iter()
+                .filter(|op| op.y < end_y && op.y + op.height > start_y)
+                .map(|op| CanvasDrawOp {
+                    y: op.y - start_y,
+                    ..op.clone()
+                })
+                .collect();
+
+            PaginatedPage {
+                number: page_index + 1,
+                lines: Vec::new(),
+                draw_ops,
+            }
+        })
+        .collect()
 }
 
 fn page_vertical_bounds(lines: &[LayoutLine]) -> (f32, f32) {

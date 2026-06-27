@@ -1,4 +1,5 @@
-use font_core::glyph::GlyphCache;
+use font_core::discovery::{get_default_font, load_font_bytes};
+use font_core::glyph::{glyph_metrics_for_font_size, GlyphCache};
 use font_core::{fallback, GlyphMetricsEntry};
 
 fn dummy_entry(glyph_id: u32) -> GlyphMetricsEntry {
@@ -129,4 +130,17 @@ fn test_glyph_cache_different_keys() {
     let (hits, misses) = cache.stats();
     assert_eq!(hits, 0);
     assert_eq!(misses, 4);
+}
+
+#[test]
+fn glyph_metrics_read_real_font_data() {
+    let default = get_default_font().expect("should have a default system font");
+    let bytes = load_font_bytes(&default).expect("default font bytes should load");
+    let metrics =
+        glyph_metrics_for_font_size(&bytes, &[65, 32], 16.0).expect("glyph metrics should parse");
+
+    assert_eq!(metrics.len(), 2);
+    assert_eq!(metrics[0].glyph_id, 65);
+    assert!(metrics[0].advance > 0.0);
+    assert!(metrics[1].advance > 0.0);
 }

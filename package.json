@@ -7,7 +7,8 @@
     "license": "MIT",
     "scripts": {
         "dev": "next dev",
-        "build": "next build",
+        "build": "npm run build:layout-wasm && next build",
+        "build:layout-wasm": "node scripts/build-layout-wasm.mjs",
         "build:sidecars": "NODE_ENV=production node scripts/prepare-tauri-sidecars.mjs",
         "build:app": "npx tauri build",
         "install:local": "node scripts/install-local-app.mjs",
@@ -15,7 +16,10 @@
         "lint": "eslint",
         "test": "vitest run",
         "test:workspace": "vitest run features/workspace/lib/*.test.ts",
-        "verify:editor:manual": "node scripts/verify-editor-browser.mjs"
+        "verify:layout-wasm": "npm run build:layout-wasm && node scripts/verify-layout-wasm.mjs",
+        "verify:editor:manual": "node scripts/verify-editor-browser.mjs",
+        "verify:editor:runtime": "node scripts/verify-tex-canvas-runtime.mjs",
+        "measure:editor:runtime": "node scripts/measure-tex-canvas-runtime.mjs"
     },
     "dependencies": {
         "@codemirror/commands": "^6.10.3",
@@ -55,6 +59,7 @@
         "react-dom": "19.2.4"
     },
     "devDependencies": {
+        "@playwright/test": "^1.61.1",
         "@tailwindcss/postcss": "^4",
         "@tauri-apps/cli": "2.10.1",
         "@types/node": "^20",
@@ -66,6 +71,7 @@
         "jsdom": "^29.1.1",
         "tailwindcss": "^4",
         "typescript": "^5",
-        "vitest": "^4.0.14"
+        "vitest": "^4.0.14",
+        "wasm-pack": "^0.15.0"
     }
 }

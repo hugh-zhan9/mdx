@@ -53,3 +53,25 @@
 
 - The task ownership listed only `export.rs` and `export_tests.rs`, but `Cargo.toml` and `src/lib.rs` also required minimal wiring so the new test target and exported API could compile at all.
 - The local camelCase compatibility parser is intentionally narrow. If later tasks standardize serde naming in `layout-core`, this compatibility layer should be removed in favor of the canonical shared structs.
+
+
+## Review Follow-up Fix
+
+- Rebased page-2+ text positioning by subtracting each page's starting line y before emitting PDF text operators.
+- Strengthened the export smoke test into a true multi-page regression by using document-global y values and asserting `Tj` operators plus a positive page-local `Td` y on page 2.
+
+### Verification
+
+- Command: `cd src-tauri && cargo test -p pdf-core --test export_tests`
+- Result: pass, `2 passed`
+
+
+## Review Follow-up Fix 3
+
+- Rebased page-local text positions before emitting PDF `Td` operators, so every page now uses page-relative coordinates.
+- Added a multi-page regression fixture that asserts `Tj` operators exist on both pages and that page-2 `Td` coordinates are positive in page-local space.
+
+### Verification
+
+- Command: `cd src-tauri && cargo test -p pdf-core --test export_tests`
+- Result: pass, `2 passed`

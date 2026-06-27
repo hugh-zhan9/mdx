@@ -98,27 +98,27 @@ export interface LayoutBridgeModule {
     ) => Uint8Array;
     layout_update_document: (
         documentId: string,
-        documentRevision: number,
+        documentRevision: number | bigint,
         updatedBlocksBytes: number[],
         removedBlockIdsBytes: number[],
         viewportBytes: number[],
     ) => Uint8Array;
     layout_get_viewport_snapshot: (
         documentId: string,
-        revision: number,
+        revision: number | bigint,
         viewportBytes: number[],
         devicePixelRatio: number,
     ) => Uint8Array;
     layout_hit_test: (
         documentId: string,
-        revision: number,
+        revision: number | bigint,
         x: number,
         y: number,
         granularityBytes: number[],
     ) => Uint8Array;
     layout_get_selection_geometry: (
         documentId: string,
-        revision: number,
+        revision: number | bigint,
         pmFrom: number,
         pmTo: number,
     ) => Uint8Array;
@@ -129,7 +129,7 @@ export interface InitializeLayoutRequest extends LayoutDocument {
     platform?: JsonValue;
 }
 
-export interface UpdateLayoutRequest extends LayoutDocument {}
+export type UpdateLayoutRequest = LayoutDocument;
 
 export interface ViewportSnapshotRequest extends LayoutDocument {
     viewport?: LayoutViewport;
@@ -293,6 +293,20 @@ function decodeCamelCaseJson<T>(bytes: Uint8Array): T {
     return remapKeys(decodeJson<unknown>(bytes)) as T;
 }
 
+function decodeLayoutSnapshot(bytes: Uint8Array): LayoutSnapshot {
+    const snapshot = decodeCamelCaseJson<LayoutSnapshot>(bytes);
+    if (!Array.isArray(snapshot.hitTestEntries)) {
+        throw new Error("layout snapshot missing hitTestEntries");
+    }
+    if (!Array.isArray(snapshot.selectionGeometries)) {
+        throw new Error("layout snapshot missing selectionGeometries");
+    }
+    if (!Array.isArray(snapshot.mirrorBlocks)) {
+        throw new Error("layout snapshot missing mirrorBlocks");
+    }
+    return snapshot;
+}
+
 function resolveViewport(
     fallback: LayoutDocument["styleContext"],
     viewport?: LayoutViewport,
@@ -345,23 +359,54 @@ function toRustDocument(document: LayoutDocument): RustLayoutDocument {
                 math_display: block.style.mathDisplay === "block" ? "Block" : "Inline",
             },
             inlines: block.inlines.map((inline) => ({
-                text: inline.text,
+                text:
+                    inline.kind === "image_inline"
+                        ? inline.attrs?.src ?? inline.text
+                        : inline.text,
                 kind: INLINE_KIND_TO_RUST[inline.kind as FrontendInlineKind] ?? "Text",
-                from: inline.from,
-                to: inline.to,
+                from: rustWireFromForInline(inline),
+                to: rustWireToForInline(inline),
                 style: {
                     bold: inline.style.bold,
                     italic: inline.style.italic,
                     code: inline.style.code,
-                    link: null,
-                    strike: false,
-                    underline: false,
+                    link:
+                        (inline.marks ?? []).find((mark) => mark.type === "link")?.href ??
+                        null,
+                    strike: (inline.marks ?? []).some(
+                        (mark) => mark.type === "strike",
+                    ),
+                    underline: (inline.marks ?? []).some(
+                        (mark) => mark.type === "underline",
+                    ),
                 },
             })),
             depth: block.depth,
         })),
         style_context: toRustStyleContext(document.styleContext),
     };
+}
+
+function sourceFromForInline(inline: LayoutDocument["blocks"][number]["inlines"][number]) {
+    return inline.sourceFrom ?? (inline as unknown as { from: number }).from;
+}
+
+function sourceToForInline(inline: LayoutDocument["blocks"][number]["inlines"][number]) {
+    return inline.sourceTo ?? (inline as unknown as { to: number }).to;
+}
+
+function rustWireFromForInline(
+    inline: LayoutDocument["blocks"][number]["inlines"][number],
+) {
+    return sourceFromForInline(inline);
+}
+
+function rustWireToForInline(
+    inline: LayoutDocument["blocks"][number]["inlines"][number],
+) {
+    const from = rustWireFromForInline(inline);
+    const sourceWidth = sourceToForInline(inline) - sourceFromForInline(inline);
+    return from + Math.max(sourceWidth, inline.text.length);
 }
 
 function toRustLineSnapshot(line: LayoutLineSnapshot): RustLayoutLineSnapshot {
@@ -401,18 +446,18 @@ export function createLayoutBridge(wasmModule: LayoutBridgeModule): LayoutBridge
                 encodeJson(toRustViewport(viewport)),
                 encodeJson(document.platform ?? {}),
             );
-            return decodeCamelCaseJson<LayoutSnapshot>(bytes);
+            return decodeLayoutSnapshot(bytes);
         },
 
         async update(request) {
             const bytes = wasmModule.layout_update_document(
                 request.documentId,
-                request.revision,
+                BigInt(request.revision),
                 encodeJson(toRustDocument(request)),
                 [],
                 [],
             );
-            return decodeCamelCaseJson<LayoutSnapshot>(bytes);
+            return decodeLayoutSnapshot(bytes);
         },
 
         async getViewportSnapshot(request) {
@@ -422,17 +467,17 @@ export function createLayoutBridge(wasmModule: LayoutBridgeModule): LayoutBridge
             );
             const bytes = wasmModule.layout_get_viewport_snapshot(
                 request.documentId,
-                request.revision,
+                BigInt(request.revision),
                 encodeJson(toRustDocument(request)),
                 request.devicePixelRatio ?? viewport.devicePixelRatio,
             );
-            return decodeCamelCaseJson<LayoutSnapshot>(bytes);
+            return decodeLayoutSnapshot(bytes);
         },
 
         async hitTest(request) {
             const bytes = wasmModule.layout_hit_test(
                 request.documentId,
-                request.revision,
+                BigInt(request.revision),
                 request.x,
                 request.y,
                 encodeJson(request.granularity.map(toRustLineSnapshot)),
@@ -448,7 +493,7 @@ export function createLayoutBridge(wasmModule: LayoutBridgeModule): LayoutBridge
         async getSelectionGeometry(request) {
             const bytes = wasmModule.layout_get_selection_geometry(
                 request.documentId,
-                request.revision,
+                BigInt(request.revision),
                 request.pmFrom,
                 request.pmTo,
             );

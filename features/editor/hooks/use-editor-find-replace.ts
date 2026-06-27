@@ -324,7 +324,7 @@ export function useEditorFindReplace({
         }));
         focusEditor();
         return true;
-    }, [activeMatch, focusEditor, matchCount, replaceMatch]);
+    }, [activeMatch, focusEditor, matchCount, replaceMatch, visibleTextIndex]);
 
     const setQuery = useCallback((query: string) => {
         setState((current) => ({

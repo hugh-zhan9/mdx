@@ -6,7 +6,9 @@ import {
     getDocumentSelectionRange,
     insertImage,
     insertText,
+    replaceRange,
     resetMD,
+    setSelectionRange,
     toMarkdown,
     useEditor,
     useEditorStoreApi,
@@ -16,6 +18,7 @@ import type { EditorBridgeState } from "../lib/editor-types";
 import type {
     DocumentSelectionRange,
     MarkdownSelectionOffsets,
+    MdxEditorLayoutSource,
 } from "../../../packages/mdx-editor";
 import {
     renderWikilinksForEditor,
@@ -28,11 +31,32 @@ export interface UseEditorBridgeOptions {
     onMarkdownChange: (tabId: string, markdown: string) => void;
 }
 
+export interface EditorBridge {
+    editor: ReturnType<typeof useEditor>;
+    editorStore: ReturnType<typeof useEditorStoreApi>;
+    currentMarkdown: string;
+    selection: EditorBridgeState["selection"];
+    focus: () => void;
+    getDocumentSelectionRange: () => DocumentSelectionRange | null;
+    getLayoutSource: () => MdxEditorLayoutSource | null;
+    insertText: (
+        text: string,
+        selectionOffsets?: MarkdownSelectionOffsets | null,
+    ) => void;
+    replaceRange: (input: { from: number; to: number; text: string }) => void;
+    setSelectionRange: (range: DocumentSelectionRange) => void;
+    insertImage: (
+        url: string,
+        altText?: string,
+        selectionRange?: DocumentSelectionRange | null,
+    ) => void;
+}
+
 export function useEditorBridge({
     tabId,
     markdown,
     onMarkdownChange,
-}: UseEditorBridgeOptions) {
+}: UseEditorBridgeOptions): EditorBridge {
     const editor = useEditor();
     const editorStore = useEditorStoreApi();
     const renderData = useRenderData();
@@ -129,6 +153,19 @@ export function useEditorBridge({
         [editorStore],
     );
 
+    const replacePlainTextRange = useCallback(
+        (input: { from: number; to: number; text: string }) => {
+            replaceRange(editorStore, input);
+        },
+        [editorStore],
+    );
+    const setDocumentSelectionRange = useCallback(
+        (range: DocumentSelectionRange) => {
+            setSelectionRange(editorStore, range);
+        },
+        [editorStore],
+    );
+
     const insertImageAtCursor = useCallback(
         (
             url: string,
@@ -144,6 +181,10 @@ export function useEditorBridge({
         () => getDocumentSelectionRange(editorStore),
         [editorStore],
     );
+    const getLayoutSource = useCallback(
+        () => editorStore?.getLayoutSource() ?? null,
+        [editorStore],
+    );
 
     return {
         editor,
@@ -152,7 +193,10 @@ export function useEditorBridge({
         selection,
         focus,
         getDocumentSelectionRange: getCurrentDocumentSelectionRange,
+        getLayoutSource,
         insertText: insertPlainText,
+        replaceRange: replacePlainTextRange,
+        setSelectionRange: setDocumentSelectionRange,
         insertImage: insertImageAtCursor,
     };
 }

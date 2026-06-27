@@ -32,10 +32,12 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2.5.6", features = [] }
 
 [dependencies]
+base64 = "0.22"
 clap = { version = "4", features = ["derive"] }
 libc = "0.2"
 log = "0.4"
 notify = "6"
+font-core = { path = "crates/font-core" }
 pdf-core = { path = "crates/pdf-core" }
 pdf-extract = "0.10.0"
 postgres = { version = "0.19", features = ["with-serde_json-1", "with-time-0_3"] }
@@ -57,3 +59,6 @@ block2 = "0.6"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSApplication"] }
 objc2-foundation = { version = "0.3", features = ["NSDictionary", "NSNotification", "NSOperation", "NSValue", "NSString", "block2"] }
+
+[dev-dependencies]
+png = "0.17"

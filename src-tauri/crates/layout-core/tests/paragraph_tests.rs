@@ -167,6 +167,34 @@ fn test_boundary_whitespace_is_retained_in_output_runs_and_pm_ranges() {
 }
 
 #[test]
+fn test_knuth_plass_chooses_lower_raggedness_than_greedy() {
+    let style_context = style_context();
+    let input = ParagraphInput {
+        block_id: "b1".into(),
+        inlines: &[inline("aaa bb cc dd", 0, 12)],
+        line_width: 36.0,
+        font_size: 10.0,
+        line_height: 1.5,
+        is_code: false,
+        style_context: &style_context,
+    };
+    let font = MockFontMetrics::new();
+
+    let greedy = layout_paragraph_greedy(&input, &font);
+    let knuth = layout_paragraph_knuth_plass(&input, &font).expect("knuth-plass layout");
+
+    let greedy_signature: Vec<_> = greedy.iter().map(line_signature).collect();
+    let knuth_signature: Vec<_> = knuth.iter().map(line_signature).collect();
+
+    assert_ne!(knuth_signature, greedy_signature);
+    assert_eq!(knuth.len(), 2);
+    assert_eq!(knuth_signature[0], vec![("aaa bb".to_string(), 0, 6)]);
+    assert_eq!(knuth_signature[1], vec![("cc dd".to_string(), 7, 12)]);
+    assert_eq!(knuth.first().unwrap().text_runs.first().unwrap().pm_from, 0);
+    assert_eq!(knuth.last().unwrap().text_runs.last().unwrap().pm_to, 12);
+}
+
+#[test]
 fn test_hard_breaks_emit_blank_lines_for_consecutive_and_trailing_breaks() {
     let style_context = style_context();
     let input = ParagraphInput {
@@ -222,7 +250,7 @@ fn test_layout_positions_runs_left_to_right() {
 }
 
 #[test]
-fn test_knuth_plass_surface_and_auto_mode_match_greedy_baseline() {
+fn test_knuth_plass_surface_and_auto_mode_preserve_content_ranges() {
     let style_context = style_context();
     let input = ParagraphInput {
         block_id: "b1".into(),
@@ -235,7 +263,6 @@ fn test_knuth_plass_surface_and_auto_mode_match_greedy_baseline() {
     };
     let font = MockFontMetrics::new();
 
-    let greedy = layout_paragraph_greedy(&input, &font);
     let knuth = layout_paragraph_knuth_plass(&input, &font).expect("knuth-plass surface");
     let auto = layout_core::paragraph::layout_paragraph_with_mode(
         &input,
@@ -244,21 +271,12 @@ fn test_knuth_plass_surface_and_auto_mode_match_greedy_baseline() {
     );
 
     assert!(!knuth.is_empty());
-    let expected = vec![
-        vec![("One ".to_string(), 0, 4)],
-        vec![("two ".to_string(), 4, 8)],
-        vec![("three".to_string(), 8, 13)],
-        vec![(" four ".to_string(), 13, 19)],
-        vec![("five".to_string(), 19, 23)],
-    ];
-    let greedy_signature: Vec<_> = greedy.iter().map(line_signature).collect();
     let knuth_signature: Vec<_> = knuth.iter().map(line_signature).collect();
     let auto_signature: Vec<_> = auto.iter().map(line_signature).collect();
 
-    assert_eq!(greedy_signature, expected);
-    assert_eq!(knuth_signature, expected);
-    assert_eq!(auto_signature, expected);
-    assert_eq!(greedy.last().unwrap().text_runs.last().unwrap().pm_to, 23);
+    assert_eq!(auto_signature, knuth_signature);
+    assert_eq!(knuth.first().unwrap().text_runs.first().unwrap().pm_from, 0);
+    assert_eq!(knuth.last().unwrap().text_runs.last().unwrap().pm_to, 23);
 }
 
 #[test]

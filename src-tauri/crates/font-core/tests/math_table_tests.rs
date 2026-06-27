@@ -1,4 +1,6 @@
-use font_core::math_table::{parse_glyph_assembly, parse_math_table};
+use font_core::discovery::{discover_system_fonts, load_font_bytes};
+use font_core::math_table::{math_constants, parse_glyph_assembly, parse_math_table};
+use font_core::FontError;
 use std::fs;
 use std::path::Path;
 
@@ -100,6 +102,21 @@ fn test_font_without_math_table() {
 
     if !found_regular_font {
         eprintln!("Warning: No regular font found for negative test. Skipping.");
+    }
+}
+
+#[test]
+fn math_constants_report_unavailable_when_font_has_no_math_table() {
+    let font = discover_system_fonts()
+        .into_iter()
+        .find(|font| font.math_checked && !font.math_available);
+
+    if let Some(font) = font {
+        let bytes = load_font_bytes(&font).expect("font bytes should load");
+        assert!(matches!(
+            math_constants(&bytes),
+            Err(FontError::MathTableUnavailable)
+        ));
     }
 }
 

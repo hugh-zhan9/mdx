@@ -4,8 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { normalizeLayoutDocument } from "../../../packages/mdx-editor/layout-ir/normalizer";
 import type { DocumentSelectionRange } from "../../../packages/mdx-editor";
-import { useMdxEditor } from "../../../packages/mdx-editor";
 import { HybridEditorHost } from "../../../packages/mdx-editor/react/hybrid-editor-host";
+import type {
+    DomTextRunInput,
+    DomTextRunPointerInput,
+} from "../../../packages/mdx-editor/react/dom-text-run-layer";
+import { snapshotFromProseMirrorViaLayoutBridge } from "../../../packages/mdx-editor/react/layout-bridge-runtime";
 import type { LayoutSnapshot } from "../../../packages/mdx-editor/react/wasm-layout-bridge";
 import { loadImage } from "../../../common/lib/image-storage";
 import { tokenize } from "../../../common/lib/prism";
@@ -18,7 +22,6 @@ import { EditorKernelProvider } from "./editor-kernel-adapter";
 import { EditorFindBar } from "./editor-find-bar";
 import { useEditorBridge } from "../hooks/use-editor-bridge";
 import { useEditorFindReplace } from "../hooks/use-editor-find-replace";
-import { MDX_EDITOR_ROOT_SELECTOR } from "../lib/editor-dom-contract";
 import {
     elementFromNode,
     isSelectAllShortcut,
@@ -165,9 +168,11 @@ export function snapshotFromMarkdown(markdown: string): LayoutSnapshot {
             );
 
             if (inline.kind === "math_inline") {
-                const mirrorBlockId = `${block.blockId}-math-${inline.from}-${inline.to}`;
-                const pmFrom = block.pmFrom + inline.from;
-                const pmTo = block.pmFrom + inline.to;
+                const inlineFrom = inline.sourceFrom - block.pmFrom;
+                const inlineTo = inline.sourceTo - block.pmFrom;
+                const mirrorBlockId = `${block.blockId}-math-${inlineFrom}-${inlineTo}`;
+                const pmFrom = inline.sourceFrom;
+                const pmTo = inline.sourceTo;
                 canvasDrawOps.push({
                     blockId: mirrorBlockId,
                     kind: "math",
@@ -193,8 +198,8 @@ export function snapshotFromMarkdown(markdown: string): LayoutSnapshot {
 
             const run = {
                 blockId: block.blockId,
-                pmFrom: block.pmFrom + inline.from,
-                pmTo: block.pmFrom + inline.to,
+                pmFrom: inline.sourceFrom,
+                pmTo: inline.sourceTo,
                 left,
                 baseline: y + block.style.fontSize,
                 width,
@@ -280,33 +285,7 @@ export function isEditorReplaceShortcut(event: EditorShortcutLike): boolean {
 export function resolveEditorRootFromContent(
     contentRoot: HTMLElement | null,
 ): HTMLElement | null {
-    return (
-        contentRoot?.querySelector<HTMLElement>(MDX_EDITOR_ROOT_SELECTOR) ??
-        contentRoot
-    );
-}
-
-function CurrentProductEditorRoot() {
-    const { registerRoot } = useMdxEditor();
-    const rootRef = useRef<HTMLDivElement | null>(null);
-
-    useEffect(() => {
-        registerRoot(rootRef.current);
-
-        return () => {
-            registerRoot(null);
-        };
-    }, [registerRoot]);
-
-    return (
-        <div
-            ref={rootRef}
-            data-mdx-editor-root
-            aria-hidden="true"
-            className="absolute inset-0 z-10 opacity-0 caret-transparent"
-            tabIndex={-1}
-        />
-    );
+    return contentRoot;
 }
 
 export function assignEditorViewportRef(
@@ -393,11 +372,21 @@ function EditorPaneInner({
         markdown: tab.markdown,
         onMarkdownChange,
     });
-    const { focus, getDocumentSelectionRange, insertImage, insertText } = bridge;
+    const {
+        focus,
+        getDocumentSelectionRange,
+        insertImage,
+        insertText,
+        replaceRange,
+        setSelectionRange,
+    } = bridge;
+    const getLayoutSource = bridge.getLayoutSource;
     const contentRootRef = useRef<HTMLDivElement | null>(null);
     const [contentRootNode, setContentRootNode] =
         useState<HTMLDivElement | null>(null);
     const [editorDomRevision, setEditorDomRevision] = useState(0);
+    const [layoutSnapshot, setLayoutSnapshot] =
+        useState<LayoutSnapshot>(EMPTY_LAYOUT_SNAPSHOT);
     const findReplace = useEditorFindReplace({
         editorRoot: contentRootNode,
         focusEditor: focus,
@@ -620,6 +609,26 @@ function EditorPaneInner({
         },
         [storeAndInsertImages, storeImage],
     );
+    const handleTextRunInput = useCallback(
+        (input: DomTextRunInput) => {
+            replaceRange({
+                from: input.sourceFrom,
+                to: input.sourceTo,
+                text: input.text,
+            });
+        },
+        [replaceRange],
+    );
+    const handleTextRunPointerDown = useCallback(
+        (input: DomTextRunPointerInput) => {
+            setSelectionRange({
+                anchor: input.sourceOffset,
+                head: input.sourceOffset,
+            });
+            focus();
+        },
+        [focus, setSelectionRange],
+    );
 
     useEffect(() => {
         if (!contentRootNode) {
@@ -690,10 +699,33 @@ function EditorPaneInner({
         tab.tabId,
     ]);
 
-    const layoutSnapshot =
-        bridge.currentMarkdown.trim().length > 0
-            ? snapshotFromMarkdown(bridge.currentMarkdown)
-            : EMPTY_LAYOUT_SNAPSHOT;
+    useEffect(() => {
+        let cancelled = false;
+
+        void (async () => {
+            const layoutSource = getLayoutSource();
+            const snapshot = layoutSource
+                ? await snapshotFromProseMirrorViaLayoutBridge(
+                      layoutSource.doc,
+                      layoutSource.revision,
+                      {
+                          width: 800,
+                          height: 600,
+                          devicePixelRatio: window.devicePixelRatio || 1,
+                      },
+                  )
+                : EMPTY_LAYOUT_SNAPSHOT;
+
+            if (!cancelled) {
+                setLayoutSnapshot(snapshot);
+                setEditorDomRevision((revision) => revision + 1);
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [bridge.currentMarkdown, getLayoutSource]);
 
     return (
         <div className="flex h-full min-h-0 flex-col">
@@ -733,8 +765,11 @@ function EditorPaneInner({
                     onPasteCapture={handlePasteCapture}
                 >
                     <div className="relative h-full w-full">
-                        <HybridEditorHost snapshot={layoutSnapshot} />
-                        <CurrentProductEditorRoot />
+                        <HybridEditorHost
+                            snapshot={layoutSnapshot}
+                            onTextRunInput={handleTextRunInput}
+                            onTextRunPointerDown={handleTextRunPointerDown}
+                        />
                     </div>
                 </div>
             </div>

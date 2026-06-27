@@ -22,11 +22,27 @@ export interface LayoutInlineStyle {
     code: boolean;
 }
 
+export type LayoutInlineKind =
+    | "text"
+    | "math_inline"
+    | "hard_break"
+    | "image_inline"
+    | "html_inline"
+    | "unsupported_inline";
+
+export interface LayoutInlineMark {
+    type: "bold" | "italic" | "code" | "link" | "strike" | "underline";
+    href?: string;
+}
+
 export interface LayoutInlineRun {
+    id: string;
     text: string;
-    kind: "text" | "math_inline";
-    from: number;
-    to: number;
+    kind: LayoutInlineKind;
+    attrs?: Record<string, string>;
+    marks: LayoutInlineMark[];
+    sourceFrom: number;
+    sourceTo: number;
     style: LayoutInlineStyle;
 }
 
@@ -61,8 +77,15 @@ export interface LayoutBlock {
 export interface LayoutDocument {
     documentId: string;
     revision: number;
+    viewport: { width: number; height: number };
     blocks: LayoutBlock[];
     styleContext: LayoutStyleContext;
+}
+
+export interface LayoutNormalizationOptions {
+    documentId: string;
+    revision: number;
+    viewport: { width: number; height: number };
 }
 
 export interface LayoutNormalizationSource {

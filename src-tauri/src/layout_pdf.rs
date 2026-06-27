@@ -1,5 +1,9 @@
 use pdf_core::model::{PdfExportRequest, PdfExportResult};
+use serde_json::Value;
 
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
+
+use crate::assets::load_image_asset;
 use crate::models::WorkspaceError;
 
 pub fn validate_export_request(request: &PdfExportRequest) -> Result<(), WorkspaceError> {
@@ -15,10 +19,75 @@ pub fn validate_export_request(request: &PdfExportRequest) -> Result<(), Workspa
 
 #[tauri::command]
 pub fn layout_export_pdf(
-    _root_path: String,
+    root_path: String,
     request: PdfExportRequest,
 ) -> Result<PdfExportResult, WorkspaceError> {
     validate_export_request(&request)?;
-    pdf_core::export_pdf(&request)
-        .map_err(|error| WorkspaceError::new("pdf_export_failed", error))
+    let request = enrich_image_draw_ops(root_path, request)?;
+    pdf_core::export_pdf(&request).map_err(|error| WorkspaceError::new("pdf_export_failed", error))
+}
+
+fn enrich_image_draw_ops(
+    root_path: String,
+    mut request: PdfExportRequest,
+) -> Result<PdfExportRequest, WorkspaceError> {
+    let mut snapshot: Value = serde_json::from_str(&request.layout_snapshot_json)
+        .map_err(|error| WorkspaceError::new("invalid_pdf_snapshot", error.to_string()))?;
+    let draw_ops_key = if snapshot.get("canvasDrawOps").is_some() {
+        "canvasDrawOps"
+    } else {
+        "canvas_draw_ops"
+    };
+    let Some(draw_ops) = snapshot
+        .get_mut(draw_ops_key)
+        .and_then(Value::as_array_mut)
+    else {
+        request.layout_snapshot_json = serde_json::to_string(&snapshot)
+            .map_err(|error| WorkspaceError::new("invalid_pdf_snapshot", error.to_string()))?;
+        return Ok(request);
+    };
+
+    for draw_op in draw_ops {
+        if draw_op.get("kind").and_then(Value::as_str) != Some("Image") {
+            continue;
+        }
+
+        let Some(data_string) = draw_op.get("data").and_then(Value::as_str) else {
+            continue;
+        };
+        let mut data: Value = serde_json::from_str(data_string)
+            .map_err(|error| WorkspaceError::new("invalid_pdf_snapshot", error.to_string()))?;
+        if data
+            .get("bytesBase64")
+            .or_else(|| data.get("bytes_base64"))
+            .is_some()
+        {
+            continue;
+        }
+
+        let Some(src) = data
+            .get("src")
+            .or_else(|| data.get("text"))
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+        else {
+            continue;
+        };
+        let image = load_image_asset(
+            Some(root_path.clone()),
+            Some(request.document_id.clone()),
+            src,
+        )?;
+
+        data["mimeType"] = Value::String(image.mime_type);
+        data["bytesBase64"] = Value::String(BASE64_STANDARD.encode(image.bytes));
+        draw_op["data"] = Value::String(
+            serde_json::to_string(&data)
+                .map_err(|error| WorkspaceError::new("invalid_pdf_snapshot", error.to_string()))?,
+        );
+    }
+
+    request.layout_snapshot_json = serde_json::to_string(&snapshot)
+        .map_err(|error| WorkspaceError::new("invalid_pdf_snapshot", error.to_string()))?;
+    Ok(request)
 }

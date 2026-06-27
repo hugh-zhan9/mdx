@@ -2,6 +2,7 @@ export {
     MdxEditorContext,
     useMdxEditor,
     type MdxEditorContextValue,
+    type MdxEditorLayoutSource,
 } from "./mdx-editor-context";
 export {
     createLayoutBridge,

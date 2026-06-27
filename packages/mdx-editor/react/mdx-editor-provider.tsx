@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { EditorState, Selection } from "prosemirror-state";
+import { EditorState, Selection, TextSelection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import {
     insertImageNode,
@@ -88,6 +88,7 @@ export function MdxEditorProvider({
         [initialMarkdown, runtimeKernel],
     );
     const [markdown, setMarkdown] = useState(initialMarkdown);
+    const [layoutRevision, setLayoutRevision] = useState(1);
     const [selection, setSelection] = useState<SelectionState>(() =>
         createSelectionSnapshot(initialDocument.doc, Selection.atEnd(initialDocument.doc)),
     );
@@ -136,6 +137,10 @@ export function MdxEditorProvider({
         [],
     );
 
+    const bumpLayoutRevision = useCallback(() => {
+        setLayoutRevision((revision) => revision + 1);
+    }, []);
+
     const registerRoot = useCallback((root: HTMLDivElement | null) => {
         rootRef.current = root;
         setRootNode(root);
@@ -161,11 +166,46 @@ export function MdxEditorProvider({
         [],
     );
 
+    const applyEditorState = useCallback(
+        (nextState: EditorState, view?: EditorView | null) => {
+            if (view) {
+                view.updateState(nextState);
+            }
+
+            const serializedMarkdown = runtimeKernel.serializeMarkdown({
+                ...parsedRef.current,
+                doc: nextState.doc,
+            });
+            const nextMarkdown = alignTerminalNewline(
+                markdownRef.current,
+                serializedMarkdown,
+            );
+
+            parsedRef.current = {
+                ...parsedRef.current,
+                doc: nextState.doc,
+            };
+
+            updateMarkdown(nextMarkdown);
+            bumpLayoutRevision();
+            updateSelectionFromState(nextState);
+
+            if (view) {
+                void hydrateRenderedImages(
+                    view.dom,
+                    runtimeKernel.resolveImageSource,
+                );
+            }
+        },
+        [bumpLayoutRevision, runtimeKernel, updateMarkdown, updateSelectionFromState],
+    );
+
     const rebuildEditorFromMarkdown = useCallback(
         (nextMarkdown: string, emitChange = true) => {
             const parsed = runtimeKernel.parseMarkdown(nextMarkdown);
             parsedRef.current = parsed;
             updateMarkdown(nextMarkdown, emitChange);
+            bumpLayoutRevision();
             selectionOffsetsRef.current = selectionOffsetsFromDocSelection(
                 parsed.doc,
                 Selection.atEnd(parsed.doc),
@@ -192,7 +232,7 @@ export function MdxEditorProvider({
                 );
             }
         },
-        [runtimeKernel, updateMarkdown, updateSelectionFromState],
+        [bumpLayoutRevision, runtimeKernel, updateMarkdown, updateSelectionFromState],
     );
 
     useEffect(() => {
@@ -225,27 +265,7 @@ export function MdxEditorProvider({
             nodeViews: runtimeKernel.createNodeViews(),
             dispatchTransaction(transaction) {
                 const nextState = view.state.apply(transaction);
-                view.updateState(nextState);
-
-                const serializedMarkdown = runtimeKernel.serializeMarkdown({
-                    ...parsedRef.current,
-                    doc: nextState.doc,
-                });
-                const nextMarkdown = alignTerminalNewline(
-                    markdownRef.current,
-                    serializedMarkdown,
-                );
-                parsedRef.current = {
-                    ...parsedRef.current,
-                    doc: nextState.doc,
-                };
-
-                updateMarkdown(nextMarkdown);
-                updateSelectionFromState(nextState);
-                void hydrateRenderedImages(
-                    view.dom,
-                    runtimeKernel.resolveImageSource,
-                );
+                applyEditorState(nextState, view);
             },
         });
 
@@ -259,7 +279,14 @@ export function MdxEditorProvider({
                 viewRef.current = null;
             }
         };
-    }, [editable, rootNode, runtimeKernel, updateMarkdown, updateSelectionFromState]);
+    }, [
+        bumpLayoutRevision,
+        editable,
+        applyEditorState,
+        rootNode,
+        runtimeKernel,
+        updateSelectionFromState,
+    ]);
 
     useEffect(() => {
         if (!rootNode) {
@@ -296,6 +323,58 @@ export function MdxEditorProvider({
                         targetSelection.anchor,
                         targetSelection.head,
                         text,
+                    ),
+                );
+            },
+            replaceRange: ({
+                from,
+                to,
+                text,
+            }: {
+                from: number;
+                to: number;
+                text: string;
+            }) => {
+                if (viewRef.current) {
+                    viewRef.current.dispatch(
+                        viewRef.current.state.tr.insertText(text, from, to),
+                    );
+                    return;
+                }
+
+                const state = createEditorState(parsedRef.current.doc, runtimeKernel);
+                applyEditorState(state.apply(state.tr.insertText(text, from, to)));
+            },
+            setSelectionRange: ({ anchor, head }: DocumentSelectionRange) => {
+                const view = viewRef.current;
+                const doc = view?.state.doc ?? parsedRef.current.doc;
+                const clampedAnchor = clampDocumentPosition(doc, anchor);
+                const clampedHead = clampDocumentPosition(doc, head);
+
+                if (view) {
+                    view.dispatch(
+                        view.state.tr.setSelection(
+                            TextSelection.create(
+                                view.state.doc,
+                                clampedAnchor,
+                                clampedHead,
+                            ),
+                        ),
+                    );
+                    view.focus();
+                    return;
+                }
+
+                const state = createEditorState(doc, runtimeKernel);
+                applyEditorState(
+                    state.apply(
+                        state.tr.setSelection(
+                            TextSelection.create(
+                                state.doc,
+                                clampedAnchor,
+                                clampedHead,
+                            ),
+                        ),
                     ),
                 );
             },
@@ -346,9 +425,21 @@ export function MdxEditorProvider({
                           viewRef.current.state.selection,
                       )
                     : null,
+            getLayoutSource: () => ({
+                doc: viewRef.current?.state.doc ?? parsedRef.current.doc,
+                revision: layoutRevision,
+            }),
             registerRoot,
         }),
-        [markdown, rebuildEditorFromMarkdown, registerRoot, selection],
+        [
+            applyEditorState,
+            layoutRevision,
+            markdown,
+            rebuildEditorFromMarkdown,
+            registerRoot,
+            runtimeKernel,
+            selection,
+        ],
     );
 
     return (
@@ -380,6 +471,10 @@ function createEditorState(
         doc,
         plugins: runtimeKernel.createEditorPlugins(),
     });
+}
+
+function clampDocumentPosition(doc: EditorState["doc"], position: number) {
+    return Math.max(0, Math.min(position, doc.content.size));
 }
 
 function selectionOffsetsFromDocSelection(

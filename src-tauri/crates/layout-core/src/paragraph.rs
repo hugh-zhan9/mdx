@@ -122,10 +122,42 @@ pub fn layout_paragraph_knuth_plass(
     input: &ParagraphInput<'_>,
     font_metrics: &dyn FontMetricsProvider,
 ) -> Result<Vec<LayoutLine>, ParagraphLayoutError> {
-    Ok(layout_paragraph_greedy(input, font_metrics))
+    let line_height_px = input.font_size * input.line_height;
+    let pieces = tokenize_paragraph(input, font_metrics);
+    let mut lines = Vec::new();
+    let mut line_index = 0usize;
+
+    for piece in pieces {
+        match piece {
+            ParagraphPiece::Text(tokens) => {
+                if tokens.is_empty() {
+                    continue;
+                }
+                layout_text_piece_knuth_plass(
+                    input,
+                    &tokens,
+                    &mut lines,
+                    &mut line_index,
+                    line_height_px,
+                )?;
+            }
+            ParagraphPiece::HardBreak(count) => {
+                for _ in 0..count {
+                    lines.push(build_empty_line(
+                        &input.block_id,
+                        line_index,
+                        input.font_size,
+                        line_height_px,
+                    ));
+                    line_index += 1;
+                }
+            }
+        }
+    }
+
+    Ok(lines)
 }
 
-/// Compatibility surface that currently delegates to greedy line breaking.
 pub fn layout_paragraph_greedy(
     input: &ParagraphInput<'_>,
     font_metrics: &dyn FontMetricsProvider,
@@ -173,6 +205,114 @@ pub fn layout_paragraph_greedy(
     }
 
     lines
+}
+
+fn layout_text_piece_knuth_plass(
+    input: &ParagraphInput<'_>,
+    tokens: &[Token],
+    lines: &mut Vec<LayoutLine>,
+    line_index: &mut usize,
+    line_height_px: f32,
+) -> Result<(), ParagraphLayoutError> {
+    let breakpoints = collect_breakpoints(tokens);
+    if breakpoints.len() < 2 {
+        return Err(ParagraphLayoutError::NoBreakCandidates);
+    }
+
+    let n = breakpoints.len();
+    let mut best = vec![f32::INFINITY; n];
+    let mut previous: Vec<Option<usize>> = vec![None; n];
+    best[0] = 0.0;
+
+    for end_idx in 1..n {
+        let end = breakpoints[end_idx];
+        for start_idx in 0..end_idx {
+            if !best[start_idx].is_finite() {
+                continue;
+            }
+            let start = breakpoints[start_idx];
+            let width = measure_range_width(tokens, start, end);
+            if width > input.line_width && start + 1 < end {
+                continue;
+            }
+            let remaining = (input.line_width - width).max(0.0);
+            let line_cost = if end_idx == n - 1 {
+                0.0
+            } else {
+                remaining.powi(2)
+            };
+            let cost = best[start_idx] + line_cost;
+            if cost < best[end_idx] {
+                best[end_idx] = cost;
+                previous[end_idx] = Some(start_idx);
+            }
+        }
+    }
+
+    if !best[n - 1].is_finite() {
+        return Err(ParagraphLayoutError::NoBreakCandidates);
+    }
+
+    let mut ranges = Vec::new();
+    let mut current = n - 1;
+    while current > 0 {
+        let Some(prev) = previous[current] else {
+            return Err(ParagraphLayoutError::NoBreakCandidates);
+        };
+        ranges.push((breakpoints[prev], breakpoints[current]));
+        current = prev;
+    }
+    ranges.reverse();
+
+    for (start, end) in ranges {
+        let Some((line_start, line_end)) = trim_line_break_whitespace(tokens, start, end) else {
+            continue;
+        };
+        if let Some(line) = build_line(
+            &input.block_id,
+            tokens,
+            line_start,
+            line_end,
+            *line_index,
+            input.font_size,
+            line_height_px,
+        ) {
+            lines.push(line);
+            *line_index += 1;
+        }
+    }
+
+    Ok(())
+}
+
+fn collect_breakpoints(tokens: &[Token]) -> Vec<usize> {
+    (0..=tokens.len()).collect()
+}
+
+fn trim_line_break_whitespace(
+    tokens: &[Token],
+    start: usize,
+    end: usize,
+) -> Option<(usize, usize)> {
+    let mut trimmed_start = start;
+    let mut trimmed_end = end;
+
+    if start > 0 {
+        while trimmed_start < trimmed_end && tokens[trimmed_start].kind == TokenKind::Whitespace {
+            trimmed_start += 1;
+        }
+    }
+    if end < tokens.len() {
+        while trimmed_end > trimmed_start && tokens[trimmed_end - 1].kind == TokenKind::Whitespace {
+            trimmed_end -= 1;
+        }
+    }
+
+    if trimmed_start >= trimmed_end {
+        None
+    } else {
+        Some((trimmed_start, trimmed_end))
+    }
 }
 
 fn tokenize_paragraph(

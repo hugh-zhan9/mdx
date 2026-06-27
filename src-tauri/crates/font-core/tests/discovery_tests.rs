@@ -1,7 +1,8 @@
 use font_core::discovery::{
     apply_math_probe_result, discover_system_fonts, enrich_math_metadata_with_probe,
-    get_default_font, select_preferred_font_for_family,
+    get_default_font, load_font_bytes, resolve_font_descriptor, select_preferred_font_for_family,
 };
+use font_core::FontError;
 
 #[test]
 fn test_discover_fonts() {
@@ -17,6 +18,24 @@ fn test_default_font() {
     let default = default.unwrap();
     assert!(!default.postscript_name.is_empty());
     assert!(!default.family_name.is_empty());
+}
+
+#[test]
+fn load_default_font_bytes() {
+    let default = get_default_font().expect("should have a default system font");
+    let bytes = load_font_bytes(&default).expect("default font bytes should be loadable");
+
+    assert!(!bytes.is_empty());
+}
+
+#[test]
+fn unknown_font_id_returns_error_instead_of_fallback() {
+    let result = resolve_font_descriptor("__missing_font__");
+
+    assert!(matches!(
+        result,
+        Err(FontError::UnknownFontId { font_id }) if font_id == "__missing_font__"
+    ));
 }
 
 #[test]

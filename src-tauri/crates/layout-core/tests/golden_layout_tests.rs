@@ -126,9 +126,8 @@ fn golden_fixture_scaffold_pins_reviewed_semantics() {
     );
     assert_eq!(mixed.expected.has_math_inline, Some(true));
     assert!(mixed.markdown.contains("$a+b$"));
-    assert!(
-        mixed.expected
-            .mirror_text
-            .contains("<div class=\"unsupported\">raw html block</div>")
-    );
+    assert!(mixed
+        .expected
+        .mirror_text
+        .contains("<div class=\"unsupported\">raw html block</div>"));
 }

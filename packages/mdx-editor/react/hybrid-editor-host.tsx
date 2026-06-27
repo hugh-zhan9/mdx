@@ -2,14 +2,24 @@
 
 import { CanvasSvgLayer } from "./canvas-svg-layer";
 import { DomTextRunLayer } from "./dom-text-run-layer";
+import type {
+    DomTextRunInput,
+    DomTextRunPointerInput,
+} from "./dom-text-run-layer";
 import { LightMirror } from "./light-mirror";
 import type { LayoutSnapshot } from "./wasm-layout-bridge";
 
 export interface HybridEditorHostProps {
     snapshot: LayoutSnapshot;
+    onTextRunInput?: (input: DomTextRunInput) => void;
+    onTextRunPointerDown?: (input: DomTextRunPointerInput) => void;
 }
 
-export function HybridEditorHost({ snapshot }: HybridEditorHostProps) {
+export function HybridEditorHost({
+    snapshot,
+    onTextRunInput = () => {},
+    onTextRunPointerDown = () => {},
+}: HybridEditorHostProps) {
     const contentWidth = Math.max(
         1,
         ...snapshot.lines.flatMap((line) =>
@@ -40,7 +50,11 @@ export function HybridEditorHost({ snapshot }: HybridEditorHostProps) {
                 className="relative"
                 style={{ width: contentWidth, height: contentHeight }}
             >
-                <DomTextRunLayer lines={snapshot.lines} />
+                <DomTextRunLayer
+                    lines={snapshot.lines}
+                    onInput={onTextRunInput}
+                    onPointerDown={onTextRunPointerDown}
+                />
                 <CanvasSvgLayer
                     canvasDrawOps={snapshot.canvasDrawOps}
                     caretAnchors={snapshot.caretAnchors}

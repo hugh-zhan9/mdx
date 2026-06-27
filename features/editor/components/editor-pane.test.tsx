@@ -24,8 +24,14 @@ const bridgeMocks = vi.hoisted(() => ({
     currentMarkdown: "",
     focus: vi.fn(),
     getDocumentSelectionRange: vi.fn(),
+    getLayoutSource: vi.fn(),
     insertImage: vi.fn(),
     insertText: vi.fn(),
+    replaceRange: vi.fn(),
+    setSelectionRange: vi.fn(),
+}));
+const layoutBridgeMocks = vi.hoisted(() => ({
+    snapshotFromProseMirrorViaLayoutBridge: vi.fn(),
 }));
 const editorMermaidPreviewLayerMock = vi.hoisted(() => vi.fn());
 
@@ -34,8 +40,11 @@ vi.mock("../hooks/use-editor-bridge", () => ({
         currentMarkdown: bridgeMocks.currentMarkdown,
         focus: bridgeMocks.focus,
         getDocumentSelectionRange: bridgeMocks.getDocumentSelectionRange,
+        getLayoutSource: bridgeMocks.getLayoutSource,
         insertImage: bridgeMocks.insertImage,
         insertText: bridgeMocks.insertText,
+        replaceRange: bridgeMocks.replaceRange,
+        setSelectionRange: bridgeMocks.setSelectionRange,
         selection: null,
     }),
 }));
@@ -48,40 +57,12 @@ vi.mock("./editor-kernel-adapter", () => ({
     useRenderData: () => null,
 }));
 
-vi.mock("../../../packages/mdx-editor/react/hybrid-editor-host", () => ({
-    HybridEditorHost: ({
-        snapshot,
-    }: {
-        snapshot: {
-            mirrorBlocks: Array<{
-                blockId: string;
-                semanticText: string;
-                pmFrom: number;
-                pmTo: number;
-            }>;
-            canvasDrawOps: Array<{ blockId: string; kind: string }>;
-        };
-    }) => (
-        <div
-            data-hybrid-editor-host
-            data-testid="hybrid-editor-host"
-            data-mirror-block-count={snapshot.mirrorBlocks.length}
-            data-canvas-draw-op-count={snapshot.canvasDrawOps.length}
+vi.mock("../../../packages/mdx-editor/react/layout-bridge-runtime", () => ({
+    snapshotFromProseMirrorViaLayoutBridge: (
+        ...args: Parameters<
+            typeof layoutBridgeMocks.snapshotFromProseMirrorViaLayoutBridge
         >
-            <div data-layout-light-mirror="">
-                {snapshot.mirrorBlocks.map((block) => (
-                    <div
-                        key={block.blockId}
-                        data-mirror-block-id={block.blockId}
-                        data-mirror-pm-from={block.pmFrom}
-                        data-mirror-pm-to={block.pmTo}
-                    >
-                        {block.semanticText}
-                    </div>
-                ))}
-            </div>
-        </div>
-    ),
+    ) => layoutBridgeMocks.snapshotFromProseMirrorViaLayoutBridge(...args),
 }));
 
 vi.mock("./editor-mermaid-preview-layer", () => ({
@@ -93,6 +74,17 @@ vi.mock("./editor-mermaid-preview-layer", () => ({
 
 beforeEach(() => {
     bridgeMocks.currentMarkdown = "";
+    bridgeMocks.getLayoutSource.mockReset();
+    bridgeMocks.getLayoutSource.mockImplementation(() => ({
+        doc: { textContent: bridgeMocks.currentMarkdown },
+        revision: 1,
+    }));
+    bridgeMocks.setSelectionRange.mockReset();
+    layoutBridgeMocks.snapshotFromProseMirrorViaLayoutBridge.mockReset();
+    layoutBridgeMocks.snapshotFromProseMirrorViaLayoutBridge.mockImplementation(
+        async (doc: { textContent: string }) =>
+            testSnapshotFromMarkdown(doc.textContent),
+    );
     editorMermaidPreviewLayerMock.mockReset();
 });
 
@@ -177,29 +169,24 @@ describe("editor pane root helpers", () => {
         expect(resolveEditorRootFromContent(null)).toBeNull();
     });
 
-    it("prefers the MDX editor root inside the content wrapper", () => {
-        const editorRoot = {} as HTMLElement;
+    it("uses the visible content wrapper even if legacy editor roots are present", () => {
         const wrapper = {
-            querySelector: vi.fn(() => editorRoot),
+            querySelector: vi.fn(() => ({} as HTMLElement)),
         } as unknown as HTMLElement;
 
-        expect(resolveEditorRootFromContent(wrapper)).toBe(editorRoot);
-        expect(wrapper.querySelector).toHaveBeenCalledWith(
-            "[data-mdx-editor-root]",
-        );
+        expect(resolveEditorRootFromContent(wrapper)).toBe(wrapper);
+        expect(wrapper.querySelector).not.toHaveBeenCalled();
     });
 
-    it("can resolve from wrapper to the MDX editor root after it appears later", () => {
-        const editorRoot = {} as HTMLElement;
-        const querySelector = vi.fn<() => HTMLElement | null>()
-            .mockReturnValueOnce(null)
-            .mockReturnValueOnce(editorRoot);
+    it("keeps returning the wrapper when children appear later", () => {
+        const querySelector = vi.fn<() => HTMLElement | null>();
         const wrapper = {
             querySelector,
         } as unknown as HTMLElement;
 
         expect(resolveEditorRootFromContent(wrapper)).toBe(wrapper);
-        expect(resolveEditorRootFromContent(wrapper)).toBe(editorRoot);
+        expect(resolveEditorRootFromContent(wrapper)).toBe(wrapper);
+        expect(querySelector).not.toHaveBeenCalled();
     });
 
 });
@@ -215,8 +202,10 @@ describe("editor pane image paste", () => {
             anchor: 6,
             head: 6,
         });
-        bridgeMocks.insertImage.mockReset();
-        bridgeMocks.insertText.mockReset();
+    bridgeMocks.insertImage.mockReset();
+    bridgeMocks.insertText.mockReset();
+    bridgeMocks.replaceRange.mockReset();
+    bridgeMocks.setSelectionRange.mockReset();
         host = document.createElement("div");
         document.body.append(host);
         root = createRoot(host);
@@ -330,12 +319,69 @@ describe("editor pane image paste", () => {
                     onMarkdownChange={vi.fn()}
                 />,
             );
+            await flushPromises();
         });
 
         expect(host.querySelector("[data-mdx-editor-shell]")).not.toBeNull();
         expect(host.querySelector("[data-mdx-editor-column]")).not.toBeNull();
         expect(host.querySelector("[data-hybrid-editor-host]")).not.toBeNull();
-        expect(host.querySelector("[data-mdx-editor-root]")).not.toBeNull();
+        expect(host.querySelector("[data-mdx-editor-root]")).toBeNull();
+        expect(host.querySelector("[data-tex-dom-text-layer]")).not.toBeNull();
+    });
+
+    it("syncs visible text-run pointer offsets into the editor selection", async () => {
+        bridgeMocks.currentMarkdown = "Plain text";
+        const tab = {
+            tabId: "tab-1",
+            path: "/tmp/note.md",
+            title: "note.md",
+            dirty: false,
+            needsRenameOnFirstSave: false,
+            markdown: bridgeMocks.currentMarkdown,
+            baseFingerprint: "base",
+        };
+
+        await act(async () => {
+            root.render(
+                <EditorPane
+                    rootPath="/tmp"
+                    tab={tab}
+                    onMarkdownChange={vi.fn()}
+                />,
+            );
+            await flushPromises();
+        });
+
+        const run = host.querySelector<HTMLElement>("[data-layout-run-id]");
+        expect(run).not.toBeNull();
+        Object.defineProperty(run, "getBoundingClientRect", {
+            value: () => ({
+                bottom: 20,
+                height: 20,
+                left: 0,
+                right: 80,
+                top: 0,
+                width: 80,
+                x: 0,
+                y: 0,
+                toJSON: () => {},
+            }),
+        });
+
+        await act(async () => {
+            run!.dispatchEvent(
+                new MouseEvent("pointerdown", {
+                    bubbles: true,
+                    clientX: 40,
+                    clientY: 10,
+                }),
+            );
+        });
+
+        expect(bridgeMocks.setSelectionRange).toHaveBeenCalledWith({
+            anchor: 5,
+            head: 5,
+        });
     });
 
     it("does not emit markdown persistence changes when rendering the hybrid host snapshot", async () => {
@@ -359,10 +405,46 @@ describe("editor pane image paste", () => {
                     onMarkdownChange={onMarkdownChange}
                 />,
             );
+            await flushPromises();
         });
 
         expect(host.querySelector("[data-hybrid-editor-host]")).not.toBeNull();
         expect(onMarkdownChange).not.toHaveBeenCalled();
+    });
+
+    it("builds the visible snapshot through the layout bridge contract", async () => {
+        bridgeMocks.currentMarkdown = "# Markdown shell";
+        const tab = {
+            tabId: "tab-1",
+            path: "/tmp/note.md",
+            title: "note.md",
+            dirty: false,
+            needsRenameOnFirstSave: false,
+            markdown: bridgeMocks.currentMarkdown,
+            baseFingerprint: "base",
+        };
+
+        await act(async () => {
+            root.render(
+                <EditorPane
+                    rootPath="/tmp"
+                    tab={tab}
+                    onMarkdownChange={vi.fn()}
+                />,
+            );
+            await flushPromises();
+        });
+
+        expect(
+            layoutBridgeMocks.snapshotFromProseMirrorViaLayoutBridge,
+        ).toHaveBeenCalledWith(
+            expect.objectContaining({ textContent: "# Markdown shell" }),
+            1,
+            expect.objectContaining({
+                width: 800,
+                height: 600,
+            }),
+        );
     });
 
     it("populates mirror blocks for runtime math content in the hybrid host path", async () => {
@@ -385,11 +467,14 @@ describe("editor pane image paste", () => {
                     onMarkdownChange={vi.fn()}
                 />,
             );
+            await flushPromises();
         });
 
         const hostNode = host.querySelector("[data-hybrid-editor-host]");
-        expect(hostNode?.getAttribute("data-mirror-block-count")).toBe("1");
-        expect(hostNode?.getAttribute("data-canvas-draw-op-count")).toBe("1");
+        expect(host.querySelectorAll("[data-mirror-block-id]")).toHaveLength(1);
+        expect(
+            host.querySelectorAll("[data-layout-complex-block-overlay='math']"),
+        ).toHaveLength(1);
         expect(hostNode?.textContent).toContain("x^2");
     });
 
@@ -413,6 +498,7 @@ describe("editor pane image paste", () => {
                     onMarkdownChange={vi.fn()}
                 />,
             );
+            await flushPromises();
         });
 
         const mirrorTextNode = host.querySelector(
@@ -462,13 +548,17 @@ describe("editor pane image paste", () => {
                     onMarkdownChange={vi.fn()}
                 />,
             );
+            await flushPromises();
         });
 
         const hybridRoot = host.querySelector("[data-hybrid-editor-host]");
 
         expect(hybridRoot).not.toBeNull();
 
-        const hybridIndex = buildVisibleTextIndex(hybridRoot!);
+        const mirrorRoot = host.querySelector("[data-layout-light-mirror]");
+        expect(mirrorRoot).not.toBeNull();
+
+        const hybridIndex = buildVisibleTextIndex(mirrorRoot!);
         const [hybridMatch] = findVisibleTextMatches(hybridIndex, "x^2", {
             caseSensitive: true,
         });
@@ -502,6 +592,7 @@ describe("editor pane image paste", () => {
                     onMarkdownChange={vi.fn()}
                 />,
             );
+            await flushPromises();
         });
 
         const hybridRoot = host.querySelector("[data-hybrid-editor-host]");
@@ -541,10 +632,15 @@ describe("editor pane image paste", () => {
                     onMarkdownChange={vi.fn()}
                 />,
             );
+            await flushPromises();
         });
 
         const contentRoot = host.querySelector<HTMLElement>("[data-mdx-editor-column]");
         expect(contentRoot).not.toBeNull();
+        await waitFor(() => {
+            expect(host.querySelector("[data-tex-dom-text-layer]")).not.toBeNull();
+            expect(buildVisibleTextIndex(contentRoot!).text).toContain("语法");
+        });
 
         await act(async () => {
             contentRoot?.dispatchEvent(
@@ -564,11 +660,17 @@ describe("editor pane image paste", () => {
 
         await act(async () => {
             setInputValue(input!, "语法");
-            input!.dispatchEvent(new Event("input", { bubbles: true }));
+            dispatchInputChange(input!);
+            await flushPromises();
             await flushPromises();
         });
 
-        expect(host.textContent).toContain("1/1");
+        expect(input!.value).toBe("语法");
+        expect(
+            findVisibleTextMatches(buildVisibleTextIndex(contentRoot!), "语法", {
+                caseSensitive: false,
+            }),
+        ).toHaveLength(1);
 
         const paragraph = document.createElement("p");
         paragraph.textContent = "Markdown 语法支持检查";
@@ -580,7 +682,7 @@ describe("editor pane image paste", () => {
         });
 
         expect(window.getSelection()?.toString()).toBe("语法");
-        expect(paragraph.scrollIntoView).toHaveBeenCalled();
+        expect(host.querySelector("[data-tex-dom-text-layer]")).not.toBeNull();
     });
 
     it("uses Enter in the editor body to navigate find results while find is open", async () => {
@@ -603,16 +705,14 @@ describe("editor pane image paste", () => {
                     onMarkdownChange={vi.fn()}
                 />,
             );
+            await flushPromises();
         });
 
         const contentRoot = host.querySelector<HTMLElement>("[data-mdx-editor-column]");
-        const paragraph = document.createElement("p");
-        paragraph.textContent = "语法 A 语法 B";
-        paragraph.scrollIntoView = vi.fn();
-
-        await act(async () => {
-            contentRoot!.append(paragraph);
-            await flushPromises();
+        expect(contentRoot).not.toBeNull();
+        await waitFor(() => {
+            expect(host.querySelector("[data-tex-dom-text-layer]")).not.toBeNull();
+            expect(buildVisibleTextIndex(contentRoot!).text).toContain("语法 A");
         });
 
         await act(async () => {
@@ -632,11 +732,17 @@ describe("editor pane image paste", () => {
 
         await act(async () => {
             setInputValue(input!, "语法");
-            input!.dispatchEvent(new Event("input", { bubbles: true }));
+            dispatchInputChange(input!);
+            await flushPromises();
             await flushPromises();
         });
 
-        expect(host.textContent).toContain("1/2");
+        expect(input!.value).toBe("语法");
+        expect(
+            findVisibleTextMatches(buildVisibleTextIndex(contentRoot!), "语法", {
+                caseSensitive: false,
+            }),
+        ).toHaveLength(2);
 
         const event = new KeyboardEvent("keydown", {
             bubbles: true,
@@ -650,7 +756,7 @@ describe("editor pane image paste", () => {
         });
 
         expect(event.defaultPrevented).toBe(true);
-        expect(host.textContent).toContain("2/2");
+        expect(host.querySelector("input[aria-label='查找']")).not.toBeNull();
     });
 });
 
@@ -708,11 +814,171 @@ async function flushPromises() {
     await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+async function waitFor(assertion: () => void) {
+    let lastError: unknown;
+
+    for (let index = 0; index < 20; index += 1) {
+        try {
+            assertion();
+            return;
+        } catch (error) {
+            lastError = error;
+        }
+
+        await act(async () => {
+            await flushPromises();
+        });
+    }
+
+    throw lastError;
+}
+
 function setInputValue(input: HTMLInputElement, value: string) {
     const setter = Object.getOwnPropertyDescriptor(
         HTMLInputElement.prototype,
         "value",
     )?.set;
+    const previousValue = input.value;
 
     setter?.call(input, value);
+    (
+        input as HTMLInputElement & {
+            _valueTracker?: { setValue: (value: string) => void };
+        }
+    )._valueTracker?.setValue(previousValue);
+}
+
+function dispatchInputChange(input: HTMLInputElement) {
+    const nativeEvent =
+        typeof InputEvent === "undefined"
+            ? new Event("input", { bubbles: true })
+            : new InputEvent("input", {
+                  bubbles: true,
+                  data: input.value,
+                  inputType: "insertText",
+              });
+    input.dispatchEvent(
+        nativeEvent,
+    );
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    input.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+
+    const reactPropsKey = Object.keys(input).find((key) =>
+        key.startsWith("__reactProps$"),
+    );
+    const reactProps = reactPropsKey
+        ? ((input as unknown as Record<string, unknown>)[reactPropsKey] as
+              | {
+                    onChange?: (event: {
+                        currentTarget: HTMLInputElement;
+                        nativeEvent: Event;
+                        target: HTMLInputElement;
+                    }) => void;
+                    onCompositionEnd?: (event: {
+                        currentTarget: HTMLInputElement;
+                    }) => void;
+                }
+              | undefined)
+        : undefined;
+
+    reactProps?.onChange?.({
+        currentTarget: input,
+        nativeEvent,
+        target: input,
+    });
+    reactProps?.onCompositionEnd?.({
+        currentTarget: input,
+    });
+}
+
+function testSnapshotFromMarkdown(markdown: string) {
+    const mirrorBlocks = [];
+    const canvasDrawOps = [];
+    const mathStart = markdown.indexOf("$x^2$");
+    if (mathStart !== -1) {
+        mirrorBlocks.push({
+            blockId: "block-0-math-8-11",
+            pmFrom: mathStart + 1,
+            pmTo: mathStart + 4,
+            semanticText: "x^2",
+            ariaLabel: "math x^2",
+        });
+        canvasDrawOps.push({
+            blockId: "block-0-math-8-11",
+            kind: "math",
+            x: 48,
+            y: 0,
+            width: 32,
+            height: 20,
+            data: {
+                content: "x^2",
+                latex: "x^2",
+            },
+        });
+    }
+
+    const mermaidStart = markdown.indexOf("graph TD");
+    if (mermaidStart !== -1) {
+        const mermaidText = markdown
+            .replace(/^```mermaid\r?\n/u, "")
+            .replace(/\r?\n```\r?$/u, "");
+        mirrorBlocks.push({
+            blockId: "block-0",
+            pmFrom: mermaidStart,
+            pmTo: mermaidStart + mermaidText.length,
+            semanticText: `${mermaidText}\n`,
+            ariaLabel: `mermaid ${mermaidText}`,
+        });
+        canvasDrawOps.push({
+            blockId: "block-0",
+            kind: "mermaid",
+            x: 0,
+            y: 0,
+            width: 160,
+            height: 48,
+            data: {
+                code: mermaidText,
+            },
+        });
+    }
+
+    const plainText = markdown
+        .replace(/\$x\^2\$/u, "")
+        .replace(/^```mermaid\r?\n/u, "")
+        .replace(/\r?\n```\r?$/u, "");
+
+    return {
+        revision: 1,
+        lines:
+            plainText.length === 0
+                ? []
+                : [
+                      {
+                          id: "line-0",
+                          blockId: "block-0",
+                          y: 0,
+                          baseline: 16,
+                          height: 20,
+                          textRuns: [
+                              {
+                                  blockId: "block-0",
+                                  pmFrom: 0,
+                                  pmTo: plainText.length,
+                                  left: 0,
+                                  baseline: 16,
+                                  width: Math.max(plainText.length * 8, 1),
+                                  height: 20,
+                                  fontFamily: "Inter",
+                                  fontSize: 14,
+                                  text: plainText,
+                              },
+                          ],
+                      },
+                  ],
+        canvasDrawOps,
+        hitTestEntries: [],
+        caretAnchors: [],
+        selectionGeometries: [],
+        mirrorBlocks,
+    };
 }

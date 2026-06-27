@@ -2737,15 +2737,19 @@ dependencies = [
 name = "mdx"
 version = "0.3.0"
 dependencies = [
+ "base64 0.22.1",
  "block2",
  "clap",
+ "font-core",
  "libc",
  "log",
  "notify",
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
+ "pdf-core",
  "pdf-extract",
+ "png",
  "postgres",
  "reqwest",
  "rusqlite",
@@ -3284,8 +3288,10 @@ dependencies = [
 name = "pdf-core"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "layout-core",
  "lopdf 0.35.0",
+ "png",
  "serde",
  "serde_json",
  "tempfile",

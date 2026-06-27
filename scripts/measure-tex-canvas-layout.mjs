@@ -69,6 +69,18 @@ async function loadRuntimeModules() {
 }
 
 async function transpileAndImportRuntimeModules() {
+    if (process.env.VITEST) {
+        const [normalizerModule, fixturesModule] = await Promise.all([
+            import("../packages/mdx-editor/layout-ir/normalizer.ts"),
+            import("../packages/mdx-editor/test/tex-canvas-fixtures.ts"),
+        ]);
+
+        return {
+            normalizeLayoutDocument: normalizerModule.normalizeLayoutDocument,
+            TEX_CANVAS_FIXTURES: fixturesModule.TEX_CANVAS_FIXTURES,
+        };
+    }
+
     const tempDir = mkdtempSync(
         path.join(os.tmpdir(), "mdx-tex-canvas-layout-"),
     );

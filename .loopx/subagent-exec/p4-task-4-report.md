@@ -105,3 +105,17 @@ npm run lint -- features/editor/components/editor-pane.tsx features/workspace/co
 
 - `useEditorBridge` in the current baseline does not yet provide `layoutSnapshot`, so the visible hybrid host is mounted with `EMPTY_LAYOUT_SNAPSHOT`.
 - The hidden legacy fixture remains necessary for existing DOM-driven behaviors and regression comparison until the later mirror/selection tasks replace those dependencies.
+
+
+## Review Follow-up Fix
+
+- Replaced the permanent `EMPTY_LAYOUT_SNAPSHOT` visible path with a minimal snapshot synthesized from the current markdown via `normalizeLayoutDocument`, so the hybrid host is no longer blank at product entrypoints.
+- Kept the legacy `DOMD` path hidden as the comparison fixture.
+- Verified the workspace/document/editor focused tests and entrypoint lint checks still pass.
+
+### Verification
+
+- Command: `npm test -- features/editor/components/editor-pane.test.tsx features/workspace/components/editor-stage.test.tsx features/document/components/document-shell.test.tsx`
+- Result: pass, `3 files, 22 tests`
+- Command: `npm run lint -- features/editor/components/editor-pane.tsx features/workspace/components/editor-stage.tsx features/document/components/document-shell.tsx`
+- Result: pass

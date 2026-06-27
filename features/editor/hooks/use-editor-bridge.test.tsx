@@ -98,4 +98,50 @@ describe("useEditorBridge", () => {
             host.querySelector("img[data-mdx-node-type='image']")?.getAttribute("alt"),
         ).toBe("Diagram");
     });
+
+    it("exposes the current ProseMirror document layout source", async () => {
+        let capturedBridge: ReturnType<typeof useEditorBridge> | null = null;
+
+        function Harness() {
+            const bridge = useEditorBridge({
+                tabId: "tab-1",
+                markdown: "Hello",
+                onMarkdownChange: vi.fn(),
+            });
+
+            useEffect(() => {
+                capturedBridge = bridge;
+            }, [bridge]);
+
+            return (
+                <>
+                    <EditorRootFixture />
+                    <button
+                        type="button"
+                        data-testid="insert"
+                        onClick={() => bridge.insertText(" world")}
+                    />
+                </>
+            );
+        }
+
+        await act(async () => {
+            root.render(
+                <EditorKernelProvider initMd="Hello">
+                    <Harness />
+                </EditorKernelProvider>,
+            );
+        });
+
+        const initialSource = capturedBridge?.getLayoutSource();
+        expect(initialSource?.doc.textContent).toBe("Hello");
+
+        await act(async () => {
+            host.querySelector<HTMLButtonElement>("[data-testid='insert']")?.click();
+        });
+
+        const nextSource = capturedBridge?.getLayoutSource();
+        expect(nextSource?.doc.textContent).toBe("Hello world");
+        expect(nextSource?.revision).toBeGreaterThan(initialSource?.revision ?? 0);
+    });
 });

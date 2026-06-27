@@ -14,6 +14,7 @@ import type {
 import type {
     DocumentSelectionRange,
     MarkdownSelectionOffsets,
+    MdxEditorLayoutSource,
     SelectionState,
 } from "../../../packages/mdx-editor";
 
@@ -37,6 +38,8 @@ export interface EditorStoreApi {
         text: string,
         selectionOffsets?: MarkdownSelectionOffsets | null,
     ): void;
+    replaceRange(input: { from: number; to: number; text: string }): void;
+    setSelectionRange(range: DocumentSelectionRange): void;
     insertImage(
         url: string,
         altText?: string,
@@ -45,6 +48,7 @@ export interface EditorStoreApi {
     getTitle(): string;
     getSelectionState(contextChars?: number): SelectionState | null;
     getDocumentSelectionRange(): DocumentSelectionRange | null;
+    getLayoutSource(): MdxEditorLayoutSource | null;
     subscribe(listener: StoreListener): () => void;
 }
 
@@ -123,6 +127,20 @@ export function insertText(
     store?.insertText(text, selectionOffsets);
 }
 
+export function replaceRange(
+    store: EditorStoreApi | null,
+    input: { from: number; to: number; text: string },
+) {
+    store?.replaceRange(input);
+}
+
+export function setSelectionRange(
+    store: EditorStoreApi | null,
+    range: DocumentSelectionRange,
+) {
+    store?.setSelectionRange(range);
+}
+
 export function insertImage(
     store: EditorStoreApi | null,
     url: string,
@@ -190,6 +208,12 @@ function useCompatStoreApi(): EditorStoreApi {
             ) {
                 editorRef.current.insertText(text, selectionOffsets);
             },
+            replaceRange(input: { from: number; to: number; text: string }) {
+                editorRef.current.replaceRange(input);
+            },
+            setSelectionRange(range: DocumentSelectionRange) {
+                editorRef.current.setSelectionRange(range);
+            },
             insertImage(
                 url: string,
                 altText?: string,
@@ -210,6 +234,9 @@ function useCompatStoreApi(): EditorStoreApi {
             },
             getDocumentSelectionRange() {
                 return editorRef.current.getDocumentSelectionRange();
+            },
+            getLayoutSource() {
+                return editorRef.current.getLayoutSource();
             },
             subscribe(listener: StoreListener) {
                 listenersRef.current.add(listener);

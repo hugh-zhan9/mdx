@@ -1,6 +1,71 @@
-use crate::GlyphMetricsEntry;
+use crate::{FontError, GlyphMetricsEntry};
 use lru::LruCache;
 use std::num::NonZeroUsize;
+use ttf_parser::{Face, GlyphId};
+
+pub fn glyph_metrics(
+    font_bytes: &[u8],
+    glyph_ids: &[u32],
+) -> Result<Vec<GlyphMetricsEntry>, FontError> {
+    let face = Face::parse(font_bytes, 0).map_err(|_| FontError::FontParseFailed)?;
+
+    glyph_ids
+        .iter()
+        .copied()
+        .map(|glyph_id| glyph_metric(&face, glyph_id))
+        .collect()
+}
+
+pub fn glyph_metrics_for_font_size(
+    font_bytes: &[u8],
+    glyph_ids: &[u32],
+    font_size: f32,
+) -> Result<Vec<GlyphMetricsEntry>, FontError> {
+    let face = Face::parse(font_bytes, 0).map_err(|_| FontError::FontParseFailed)?;
+    let scale = font_size / f32::from(face.units_per_em());
+
+    glyph_ids
+        .iter()
+        .copied()
+        .map(|glyph_id| glyph_metric(&face, glyph_id).map(|entry| scale_glyph_metric(entry, scale)))
+        .collect()
+}
+
+fn glyph_metric(face: &Face, glyph_id: u32) -> Result<GlyphMetricsEntry, FontError> {
+    let glyph = GlyphId(
+        glyph_id
+            .try_into()
+            .map_err(|_| FontError::GlyphMetricUnavailable { glyph_id })?,
+    );
+    let advance = face
+        .glyph_hor_advance(glyph)
+        .ok_or(FontError::GlyphMetricUnavailable { glyph_id })?;
+    let bounds = face.glyph_bounding_box(glyph);
+
+    Ok(GlyphMetricsEntry {
+        glyph_id,
+        advance: f32::from(advance),
+        x_min: bounds.map(|rect| f32::from(rect.x_min)).unwrap_or_default(),
+        y_min: bounds.map(|rect| f32::from(rect.y_min)).unwrap_or_default(),
+        x_max: bounds.map(|rect| f32::from(rect.x_max)).unwrap_or_default(),
+        y_max: bounds.map(|rect| f32::from(rect.y_max)).unwrap_or_default(),
+        bearing_x: bounds.map(|rect| f32::from(rect.x_min)).unwrap_or_default(),
+        bearing_y: bounds.map(|rect| f32::from(rect.y_max)).unwrap_or_default(),
+    })
+}
+
+fn scale_glyph_metric(entry: GlyphMetricsEntry, scale: f32) -> GlyphMetricsEntry {
+    GlyphMetricsEntry {
+        glyph_id: entry.glyph_id,
+        advance: entry.advance * scale,
+        x_min: entry.x_min * scale,
+        y_min: entry.y_min * scale,
+        x_max: entry.x_max * scale,
+        y_max: entry.y_max * scale,
+        bearing_x: entry.bearing_x * scale,
+        bearing_y: entry.bearing_y * scale,
+    }
+}
 
 /// An LRU cache for glyph metrics, keyed by (font_id, glyph_id, font_size).
 ///

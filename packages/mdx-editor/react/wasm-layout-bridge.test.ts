@@ -141,17 +141,150 @@ describe("createLayoutBridge", () => {
         });
     });
 
+    it("widens inline atom wire spans to their display text length", async () => {
+        const layoutInitializeDocument = vi.fn(
+            (_documentId: string, layoutIrBytes: number[]) => {
+                expect(decodeJson(layoutIrBytes).blocks[0].inlines[0]).toMatchObject({
+                    text: "x^2",
+                    kind: "MathInline",
+                    from: 1,
+                    to: 4,
+                });
+
+                return new TextEncoder().encode(
+                    '{"revision":1,"lines":[],"canvas_draw_ops":[],"hit_test_entries":[],"caret_anchors":[],"selection_geometries":[],"mirror_blocks":[]}',
+                );
+            },
+        );
+
+        const bridge = createLayoutBridge({
+            layout_initialize_document: layoutInitializeDocument,
+            layout_update_document: vi.fn(),
+            layout_get_viewport_snapshot: vi.fn(),
+            layout_hit_test: vi.fn(),
+            layout_get_selection_geometry: vi.fn(),
+        });
+
+        await bridge.initialize({
+            ...baseDocument,
+            blocks: [
+                {
+                    ...baseDocument.blocks[0],
+                    kind: "paragraph",
+                    pmFrom: 0,
+                    pmTo: 5,
+                    inlines: [
+                        {
+                            id: "math-1",
+                            text: "x^2",
+                            kind: "math_inline",
+                            marks: [],
+                            sourceFrom: 1,
+                            sourceTo: 2,
+                            style: {
+                                bold: false,
+                                italic: false,
+                                code: false,
+                            },
+                        },
+                    ],
+                },
+            ],
+        });
+
+        expect(layoutInitializeDocument).toHaveBeenCalledTimes(1);
+    });
+
+    it("preserves absolute ProseMirror positions for later blocks", async () => {
+        const layoutInitializeDocument = vi.fn(
+            (_documentId: string, layoutIrBytes: number[]) => {
+                const document = decodeJson(layoutIrBytes);
+                expect(document.blocks[1].inlines[0]).toMatchObject({
+                    text: "Second",
+                    from: 14,
+                    to: 20,
+                });
+
+                return new TextEncoder().encode(
+                    '{"revision":1,"lines":[{"id":"line-1","block_id":"block-2","y":0,"baseline":16,"height":20,"text_runs":[{"block_id":"block-2","pm_from":14,"pm_to":20,"left":0,"baseline":16,"width":48,"height":20,"font_family":"Inter","font_size":14,"text":"Second"}]}],"canvas_draw_ops":[],"hit_test_entries":[],"caret_anchors":[],"selection_geometries":[],"mirror_blocks":[]}',
+                );
+            },
+        );
+
+        const bridge = createLayoutBridge({
+            layout_initialize_document: layoutInitializeDocument,
+            layout_update_document: vi.fn(),
+            layout_get_viewport_snapshot: vi.fn(),
+            layout_hit_test: vi.fn(),
+            layout_get_selection_geometry: vi.fn(),
+        });
+
+        const snapshot = await bridge.initialize({
+            ...baseDocument,
+            blocks: [
+                {
+                    ...baseDocument.blocks[0],
+                    blockId: "block-1",
+                    pmFrom: 0,
+                    pmTo: 8,
+                },
+                {
+                    ...baseDocument.blocks[0],
+                    blockId: "block-2",
+                    pmFrom: 13,
+                    pmTo: 21,
+                    inlines: [
+                        {
+                            id: "run-2",
+                            text: "Second",
+                            kind: "text",
+                            marks: [],
+                            sourceFrom: 14,
+                            sourceTo: 20,
+                            style: {
+                                bold: false,
+                                italic: false,
+                                code: false,
+                            },
+                        },
+                    ],
+                },
+            ],
+        });
+
+        expect(snapshot.lines[0]?.textRuns[0]).toMatchObject({
+            pmFrom: 14,
+            pmTo: 20,
+        });
+    });
+
+    it("rejects snapshots missing required product arrays", async () => {
+        const bridge = createLayoutBridge({
+            layout_initialize_document: vi.fn(() =>
+                new TextEncoder().encode('{"revision":1,"lines":[],"canvas_draw_ops":[],"caret_anchors":[]}'),
+            ),
+            layout_update_document: vi.fn(),
+            layout_get_viewport_snapshot: vi.fn(),
+            layout_hit_test: vi.fn(),
+            layout_get_selection_geometry: vi.fn(),
+        });
+
+        await expect(bridge.initialize(baseDocument)).rejects.toThrow(
+            "layout snapshot missing hitTestEntries",
+        );
+    });
+
     it("serializes full documents for update and viewport snapshot", async () => {
         const layoutUpdateDocument = vi.fn(
             (
                 documentId: string,
-                revision: number,
+                revision: bigint,
                 updatedBlocksBytes: number[],
                 removedBlockIdsBytes: number[],
                 viewportBytes: number[],
             ) => {
                 expect(documentId).toBe("doc-1");
-                expect(revision).toBe(2);
+                expect(revision).toBe(2n);
                 expect(decodeJson(updatedBlocksBytes)).toEqual({
                     ...rustDocument,
                     revision: 2,
@@ -167,12 +300,12 @@ describe("createLayoutBridge", () => {
         const layoutGetViewportSnapshot = vi.fn(
             (
                 documentId: string,
-                revision: number,
+                revision: bigint,
                 viewportBytes: number[],
                 devicePixelRatio: number,
             ) => {
                 expect(documentId).toBe("doc-1");
-                expect(revision).toBe(3);
+                expect(revision).toBe(3n);
                 expect(decodeJson(viewportBytes)).toEqual({
                     ...rustDocument,
                     revision: 3,
@@ -217,13 +350,13 @@ describe("createLayoutBridge", () => {
         const layoutHitTest = vi.fn(
             (
                 documentId: string,
-                revision: number,
+                revision: bigint,
                 x: number,
                 y: number,
                 granularityBytes: number[],
             ) => {
                 expect(documentId).toBe("doc-1");
-                expect(revision).toBe(1);
+                expect(revision).toBe(1n);
                 expect(x).toBe(10);
                 expect(y).toBe(20);
                 expect(decodeJson(granularityBytes)).toEqual([

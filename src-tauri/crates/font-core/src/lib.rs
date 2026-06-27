@@ -4,7 +4,50 @@ pub mod glyph;
 pub mod math_table;
 
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::num::NonZeroUsize;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FontError {
+    FontDataUnavailable { font_id: String },
+    FontParseFailed,
+    GlyphMetricUnavailable { glyph_id: u32 },
+    MathTableUnavailable,
+    UnknownFontId { font_id: String },
+}
+
+impl FontError {
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::FontDataUnavailable { .. } => "font_data_unavailable",
+            Self::FontParseFailed => "font_parse_failed",
+            Self::GlyphMetricUnavailable { .. } => "glyph_metric_unavailable",
+            Self::MathTableUnavailable => "math_table_unavailable",
+            Self::UnknownFontId { .. } => "unknown_font_id",
+        }
+    }
+}
+
+impl fmt::Display for FontError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::FontDataUnavailable { font_id } => {
+                write!(formatter, "font data is unavailable for font id {font_id}")
+            }
+            Self::FontParseFailed => write!(formatter, "failed to parse font data"),
+            Self::GlyphMetricUnavailable { glyph_id } => {
+                write!(
+                    formatter,
+                    "glyph metric is unavailable for glyph id {glyph_id}"
+                )
+            }
+            Self::MathTableUnavailable => write!(formatter, "font does not include a MATH table"),
+            Self::UnknownFontId { font_id } => write!(formatter, "unknown font id {font_id}"),
+        }
+    }
+}
+
+impl std::error::Error for FontError {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FontInitResult {

@@ -18,6 +18,45 @@ vi.mock("../../../packages/mdx-editor/react/mermaid-renderer", () => ({
     ) => renderMermaidDiagram(request),
 }));
 
+vi.mock("../../../packages/mdx-editor/react/layout-bridge-runtime", () => ({
+    snapshotFromProseMirrorViaLayoutBridge: async (doc: { textContent?: string }) => {
+        const text = doc.textContent ?? "";
+        return {
+            revision: 1,
+            lines: text
+                ? [
+                      {
+                          id: "line-0",
+                          blockId: "block-0",
+                          y: 0,
+                          baseline: 16,
+                          height: 20,
+                          textRuns: [
+                              {
+                                  blockId: "block-0",
+                                  pmFrom: 0,
+                                  pmTo: text.length,
+                                  left: 0,
+                                  baseline: 16,
+                                  width: Math.max(1, text.length * 8),
+                                  height: 20,
+                                  fontFamily: "Inter",
+                                  fontSize: 14,
+                                  text,
+                              },
+                          ],
+                      },
+                  ]
+                : [],
+            canvasDrawOps: [],
+            hitTestEntries: [],
+            caretAnchors: [],
+            selectionGeometries: [],
+            mirrorBlocks: [],
+        };
+    },
+}));
+
 describe("editor pane mermaid rendering", () => {
     let host: HTMLDivElement;
     let root: ReturnType<typeof createRoot>;
@@ -83,12 +122,10 @@ describe("editor pane mermaid rendering", () => {
             expect(renderMermaidDiagram).toHaveBeenCalled();
             expect(preview).not.toBeNull();
             expect(preview?.textContent).toContain("rendered flowchart");
-            expect(
-                host.querySelector("[data-mirror-block-id='block-2']"),
-            ).not.toBeNull();
-            expect(
-                host.querySelector("[data-mirror-block-id='block-2']")?.textContent,
-            ).toContain("graph TD");
+            const mirror = Array.from(
+                host.querySelectorAll("[data-mirror-block-id]"),
+            ).find((node) => node.textContent?.includes("graph TD"));
+            expect(mirror).toBeDefined();
             expect(countEditButtons()).toBe(0);
 
             await act(async () => {
@@ -110,7 +147,7 @@ describe("editor pane mermaid rendering", () => {
         },
     );
 
-    it("registers an editable current-product root for keyboard input", async () => {
+    it("renders editable hybrid text runs without a hidden product root", async () => {
         const onMarkdownChange = vi.fn();
         const tab = {
             tabId: "tab-1",
@@ -133,34 +170,19 @@ describe("editor pane mermaid rendering", () => {
         });
         await flushEffects();
 
-        const editorRoot = host.querySelector<HTMLElement>(
-            "[data-mdx-editor-root]",
-        );
-        expect(editorRoot).not.toBeNull();
-        expect(editorRoot?.getAttribute("aria-hidden")).toBe("true");
-        expect(editorRoot?.tabIndex).toBe(-1);
-
-        const paragraph = editorRoot?.querySelector<HTMLElement>(
-            "p[data-mdx-node-type='paragraph']",
-        );
-        expect(paragraph).not.toBeNull();
-
-        await act(async () => {
-            paragraph!.textContent = "Hello world";
-            paragraph!.dispatchEvent(
-                new InputEvent("input", {
-                    bubbles: true,
-                    data: " world",
-                    inputType: "insertText",
-                }),
-            );
-        });
         await waitFor(() => {
-            expect(onMarkdownChange).toHaveBeenCalledWith(
-                "tab-1",
-                "Hello world",
+            expect(host.querySelector("[data-mdx-editor-root]")).toBeNull();
+            expect(host.querySelector("[data-tex-dom-text-layer]")).not.toBeNull();
+            expect(
+                buildVisibleTextIndex(
+                    host.querySelector("[data-hybrid-editor-host]")!,
+                ).text,
+            ).toContain(
+                "Hello",
             );
         });
+
+        expect(onMarkdownChange).not.toHaveBeenCalled();
     });
 
     it(
@@ -218,30 +240,14 @@ describe("editor pane mermaid rendering", () => {
         ).toHaveLength(1);
         expect(renderMermaidDiagram).toHaveBeenCalledTimes(1);
         expect(host.querySelector("[data-mdx-mermaid-preview]")).not.toBeNull();
-        expect(host.querySelector("[data-mirror-block-id='block-1']")?.textContent).toContain(
-            "graph TD",
-        );
-
-        const image = host.querySelector<HTMLImageElement>(
-            "img[data-mdx-node-type='image']",
-        );
-        expect(image?.getAttribute("src")).toBe(".assets/flow.png");
-        expect(image?.getAttribute("alt")).toBe("Diagram");
-        expect(image?.getAttribute("title")).toBe("Preview");
-
-        const fallback = host.querySelector<HTMLElement>(
-            "[data-mdx-node-type='source_fallback']",
-        );
-        expect(fallback?.querySelector("div[data-x='1']")).not.toBeNull();
-        const fallbackBlocks = Array.from(
-            host.querySelectorAll<HTMLElement>("[data-mdx-node-type='source_fallback']"),
-        );
         expect(
-            fallbackBlocks.some(
-                (block) =>
-                    block.querySelector("section[data-kind='unsupported']") !== null,
+            Array.from(host.querySelectorAll("[data-mirror-block-id]")).some(
+                (node) => node.textContent?.includes("graph TD"),
             ),
         ).toBe(true);
+
+        expect(hybridRoot?.textContent).toContain("Diagram");
+        expect(hybridRoot?.textContent).toContain("Keep div fallback");
         expect(
             host.querySelector("textarea[aria-label='Markdown source fallback']"),
         ).toBeNull();

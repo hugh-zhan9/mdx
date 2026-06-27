@@ -147,3 +147,49 @@ fn keeps_exact_fit_line_on_the_current_page() {
     assert_eq!(pages.pages.len(), 1);
     assert_eq!(pages.pages[0].lines.len(), 3);
 }
+
+#[test]
+fn paginates_draw_ops_when_snapshot_has_no_text_lines() {
+    let snapshot = LayoutSnapshot {
+        revision: 1,
+        lines: vec![],
+        canvas_draw_ops: vec![
+            CanvasDrawOp {
+                block_id: "math-1".into(),
+                kind: CanvasDrawKind::Math,
+                x: 0.0,
+                y: 20.0,
+                width: 30.0,
+                height: 10.0,
+                data: "{}".into(),
+            },
+            CanvasDrawOp {
+                block_id: "image-1".into(),
+                kind: CanvasDrawKind::Image,
+                x: 0.0,
+                y: 120.0,
+                width: 30.0,
+                height: 10.0,
+                data: "{}".into(),
+            },
+        ],
+        hit_test_entries: vec![],
+        caret_anchors: vec![],
+        selection_geometries: vec![],
+        mirror_blocks: vec![],
+    };
+
+    let pages = paginate_snapshot(
+        &snapshot,
+        &PageSize {
+            width_pt: 300.0,
+            height_pt: 100.0,
+        },
+        &PageMargins::uniform(10.0),
+    );
+
+    assert_eq!(pages.pages.len(), 2);
+    assert_eq!(pages.pages[0].draw_ops[0].block_id, "math-1");
+    assert_eq!(pages.pages[1].draw_ops[0].block_id, "image-1");
+    assert_eq!(pages.pages[1].draw_ops[0].y, 40.0);
+}

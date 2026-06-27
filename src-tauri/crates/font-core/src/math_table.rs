@@ -1,5 +1,11 @@
-use crate::{GlyphAssembly, GlyphPart, MathConstants};
+use crate::{FontError, GlyphAssembly, GlyphPart, MathConstants};
 use ttf_parser::Face;
+
+pub fn math_constants(font_bytes: &[u8]) -> Result<MathConstants, FontError> {
+    let face = Face::parse(font_bytes, 0).map_err(|_| FontError::FontParseFailed)?;
+
+    parse_math_table(&face).ok_or(FontError::MathTableUnavailable)
+}
 
 /// Parse MATH table constants from a font face.
 ///

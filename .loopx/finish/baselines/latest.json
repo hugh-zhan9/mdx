@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "slug": "finish-audit",
-  "created_at": "2026-06-25T04:52:17.807Z",
+  "slug": "2026-06-26-tex-canvas-editor-gap-closure",
+  "created_at": "2026-06-26T07:45:07.007Z",
   "worktree": "/Users/zhangyukun/project/mdx",
   "branch": "main",
-  "head": "fb0537deee175bf7de3642c437f728a828959349",
-  "head_short": "fb0537d",
-  "source": null
+  "head": "b5dcdd028c5400cef6b151e76d309e72903ade00",
+  "head_short": "b5dcdd0",
+  "source": "docs/loopx/plans/2026-06-26-tex-canvas-editor-gap-closure.md"
 }
