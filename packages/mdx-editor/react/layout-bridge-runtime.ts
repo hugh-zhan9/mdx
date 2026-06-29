@@ -23,7 +23,10 @@ export async function snapshotFromMarkdownViaLayoutBridge(
     viewport: LayoutViewport,
 ): Promise<LayoutSnapshot> {
     const document: LayoutDocument = normalizeLayoutDocument(markdown, viewport);
-    return (await getRuntimeLayoutBridge()).initialize(document);
+    return (await getRuntimeLayoutBridge()).initialize({
+        ...document,
+        viewport,
+    });
 }
 
 export async function snapshotFromProseMirrorViaLayoutBridge(
@@ -42,6 +45,7 @@ export async function snapshotFromProseMirrorViaLayoutBridge(
 
     return (await getRuntimeLayoutBridge()).initialize({
         ...document,
+        viewport,
         styleContext: {
             ...document.styleContext,
             devicePixelRatio: viewport.devicePixelRatio,

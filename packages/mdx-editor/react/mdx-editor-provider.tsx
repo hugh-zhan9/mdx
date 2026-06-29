@@ -265,6 +265,12 @@ export function MdxEditorProvider({
             nodeViews: runtimeKernel.createNodeViews(),
             dispatchTransaction(transaction) {
                 const nextState = view.state.apply(transaction);
+                if (!transaction.docChanged) {
+                    view.updateState(nextState);
+                    updateSelectionFromState(nextState);
+                    return;
+                }
+
                 applyEditorState(nextState, view);
             },
         });
@@ -361,7 +367,6 @@ export function MdxEditorProvider({
                             ),
                         ),
                     );
-                    view.focus();
                     return;
                 }
 

@@ -20,9 +20,20 @@ export function HybridEditorHost({
     onTextRunInput = () => {},
     onTextRunPointerDown = () => {},
 }: HybridEditorHostProps) {
+    const overlayBlockIds = new Set(
+        snapshot.canvasDrawOps.map((op) => op.blockId),
+    );
+    const textLines = snapshot.lines
+        .map((line) => ({
+            ...line,
+            textRuns: line.textRuns.filter(
+                (run) => !overlayBlockIds.has(run.blockId),
+            ),
+        }))
+        .filter((line) => line.textRuns.length > 0);
     const contentWidth = Math.max(
         1,
-        ...snapshot.lines.flatMap((line) =>
+        ...textLines.flatMap((line) =>
             line.textRuns.map((run) => run.left + run.width),
         ),
         ...snapshot.canvasDrawOps.map((op) => op.x + op.width),
@@ -32,7 +43,7 @@ export function HybridEditorHost({
     );
     const contentHeight = Math.max(
         1,
-        ...snapshot.lines.map((line) => line.y + line.height),
+        ...textLines.map((line) => line.y + line.height),
         ...snapshot.canvasDrawOps.map((op) => op.y + op.height),
         ...snapshot.caretAnchors.map((anchor) => anchor.y + anchor.height),
         ...snapshot.selectionGeometries.flatMap((geometry) =>
@@ -51,7 +62,7 @@ export function HybridEditorHost({
                 style={{ width: contentWidth, height: contentHeight }}
             >
                 <DomTextRunLayer
-                    lines={snapshot.lines}
+                    lines={textLines}
                     onInput={onTextRunInput}
                     onPointerDown={onTextRunPointerDown}
                 />

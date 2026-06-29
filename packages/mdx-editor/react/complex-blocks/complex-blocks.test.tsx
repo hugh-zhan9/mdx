@@ -15,6 +15,24 @@ describe("renderComplexBlock", () => {
         );
 
         expect(html).toContain('data-complex-block-kind="math"');
+        expect(html).toContain("katex");
+        expect(html).not.toContain("<code>x^2</code>");
+    });
+
+    it("keeps mermaid source hidden while rendering the preview surface", () => {
+        const html = renderToStaticMarkup(
+            renderComplexBlock({
+                blockId: "mermaid-1",
+                kind: "mermaid",
+                rect: { x: 0, y: 0, width: 320, height: 180 },
+                data: { code: "graph TD\n  A --> B" },
+            }),
+        );
+
+        expect(html).toContain('data-complex-block-kind="mermaid"');
+        expect(html).toContain("mdx-mermaid-source-hidden");
+        expect(html).toContain('data-mdx-mermaid-preview="mermaid-1"');
+        expect(html).not.toContain("<textarea");
     });
 
     it("renders table ops through the table adapter", () => {

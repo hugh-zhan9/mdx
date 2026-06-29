@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { createLayoutBridge } from "./wasm-layout-bridge";
 
-function decodeJson(bytes: number[]) {
+function decodeJson(bytes: number[] | Uint8Array) {
     return JSON.parse(new TextDecoder().decode(new Uint8Array(bytes)));
 }
+
+const emptyJsonArrayBytes = new TextEncoder().encode("[]");
 
 const baseDocument = {
     documentId: "doc-1",
@@ -62,6 +64,7 @@ const rustDocument = {
                     kind: "Text",
                     from: 0,
                     to: 5,
+                    attrs: {},
                     style: {
                         bold: true,
                         italic: false,
@@ -274,6 +277,48 @@ describe("createLayoutBridge", () => {
         );
     });
 
+    it("decodes JSON object payloads embedded in canvas draw op data strings", async () => {
+        const bridge = createLayoutBridge({
+            layout_initialize_document: vi.fn(() =>
+                new TextEncoder().encode(
+                    JSON.stringify({
+                        revision: 1,
+                        lines: [],
+                        canvas_draw_ops: [
+                            {
+                                block_id: "code-1",
+                                kind: "code_highlight",
+                                x: 0,
+                                y: 0,
+                                width: 120,
+                                height: 40,
+                                data: JSON.stringify({
+                                    code: "let value = 1;",
+                                    language: "ts",
+                                }),
+                            },
+                        ],
+                        hit_test_entries: [],
+                        caret_anchors: [],
+                        selection_geometries: [],
+                        mirror_blocks: [],
+                    }),
+                ),
+            ),
+            layout_update_document: vi.fn(),
+            layout_get_viewport_snapshot: vi.fn(),
+            layout_hit_test: vi.fn(),
+            layout_get_selection_geometry: vi.fn(),
+        });
+
+        const snapshot = await bridge.initialize(baseDocument);
+
+        expect(snapshot.canvasDrawOps[0]?.data).toEqual({
+            code: "let value = 1;",
+            language: "ts",
+        });
+    });
+
     it("serializes full documents for update and viewport snapshot", async () => {
         const layoutUpdateDocument = vi.fn(
             (
@@ -289,8 +334,8 @@ describe("createLayoutBridge", () => {
                     ...rustDocument,
                     revision: 2,
                 });
-                expect(removedBlockIdsBytes).toEqual([]);
-                expect(viewportBytes).toEqual([]);
+                expect(removedBlockIdsBytes).toEqual(emptyJsonArrayBytes);
+                expect(viewportBytes).toEqual(emptyJsonArrayBytes);
 
                 return new TextEncoder().encode(
                     '{"revision":2,"lines":[],"canvas_draw_ops":[],"hit_test_entries":[],"caret_anchors":[],"selection_geometries":[],"mirror_blocks":[]}',

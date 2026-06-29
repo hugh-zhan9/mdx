@@ -65,10 +65,35 @@ try {
             y: Math.max(runBox.height / 2, 1),
         },
     });
-    await page.keyboard.type("runtime ");
+    await editableRun.evaluate((run) => {
+        run.textContent = `${run.textContent ?? ""}runtime `;
+        run.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    });
 
-    const expectedMarkdown =
-        "# Runtime Fixture\n\nPlain text with runtime $x^2$ inline math.\n\n```mermaid\ngraph TD\n  A --> B\n```";
+    const expectedMarkdown = [
+        "# Runtime Fixture",
+        "",
+        "Plain text with runtime $x^2$ inline math.",
+        "",
+        "[Runtime link](https://example.com)",
+        "",
+        "```ts",
+        "const value = 1;",
+        "```",
+        "",
+        "$$",
+        "\\int_0^1 x^2 dx = \\frac{1}{3}",
+        "$$",
+        "",
+        "```mermaid",
+        "graph TD",
+        "  A --> B",
+        "```",
+        "",
+        '<div class="custom-block">',
+        "  <p>Runtime HTML</p>",
+        "</div>",
+    ].join("\n");
     await page.waitForFunction(
         (expected) =>
             document
@@ -77,6 +102,69 @@ try {
         expectedMarkdown,
         { timeout: 10_000 },
     );
+    await page.waitForSelector("[data-mdx-node-type='code_block']", {
+        timeout: 10_000,
+    });
+    await page.waitForSelector(".katex", { timeout: 10_000 });
+    await page.waitForSelector("[data-mdx-mermaid-preview]", { timeout: 10_000 });
+    await page.waitForSelector(
+        "[data-mdx-node-type='source_fallback'] .custom-block",
+        { timeout: 10_000 },
+    );
+
+    const linkStyle = await page
+        .locator("[data-hybrid-editor-host] a[data-mdx-node-type='link']")
+        .first()
+        .evaluate((link) => {
+            const style = getComputedStyle(link);
+            return {
+                color: style.color,
+                textDecorationLine: style.textDecorationLine,
+            };
+        });
+    if (!linkStyle.textDecorationLine.includes("underline")) {
+        throw new Error(
+            `runtime link is not styled as a link: ${JSON.stringify(linkStyle)}`,
+        );
+    }
+
+    const overlaps = await page.evaluate(() => {
+        const rects = (selector) =>
+            Array.from(document.querySelectorAll(selector)).map((node) => {
+                const rect = node.getBoundingClientRect();
+                return {
+                    id:
+                        node.getAttribute("data-layout-run-id") ??
+                        node.getAttribute("data-layout-complex-block-overlay") ??
+                        "",
+                    left: rect.left,
+                    right: rect.right,
+                    top: rect.top,
+                    bottom: rect.bottom,
+                };
+            });
+        const overlays = rects("[data-layout-complex-block-overlay]");
+        const runs = rects("[data-layout-dom-text-layer] [data-layout-run-id]");
+
+        return overlays.flatMap((overlay) =>
+            runs
+                .filter((run) => {
+                    const horizontal =
+                        Math.min(overlay.right, run.right) -
+                        Math.max(overlay.left, run.left);
+                    const vertical =
+                        Math.min(overlay.bottom, run.bottom) -
+                        Math.max(overlay.top, run.top);
+                    return horizontal > 1 && vertical > 1;
+                })
+                .map((run) => ({ overlay: overlay.id, run: run.id })),
+        );
+    });
+    if (overlaps.length > 0) {
+        throw new Error(
+            `text runs overlap complex block overlays: ${JSON.stringify(overlaps)}`,
+        );
+    }
 
     mkdirSync("artifacts", { recursive: true });
     await page.screenshot({

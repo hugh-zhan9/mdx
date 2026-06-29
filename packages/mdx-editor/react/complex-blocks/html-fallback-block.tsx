@@ -12,8 +12,21 @@ export function HtmlFallbackBlock({ op }: { op: ComplexBlockOp }) {
                 data-complex-block-id={op.blockId}
                 data-complex-block-kind="html"
                 data-mdx-node-type="html_block"
-                dangerouslySetInnerHTML={{ __html: sanitizeClipboardHtml(html) }}
-            />
+                className="mdx-html-block"
+                style={{
+                    boxSizing: "border-box",
+                    height: "100%",
+                    margin: 0,
+                    width: "100%",
+                }}
+            >
+                <div
+                    aria-label="Edit HTML block"
+                    className="mdx-html-block-preview"
+                    contentEditable={false}
+                    dangerouslySetInnerHTML={{ __html: sanitizeClipboardHtml(html) }}
+                />
+            </div>
         );
     }
 
@@ -23,6 +36,12 @@ export function HtmlFallbackBlock({ op }: { op: ComplexBlockOp }) {
             data-complex-block-id={op.blockId}
             data-complex-block-kind="fallback"
             className="mdx-source-fallback"
+            style={{
+                boxSizing: "border-box",
+                height: "100%",
+                margin: 0,
+                width: "100%",
+            }}
         >
             <div
                 aria-label="Edit source fallback"

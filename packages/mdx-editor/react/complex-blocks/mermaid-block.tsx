@@ -77,8 +77,22 @@ export function MermaidBlock({ op }: { op: ComplexBlockOp }) {
             data-mdx-node-type="mermaid_block"
             data-mdx-code-block=""
             data-mdx-language="mermaid"
+            style={{
+                boxSizing: "border-box",
+                height: "100%",
+                margin: 0,
+                width: "100%",
+            }}
         >
-            <textarea aria-label="Mermaid source" readOnly value={code} />
+            <pre
+                className="mdx-mermaid-source-hidden"
+                data-mdx-code-block=""
+                data-mdx-node-type="code_block"
+                data-mdx-language="mermaid"
+                aria-hidden="true"
+            >
+                <code>{code}</code>
+            </pre>
             <div
                 className="mdx-mermaid-preview"
                 data-mdx-mermaid-preview={op.blockId ?? "mermaid-block"}

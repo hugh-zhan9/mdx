@@ -21,6 +21,15 @@ export interface LayoutTextRunPosition {
     fontFamily: string;
     fontSize: number;
     text: string;
+    kind?: string;
+    style?: {
+        bold?: boolean;
+        italic?: boolean;
+        code?: boolean;
+        link?: string | null;
+        strike?: boolean;
+        underline?: boolean;
+    };
 }
 
 export interface LayoutLineSnapshot {
@@ -91,22 +100,22 @@ export interface LayoutHitTestResult {
 export interface LayoutBridgeModule {
     layout_initialize_document: (
         documentId: string,
-        layoutIrBytes: number[],
-        styleContextBytes: number[],
-        viewportBytes: number[],
-        platformBytes: number[],
+        layoutIrBytes: Uint8Array,
+        styleContextBytes: Uint8Array,
+        viewportBytes: Uint8Array,
+        platformBytes: Uint8Array,
     ) => Uint8Array;
     layout_update_document: (
         documentId: string,
         documentRevision: number | bigint,
-        updatedBlocksBytes: number[],
-        removedBlockIdsBytes: number[],
-        viewportBytes: number[],
+        updatedBlocksBytes: Uint8Array,
+        removedBlockIdsBytes: Uint8Array,
+        viewportBytes: Uint8Array,
     ) => Uint8Array;
     layout_get_viewport_snapshot: (
         documentId: string,
         revision: number | bigint,
-        viewportBytes: number[],
+        viewportBytes: Uint8Array,
         devicePixelRatio: number,
     ) => Uint8Array;
     layout_hit_test: (
@@ -114,7 +123,7 @@ export interface LayoutBridgeModule {
         revision: number | bigint,
         x: number,
         y: number,
-        granularityBytes: number[],
+        granularityBytes: Uint8Array,
     ) => Uint8Array;
     layout_get_selection_geometry: (
         documentId: string,
@@ -125,14 +134,12 @@ export interface LayoutBridgeModule {
 }
 
 export interface InitializeLayoutRequest extends LayoutDocument {
-    viewport?: LayoutViewport;
     platform?: JsonValue;
 }
 
 export type UpdateLayoutRequest = LayoutDocument;
 
 export interface ViewportSnapshotRequest extends LayoutDocument {
-    viewport?: LayoutViewport;
     devicePixelRatio?: number;
 }
 
@@ -198,6 +205,15 @@ interface RustLayoutTextRunPosition {
     font_family: string;
     font_size: number;
     text: string;
+    kind?: string;
+    style?: {
+        bold?: boolean;
+        italic?: boolean;
+        code?: boolean;
+        link?: string | null;
+        strike?: boolean;
+        underline?: boolean;
+    };
 }
 
 interface RustLayoutLineSnapshot {
@@ -245,6 +261,7 @@ interface RustLayoutDocument {
             kind: string;
             from: number;
             to: number;
+            attrs: Record<string, string>;
             style: {
                 bold: boolean;
                 italic: boolean;
@@ -259,8 +276,8 @@ interface RustLayoutDocument {
     style_context: RustStyleContext;
 }
 
-function encodeJson(value: unknown): number[] {
-    return Array.from(encoder.encode(JSON.stringify(value)));
+function encodeJson(value: unknown): Uint8Array {
+    return encoder.encode(JSON.stringify(value));
 }
 
 function decodeJson<T>(bytes: Uint8Array): T {
@@ -304,20 +321,69 @@ function decodeLayoutSnapshot(bytes: Uint8Array): LayoutSnapshot {
     if (!Array.isArray(snapshot.mirrorBlocks)) {
         throw new Error("layout snapshot missing mirrorBlocks");
     }
-    return snapshot;
+    return {
+        ...snapshot,
+        canvasDrawOps: snapshot.canvasDrawOps.map((op) => ({
+            ...op,
+            data: decodeDrawOpData(op.data),
+        })),
+    };
+}
+
+function decodeDrawOpData(data: JsonValue): JsonValue {
+    if (typeof data !== "string") {
+        return data;
+    }
+
+    try {
+        const parsed = JSON.parse(data) as unknown;
+        return isJsonValue(parsed) ? parsed : data;
+    } catch {
+        return data;
+    }
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+    if (
+        value === null ||
+        typeof value === "string" ||
+        typeof value === "number" ||
+        typeof value === "boolean"
+    ) {
+        return true;
+    }
+
+    if (Array.isArray(value)) {
+        return value.every(isJsonValue);
+    }
+
+    if (typeof value === "object") {
+        return Object.values(value as Record<string, unknown>).every(isJsonValue);
+    }
+
+    return false;
 }
 
 function resolveViewport(
     fallback: LayoutDocument["styleContext"],
-    viewport?: LayoutViewport,
+    viewport?: LayoutDocument["viewport"] | LayoutViewport,
 ): LayoutViewport {
-    return (
-        viewport ?? {
+    if (!viewport) {
+        return {
             width: fallback.viewportWidth,
             height: fallback.viewportHeight,
             devicePixelRatio: fallback.devicePixelRatio,
-        }
-    );
+        };
+    }
+
+    return {
+        width: viewport.width,
+        height: viewport.height,
+        devicePixelRatio:
+            "devicePixelRatio" in viewport
+                ? viewport.devicePixelRatio
+                : fallback.devicePixelRatio,
+    };
 }
 
 function toRustStyleContext(
@@ -366,6 +432,7 @@ function toRustDocument(document: LayoutDocument): RustLayoutDocument {
                 kind: INLINE_KIND_TO_RUST[inline.kind as FrontendInlineKind] ?? "Text",
                 from: rustWireFromForInline(inline),
                 to: rustWireToForInline(inline),
+                attrs: inline.attrs ?? {},
                 style: {
                     bold: inline.style.bold,
                     italic: inline.style.italic,
@@ -427,6 +494,8 @@ function toRustLineSnapshot(line: LayoutLineSnapshot): RustLayoutLineSnapshot {
             font_family: run.fontFamily,
             font_size: run.fontSize,
             text: run.text,
+            kind: run.kind,
+            style: run.style,
         })),
     };
 }
@@ -454,8 +523,8 @@ export function createLayoutBridge(wasmModule: LayoutBridgeModule): LayoutBridge
                 request.documentId,
                 BigInt(request.revision),
                 encodeJson(toRustDocument(request)),
-                [],
-                [],
+                encodeJson([]),
+                encodeJson([]),
             );
             return decodeLayoutSnapshot(bytes);
         },

@@ -102,4 +102,56 @@ describe("HybridEditorHost", () => {
         expect(html).toContain("x squared");
         expect(html).toContain('aria-label="math x squared"');
     });
+
+    it("does not duplicate text runs that are represented by complex block overlays", () => {
+        const html = renderToStaticMarkup(
+            <HybridEditorHost
+                snapshot={{
+                    revision: 1,
+                    lines: [
+                        {
+                            id: "l1",
+                            blockId: "code-1",
+                            y: 0,
+                            baseline: 16,
+                            height: 20,
+                            textRuns: [
+                                {
+                                    blockId: "code-1",
+                                    pmFrom: 0,
+                                    pmTo: 10,
+                                    left: 0,
+                                    baseline: 16,
+                                    width: 80,
+                                    height: 20,
+                                    fontFamily: "Inter",
+                                    fontSize: 14,
+                                    text: "let x = 1",
+                                },
+                            ],
+                        },
+                    ],
+                    canvasDrawOps: [
+                        {
+                            blockId: "code-1",
+                            kind: "code_highlight",
+                            x: 0,
+                            y: 0,
+                            width: 120,
+                            height: 40,
+                            data: { code: "let x = 1" },
+                        },
+                    ],
+                    hitTestEntries: [],
+                    caretAnchors: [],
+                    selectionGeometries: [],
+                    mirrorBlocks: [],
+                }}
+            />,
+        );
+
+        expect(html).toContain('data-layout-complex-block-overlay="code_highlight"');
+        expect(html).toContain('data-mdx-code-block=""');
+        expect(html).not.toContain('data-layout-run-id="l1:code-1:0"');
+    });
 });

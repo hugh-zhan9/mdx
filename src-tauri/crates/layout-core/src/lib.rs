@@ -10,6 +10,7 @@ pub mod selection;
 pub mod wasm_bridge;
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Shared core types used across layout modules.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,16 +52,24 @@ pub struct InlineRun {
     pub kind: InlineKind,
     pub from: usize,
     pub to: usize,
+    #[serde(default)]
+    pub attrs: HashMap<String, String>,
     pub style: InlineStyle,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum InlineKind {
     Text,
     MathInline,
     HardBreak,
     ImageInline,
     HtmlInline,
+}
+
+impl Default for InlineKind {
+    fn default() -> Self {
+        Self::Text
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,6 +104,19 @@ pub struct InlineStyle {
     pub link: Option<String>,
     pub strike: bool,
     pub underline: bool,
+}
+
+impl Default for InlineStyle {
+    fn default() -> Self {
+        Self {
+            bold: false,
+            italic: false,
+            code: false,
+            link: None,
+            strike: false,
+            underline: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -141,6 +163,10 @@ pub struct TextRunPosition {
     pub font_family: String,
     pub font_size: f32,
     pub text: String,
+    #[serde(default)]
+    pub kind: InlineKind,
+    #[serde(default)]
+    pub style: InlineStyle,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -155,12 +181,23 @@ pub struct CanvasDrawOp {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CanvasDrawKind {
+    #[serde(alias = "Math")]
     Math,
+    #[serde(alias = "TableGrid")]
     TableGrid,
+    #[serde(alias = "CodeHighlight")]
     CodeHighlight,
+    #[serde(alias = "Image")]
     Image,
+    #[serde(alias = "Mermaid")]
     Mermaid,
+    #[serde(alias = "Html")]
+    Html,
+    #[serde(alias = "Fallback")]
+    Fallback,
+    #[serde(alias = "Decoration")]
     Decoration,
 }
 

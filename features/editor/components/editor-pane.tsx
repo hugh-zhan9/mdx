@@ -55,17 +55,94 @@ export function snapshotFromMarkdown(markdown: string): LayoutSnapshot {
     const mirrorBlocks: LayoutSnapshot["mirrorBlocks"] = [];
     const lines = document.blocks.map((block, index) => {
         let left = 0;
-        if (block.kind === "mermaid") {
+        if (block.kind === "code") {
             const code = block.inlines.map((inline) => inline.text).join("");
-            const semanticCode = `${code}\n`;
+            const lineHeight = block.style.fontSize * block.style.lineHeight;
+            const lineCount = Math.max(code.split("\n").length, 1);
             const width = Math.max(
                 Math.max(...code.split("\n").map((line) => line.length), 1) *
                     (block.style.fontSize * 0.6),
+                760,
                 1,
             );
+            const height = Math.max(lineHeight * lineCount + 26, 1);
+
+            canvasDrawOps.push({
+                blockId: block.blockId,
+                kind: "code_highlight",
+                x: 0,
+                y,
+                width,
+                height,
+                data: {
+                    code,
+                    text: code,
+                },
+            });
+
+            const line = {
+                id: `line-${index}`,
+                blockId: block.blockId,
+                y,
+                baseline: y + block.style.fontSize,
+                height,
+                textRuns: [],
+            };
+            y += line.height;
+            return line;
+        }
+
+        if (block.kind === "math_block") {
+            const latex = block.inlines.map((inline) => inline.text).join("");
+            const lineHeight = block.style.fontSize * block.style.lineHeight;
+            const lineCount = Math.max(latex.split("\n").length, 1);
+            const height = Math.max(lineHeight * lineCount + 36, 56);
+
+            canvasDrawOps.push({
+                blockId: block.blockId,
+                kind: "math",
+                x: 0,
+                y,
+                width: 760,
+                height,
+                data: {
+                    content: latex,
+                    latex,
+                    text: latex,
+                },
+            });
+            mirrorBlocks.push({
+                blockId: block.blockId,
+                pmFrom: block.pmFrom,
+                pmTo: block.pmTo,
+                semanticText: latex,
+                ariaLabel: `math ${latex}`,
+            });
+
+            const line = {
+                id: `line-${index}`,
+                blockId: block.blockId,
+                y,
+                baseline: y + block.style.fontSize,
+                height,
+                textRuns: [],
+            };
+            y += line.height;
+            return line;
+        }
+
+        if (block.kind === "mermaid") {
+            const code = block.inlines.map((inline) => inline.text).join("");
+            const semanticCode = `${code}\n`;
+            const lineHeight = block.style.fontSize * block.style.lineHeight;
             const lineCount = Math.max(code.split("\n").length, 1);
-            const height =
-                block.style.fontSize * block.style.lineHeight * lineCount;
+            const width = Math.max(
+                Math.max(...code.split("\n").map((line) => line.length), 1) *
+                    (block.style.fontSize * 0.6),
+                760,
+                1,
+            );
+            const height = Math.max(lineHeight * lineCount + 112, 180);
 
             canvasDrawOps.push({
                 blockId: block.blockId,
@@ -133,8 +210,14 @@ export function snapshotFromMarkdown(markdown: string): LayoutSnapshot {
 
         if (block.kind === "fallback" || block.kind === "html") {
             const markdown = block.inlines.map((inline) => inline.text).join("");
-            const width = Math.max(markdown.length * (block.style.fontSize * 0.6), 1);
-            const height = block.style.fontSize * block.style.lineHeight;
+            const lineHeight = block.style.fontSize * block.style.lineHeight;
+            const lineCount = Math.max(markdown.split("\n").length, 1);
+            const width = Math.max(
+                markdown.length * (block.style.fontSize * 0.6),
+                760,
+                1,
+            );
+            const height = Math.max(lineHeight * lineCount + 24, 48);
 
             const data: SnapshotData =
                 block.kind === "html" ? { markdown, html: markdown } : { markdown };
@@ -625,9 +708,8 @@ function EditorPaneInner({
                 anchor: input.sourceOffset,
                 head: input.sourceOffset,
             });
-            focus();
         },
-        [focus, setSelectionRange],
+        [setSelectionRange],
     );
 
     useEffect(() => {

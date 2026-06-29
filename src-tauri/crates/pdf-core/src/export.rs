@@ -3,8 +3,8 @@ use std::time::Instant;
 
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use layout_core::{
-    CanvasDrawKind, CanvasDrawOp, CaretAnchor, HitTestEntry, LayoutLine, LayoutSnapshot,
-    MirrorBlock, Rect, SelectionGeometry, TextRunPosition,
+    CanvasDrawKind, CanvasDrawOp, CaretAnchor, HitTestEntry, InlineKind, InlineStyle, LayoutLine,
+    LayoutSnapshot, MirrorBlock, Rect, SelectionGeometry, TextRunPosition,
 };
 use lopdf::{
     content::{Content, Operation},
@@ -71,7 +71,10 @@ pub fn export_pdf(request: &PdfExportRequest) -> Result<PdfExportResult, String>
 
         for draw_op in page.map(|page| page.draw_ops.as_slice()).unwrap_or(&[]) {
             match draw_op.kind {
-                CanvasDrawKind::TableGrid | CanvasDrawKind::Decoration => {
+                CanvasDrawKind::TableGrid
+                | CanvasDrawKind::Html
+                | CanvasDrawKind::Fallback
+                | CanvasDrawKind::Decoration => {
                     draw_rect_outline(&mut content, request, draw_op);
                 }
                 CanvasDrawKind::CodeHighlight => {
@@ -1000,6 +1003,8 @@ impl From<TextRunPositionCompat> for TextRunPosition {
             font_family: value.font_family,
             font_size: value.font_size,
             text: value.text,
+            kind: InlineKind::Text,
+            style: InlineStyle::default(),
         }
     }
 }

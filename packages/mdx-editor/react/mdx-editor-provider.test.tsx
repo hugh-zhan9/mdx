@@ -84,6 +84,16 @@ function Probe() {
                 data-testid="reset-image-source"
                 onClick={() => editor.resetMarkdown('![Diagram](.assets/b.png)\n')}
             />
+            <button
+                type="button"
+                data-testid="set-selection-start"
+                onClick={() => editor.setSelectionRange({ anchor: 1, head: 1 })}
+            />
+            <button
+                type="button"
+                data-testid="layout-revision"
+                data-layout-revision={editor.getLayoutSource()?.revision ?? ""}
+            />
         </>
     );
 }
@@ -807,6 +817,39 @@ describe("MdxEditorProvider", () => {
             "Start writing",
         );
         expect(editorRoot?.getAttribute("data-mdx-empty")).toBe("true");
+    });
+
+    it("keeps selection-only transactions out of markdown and layout updates", async () => {
+        const onMarkdownChange = vi.fn();
+
+        await act(async () => {
+            root.render(
+                <MdxEditorProvider
+                    initialMarkdown="Hello"
+                    onMarkdownChange={onMarkdownChange}
+                >
+                    <EditorRootFixture />
+                    <Probe />
+                </MdxEditorProvider>,
+            );
+        });
+
+        const revisionBefore = host
+            .querySelector<HTMLButtonElement>("[data-testid='layout-revision']")
+            ?.getAttribute("data-layout-revision");
+
+        await act(async () => {
+            host
+                .querySelector<HTMLButtonElement>("[data-testid='set-selection-start']")
+                ?.click();
+        });
+
+        expect(onMarkdownChange).not.toHaveBeenCalled();
+        expect(
+            host
+                .querySelector<HTMLButtonElement>("[data-testid='layout-revision']")
+                ?.getAttribute("data-layout-revision"),
+        ).toBe(revisionBefore);
     });
 
     it("handles sequential mutations and snapshots in one callback", async () => {

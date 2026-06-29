@@ -11,7 +11,14 @@ import type {
 const DEFAULT_FONT_FAMILY = "Inter";
 const DEFAULT_FONT_SIZE = 14;
 const DEFAULT_LINE_HEIGHT = 1.5;
-const HEADING_FONT_SIZE = 28;
+const HEADING_FONT_SIZES: Record<1 | 2 | 3 | 4 | 5 | 6, number> = {
+    1: 28,
+    2: 22,
+    3: 18,
+    4: 16,
+    5: 15,
+    6: 14,
+};
 
 export function normalizeProseMirrorLayoutDocument(
     doc: ProseMirrorNode,
@@ -120,7 +127,7 @@ function collectInlineRuns(
 }
 
 function isLayoutBlockNode(node: ProseMirrorNode): boolean {
-    return node.isBlock && node.type.name !== "doc";
+    return node.isBlock && node.type.name !== "doc" && node.type.name !== "frontmatter";
 }
 
 function shouldDescendIntoBlock(node: ProseMirrorNode): boolean {
@@ -154,7 +161,6 @@ function blockKindFromNode(node: ProseMirrorNode): LayoutBlock["kind"] {
         case "table_header":
             return "table";
         case "code_block":
-        case "frontmatter":
             return "code";
         case "math_block":
             return "math_block";
@@ -256,7 +262,9 @@ function blockStyleFromNode(
         kind === "heading" ? headingLevelFromAttrs(node.attrs.level) : undefined;
 
     return {
-        fontSize: headingLevel ? HEADING_FONT_SIZE : DEFAULT_FONT_SIZE,
+        fontSize: headingLevel
+            ? HEADING_FONT_SIZES[headingLevel]
+            : DEFAULT_FONT_SIZE,
         fontFamily: DEFAULT_FONT_FAMILY,
         lineHeight: DEFAULT_LINE_HEIGHT,
         headingLevel,
@@ -299,7 +307,6 @@ function inlineId(
 function isCanvasOnlyBlock(node: ProseMirrorNode): boolean {
     return [
         "code_block",
-        "frontmatter",
         "math_block",
         "mermaid_block",
         "opaque_block",

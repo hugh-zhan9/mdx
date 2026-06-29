@@ -1,8 +1,11 @@
 "use client";
 
-import { useLayoutEffect, useRef } from "react";
-import type { MutableRefObject } from "react";
-import type { LayoutLineSnapshot } from "./wasm-layout-bridge";
+import { useRef } from "react";
+import type { ReactNode } from "react";
+import type {
+    LayoutLineSnapshot,
+    LayoutTextRunPosition,
+} from "./wasm-layout-bridge";
 
 export interface DomTextRunInput {
     runId: string;
@@ -28,24 +31,6 @@ export function DomTextRunLayer({
     onPointerDown,
 }: DomTextRunLayerProps) {
     const runElements = useRef(new Map<string, HTMLElement>());
-    const pendingCaret = useRef<{ runId: string; pmPosition: number } | null>(null);
-
-    useLayoutEffect(() => {
-        const caret = pendingCaret.current;
-        if (!caret) {
-            return;
-        }
-
-        restoreCaret(runElements.current, caret);
-        const frame = requestAnimationFrame(() => {
-            if (pendingCaret.current === caret) {
-                restoreCaret(runElements.current, caret);
-                pendingCaret.current = null;
-            }
-        });
-
-        return () => cancelAnimationFrame(frame);
-    });
 
     return (
         <div
@@ -74,73 +59,6 @@ export function DomTextRunLayer({
                             }}
                             suppressContentEditableWarning
                             spellCheck={false}
-                            onKeyDown={(event) => {
-                                if (
-                                    !event.metaKey &&
-                                    !event.ctrlKey &&
-                                    !event.altKey &&
-                                    event.key.length === 1
-                                ) {
-                                    event.preventDefault();
-                                    insertTextAtDomSelection(
-                                        event.currentTarget,
-                                        runId,
-                                        run.pmFrom,
-                                        run.pmTo,
-                                        event.key,
-                                        pendingCaret,
-                                        onInput,
-                                    );
-                                    return;
-                                }
-
-                                if (event.key === "Backspace") {
-                                    event.preventDefault();
-                                    deleteBackwardAtDomSelection(
-                                        event.currentTarget,
-                                        runId,
-                                        run.pmFrom,
-                                        run.pmTo,
-                                        pendingCaret,
-                                        onInput,
-                                    );
-                                }
-                            }}
-                            onBeforeInput={(event) => {
-                                const inputEvent =
-                                    event.nativeEvent as InputEvent;
-                                const range = sourceRangeFromDomSelection(
-                                    event.currentTarget,
-                                    run.pmFrom,
-                                    run.pmTo,
-                                );
-
-                                if (
-                                    inputEvent.inputType === "insertText" &&
-                                    inputEvent.data
-                                ) {
-                                    event.preventDefault();
-                                    insertTextAtRange(
-                                        range,
-                                        runId,
-                                        inputEvent.data,
-                                        pendingCaret,
-                                        onInput,
-                                    );
-                                    return;
-                                }
-
-                                if (inputEvent.inputType === "deleteContentBackward") {
-                                    event.preventDefault();
-                                    deleteBackwardAtRange(
-                                        range,
-                                        runId,
-                                        run.pmFrom,
-                                        pendingCaret,
-                                        onInput,
-                                    );
-                                }
-                            }}
                             onInput={(event) => {
                                 onInput({
                                     runId,
@@ -150,14 +68,22 @@ export function DomTextRunLayer({
                                 });
                             }}
                             onPointerDown={(event) => {
-                                onPointerDown({
+                                event.preventDefault();
+                                const sourceOffset = sourceOffsetFromPointer(
+                                    event.nativeEvent,
+                                    event.currentTarget,
+                                    run.pmFrom,
+                                    run.pmTo,
+                                );
+                                restoreCaret(runElements.current, {
                                     runId,
-                                    sourceOffset: sourceOffsetFromPointer(
-                                        event.nativeEvent,
-                                        event.currentTarget,
-                                        run.pmFrom,
-                                        run.pmTo,
-                                    ),
+                                    pmPosition: sourceOffset,
+                                });
+                                window.requestAnimationFrame(() => {
+                                    onPointerDown({
+                                        runId,
+                                        sourceOffset,
+                                    });
                                 });
                             }}
                             style={{
@@ -172,13 +98,44 @@ export function DomTextRunLayer({
                                 outline: "none",
                             }}
                         >
-                            {run.text}
+                            {renderRunText(run)}
                         </span>
                     );
                 }),
             )}
         </div>
     );
+}
+
+function renderRunText(run: LayoutTextRunPosition) {
+    const style = run.style ?? {};
+    const link = typeof style.link === "string" ? style.link : "";
+    let content: ReactNode = run.text;
+
+    if (style.code) {
+        content = <code data-mdx-node-type="inline_code">{content}</code>;
+    }
+    if (style.bold) {
+        content = <strong>{content}</strong>;
+    }
+    if (style.italic) {
+        content = <em>{content}</em>;
+    }
+    if (style.strike) {
+        content = <s>{content}</s>;
+    }
+    if (style.underline) {
+        content = <u>{content}</u>;
+    }
+    if (link.length > 0) {
+        content = (
+            <a data-mdx-node-type="link" href={link}>
+                {content}
+            </a>
+        );
+    }
+
+    return content;
 }
 
 function restoreCaret(
@@ -191,7 +148,7 @@ function restoreCaret(
     }
 
     const sourceFrom = Number(element.dataset.layoutPmFrom ?? "0");
-    const textNode = element.firstChild;
+    const textNode = firstTextNode(element);
     const textLength = element.textContent?.length ?? 0;
     const offset = Math.max(
         0,
@@ -199,8 +156,8 @@ function restoreCaret(
     );
     const range = document.createRange();
     range.setStart(
-        textNode && textNode.nodeType === Node.TEXT_NODE ? textNode : element,
-        textNode && textNode.nodeType === Node.TEXT_NODE ? offset : 0,
+        textNode ?? element,
+        textNode ? offset : 0,
     );
     range.collapse(true);
     const selection = window.getSelection();
@@ -210,103 +167,19 @@ function restoreCaret(
     return true;
 }
 
-function insertTextAtDomSelection(
-    target: HTMLElement,
-    runId: string,
-    sourceFrom: number,
-    sourceTo: number,
-    text: string,
-    pendingCaret: MutableRefObject<{ runId: string; pmPosition: number } | null>,
-    onInput: (input: DomTextRunInput) => void,
-) {
-    insertTextAtRange(
-        sourceRangeFromDomSelection(target, sourceFrom, sourceTo),
-        runId,
-        text,
-        pendingCaret,
-        onInput,
-    );
-}
-
-function insertTextAtRange(
-    range: { from: number; to: number },
-    runId: string,
-    text: string,
-    pendingCaret: MutableRefObject<{ runId: string; pmPosition: number } | null>,
-    onInput: (input: DomTextRunInput) => void,
-) {
-    pendingCaret.current = {
-        runId,
-        pmPosition: range.from + text.length,
-    };
-    onInput({
-        runId,
-        sourceFrom: range.from,
-        sourceTo: range.to,
-        text,
-    });
-}
-
-function deleteBackwardAtDomSelection(
-    target: HTMLElement,
-    runId: string,
-    sourceFrom: number,
-    sourceTo: number,
-    pendingCaret: MutableRefObject<{ runId: string; pmPosition: number } | null>,
-    onInput: (input: DomTextRunInput) => void,
-) {
-    deleteBackwardAtRange(
-        sourceRangeFromDomSelection(target, sourceFrom, sourceTo),
-        runId,
-        sourceFrom,
-        pendingCaret,
-        onInput,
-    );
-}
-
-function deleteBackwardAtRange(
-    range: { from: number; to: number },
-    runId: string,
-    sourceFrom: number,
-    pendingCaret: MutableRefObject<{ runId: string; pmPosition: number } | null>,
-    onInput: (input: DomTextRunInput) => void,
-) {
-    const from =
-        range.from === range.to ? Math.max(sourceFrom, range.from - 1) : range.from;
-    pendingCaret.current = {
-        runId,
-        pmPosition: from,
-    };
-    onInput({
-        runId,
-        sourceFrom: from,
-        sourceTo: range.to,
-        text: "",
-    });
-}
-
-function sourceRangeFromDomSelection(
-    target: HTMLElement,
-    sourceFrom: number,
-    sourceTo: number,
-) {
-    const selection = window.getSelection();
-    const textLength = target.textContent?.length ?? 0;
-    const clampOffset = (offset: number) =>
-        sourceFrom + Math.max(0, Math.min(offset, textLength, sourceTo - sourceFrom));
-
-    if (!selection || selection.rangeCount === 0) {
-        return { from: sourceTo, to: sourceTo };
+function firstTextNode(root: Node): Text | null {
+    if (root.nodeType === Node.TEXT_NODE) {
+        return root as Text;
     }
 
-    const range = selection.getRangeAt(0);
-    if (!target.contains(range.startContainer) || !target.contains(range.endContainer)) {
-        return { from: sourceTo, to: sourceTo };
+    for (const child of Array.from(root.childNodes)) {
+        const found = firstTextNode(child);
+        if (found) {
+            return found;
+        }
     }
 
-    const from = clampOffset(range.startOffset);
-    const to = clampOffset(range.endOffset);
-    return from <= to ? { from, to } : { from: to, to: from };
+    return null;
 }
 
 function sourceOffsetFromPointer(

@@ -80,7 +80,9 @@ fn build_snapshot(document: &LayoutDocument) -> LayoutSnapshot {
             }
         }
 
-        if let Some((draw_op, mirror_block)) = canvas_block_metadata(block, &block_lines) {
+        if let Some((draw_op, mirror_block)) =
+            canvas_block_metadata(block, &block_lines, &document.style_context)
+        {
             let rect = Rect {
                 x: draw_op.x,
                 y: draw_op.y,
@@ -145,8 +147,13 @@ fn block_extent(lines: &[LayoutLine], block: &LayoutBlock, style: &crate::StyleC
         .fold(top, f32::max);
     let line_height = block.style.font_size * block.style.line_height;
     let default_line_height = style.default_font_size * style.default_line_height;
+    let text_height = (bottom - top).max(line_height).max(default_line_height);
 
-    (bottom - top).max(line_height).max(default_line_height)
+    if is_complex_block(block) {
+        return complex_block_height(block, text_height, line_height);
+    }
+
+    text_height
 }
 
 fn hit_test_entries_for_lines(
@@ -240,25 +247,25 @@ fn selection_geometries_for_mirror_blocks(
 fn canvas_block_metadata(
     block: &LayoutBlock,
     block_lines: &[LayoutLine],
+    style: &crate::StyleContext,
 ) -> Option<(CanvasDrawOp, MirrorBlock)> {
     let kind = match block.kind {
+        BlockKind::Code => CanvasDrawKind::CodeHighlight,
         BlockKind::MathBlock => CanvasDrawKind::Math,
         BlockKind::Mermaid => CanvasDrawKind::Mermaid,
         BlockKind::Image => CanvasDrawKind::Image,
         BlockKind::Table => CanvasDrawKind::TableGrid,
-        BlockKind::Html | BlockKind::Fallback => CanvasDrawKind::Decoration,
+        BlockKind::Html => CanvasDrawKind::Html,
+        BlockKind::Fallback => CanvasDrawKind::Fallback,
         _ => return None,
     };
     let text = block_text(block);
     let font_size = block.style.font_size;
     let line_height = font_size * block.style.line_height;
-    let width = block_width(block, block_lines, font_size);
-    let height = block_height(block, block_lines, line_height);
-    let data = serde_json::json!({
-        "text": text,
-        "kind": format!("{:?}", block.kind),
-    })
-    .to_string();
+    let text_height = block_height(block, block_lines, line_height);
+    let width = complex_block_width(block, block_lines, font_size, style);
+    let height = complex_block_height(block, text_height, line_height);
+    let data = canvas_block_data(block, &text).to_string();
     let draw_op = CanvasDrawOp {
         block_id: block.block_id.clone(),
         kind,
@@ -277,6 +284,68 @@ fn canvas_block_metadata(
     };
 
     Some((draw_op, mirror_block))
+}
+
+fn is_complex_block(block: &LayoutBlock) -> bool {
+    matches!(
+        block.kind,
+        BlockKind::Code
+            | BlockKind::MathBlock
+            | BlockKind::Mermaid
+            | BlockKind::Image
+            | BlockKind::Table
+            | BlockKind::Html
+            | BlockKind::Fallback
+    )
+}
+
+fn canvas_block_data(block: &LayoutBlock, text: &str) -> serde_json::Value {
+    match block.kind {
+        BlockKind::Code => serde_json::json!({
+            "code": text,
+            "text": text,
+            "language": null,
+        }),
+        BlockKind::MathBlock => serde_json::json!({
+            "content": text,
+            "latex": text,
+            "text": text,
+        }),
+        BlockKind::Mermaid => serde_json::json!({
+            "code": text,
+            "text": text,
+            "ariaHiddenText": true,
+        }),
+        BlockKind::Html => serde_json::json!({
+            "html": text,
+            "markdown": text,
+            "text": text,
+        }),
+        BlockKind::Fallback => serde_json::json!({
+            "markdown": text,
+            "text": text,
+        }),
+        BlockKind::Image => {
+            let attrs = block.inlines.iter().find_map(|inline| {
+                if matches!(inline.kind, InlineKind::ImageInline) || inline.attrs.contains_key("src") {
+                    Some(&inline.attrs)
+                } else {
+                    None
+                }
+            });
+
+            serde_json::json!({
+                "src": attrs.and_then(|attrs| attrs.get("src")).cloned().unwrap_or_else(|| text.to_string()),
+                "alt": attrs.and_then(|attrs| attrs.get("alt")).cloned().unwrap_or_default(),
+                "title": attrs.and_then(|attrs| attrs.get("title")).cloned().unwrap_or_default(),
+                "text": text,
+            })
+        }
+        _ => serde_json::json!({
+            "text": text,
+            "kind": format!("{:?}", block.kind),
+        }),
+    }
 }
 
 fn block_text(block: &LayoutBlock) -> String {
@@ -298,6 +367,22 @@ fn block_width(block: &LayoutBlock, block_lines: &[LayoutLine], font_size: f32) 
         .max(1.0)
 }
 
+fn complex_block_width(
+    block: &LayoutBlock,
+    block_lines: &[LayoutLine],
+    font_size: f32,
+    style: &crate::StyleContext,
+) -> f32 {
+    let text_width = block_width(block, block_lines, font_size);
+    let column_width = (style.viewport_width - 40.0).max(1.0);
+
+    if is_complex_block(block) {
+        return text_width.max(column_width);
+    }
+
+    text_width
+}
+
 fn block_height(block: &LayoutBlock, block_lines: &[LayoutLine], line_height: f32) -> f32 {
     let top = block_lines.first().map(|line| line.y).unwrap_or(0.0);
     let bottom = block_lines
@@ -308,6 +393,22 @@ fn block_height(block: &LayoutBlock, block_lines: &[LayoutLine], line_height: f3
     (bottom - top)
         .max(line_height * block_text(block).lines().count().max(1) as f32)
         .max(1.0)
+}
+
+fn complex_block_height(block: &LayoutBlock, text_height: f32, line_height: f32) -> f32 {
+    let line_count = block_text(block).lines().count().max(1) as f32;
+
+    match block.kind {
+        BlockKind::Code => (line_height * line_count + 26.0).max(text_height + 26.0),
+        BlockKind::MathBlock => (line_height * line_count + 36.0).max(56.0),
+        BlockKind::Mermaid => (line_height * line_count + 112.0).max(180.0),
+        BlockKind::Image => 160.0,
+        BlockKind::Table => (line_height * line_count + 32.0).max(text_height + 24.0),
+        BlockKind::Html | BlockKind::Fallback => {
+            (line_height * line_count + 24.0).max(text_height + 16.0).max(48.0)
+        }
+        _ => text_height,
+    }
 }
 
 fn block_kind_label(block: &LayoutBlock) -> &'static str {

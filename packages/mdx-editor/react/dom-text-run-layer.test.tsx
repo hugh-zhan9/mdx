@@ -2,7 +2,7 @@
 
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DomTextRunLayer } from "./dom-text-run-layer";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
@@ -13,7 +13,15 @@ const mountedRoots: Array<{
     root: ReturnType<typeof createRoot>;
 }> = [];
 
+beforeEach(() => {
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+        callback(0);
+        return 0;
+    });
+});
+
 afterEach(() => {
+    vi.restoreAllMocks();
     for (const mounted of mountedRoots.splice(0)) {
         act(() => mounted.root.unmount());
         mounted.container.remove();
@@ -143,7 +151,7 @@ describe("DomTextRunLayer", () => {
         });
     });
 
-    it("intercepts typed key text as a ProseMirror insertion range", () => {
+    it("syncs native contenteditable input back to the source run range", () => {
         const onInput = vi.fn();
         const container = renderLayer(
             <DomTextRunLayer
@@ -178,28 +186,64 @@ describe("DomTextRunLayer", () => {
         const run = container.querySelector<HTMLElement>(
             "[data-layout-run-id]",
         )!;
-        const range = document.createRange();
-        range.setStart(run.firstChild!, 4);
-        range.collapse(true);
-        window.getSelection()?.removeAllRanges();
-        window.getSelection()?.addRange(range);
+        run.textContent = "Textr";
 
         act(() => {
-            run.dispatchEvent(
-                new KeyboardEvent("keydown", {
-                    bubbles: true,
-                    cancelable: true,
-                    key: "!",
-                }),
-            );
+            run.dispatchEvent(new InputEvent("input", { bubbles: true }));
         });
 
         expect(onInput).toHaveBeenCalledWith({
             runId: "line-1:block-1:0",
-            sourceFrom: 14,
+            sourceFrom: 10,
             sourceTo: 14,
-            text: "!",
+            text: "Textr",
         });
+    });
+
+    it("renders inline run marks as semantic preview elements", () => {
+        const container = renderLayer(
+            <DomTextRunLayer
+                lines={[
+                    {
+                        id: "line-1",
+                        blockId: "block-1",
+                        y: 0,
+                        baseline: 16,
+                        height: 20,
+                        textRuns: [
+                            {
+                                blockId: "block-1",
+                                pmFrom: 0,
+                                pmTo: 4,
+                                left: 0,
+                                baseline: 16,
+                                width: 40,
+                                height: 20,
+                                fontFamily: "Inter",
+                                fontSize: 14,
+                                text: "Docs",
+                                style: {
+                                    code: true,
+                                    link: "https://example.com",
+                                },
+                            },
+                        ],
+                    },
+                ]}
+                onInput={() => {}}
+                onPointerDown={() => {}}
+            />,
+        );
+
+        const link = container.querySelector<HTMLAnchorElement>(
+            "a[data-mdx-node-type='link']",
+        );
+        const code = container.querySelector<HTMLElement>(
+            "code[data-mdx-node-type='inline_code']",
+        );
+
+        expect(link?.getAttribute("href")).toBe("https://example.com");
+        expect(code?.textContent).toBe("Docs");
     });
 });
 

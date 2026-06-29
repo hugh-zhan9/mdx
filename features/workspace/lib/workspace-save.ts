@@ -55,14 +55,20 @@ export function createTabSaveQueue(
             const next = previous
                 .catch(() => false)
                 .then(() => performSaveTab(tabId, environment));
-
-            pendingByTab.set(tabId, next);
-
-            return next.finally(() => {
-                if (pendingByTab.get(tabId) === next) {
-                    pendingByTab.delete(tabId);
+            let queued: Promise<boolean> | undefined;
+            queued = (async () => {
+                try {
+                    return await next;
+                } finally {
+                    if (queued && pendingByTab.get(tabId) === queued) {
+                        pendingByTab.delete(tabId);
+                    }
                 }
-            });
+            })();
+
+            pendingByTab.set(tabId, queued);
+
+            return queued;
         },
     };
 }

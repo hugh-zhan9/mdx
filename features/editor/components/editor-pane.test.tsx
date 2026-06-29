@@ -196,22 +196,27 @@ describe("editor pane image paste", () => {
     let root: ReturnType<typeof createRoot>;
 
     beforeEach(() => {
+        vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+            callback(0);
+            return 0;
+        });
         bridgeMocks.focus.mockReset();
         bridgeMocks.getDocumentSelectionRange.mockReset();
         bridgeMocks.getDocumentSelectionRange.mockReturnValue({
             anchor: 6,
             head: 6,
         });
-    bridgeMocks.insertImage.mockReset();
-    bridgeMocks.insertText.mockReset();
-    bridgeMocks.replaceRange.mockReset();
-    bridgeMocks.setSelectionRange.mockReset();
+        bridgeMocks.insertImage.mockReset();
+        bridgeMocks.insertText.mockReset();
+        bridgeMocks.replaceRange.mockReset();
+        bridgeMocks.setSelectionRange.mockReset();
         host = document.createElement("div");
         document.body.append(host);
         root = createRoot(host);
     });
 
     afterEach(() => {
+        vi.restoreAllMocks();
         act(() => root.unmount());
         host.remove();
     });
@@ -376,6 +381,7 @@ describe("editor pane image paste", () => {
                     clientY: 10,
                 }),
             );
+            await flushPromises();
         });
 
         expect(bridgeMocks.setSelectionRange).toHaveBeenCalledWith({

@@ -1,7 +1,7 @@
 use layout_core::hit_test::hit_test_point;
 use layout_core::position::caret_anchors_for_lines;
 use layout_core::selection::compute_selection_geometry;
-use layout_core::{LayoutLine, TextRunPosition};
+use layout_core::{InlineKind, InlineStyle, LayoutLine, TextRunPosition};
 
 fn make_line(pm_from: usize, pm_to: usize, x: f32, width: f32) -> LayoutLine {
     LayoutLine {
@@ -21,6 +21,15 @@ fn make_line(pm_from: usize, pm_to: usize, x: f32, width: f32) -> LayoutLine {
             font_family: "default".into(),
             font_size: 14.0,
             text: "Hello world".into(),
+            kind: InlineKind::Text,
+            style: InlineStyle {
+                bold: false,
+                italic: false,
+                code: false,
+                link: None,
+                strike: false,
+                underline: false,
+            },
         }],
     }
 }

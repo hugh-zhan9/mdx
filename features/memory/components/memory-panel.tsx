@@ -59,6 +59,13 @@ interface MemoryPanelProps {
   rootPath: string;
 }
 
+type GetMemoryThreadFn = (
+  rootPath: string,
+  target: string,
+) => Promise<MemoryThreadRecord>;
+
+type GetMemoryFn = (rootPath: string, target: string) => Promise<MemoryRecord>;
+
 export function MemoryPanel({ rootPath }: MemoryPanelProps) {
   const memory = useMemoryWorkspace(rootPath);
   const activeRootPathRef = useRef(rootPath);
@@ -559,25 +566,27 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
       return;
     }
 
+    const loadMemoryThread = getMemoryThread as unknown as GetMemoryThreadFn;
+
     let cancelled = false;
     setThreadLoading(true);
     setActionError(null);
-    void getMemoryThread(rootPath, selectedThreadId)
-      .then((thread) => {
+    void (async () => {
+      try {
+        const thread = await loadMemoryThread(rootPath, selectedThreadId);
         if (!cancelled) {
           setSelectedThread(thread);
         }
-      })
-      .catch((error: unknown) => {
+      } catch (error: unknown) {
         if (!cancelled) {
           setError(error);
         }
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) {
           setThreadLoading(false);
         }
-      });
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -589,36 +598,38 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
       return;
     }
 
+    const loadMemory = getMemory as unknown as GetMemoryFn;
+
     const requestRootPath = rootPath;
     const requestId = memoryRequestIdRef.current + 1;
     memoryRequestIdRef.current = requestId;
     setMemoryLoading(true);
     setActionError(null);
-    void getMemory(requestRootPath, selectedMemoryId)
-      .then((memoryRecord) => {
+    void (async () => {
+      try {
+        const memoryRecord = await loadMemory(requestRootPath, selectedMemoryId);
         if (
           isCurrentRoot(requestRootPath) &&
           memoryRequestIdRef.current === requestId
         ) {
           setSelectedMemory(memoryRecord);
         }
-      })
-      .catch((error: unknown) => {
+      } catch (error: unknown) {
         if (
           isCurrentRoot(requestRootPath) &&
           memoryRequestIdRef.current === requestId
         ) {
           setError(error);
         }
-      })
-      .finally(() => {
+      } finally {
         if (
           isCurrentRoot(requestRootPath) &&
           memoryRequestIdRef.current === requestId
         ) {
           setMemoryLoading(false);
         }
-      });
+      }
+    })();
   }, [effectiveTab, isCurrentRoot, rootPath, selectedMemoryId, setError]);
 
   const resetLoadedData = useCallback(() => {

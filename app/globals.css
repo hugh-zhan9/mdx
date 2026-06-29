@@ -266,14 +266,17 @@ html[data-theme="dark"] {
 }
 
 [data-mdx-editor-root] a[data-mdx-node-type="link"],
-[data-mdx-editor-root] a[data-mdx-node-type="wikilink"] {
+[data-mdx-editor-root] a[data-mdx-node-type="wikilink"],
+[data-hybrid-editor-host] a[data-mdx-node-type="link"],
+[data-hybrid-editor-host] a[data-mdx-node-type="wikilink"] {
     color: var(--color-info);
     cursor: text;
     text-decoration: underline;
     text-underline-offset: 0.14em;
 }
 
-[data-mdx-editor-root] [data-mdx-editing-link="true"] {
+[data-mdx-editor-root] [data-mdx-editing-link="true"],
+[data-hybrid-editor-host] [data-mdx-editing-link="true"] {
     color: var(--color-info);
 }
 

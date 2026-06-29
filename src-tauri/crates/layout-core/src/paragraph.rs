@@ -69,8 +69,8 @@ struct Token {
     pm_to: usize,
     width: f32,
     break_after: bool,
-    source_run_index: usize,
     font_family: String,
+    inline_kind: InlineKind,
     style: StyleSignature,
 }
 
@@ -127,7 +127,7 @@ pub fn layout_paragraph_knuth_plass(
     let mut lines = Vec::new();
     let mut line_index = 0usize;
 
-    for piece in pieces {
+    for (idx, piece) in pieces.iter().enumerate() {
         match piece {
             ParagraphPiece::Text(tokens) => {
                 if tokens.is_empty() {
@@ -142,7 +142,8 @@ pub fn layout_paragraph_knuth_plass(
                 )?;
             }
             ParagraphPiece::HardBreak(count) => {
-                for _ in 0..count {
+                let blank_lines = hard_break_blank_line_count(&pieces, idx, *count);
+                for _ in 0..blank_lines {
                     lines.push(build_empty_line(
                         &input.block_id,
                         line_index,
@@ -179,17 +180,7 @@ pub fn layout_paragraph_greedy(
                 );
             }
             ParagraphPiece::HardBreak(count) => {
-                let has_text_before = pieces[..idx]
-                    .iter()
-                    .any(|piece| matches!(piece, ParagraphPiece::Text(_)));
-                let has_text_after = pieces[idx + 1..]
-                    .iter()
-                    .any(|piece| matches!(piece, ParagraphPiece::Text(_)));
-                let blank_lines = if has_text_before && has_text_after {
-                    count.saturating_sub(1)
-                } else {
-                    *count
-                };
+                let blank_lines = hard_break_blank_line_count(&pieces, idx, *count);
 
                 for _ in 0..blank_lines {
                     lines.push(build_empty_line(
@@ -205,6 +196,21 @@ pub fn layout_paragraph_greedy(
     }
 
     lines
+}
+
+fn hard_break_blank_line_count(pieces: &[ParagraphPiece], idx: usize, count: usize) -> usize {
+    let has_text_before = pieces[..idx]
+        .iter()
+        .any(|piece| matches!(piece, ParagraphPiece::Text(_)));
+    let has_text_after = pieces[idx + 1..]
+        .iter()
+        .any(|piece| matches!(piece, ParagraphPiece::Text(_)));
+
+    if has_text_before && has_text_after {
+        count.saturating_sub(1)
+    } else {
+        count
+    }
 }
 
 fn layout_text_piece_knuth_plass(
@@ -323,7 +329,7 @@ fn tokenize_paragraph(
     let mut current = Vec::new();
     let mut pending_breaks = 0usize;
 
-    for (run_index, run) in input.inlines.iter().enumerate() {
+    for run in input.inlines {
         if matches!(run.kind, InlineKind::HardBreak) {
             if !current.is_empty() {
                 paragraphs.push(ParagraphPiece::Text(std::mem::take(&mut current)));
@@ -337,7 +343,19 @@ fn tokenize_paragraph(
             pending_breaks = 0;
         }
 
-        current.extend(tokenize_run(run_index, run, input, font_metrics));
+        for piece in tokenize_run_pieces(run, input, font_metrics) {
+            match piece {
+                ParagraphPiece::Text(mut tokens) => {
+                    current.append(&mut tokens);
+                }
+                ParagraphPiece::HardBreak(count) => {
+                    if !current.is_empty() {
+                        paragraphs.push(ParagraphPiece::Text(std::mem::take(&mut current)));
+                    }
+                    paragraphs.push(ParagraphPiece::HardBreak(count));
+                }
+            }
+        }
     }
 
     if !current.is_empty() {
@@ -348,6 +366,62 @@ fn tokenize_paragraph(
     }
 
     paragraphs
+}
+
+fn tokenize_run_pieces(
+    run: &InlineRun,
+    input: &ParagraphInput<'_>,
+    font_metrics: &dyn FontMetricsProvider,
+) -> Vec<ParagraphPiece> {
+    let mut pieces = Vec::new();
+    let mut text_start = 0usize;
+    let mut pm_cursor = run.from;
+
+    for (byte_index, ch) in run.text.char_indices() {
+        if ch != '\n' {
+            continue;
+        }
+
+        if text_start < byte_index {
+            let segment = &run.text[text_start..byte_index];
+            let tokens = tokenize_text_segment(
+                segment,
+                pm_cursor,
+                &run.kind,
+                &run.style,
+                input,
+                font_metrics,
+            );
+            if !tokens.is_empty() {
+                pieces.push(ParagraphPiece::Text(tokens));
+            }
+            pm_cursor += utf16_len(segment);
+        }
+
+        text_start = byte_index + ch.len_utf8();
+        pm_cursor += 1;
+        if text_start == run.text.len() {
+            continue;
+        }
+        pieces.push(ParagraphPiece::HardBreak(1));
+    }
+
+    if text_start < run.text.len() {
+        let segment = &run.text[text_start..];
+        let tokens = tokenize_text_segment(
+            segment,
+            pm_cursor,
+            &run.kind,
+            &run.style,
+            input,
+            font_metrics,
+        );
+        if !tokens.is_empty() {
+            pieces.push(ParagraphPiece::Text(tokens));
+        }
+    }
+
+    pieces
 }
 
 fn layout_text_piece_greedy(
@@ -428,40 +502,24 @@ fn layout_text_piece_greedy(
     }
 }
 
-fn tokenize_run(
-    run_index: usize,
-    run: &InlineRun,
+fn tokenize_text_segment(
+    text: &str,
+    pm_start: usize,
+    inline_kind: &InlineKind,
+    style: &InlineStyle,
     input: &ParagraphInput<'_>,
     font_metrics: &dyn FontMetricsProvider,
 ) -> Vec<Token> {
-    if run.to <= run.from {
-        return Vec::new();
-    }
-
-    let span_limit = (run.to - run.from).min(run.text.len());
-    let span_limit = if run.text.is_char_boundary(span_limit) {
-        span_limit
-    } else {
-        let mut boundary = span_limit;
-        while boundary > 0 && !run.text.is_char_boundary(boundary) {
-            boundary -= 1;
-        }
-        boundary
-    };
-
-    if span_limit == 0 {
-        return Vec::new();
-    }
-
-    let text = &run.text[..span_limit];
     if text.is_empty() {
         return Vec::new();
     }
-    let breaks = find_break_opportunities(text, input.font_size, input.is_code || run.style.code);
+
+    let breaks = find_break_opportunities(text, input.font_size, input.is_code);
     let break_positions: std::collections::HashSet<usize> =
         breaks.into_iter().map(|op| op.pos).collect();
     let mut tokens = Vec::new();
     let mut cursor = 0usize;
+    let mut pm_cursor = pm_start;
 
     while cursor < text.len() {
         let ch = text[cursor..]
@@ -484,16 +542,18 @@ fn tokenize_run(
             }
 
             let segment = &text[start..cursor];
+            let pm_from = pm_cursor;
+            pm_cursor += utf16_len(segment);
             tokens.push(Token {
                 kind: TokenKind::Whitespace,
                 text: segment.to_string(),
-                pm_from: run.from + start,
-                pm_to: run.from + cursor,
+                pm_from,
+                pm_to: pm_cursor,
                 width: font_metrics.text_width(segment, input.font_size),
                 break_after: true,
-                source_run_index: run_index,
                 font_family: input.style_context.default_font_family.clone(),
-                style: StyleSignature::from(&run.style),
+                inline_kind: inline_kind.clone(),
+                style: StyleSignature::from(style),
             });
             continue;
         }
@@ -515,20 +575,26 @@ fn tokenize_run(
         }
 
         let segment = &text[start..cursor];
+        let pm_from = pm_cursor;
+        pm_cursor += utf16_len(segment);
         tokens.push(Token {
             kind: TokenKind::Text,
             text: segment.to_string(),
-            pm_from: run.from + start,
-            pm_to: run.from + cursor,
+            pm_from,
+            pm_to: pm_cursor,
             width: font_metrics.text_width(segment, input.font_size),
             break_after: break_positions.contains(&cursor),
-            source_run_index: run_index,
             font_family: input.style_context.default_font_family.clone(),
-            style: StyleSignature::from(&run.style),
+            inline_kind: inline_kind.clone(),
+            style: StyleSignature::from(style),
         });
     }
 
     tokens
+}
+
+fn utf16_len(text: &str) -> usize {
+    text.encode_utf16().count()
 }
 
 fn build_line(
@@ -566,8 +632,8 @@ fn build_line(
         {
             if previous_meta.pm_to == token.pm_from
                 && previous_run.font_family == token.font_family
-                && previous_meta.source_run_index == token.source_run_index
                 && previous_meta.style == token.style
+                && previous_run.kind == token.inline_kind
             {
                 previous_meta.pm_to = token.pm_to;
                 previous_meta.width += visual_width;
@@ -591,10 +657,18 @@ fn build_line(
             font_family: token.font_family.clone(),
             font_size,
             text: token.text.clone(),
+            kind: token.inline_kind.clone(),
+            style: InlineStyle {
+                bold: token.style.bold,
+                italic: token.style.italic,
+                code: token.style.code,
+                link: token.style.link.clone(),
+                strike: token.style.strike,
+                underline: token.style.underline,
+            },
         };
         text_runs.push(run.clone());
         merged_runs.push(MergedRun {
-            source_run_index: token.source_run_index,
             style: token.style.clone(),
             pm_to: token.pm_to,
             width: visual_width,
@@ -670,7 +744,6 @@ fn measure_range_width(tokens: &[Token], start: usize, end: usize) -> f32 {
 
 #[derive(Debug, Clone)]
 struct MergedRun {
-    source_run_index: usize,
     style: StyleSignature,
     pm_to: usize,
     width: f32,

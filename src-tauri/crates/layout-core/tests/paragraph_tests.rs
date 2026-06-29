@@ -22,6 +22,7 @@ fn inline(text: &str, from: usize, to: usize) -> InlineRun {
         kind: InlineKind::Text,
         from,
         to,
+        attrs: Default::default(),
         style: style(),
     }
 }
@@ -32,6 +33,7 @@ fn hard_break(pos: usize) -> InlineRun {
         kind: InlineKind::HardBreak,
         from: pos,
         to: pos,
+        attrs: Default::default(),
         style: style(),
     }
 }
@@ -68,7 +70,7 @@ fn test_single_line_paragraph() {
     };
     let font = MockFontMetrics::new();
 
-    let lines = layout_paragraph_greedy(&input, &font);
+    let lines = layout_paragraph(&input, &font);
 
     assert_eq!(lines.len(), 1, "should fit on one line");
     assert_eq!(
@@ -106,11 +108,11 @@ fn test_multi_line_paragraph() {
 }
 
 #[test]
-fn test_utf8_offsets_are_preserved_in_output_runs() {
+fn test_prosemirror_offsets_are_preserved_in_output_runs() {
     let style_context = style_context();
     let input = ParagraphInput {
         block_id: "b1".into(),
-        inlines: &[inline("中文 English", 100, 114)],
+        inlines: &[inline("中文 English", 100, 110)],
         line_width: 60.0,
         font_size: 14.0,
         line_height: 1.5,
@@ -124,11 +126,11 @@ fn test_utf8_offsets_are_preserved_in_output_runs() {
     assert_eq!(lines.len(), 2);
     assert_eq!(
         line_signature(&lines[0]),
-        vec![("中文 ".to_string(), 100, 107)]
+        vec![("中文 ".to_string(), 100, 103)]
     );
     assert_eq!(
         line_signature(&lines[1]),
-        vec![("English".to_string(), 107, 114)]
+        vec![("English".to_string(), 103, 110)]
     );
 }
 
@@ -227,6 +229,55 @@ fn test_hard_breaks_emit_blank_lines_for_consecutive_and_trailing_breaks() {
 }
 
 #[test]
+fn test_literal_newlines_emit_separate_code_lines() {
+    let style_context = style_context();
+    let input = ParagraphInput {
+        block_id: "code-1".into(),
+        inlines: &[inline("plain text\nline 2", 10, 27)],
+        line_width: 500.0,
+        font_size: 14.0,
+        line_height: 1.5,
+        is_code: true,
+        style_context: &style_context,
+    };
+    let font = MockFontMetrics::new();
+
+    let lines = layout_paragraph_greedy(&input, &font);
+
+    assert_eq!(lines.len(), 2);
+    assert_eq!(
+        line_signature(&lines[0]),
+        vec![("plain text".to_string(), 10, 20)]
+    );
+    assert_eq!(line_signature(&lines[1]), vec![("line 2".to_string(), 21, 27)]);
+    assert!(lines[1].y > lines[0].y);
+}
+
+#[test]
+fn test_trailing_literal_newline_does_not_emit_extra_code_line() {
+    let style_context = style_context();
+    let input = ParagraphInput {
+        block_id: "code-1".into(),
+        inlines: &[inline("plain text\nline 2\n", 10, 28)],
+        line_width: 500.0,
+        font_size: 14.0,
+        line_height: 1.5,
+        is_code: true,
+        style_context: &style_context,
+    };
+    let font = MockFontMetrics::new();
+
+    let lines = layout_paragraph(&input, &font);
+
+    assert_eq!(lines.len(), 2);
+    assert_eq!(
+        line_signature(&lines[0]),
+        vec![("plain text".to_string(), 10, 20)]
+    );
+    assert_eq!(line_signature(&lines[1]), vec![("line 2".to_string(), 21, 27)]);
+}
+
+#[test]
 fn test_layout_positions_runs_left_to_right() {
     let style_context = style_context();
     let input = ParagraphInput {
@@ -284,7 +335,7 @@ fn test_adjacent_inline_runs_remain_separate_text_runs() {
     let mut first = inline("Hello ", 0, 6);
     first.style.bold = true;
     let mut second = inline("world", 6, 11);
-    second.style.bold = true;
+    second.style.italic = true;
 
     let style_context = style_context();
     let input = ParagraphInput {
@@ -309,11 +360,37 @@ fn test_adjacent_inline_runs_remain_separate_text_runs() {
 }
 
 #[test]
-fn test_declared_inline_span_is_accepted_by_byte_length_layout() {
+fn test_adjacent_same_style_inline_runs_merge_for_browser_text_shaping() {
+    let first = inline("图片粘贴后 Command+Z", 0, 15);
+    let second = inline("应可撤销", 15, 19);
+
     let style_context = style_context();
     let input = ParagraphInput {
         block_id: "b1".into(),
-        inlines: &[inline("中文 English", 100, 113)],
+        inlines: &[first, second],
+        line_width: 500.0,
+        font_size: 14.0,
+        line_height: 1.5,
+        is_code: false,
+        style_context: &style_context,
+    };
+    let font = MockFontMetrics::new();
+
+    let lines = layout_paragraph_greedy(&input, &font);
+
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0].text_runs.len(), 1);
+    assert_eq!(lines[0].text_runs[0].text, "图片粘贴后 Command+Z应可撤销");
+    assert_eq!(lines[0].text_runs[0].pm_from, 0);
+    assert_eq!(lines[0].text_runs[0].pm_to, 19);
+}
+
+#[test]
+fn test_declared_inline_span_does_not_truncate_utf8_text() {
+    let style_context = style_context();
+    let input = ParagraphInput {
+        block_id: "b1".into(),
+        inlines: &[inline("中文 English", 100, 110)],
         line_width: 60.0,
         font_size: 14.0,
         line_height: 1.5,
@@ -323,9 +400,20 @@ fn test_declared_inline_span_is_accepted_by_byte_length_layout() {
     let font = MockFontMetrics::new();
 
     let lines = layout_paragraph_greedy(&input, &font);
-    assert!(!lines.is_empty());
-    assert!(lines
+    let rendered = lines
         .iter()
         .flat_map(|line| line.text_runs.iter())
-        .all(|run| run.pm_from >= 100 && run.pm_to <= 113));
+        .map(|run| run.text.as_str())
+        .collect::<String>();
+
+    assert_eq!(rendered, "中文 English");
+    assert_eq!(
+        lines
+            .iter()
+            .flat_map(|line| line.text_runs.iter())
+            .last()
+            .unwrap()
+            .pm_to,
+        110
+    );
 }
