@@ -17,23 +17,6 @@ interface MarkdownFileEntry {
     path: string;
 }
 
-export function findWikilinkAtTextOffset(text: string, offset: number) {
-    const safeOffset = Math.max(0, Math.min(offset, text.length));
-    const wikilinkPattern = /\[\[([^\]\r\n]+)\]\]/g;
-    let match: RegExpExecArray | null;
-
-    while ((match = wikilinkPattern.exec(text))) {
-        const start = match.index;
-        const end = start + match[0].length;
-
-        if (safeOffset >= start && safeOffset <= end) {
-            return match[1].trim();
-        }
-    }
-
-    return null;
-}
-
 export function parseWikilinkTarget(raw: string): ParsedWikilink | null {
     const value = raw.trim();
 

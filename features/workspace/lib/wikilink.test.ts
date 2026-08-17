@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findWikilinkAtTextOffset, resolveWikilinkFile } from "./wikilink";
+import { resolveWikilinkFile } from "./wikilink";
 import type { FileTreeNode } from "./types";
 
 const fileTree: FileTreeNode[] = [
@@ -50,16 +50,6 @@ const fileTree: FileTreeNode[] = [
         path: "/ws/index.md",
     },
 ];
-
-describe("findWikilinkAtTextOffset", () => {
-    it("returns the wikilink target at a clicked text offset", () => {
-        const text = "See [[Vector DB|vectors]] and [[RAG]].";
-
-        expect(findWikilinkAtTextOffset(text, 8)).toBe("Vector DB|vectors");
-        expect(findWikilinkAtTextOffset(text, 33)).toBe("RAG");
-        expect(findWikilinkAtTextOffset(text, 2)).toBeNull();
-    });
-});
 
 describe("resolveWikilinkFile", () => {
     it("resolves bare wikilinks by markdown basename", () => {

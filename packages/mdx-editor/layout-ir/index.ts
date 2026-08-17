@@ -1,10 +1,10 @@
-export {
-    createLayoutInvalidationMap,
-    type LayoutInvalidationEntry,
-    type LayoutInvalidationMap,
-} from "./invalidation";
-export { normalizeProseMirrorLayoutDocument } from "./from-prosemirror";
-export { normalizeLayoutDocument } from "./normalizer";
+/**
+ * The layout document shape read-only publishing speaks.
+ *
+ * Types only. The normalizers that used to build these from a ProseMirror
+ * document went with the interactive editor; publishing receives Markdown and
+ * builds its own layout document, so nothing here needs to run.
+ */
 export type {
     LayoutBlock,
     LayoutBlockStyle,

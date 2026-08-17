@@ -8,6 +8,11 @@ export default defineConfig({
         },
     },
     test: {
+        // Holds a file's environment open until the readiness timers Milkdown
+        // started in it have fired, so their callbacks never run against a
+        // torn-down environment. See the file for why this is a wait and not a
+        // suppression.
+        setupFiles: [path.resolve(__dirname, "vitest.setup.ts")],
         exclude: [
             "**/node_modules/**",
             "**/.git/**",

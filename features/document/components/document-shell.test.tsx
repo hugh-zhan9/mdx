@@ -53,9 +53,9 @@ vi.mock("@/common/lib/image-storage", () => ({
   storeImageForDocument: vi.fn(async () => ""),
 }));
 
-vi.mock("@/features/editor/components/editor-pane", () => ({
-  EditorPane: ({ tab }: { tab: { markdown: string } }) => (
-    <div data-testid="editor">{tab.markdown}</div>
+vi.mock("@/features/editor/components/markdown-editor-surface", () => ({
+  MarkdownEditorSurface: ({ markdown }: { markdown: string }) => (
+    <div data-testid="editor">{markdown}</div>
   ),
 }));
 

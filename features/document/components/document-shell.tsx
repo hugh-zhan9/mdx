@@ -1,12 +1,19 @@
 "use client";
 
-import { PanelRightOpen, PanelRightClose, Save } from "lucide-react";
+import { FileDown, PanelRightOpen, PanelRightClose, Save } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { storeImageForDocument } from "@/common/lib/image-storage";
+import { loadImage, storeImageForDocument } from "@/common/lib/image-storage";
+import { tokenize } from "@/common/lib/prism";
 import { tauriCore, tauriDialog, tauriWindow } from "@/common/lib/tauri";
 import { TextControlButton } from "@/common/components/ui-controls";
 import type { AppWindowSession } from "@/features/app/lib/app-session";
-import { EditorPane } from "@/features/editor/components/editor-pane";
+import { MarkdownEditorSurface } from "@/features/editor/components/markdown-editor-surface";
+import type { MarkdownEditorSurfaceHandle } from "@/features/editor/components/markdown-editor-surface";
+import { createEditorSessionBinding } from "@/features/editor/lib/editor-session-binding";
+import {
+  describePublishingFailure,
+  exportPublishedDocumentPdf,
+} from "@/features/editor/lib/publishing-client";
 import { useFileWatch } from "@/features/file-watch/hooks/use-file-watch";
 import type {
   FrontendFileWatchEvent,
@@ -19,7 +26,6 @@ import { draftDelete, draftGet } from "@/features/recovery/lib/draft-client";
 import { useAppDialogs } from "@/features/workspace/components/app-dialogs";
 import { OutlinePanel } from "@/features/workspace/components/outline-panel";
 import { parseMarkdownOutline } from "@/features/workspace/lib/outline";
-import { scrollRenderedHeadingIntoView } from "@/features/workspace/lib/outline-scroll";
 import { normalizeWorkspacePath } from "@/features/workspace/lib/path";
 import {
   createDefaultAppPreferences,
@@ -67,10 +73,18 @@ export function DocumentShell({
   session: Extract<AppWindowSession, { kind: "document" }>;
 }) {
   const dialogs = useAppDialogs();
-  const editorViewportRef = useRef<HTMLDivElement | null>(null);
+  // Reaches the adapter surface for source-range navigation. It carries no
+  // editing capability: the only thing this window can ask of it is that a
+  // Markdown range be revealed.
+  const editorSurfaceRef = useRef<MarkdownEditorSurfaceHandle | null>(null);
+  // The document session owns the editor revision for the file it holds. The
+  // binding stamps snapshots and judges incoming changes; it touches no file
+  // state of its own.
+  const [editorSession] = useState(createEditorSessionBinding);
   const [state, setState] = useState<LoadedDocumentState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [workspaceDirty, setWorkspaceDirty] = useState(
     session.workspaceDirty === true,
   );
@@ -95,7 +109,11 @@ export function DocumentShell({
 
   useEffect(() => {
     stateRef.current = state;
-  }, [state]);
+    // Only the file the window currently holds is a live document. Anything
+    // else the binding still remembers belongs to a file this window moved on
+    // from, and a change carrying its id has nowhere to land.
+    editorSession.retain(state ? [state.realPath] : []);
+  }, [editorSession, state]);
 
   useEffect(() => {
     let cancelled = false;
@@ -340,6 +358,68 @@ export function DocumentShell({
     saveRef.current = save;
   }, [save]);
 
+  /**
+   * Publishes the revision on screen as a PDF.
+   *
+   * The revision is captured from the session binding before the file dialog
+   * opens, so the output corresponds to what the user was looking at when they
+   * asked, not to whatever the document became while they picked a path. A
+   * failure is reported and nothing else happens: this path cannot save, clear
+   * dirty state or touch a draft.
+   */
+  const exportPdf = useCallback(async () => {
+    const current = stateRef.current;
+
+    if (!current || exporting) {
+      return;
+    }
+
+    const snapshot = editorSession.snapshotFor({
+      documentId: current.realPath,
+      markdown: current.markdown,
+    });
+    // A document window has no workspace root; the file's own folder is what
+    // its relative asset paths are written against.
+    const rootPath = parentDirectoryForPath(current.realPath);
+
+    if (!rootPath) {
+      void dialogs.alert({
+        title: "导出 PDF",
+        message: "文档路径没有可用的父文件夹。",
+      });
+      return;
+    }
+
+    setExporting(true);
+    try {
+      const outputPath = await choosePdfExportPath(current.realPath);
+
+      if (!outputPath) {
+        return;
+      }
+
+      const outcome = await exportPublishedDocumentPdf({
+        snapshot,
+        rootPath,
+        outputPath,
+      });
+
+      if (!outcome.ok) {
+        void dialogs.alert({
+          title: "导出 PDF",
+          message: describePublishingFailure(outcome),
+        });
+      }
+    } catch (exportError) {
+      void dialogs.alert({
+        title: "导出 PDF",
+        message: formatError(exportError, "导出 PDF 失败。"),
+      });
+    } finally {
+      setExporting(false);
+    }
+  }, [dialogs, editorSession, exporting]);
+
   const recoverDraft = useCallback(() => {
     const recovery = draftRecovery;
 
@@ -347,12 +427,17 @@ export function DocumentShell({
       return;
     }
 
+    editorSession.declareReplace({
+      documentId: recovery.draft.realPath,
+      markdown: recovery.draft.markdown,
+      reason: "restore",
+    });
     setState((current) =>
       current ? applyRecoveredDraft(current, recovery.draft.markdown) : current,
     );
     setDraftRecovery(null);
     setDraftDiffOpen(false);
-  }, [draftRecovery]);
+  }, [draftRecovery, editorSession]);
 
   const keepDiskVersion = useCallback(() => {
     const recovery = draftRecovery;
@@ -422,6 +507,11 @@ export function DocumentShell({
 
     try {
       const file = await readDocumentFile(conflict.path);
+      editorSession.declareReplace({
+        documentId: file.realPath,
+        markdown: file.content,
+        reason: "conflict-resolution",
+      });
       setState((current) =>
         current ? applyExternalDocumentReload(current, file) : current,
       );
@@ -434,7 +524,7 @@ export function DocumentShell({
         message: formatError(reloadError, "无法重新加载磁盘版本。"),
       });
     }
-  }, [dialogs, externalConflict]);
+  }, [dialogs, editorSession, externalConflict]);
 
   const postponeExternalConflict = useCallback(() => {
     setConflictDiffOpen(false);
@@ -471,6 +561,11 @@ export function DocumentShell({
         return;
       }
 
+      editorSession.declareReplace({
+        documentId: latest.realPath,
+        markdown: file.content,
+        reason: "clean-reload",
+      });
       setState((current) => {
         if (
           !current ||
@@ -487,7 +582,7 @@ export function DocumentShell({
     } catch (reloadError) {
       console.warn("Failed to reload externally changed document.", reloadError);
     }
-  }, []);
+  }, [editorSession]);
 
   const showExternalDocumentConflict = useCallback(async () => {
     const snapshot = stateRef.current;
@@ -901,15 +996,24 @@ export function DocumentShell({
     );
   }, []);
 
-  const handleMarkdownChange = useCallback((_: string, markdown: string) => {
-    setState((current) =>
-      current ? updateDocumentMarkdown(current, markdown) : current,
-    );
-  }, []);
+  const handleEditorSurfaceChange = useCallback(
+    (documentId: string, markdown: string) => {
+      setState((current) =>
+        // A change reported for a file this window is no longer showing must
+        // not be written into the file it is showing now.
+        current && current.realPath === documentId
+          ? updateDocumentMarkdown(current, markdown)
+          : current,
+      );
+    },
+    [],
+  );
 
+  // The editing surface is navigated by the heading's own Markdown source
+  // range, so nothing here reads rendered output to find a heading.
   const scrollToHeading = useCallback((heading: MarkdownOutlineHeading) => {
-    scrollRenderedHeadingIntoView(editorViewportRef.current, heading, headings);
-  }, [headings]);
+    void editorSurfaceRef.current?.reveal(heading.range);
+  }, []);
 
   if (error) {
     return (
@@ -949,6 +1053,13 @@ export function DocumentShell({
           <TextControlButton onClick={() => void save()} disabled={saving}>
             <Save aria-hidden="true" />
             {saving ? "保存中" : "保存"}
+          </TextControlButton>
+          <TextControlButton
+            onClick={() => void exportPdf()}
+            disabled={exporting}
+          >
+            <FileDown aria-hidden="true" />
+            {exporting ? "导出中" : "导出 PDF"}
           </TextControlButton>
           <TextControlButton onClick={toggleOutline}>
             {state.outlineCollapsed ? (
@@ -1085,24 +1196,31 @@ export function DocumentShell({
             className="flex min-h-0 min-w-0 overflow-hidden"
             data-document-editor-stage=""
           >
-            <EditorPane
-              rootPath={null}
-              tab={{
-                tabId: "document",
-                path: state.realPath,
-                title: state.fileName,
-                dirty: state.dirty,
-                needsRenameOnFirstSave: false,
-                markdown: state.markdown,
-              }}
-              onMarkdownChange={handleMarkdownChange}
+            <MarkdownEditorSurface
+              ref={editorSurfaceRef}
+              session={editorSession}
+              documentId={state.realPath}
+              markdown={state.markdown}
+              onMarkdownChange={handleEditorSurfaceChange}
               storeImage={(file) =>
+                // A document window has no workspace root, so an asset is
+                // stored beside the file being edited.
                 storeImageForDocument(file, {
                   documentPath: state.realPath,
                 })
               }
-              editorViewportRef={editorViewportRef}
+              services={{
+                // A document window has no workspace root; a relative asset
+                // is relative to the file being edited.
+                imageLoader: (src) =>
+                  loadImage(src, {
+                    rootPath: null,
+                    currentFilePath: state.realPath,
+                  }),
+                codeTokenizer: tokenize,
+              }}
             />
+
           </section>
 
           <OutlinePanel
@@ -1276,6 +1394,26 @@ async function chooseDocumentSavePath(defaultPath: string) {
       {
         name: "Markdown",
         extensions: ["md", "markdown"],
+      },
+    ],
+  });
+
+  return typeof selectedPath === "string" ? selectedPath : null;
+}
+
+async function choosePdfExportPath(documentPath: string) {
+  if (!isTauriRuntime()) {
+    throw new Error("导出 PDF 仅在桌面版中可用。");
+  }
+
+  const { save } = await tauriDialog();
+  const selectedPath = await save({
+    title: "导出 PDF",
+    defaultPath: documentPath.replace(/\.(md|markdown)$/i, "") + ".pdf",
+    filters: [
+      {
+        name: "PDF",
+        extensions: ["pdf"],
       },
     ],
   });

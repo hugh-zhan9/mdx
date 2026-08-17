@@ -14,6 +14,7 @@ const onCloseRequested = vi.fn();
 const listen = vi.fn(async () => () => {});
 const close = vi.fn(async () => {});
 const confirm = vi.fn(async () => true);
+const alertDialog = vi.fn(async () => {});
 const destroy = vi.fn(async () => {});
 const draftDelete = vi.fn(async () => {});
 const invoke = vi.fn(async () => {});
@@ -50,7 +51,7 @@ vi.mock("@/features/recovery/lib/draft-client", () => ({
 vi.mock("./app-dialogs", () => ({
   AppDialogProvider: ({ children }: { children: ReactNode }) => children,
   useAppDialogs: () => ({
-    alert: vi.fn(),
+    alert: alertDialog,
     choice: vi.fn(),
     confirm,
     prompt: vi.fn(),
@@ -189,6 +190,58 @@ describe("WorkspaceApp window close", () => {
         dirtyTabCount: 1,
       },
     });
+  });
+
+  it("stops closing and reports when discarding drafts fails", async () => {
+    let workspace = createWorkspaceState("/tmp/ws");
+    workspace = workspaceReducer(workspace, {
+      type: "tab/opened",
+      tab: {
+        tabId: "tab-1",
+        path: "/tmp/ws/note.md",
+        title: "note.md",
+        dirty: true,
+        needsRenameOnFirstSave: false,
+        markdown: "# Draft",
+        baseFingerprint: "disk",
+      },
+    });
+    useWorkspaceBootstrap.mockReturnValue({
+      status: "ready",
+      workspace,
+      dispatch: vi.fn(),
+      chooseWorkspace: vi.fn(async () => {}),
+      canChooseWorkspace: true,
+      message: null,
+      preferences: {
+        fileTreeExcludeDirs: [],
+        fileWatchEnabled: true,
+        searchMaxFileBytes: 1048576,
+        searchMaxResults: 100,
+        searchMaxMatchesPerFile: 20,
+      },
+      updatePreferences: vi.fn(),
+      persistCurrentWindowSize,
+    });
+    draftDelete.mockRejectedValueOnce(new Error("draft store is locked"));
+    await act(async () => {
+      root.render(<WorkspaceApp />);
+      await flushPromises();
+    });
+    const closeHandler = onCloseRequested.mock.calls[0]?.[0];
+
+    await act(async () => {
+      closeHandler?.({ preventDefault: vi.fn() });
+      await flushPromises();
+    });
+
+    expect(draftDelete).toHaveBeenCalledWith({ realPath: "/tmp/ws/note.md" });
+    expect(destroy).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+    expect(persistCurrentWindowSize).not.toHaveBeenCalled();
+    expect(alertDialog).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "关闭窗口" }),
+    );
   });
 });
 

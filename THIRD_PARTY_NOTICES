@@ -1,0 +1,334 @@
+THIRD-PARTY NOTICES
+===================
+
+MDX ("mdx", version 0.3.0) incorporates third-party software. This file lists
+that software and reproduces the required notices.
+
+Every copyright line below is quoted verbatim from the licence file shipped
+inside the corresponding package; the file that was read is named next to each
+entry. Nothing here is inferred or reconstructed.
+
+Determinations were made on 2026-08-14 from the installed dependency tree, and
+are recorded in full in:
+  docs/loopx/design/2026-08-12-milkdown-editor-migration/P-007-license-provenance-audit.md
+
+
+===============================================================================
+SECTION 1 — BEHAVIOUR REFERENCE (no code incorporated)
+===============================================================================
+
+ColaMD
+  Repository : https://github.com/marswaveai/colamd
+  Commit     : 4c986a4e0920cf0598fb2a47cec2966fc5340c77
+  Licence    : MIT
+  Read from  : ref/ColaMD/LICENSE, ref/ColaMD/package.json
+
+ColaMD, by marswave.ai, was consulted as a *behaviour and composition
+reference* while building MDX's Markdown editor. It is credited here for that
+reference.
+
+No ColaMD source code is incorporated into MDX, and none is redistributed with
+it. MDX's editor was written against Milkdown's and ProseMirror's public APIs.
+This was verified rather than assumed: a six-technique comparison of ColaMD's
+4,247 authored lines against the 41,906 lines of packages/mdx-editor found zero
+shared runs of three or more non-trivial consecutive lines, zero shared comment
+lines out of 189 tested, and zero shared distinctive identifiers, CSS class
+names, plugin keys or UI strings. The small residual overlap consists of
+language boilerplate and the required spellings of shared library APIs. The
+methods, commands and full numbers are in the audit document cited above.
+
+Because no ColaMD code was copied and none is redistributed, the MIT clause
+requiring the copyright notice to accompany "copies or substantial portions of
+the Software" is not triggered. Accordingly this entry does NOT assert a
+marswave.ai copyright over any MDX file — doing so would misdescribe the work.
+The reference checkout lives at ref/, which is excluded from version control
+and from all distributed artifacts.
+
+
+===============================================================================
+SECTION 2 — BUNDLED THIRD-PARTY SOFTWARE
+===============================================================================
+
+The following packages are incorporated into MDX's distributed application.
+
+-------------------------------------------------------------------------------
+2.1  MIT-licensed packages
+-------------------------------------------------------------------------------
+
+Each package below is MIT licensed. The MIT licence text is identical across
+them and is reproduced once in Section 3.1. Copyright holders differ and are
+listed individually.
+
+Milkdown — the editor framework
+  Packages (all version 7.22.1): @milkdown/kit, @milkdown/components,
+    @milkdown/core, @milkdown/ctx, @milkdown/exception, @milkdown/plugin-block,
+    @milkdown/plugin-clipboard, @milkdown/plugin-cursor, @milkdown/plugin-diff,
+    @milkdown/plugin-history, @milkdown/plugin-indent,
+    @milkdown/plugin-listener, @milkdown/plugin-slash,
+    @milkdown/plugin-streaming, @milkdown/plugin-tooltip,
+    @milkdown/plugin-trailing, @milkdown/plugin-upload,
+    @milkdown/preset-commonmark, @milkdown/preset-gfm, @milkdown/prose,
+    @milkdown/transformer, @milkdown/utils
+  Read from: node_modules/@milkdown/<pkg>/LICENSE
+
+    Copyright (c) 2020-present Mirone
+
+ProseMirror — the document model and view
+  Packages: prosemirror-commands 1.7.1, prosemirror-history 1.5.0,
+    prosemirror-inputrules 1.5.1, prosemirror-keymap 1.2.3,
+    prosemirror-model 1.25.9, prosemirror-schema-list 1.5.1,
+    prosemirror-state 1.4.4, prosemirror-transform 1.12.0,
+    prosemirror-view 1.41.9, prosemirror-dropcursor 1.8.3,
+    prosemirror-gapcursor 1.4.1
+  Read from: node_modules/prosemirror-<pkg>/LICENSE
+
+    Copyright (C) 2015-2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
+
+  prosemirror-changeset 2.4.1
+  Read from: node_modules/prosemirror-changeset/LICENSE
+
+    Copyright (C) 2017 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
+
+  prosemirror-tables 1.8.5
+  Read from: node_modules/prosemirror-tables/LICENSE
+
+    Copyright (C) 2015-2016 by Marijn Haverbeke <marijnh@gmail.com> and others
+
+  prosemirror-drop-indicator 0.1.4
+  Read from: node_modules/prosemirror-drop-indicator/LICENSE
+
+    Copyright (c) 2025 ocavue
+
+  prosemirror-safari-ime-span 1.0.2
+  Read from: node_modules/prosemirror-safari-ime-span/LICENSE
+
+    Copyright (c) 2024 ocavue
+
+CodeMirror — the source-mode editor
+  Packages: @codemirror/commands 6.10.3, @codemirror/lang-markdown 6.5.0,
+    @codemirror/search 6.7.1, @codemirror/state 6.6.0, @codemirror/view 6.43.1
+  Read from: node_modules/@codemirror/<pkg>/LICENSE
+
+    Copyright (C) 2018-2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
+
+KaTeX 0.17.0 — math rendering
+  Read from: node_modules/katex/LICENSE
+
+    Copyright (c) 2013-2020 Khan Academy and other contributors
+
+Mermaid 11.15.0 — diagram rendering
+  Read from: node_modules/mermaid/LICENSE
+
+    Copyright (c) 2014 - 2022 Knut Sveidqvist
+
+Prism 1.30.0 (prismjs) — code syntax highlighting
+  Read from: node_modules/prismjs/LICENSE
+
+    Copyright (c) 2012 Lea Verou
+
+React 19.2.4 and React DOM 19.2.4
+  Read from: node_modules/react/LICENSE, node_modules/react-dom/LICENSE
+
+    Copyright (c) Meta Platforms, Inc. and affiliates.
+
+Next.js 16.2.3
+  Read from: node_modules/next/license.md
+
+    Copyright (c) 2025 Vercel, Inc.
+
+unified / remark ecosystem — Markdown parsing and serialization
+  Packages: mdast-util-from-markdown 2.0.3, mdast-util-gfm 3.1.0,
+    micromark 4.0.2
+  Read from: node_modules/<pkg>/license
+
+    Copyright (c) Titus Wormer <tituswormer@gmail.com>
+
+  Packages: mdast-util-frontmatter 2.0.1, mdast-util-math 3.0.0,
+    micromark-extension-frontmatter 2.0.0, micromark-extension-gfm 3.0.0,
+    micromark-extension-math 3.1.0
+  Read from: node_modules/<pkg>/license
+
+    Copyright (c) 2020 Titus Wormer <tituswormer@gmail.com>
+
+Immer 11.1.4 — immutable state updates
+  Read from: node_modules/immer/LICENSE
+
+    Copyright (c) 2017 Michel Weststrate
+
+Nano ID 5.1.7 (nanoid) — identifier generation
+  Read from: node_modules/nanoid/LICENSE
+
+    Copyright 2017 Andrey Sitnik <andrey@sitnik.ru>
+
+daisyUI 5.5.19 — component styles
+  Read from: node_modules/daisyui/LICENSE
+
+    Copyright (c) 2020 Pouya Saadeghi
+
+khroma 2.1.0 — colour manipulation (bundled via Mermaid)
+  Read from: node_modules/khroma/license
+  Note: this package declares no "license" field in its package.json; the
+  determination is taken from its licence file, which reads:
+
+    The MIT License (MIT)
+    Copyright (c) 2019-present Fabio Spampinato, Andrew Maney
+
+-------------------------------------------------------------------------------
+2.2  ISC-licensed packages
+-------------------------------------------------------------------------------
+
+Lucide React 1.17.0 (lucide-react) — icons
+  Read from: node_modules/lucide-react/LICENSE
+  Licence text reproduced in Section 3.2.
+
+    Copyright (c) 2026 Lucide Icons and Contributors
+
+  That same file additionally records that a subset of Lucide's icons derive
+  from the Feather project and are MIT licensed:
+
+    The MIT License (MIT) (for the icons listed above)
+    Copyright (c) 2013-present Cole Bemis
+
+-------------------------------------------------------------------------------
+2.3  Dual-licensed packages
+-------------------------------------------------------------------------------
+
+Tauri — desktop application runtime bindings
+  Packages: @tauri-apps/api 2.10.1 (declared "Apache-2.0 OR MIT"),
+            @tauri-apps/plugin-dialog 2.7.0 (declared "MIT OR Apache-2.0")
+  MDX elects the MIT option for both.
+
+  @tauri-apps/api, read from node_modules/@tauri-apps/api/LICENSE_MIT:
+
+    MIT License
+    Copyright (c) 2017 - Present Tauri Apps Contributors
+
+  @tauri-apps/plugin-dialog, read from
+  node_modules/@tauri-apps/plugin-dialog/LICENSE.spdx:
+
+    PackageSupplier: Organization: The Tauri Programme in the Commons Conservancy
+    PackageLicenseDeclared: Apache-2.0
+    PackageLicenseDeclared: MIT
+    PackageCopyrightText: 2019-2022, The Tauri Programme in the Commons Conservancy
+
+DOMPurify 3.4.8 (dompurify) — HTML sanitization (bundled via Mermaid)
+  Declared licence: "(MPL-2.0 OR Apache-2.0)"
+  MDX elects the Apache-2.0 option. The licence file the package ships is the
+  Apache License 2.0 text.
+  Read from: node_modules/dompurify/LICENSE
+  Apache-2.0 notice: see Section 3.3.
+
+  DOMPurify reaches this application only as a dependency of Mermaid
+  (node_modules/mermaid/package.json declares "dompurify": "^3.3.1"). No MDX
+  source file imports it directly.
+
+
+===============================================================================
+SECTION 3 — LICENCE TEXTS
+===============================================================================
+
+-------------------------------------------------------------------------------
+3.1  The MIT License (MIT)
+-------------------------------------------------------------------------------
+
+Applies to every package in Section 2.1, each with its own copyright holder as
+listed there. Text reproduced from node_modules/katex/LICENSE.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+-------------------------------------------------------------------------------
+3.2  ISC License
+-------------------------------------------------------------------------------
+
+Applies to the packages in Section 2.2. Text reproduced from
+node_modules/lucide-react/LICENSE.
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+-------------------------------------------------------------------------------
+3.3  Apache License 2.0
+-------------------------------------------------------------------------------
+
+Applies to DOMPurify (Section 2.3), under MDX's election of the Apache-2.0 arm
+of its dual licence, and is available as the alternative arm for the Tauri
+packages.
+
+The full Apache License, Version 2.0 is available at:
+  http://www.apache.org/licenses/LICENSE-2.0
+
+and is shipped verbatim inside the packages themselves at:
+  node_modules/dompurify/LICENSE
+  node_modules/@tauri-apps/api/LICENSE_APACHE-2.0
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not
+use these files except in compliance with the License. You may obtain a copy
+of the License at the address above. Unless required by applicable law or
+agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+or implied. See the License for the specific language governing permissions
+and limitations under the License.
+
+
+===============================================================================
+SECTION 4 — BUILD-TIME TOOLING REQUIRING ATTRIBUTION
+===============================================================================
+
+caniuse-lite 1.0.30001787
+  Licence   : CC-BY-4.0 (Creative Commons Attribution 4.0 International)
+  Read from : node_modules/caniuse-lite/package.json, node_modules/caniuse-lite/LICENSE
+
+Browser-support data used by the build toolchain. It reaches this project only
+through browserslist and Next.js, and no application source file imports it, so
+it is not expected to appear in the distributed application. It is attributed
+here regardless, because CC-BY-4.0 is an attribution licence and this is the
+one non-software licence in the dependency tree.
+
+  Licence text: https://creativecommons.org/licenses/by/4.0/legalcode
+
+
+===============================================================================
+SECTION 5 — SCOPE OF THIS FILE
+===============================================================================
+
+This file covers the npm production dependency tree: 36 direct dependencies
+declared in package.json and their transitive closure of 292 installed
+packages. Across that closure every licence is permissive — 243 MIT, 34 ISC,
+4 BSD-3-Clause, 3 Apache-2.0, 1 BSD-2-Clause, 2 dual MIT/Apache-2.0, plus the
+three individually resolved cases described above. No GPL, LGPL, AGPL, SSPL or
+other strong-copyleft licence appears anywhere in the tree.
+
+Not covered here, and outstanding before release:
+
+  - Rust crate dependencies under src-tauri/, which have their own licences and
+    require a separate inventory.
+  - Development-only dependencies, which are not distributed.
+
+The listing errs toward over-inclusion: it names packages reachable in the
+production dependency graph without confirming against a built bundle which of
+them survive tree-shaking.

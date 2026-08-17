@@ -1,19 +1,9 @@
+/**
+ * What read-only publishing needs from this directory: the only source of a
+ * layout module, and the only read-only port built on one.
+ */
 export {
-    MdxEditorContext,
-    useMdxEditor,
-    type MdxEditorContextValue,
-    type MdxEditorLayoutSource,
-} from "./mdx-editor-context";
-export {
-    createLayoutBridge,
-    getSelectionGeometry,
-    getViewportSnapshot,
-    hitTestLayout,
-    initializeLayoutDocument,
-    updateLayoutDocument,
-} from "./wasm-layout-bridge";
-export {
-    MdxEditorProvider,
-    type MdxEditorProviderProps,
-} from "./mdx-editor-provider";
-export { EditorToolbar } from "./editor-toolbar";
+    loadLayoutWasmModule,
+    type WasmLayoutBridgeModule,
+} from "./layout-wasm-loader";
+export { createReadOnlyPreviewLayoutPort } from "./read-only-preview-layout";

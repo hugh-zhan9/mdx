@@ -55,16 +55,16 @@ export function createTabSaveQueue(
             const next = previous
                 .catch(() => false)
                 .then(() => performSaveTab(tabId, environment));
-            let queued: Promise<boolean> | undefined;
-            queued = (async () => {
+            const runNext = async (): Promise<boolean> => {
                 try {
                     return await next;
                 } finally {
-                    if (queued && pendingByTab.get(tabId) === queued) {
+                    if (pendingByTab.get(tabId) === queued) {
                         pendingByTab.delete(tabId);
                     }
                 }
-            })();
+            };
+            const queued = runNext();
 
             pendingByTab.set(tabId, queued);
 

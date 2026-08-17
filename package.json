@@ -17,9 +17,13 @@
         "test": "vitest run",
         "test:workspace": "vitest run features/workspace/lib/*.test.ts",
         "verify:layout-wasm": "npm run build:layout-wasm && node scripts/verify-layout-wasm.mjs",
-        "verify:editor:manual": "node scripts/verify-editor-browser.mjs",
-        "verify:editor:runtime": "node scripts/verify-tex-canvas-runtime.mjs",
-        "measure:editor:runtime": "node scripts/measure-tex-canvas-runtime.mjs"
+        "audit:editor:boundaries": "node scripts/audit-editor-boundaries.mjs",
+        "fixtures:editor:perf": "node scripts/generate-editor-perf-fixtures.mjs",
+        "fixtures:editor:perf:check": "node scripts/generate-editor-perf-fixtures.mjs --check",
+        "qualify:editor:environment": "node scripts/editor-perf-environment.mjs",
+        "qualify:editor:smoke": "node scripts/measure-editor-qualification.mjs --smoke",
+        "qualify:editor:verify": "node scripts/verify-editor-qualification.mjs",
+        "qualify:editor:build": "NEXT_PUBLIC_MDX_MILKDOWN_QUALIFICATION=1 NEXT_PUBLIC_MDX_BUILD_COMMIT=$(git rev-parse HEAD) npm run build:app"
     },
     "dependencies": {
         "@codemirror/commands": "^6.10.3",
@@ -27,6 +31,7 @@
         "@codemirror/search": "^6.7.1",
         "@codemirror/state": "^6.6.0",
         "@codemirror/view": "^6.43.1",
+        "@milkdown/kit": "7.22.1",
         "@tauri-apps/api": "2.10.1",
         "@tauri-apps/plugin-dialog": "^2.7.0",
         "daisyui": "^5.5.19",

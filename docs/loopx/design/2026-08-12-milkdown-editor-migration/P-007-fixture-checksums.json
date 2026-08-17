@@ -1,0 +1,67 @@
+{
+    "contract": "D-015",
+    "generator": "scripts/editor-perf-fixture.mjs",
+    "note": "Fixture bytes are generated, not committed. Regenerate with `npm run fixtures:editor:perf`; verify with `npm run fixtures:editor:perf:check`.",
+    "fixtures": [
+        {
+            "id": "mixed-100kib",
+            "seed": "mdx-p007-100kib",
+            "bytes": 102400,
+            "sha256": "cc073edc1d654e07eaefea86c17cc6a7aae07d13456789a04bdadc31e81e8c38",
+            "syntaxProfile": {
+                "bytes": 102400,
+                "lines": 1269,
+                "frontmatter": 1,
+                "headings": 16,
+                "callouts": 21,
+                "mermaidFences": 7,
+                "codeFences": 27,
+                "blockMath": 7,
+                "inlineMath": 98,
+                "footnoteCalls": 15,
+                "footnoteDefinitions": 15,
+                "wikilinks": 102,
+                "links": 97,
+                "htmlBlocks": 6,
+                "inlineHtml": 51,
+                "directives": 10,
+                "tableRows": 126,
+                "listItems": 303,
+                "taskItems": 37,
+                "thematicBreaks": 1,
+                "emoji": 62,
+                "cjkCharacters": 4336
+            }
+        },
+        {
+            "id": "mixed-1mib",
+            "seed": "mdx-p007-1mib",
+            "bytes": 1048576,
+            "sha256": "572991cb5e05587b426143cd15b9c1dfe086bd9af41c7ad15f64e3a3b9af70d1",
+            "syntaxProfile": {
+                "bytes": 1048576,
+                "lines": 12633,
+                "frontmatter": 1,
+                "headings": 259,
+                "callouts": 149,
+                "mermaidFences": 68,
+                "codeFences": 280,
+                "blockMath": 109,
+                "inlineMath": 887,
+                "footnoteCalls": 120,
+                "footnoteDefinitions": 120,
+                "wikilinks": 1022,
+                "links": 1097,
+                "htmlBlocks": 68,
+                "inlineHtml": 602,
+                "directives": 46,
+                "tableRows": 995,
+                "listItems": 3500,
+                "taskItems": 445,
+                "thematicBreaks": 21,
+                "emoji": 707,
+                "cjkCharacters": 47333
+            }
+        }
+    ]
+}

@@ -43,9 +43,14 @@ pub fn export_pdf(request: &PdfExportRequest) -> Result<PdfExportResult, String>
             .map(|line| line.y)
             .unwrap_or_default();
 
+        let mut link_targets: Vec<(String, [f32; 4])> = Vec::new();
+
         for line in page.map(|page| page.lines.as_slice()).unwrap_or(&[]) {
             let line_local_y = line.y - page_start_y;
             for run in &line.text_runs {
+                let baseline_y = request.page_size.height_pt
+                    - request.margins.top_pt
+                    - (line_local_y + (run.baseline - line.baseline));
                 content.operations.push(Operation::new("BT", vec![]));
                 content.operations.push(Operation::new(
                     "Tf",
@@ -53,19 +58,25 @@ pub fn export_pdf(request: &PdfExportRequest) -> Result<PdfExportResult, String>
                 ));
                 content.operations.push(Operation::new(
                     "Td",
-                    vec![
-                        run.left.into(),
-                        (request.page_size.height_pt
-                            - request.margins.top_pt
-                            - (line_local_y + (run.baseline - line.baseline)))
-                            .into(),
-                    ],
+                    vec![run.left.into(), baseline_y.into()],
                 ));
                 content.operations.push(Operation::new(
                     "Tj",
                     vec![Object::string_literal(run.text.clone())],
                 ));
                 content.operations.push(Operation::new("ET", vec![]));
+
+                if let Some(href) = run.style.link.as_ref() {
+                    link_targets.push((
+                        href.clone(),
+                        [
+                            run.left,
+                            baseline_y,
+                            run.left + run.width,
+                            baseline_y + run.height,
+                        ],
+                    ));
+                }
             }
         }
 
@@ -96,7 +107,11 @@ pub fn export_pdf(request: &PdfExportRequest) -> Result<PdfExportResult, String>
             dictionary! {},
             content.encode().map_err(|error| error.to_string())?,
         ));
-        let page_id = doc.add_object(dictionary! {
+        let annotation_ids = link_targets
+            .into_iter()
+            .map(|(href, rect)| link_annotation(&mut doc, &href, rect))
+            .collect::<Vec<_>>();
+        let mut page_dictionary = dictionary! {
             "Type" => "Page",
             "Parent" => pages_id,
             "Contents" => content_id,
@@ -110,7 +125,19 @@ pub fn export_pdf(request: &PdfExportRequest) -> Result<PdfExportResult, String>
                 request.page_size.width_pt.into(),
                 request.page_size.height_pt.into()
             ],
-        });
+        };
+
+        if !annotation_ids.is_empty() {
+            page_dictionary.set(
+                "Annots",
+                annotation_ids
+                    .into_iter()
+                    .map(Object::Reference)
+                    .collect::<Vec<_>>(),
+            );
+        }
+
+        let page_id = doc.add_object(page_dictionary);
         page_ids.push(page_id);
     }
 
@@ -132,6 +159,28 @@ pub fn export_pdf(request: &PdfExportRequest) -> Result<PdfExportResult, String>
         page_count: page_ids.len(),
         warnings,
         export_ms: started.elapsed().as_millis() as u64,
+    })
+}
+
+/// Writes one link annotation so the exported document keeps where a link points.
+///
+/// A link is content: the reader of the PDF has to be able to reach the same
+/// destination the screen offers, not only read the words that carried it.
+fn link_annotation(doc: &mut Document, href: &str, rect: [f32; 4]) -> ObjectId {
+    doc.add_object(dictionary! {
+        "Type" => "Annot",
+        "Subtype" => "Link",
+        "Rect" => vec![
+            rect[0].into(),
+            rect[1].into(),
+            rect[2].into(),
+            rect[3].into(),
+        ],
+        "Border" => vec![0.into(), 0.into(), 0.into()],
+        "A" => dictionary! {
+            "S" => "URI",
+            "URI" => Object::string_literal(href.to_string()),
+        },
     })
 }
 
@@ -979,7 +1028,13 @@ impl From<LayoutLineCompat> for LayoutLine {
 #[serde(rename_all = "camelCase")]
 struct TextRunPositionCompat {
     block_id: String,
+    /// Editor source positions, when the producer had any.
+    ///
+    /// Publishing has none: it lays out a captured Markdown revision and never
+    /// addresses an editor document, so its payload omits both.
+    #[serde(default)]
     pm_from: usize,
+    #[serde(default)]
     pm_to: usize,
     left: f32,
     baseline: f32,
@@ -988,6 +1043,30 @@ struct TextRunPositionCompat {
     font_family: String,
     font_size: f32,
     text: String,
+    #[serde(default)]
+    style: InlineStyleCompat,
+}
+
+/// Inline presentation carried by a text run, with every field optional.
+///
+/// The link destination is the part the exporter needs: a link is content, so
+/// the exported document has to keep where the link points, not only the words
+/// the reader sees.
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InlineStyleCompat {
+    #[serde(default)]
+    bold: bool,
+    #[serde(default)]
+    italic: bool,
+    #[serde(default)]
+    code: bool,
+    #[serde(default)]
+    link: Option<String>,
+    #[serde(default)]
+    strike: bool,
+    #[serde(default)]
+    underline: bool,
 }
 
 impl From<TextRunPositionCompat> for TextRunPosition {
@@ -1004,7 +1083,14 @@ impl From<TextRunPositionCompat> for TextRunPosition {
             font_size: value.font_size,
             text: value.text,
             kind: InlineKind::Text,
-            style: InlineStyle::default(),
+            style: InlineStyle {
+                bold: value.style.bold,
+                italic: value.style.italic,
+                code: value.style.code,
+                link: value.style.link,
+                strike: value.style.strike,
+                underline: value.style.underline,
+            },
         }
     }
 }

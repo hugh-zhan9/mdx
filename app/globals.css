@@ -122,30 +122,47 @@ html[data-theme="dark"] {
     font-family: var(--mdx-editor-font);
 }
 
-[data-mdx-editor-root] {
+[data-mdx-markdown-editor] {
     color: var(--color-base-content);
     font-size: 0.98rem;
     line-height: 1.75;
-    min-height: 100%;
     outline: none;
     overflow-wrap: break-word;
+    /*
+     * The editor is the scroll container. The previous surface drew its own
+     * text and scrolled itself, so nothing in the layout above ever needed to
+     * clip; a real contenteditable grows with its content instead, and without
+     * this a long document is simply cut off at the bottom of the pane.
+     */
+    overflow-y: auto;
+    padding: 1.25rem 1.75rem 45vh;
 }
 
-[data-mdx-editor-root]:focus,
-[data-mdx-editor-root]:focus-visible,
-[data-mdx-editor-root] .ProseMirror,
-[data-mdx-editor-root] .ProseMirror:focus,
-[data-mdx-editor-root] .ProseMirror:focus-visible {
+/*
+ * The trailing padding above is deliberate: it lets the last line be scrolled
+ * up to a comfortable reading position rather than sitting against the bottom
+ * edge of the window.
+ */
+
+[data-mdx-markdown-editor] .ProseMirror {
+    min-height: 100%;
+}
+
+[data-mdx-markdown-editor]:focus,
+[data-mdx-markdown-editor]:focus-visible,
+[data-mdx-markdown-editor] .ProseMirror,
+[data-mdx-markdown-editor] .ProseMirror:focus,
+[data-mdx-markdown-editor] .ProseMirror:focus-visible {
     border-color: transparent;
     box-shadow: none;
     outline: none;
 }
 
-[data-mdx-editor-root][data-mdx-empty="true"] {
+[data-mdx-markdown-editor][data-mdx-empty="true"] {
     position: relative;
 }
 
-[data-mdx-editor-root][data-mdx-empty="true"]::before {
+[data-mdx-markdown-editor][data-mdx-empty="true"]::before {
     content: attr(data-mdx-placeholder);
     color: color-mix(in srgb, var(--color-base-content) 55%, transparent);
     left: 0;
@@ -198,11 +215,11 @@ html[data-theme="dark"] {
     font-family: inherit;
 }
 
-[data-mdx-editor-root] [data-mdx-node-type="paragraph"] {
+[data-mdx-markdown-editor] p {
     margin: 0.72rem 0;
 }
 
-[data-mdx-editor-root] [data-mdx-node-type="paragraph"]:first-child {
+[data-mdx-markdown-editor] p:first-child {
     margin-top: 0;
 }
 
@@ -265,69 +282,69 @@ html[data-theme="dark"] {
     display: none;
 }
 
-[data-mdx-editor-root] a[data-mdx-node-type="link"],
-[data-mdx-editor-root] a[data-mdx-node-type="wikilink"],
-[data-hybrid-editor-host] a[data-mdx-node-type="link"],
-[data-hybrid-editor-host] a[data-mdx-node-type="wikilink"] {
+[data-mdx-markdown-editor] a[href],
+[data-mdx-markdown-editor] a.mdx-wikilink,
+[data-hybrid-editor-host] a[href],
+[data-hybrid-editor-host] a.mdx-wikilink {
     color: var(--color-info);
     cursor: text;
     text-decoration: underline;
     text-underline-offset: 0.14em;
 }
 
-[data-mdx-editor-root] [data-mdx-editing-link="true"],
+[data-mdx-markdown-editor] [data-mdx-editing-link="true"],
 [data-hybrid-editor-host] [data-mdx-editing-link="true"] {
     color: var(--color-info);
 }
 
-[data-mdx-editor-root] [data-mdx-node-type="heading"] {
+[data-mdx-markdown-editor] :is(h1,h2,h3,h4,h5,h6) {
     font-weight: 650;
     letter-spacing: 0;
     line-height: 1.28;
     margin: 1.55rem 0 0.55rem;
 }
 
-[data-mdx-editor-root] [data-mdx-heading-level="1"] {
+[data-mdx-markdown-editor] h1 {
     font-size: 1.72rem;
 }
 
-[data-mdx-editor-root] [data-mdx-heading-level="2"] {
+[data-mdx-markdown-editor] h2 {
     font-size: 1.38rem;
 }
 
-[data-mdx-editor-root] [data-mdx-heading-level="3"] {
+[data-mdx-markdown-editor] h3 {
     font-size: 1.18rem;
 }
 
-[data-mdx-editor-root] [data-mdx-heading-level="4"] {
+[data-mdx-markdown-editor] h4 {
     font-size: 1.04rem;
 }
 
-[data-mdx-editor-root] [data-mdx-heading-level="5"] {
+[data-mdx-markdown-editor] h5 {
     font-size: 1rem;
 }
 
-[data-mdx-editor-root] [data-mdx-heading-level="6"] {
+[data-mdx-markdown-editor] h6 {
     color: color-mix(in srgb, var(--color-base-content) 78%, transparent);
     font-size: 0.875rem;
 }
 
-[data-mdx-editor-root] [data-mdx-node-type="blockquote"] {
+[data-mdx-markdown-editor] blockquote {
     border-left: 3px solid var(--mdx-separator);
     color: color-mix(in srgb, var(--color-base-content) 82%, transparent);
     margin: 0.9rem 0;
     padding: 0.25rem 0 0.25rem 1rem;
 }
 
-[data-mdx-editor-root] [data-mdx-node-type="blockquote"] > :first-child {
+[data-mdx-markdown-editor] blockquote > :first-child {
     margin-top: 0;
 }
 
-[data-mdx-editor-root] [data-mdx-node-type="blockquote"] > :last-child {
+[data-mdx-markdown-editor] blockquote > :last-child {
     margin-bottom: 0;
 }
 
-[data-mdx-editor-root] kbd[data-mdx-node-type="kbd"] {
+[data-mdx-markdown-editor] kbd {
     background: var(--color-base-200);
     border: 1px solid var(--color-base-300);
     border-bottom-color: color-mix(in srgb, var(--color-base-content) 22%, transparent);
@@ -344,7 +361,7 @@ html[data-theme="dark"] {
         box-shadow 120ms ease;
 }
 
-[data-mdx-editor-root] kbd[data-mdx-node-type="kbd"]:hover {
+[data-mdx-markdown-editor] kbd:hover {
     background: var(--color-base-100);
     border-color: color-mix(in srgb, var(--color-primary) 48%, var(--color-base-300));
     box-shadow:
@@ -352,7 +369,7 @@ html[data-theme="dark"] {
         0 0 0 2px color-mix(in srgb, var(--color-primary) 14%, transparent);
 }
 
-[data-mdx-editor-root] kbd[data-mdx-node-type="kbd"]:focus-within {
+[data-mdx-markdown-editor] kbd:focus-within {
     border-color: var(--color-primary);
     box-shadow:
         inset 0 -1px 0 color-mix(in srgb, var(--color-base-content) 12%, transparent),
@@ -368,8 +385,8 @@ html[data-theme="dark"] {
     padding: 0;
 }
 
-.mdx-inline-html-preview:hover kbd[data-mdx-node-type="kbd"],
-.mdx-inline-html-preview:focus-visible kbd[data-mdx-node-type="kbd"] {
+.mdx-inline-html-preview:hover kbd,
+.mdx-inline-html-preview:focus-visible kbd {
     background: var(--color-base-100);
     border-color: color-mix(in srgb, var(--color-primary) 48%, var(--color-base-300));
     box-shadow:
@@ -462,7 +479,7 @@ html[data-theme="dark"] {
     font-size: 0.85em;
 }
 
-[data-mdx-editor-root] [data-mdx-node-type="callout"] {
+[data-mdx-markdown-editor] .mdx-callout {
     --mdx-callout-color: var(--color-info);
     background: color-mix(in srgb, var(--mdx-callout-color) 8%, transparent);
     border: 1px solid color-mix(in srgb, var(--mdx-callout-color) 28%, transparent);
@@ -474,23 +491,23 @@ html[data-theme="dark"] {
     position: relative;
 }
 
-[data-mdx-editor-root] [data-mdx-callout-kind="TIP"] {
+[data-mdx-markdown-editor] [data-mdx-callout-kind="TIP"] {
     --mdx-callout-color: #0f766e;
 }
 
-[data-mdx-editor-root] [data-mdx-callout-kind="IMPORTANT"] {
+[data-mdx-markdown-editor] [data-mdx-callout-kind="IMPORTANT"] {
     --mdx-callout-color: var(--color-primary);
 }
 
-[data-mdx-editor-root] [data-mdx-callout-kind="WARNING"] {
+[data-mdx-markdown-editor] [data-mdx-callout-kind="WARNING"] {
     --mdx-callout-color: var(--color-warning);
 }
 
-[data-mdx-editor-root] [data-mdx-callout-kind="CAUTION"] {
+[data-mdx-markdown-editor] [data-mdx-callout-kind="CAUTION"] {
     --mdx-callout-color: var(--color-error);
 }
 
-[data-mdx-editor-root] .mdx-callout-header {
+[data-mdx-markdown-editor] .mdx-callout-header {
     align-items: baseline;
     color: var(--mdx-callout-color);
     display: flex;
@@ -502,20 +519,20 @@ html[data-theme="dark"] {
     margin-bottom: 0.45rem;
 }
 
-[data-mdx-editor-root] .mdx-callout-title {
+[data-mdx-markdown-editor] .mdx-callout-title {
     color: var(--color-base-content);
     font-weight: 600;
 }
 
-[data-mdx-editor-root] .mdx-callout-content > :first-child {
+[data-mdx-markdown-editor] .mdx-callout-content > :first-child {
     margin-top: 0;
 }
 
-[data-mdx-editor-root] .mdx-callout-content > :last-child {
+[data-mdx-markdown-editor] .mdx-callout-content > :last-child {
     margin-bottom: 0;
 }
 
-[data-mdx-editor-root] .mdx-callout-controls {
+[data-mdx-markdown-editor] .mdx-callout-controls {
     display: flex;
     gap: 0.25rem;
     opacity: 0;
@@ -526,14 +543,14 @@ html[data-theme="dark"] {
     transition: opacity 120ms ease;
 }
 
-[data-mdx-editor-root] [data-mdx-node-type="callout"]:hover .mdx-callout-controls,
-[data-mdx-editor-root] [data-mdx-node-type="callout"]:focus-within .mdx-callout-controls {
+[data-mdx-markdown-editor] .mdx-callout:hover .mdx-callout-controls,
+[data-mdx-markdown-editor] .mdx-callout:focus-within .mdx-callout-controls {
     opacity: 1;
     pointer-events: auto;
 }
 
-[data-mdx-editor-root] .mdx-callout-controls select,
-[data-mdx-editor-root] .mdx-callout-controls input {
+[data-mdx-markdown-editor] .mdx-callout-controls select,
+[data-mdx-markdown-editor] .mdx-callout-controls input {
     background: var(--color-base-100);
     border: 1px solid var(--color-base-300);
     color: var(--color-base-content);
@@ -542,13 +559,13 @@ html[data-theme="dark"] {
     padding: 0 0.4rem;
 }
 
-[data-mdx-editor-root] [data-mdx-node-type="horizontal_rule"] {
+[data-mdx-markdown-editor] hr {
     border: 0;
     border-top: 1px solid var(--mdx-separator);
     margin: 1.4rem 0;
 }
 
-[data-mdx-editor-root] .mdx-table-wrapper {
+[data-mdx-markdown-editor] .mdx-table-wrapper {
     display: inline-block;
     margin: 0.95rem 0;
     max-width: 100%;
@@ -557,7 +574,7 @@ html[data-theme="dark"] {
     vertical-align: top;
 }
 
-[data-mdx-editor-root] .mdx-table-controls {
+[data-mdx-markdown-editor] .mdx-table-controls {
     display: flex;
     gap: 0.25rem;
     opacity: 0;
@@ -569,13 +586,13 @@ html[data-theme="dark"] {
     z-index: 1;
 }
 
-[data-mdx-editor-root] .mdx-table-wrapper:hover .mdx-table-controls,
-[data-mdx-editor-root] .mdx-table-wrapper:focus-within .mdx-table-controls {
+[data-mdx-markdown-editor] .mdx-table-wrapper:hover .mdx-table-controls,
+[data-mdx-markdown-editor] .mdx-table-wrapper:focus-within .mdx-table-controls {
     opacity: 1;
     pointer-events: auto;
 }
 
-[data-mdx-editor-root] .mdx-table-control-button {
+[data-mdx-markdown-editor] .mdx-table-control-button {
     align-items: center;
     background: color-mix(in srgb, var(--color-base-100) 92%, transparent);
     border: 1px solid var(--color-base-300);
@@ -588,27 +605,27 @@ html[data-theme="dark"] {
     width: 1.75rem;
 }
 
-[data-mdx-editor-root] .mdx-table-control-button:hover,
-[data-mdx-editor-root] .mdx-table-control-button:focus-visible {
+[data-mdx-markdown-editor] .mdx-table-control-button:hover,
+[data-mdx-markdown-editor] .mdx-table-control-button:focus-visible {
     background: var(--color-base-200);
 }
 
-[data-mdx-editor-root] .mdx-table-control-button:disabled {
+[data-mdx-markdown-editor] .mdx-table-control-button:disabled {
     color: color-mix(in srgb, var(--color-base-content) 35%, transparent);
     cursor: not-allowed;
 }
 
-[data-mdx-editor-root] .mdx-table-control-button:disabled:hover {
+[data-mdx-markdown-editor] .mdx-table-control-button:disabled:hover {
     background: color-mix(in srgb, var(--color-base-100) 92%, transparent);
 }
 
-[data-mdx-editor-root] .mdx-table-control-button svg {
+[data-mdx-markdown-editor] .mdx-table-control-button svg {
     height: 1rem;
     width: 1rem;
 }
 
-[data-mdx-editor-root] .mdx-table-node,
-[data-mdx-editor-root] table[data-mdx-node-type="table"] {
+[data-mdx-markdown-editor] .mdx-table-node,
+[data-mdx-markdown-editor] tabletable {
     border-collapse: collapse;
     border-spacing: 0;
     margin: 0;
@@ -616,8 +633,8 @@ html[data-theme="dark"] {
     width: max-content;
 }
 
-[data-mdx-editor-root] [data-mdx-node-type="table_header"],
-[data-mdx-editor-root] [data-mdx-node-type="table_cell"] {
+[data-mdx-markdown-editor] th,
+[data-mdx-markdown-editor] td {
     border: 1px solid var(--mdx-separator);
     min-width: 6rem;
     padding: 0.45rem 0.6rem;
@@ -625,51 +642,59 @@ html[data-theme="dark"] {
     vertical-align: top;
 }
 
-[data-mdx-editor-root] [data-mdx-node-type="table_header"] {
+[data-mdx-markdown-editor] th {
     background: color-mix(in srgb, var(--color-base-200) 86%, var(--color-base-100) 14%);
     font-weight: 600;
 }
 
-[data-mdx-editor-root] [data-mdx-node-type="bullet_list"],
-[data-mdx-editor-root] [data-mdx-node-type="ordered_list"] {
+[data-mdx-markdown-editor] ul,
+[data-mdx-markdown-editor] ol {
     margin: 0.72rem 0;
     padding-left: 1.5rem;
 }
 
-[data-mdx-editor-root] [data-mdx-node-type="bullet_list"] {
+[data-mdx-markdown-editor] ul {
     list-style: disc;
 }
 
-[data-mdx-editor-root] [data-mdx-node-type="bullet_list"] [data-mdx-node-type="bullet_list"] {
+[data-mdx-markdown-editor] ul ul {
     list-style: circle;
 }
 
-[data-mdx-editor-root] [data-mdx-node-type="bullet_list"] [data-mdx-node-type="bullet_list"] [data-mdx-node-type="bullet_list"] {
+[data-mdx-markdown-editor] ul ul ul {
     list-style: square;
 }
 
-[data-mdx-editor-root] [data-mdx-node-type="ordered_list"] {
+[data-mdx-markdown-editor] ol {
     list-style: decimal;
 }
 
-[data-mdx-editor-root] [data-mdx-node-type="list_item"] {
+[data-mdx-markdown-editor] li {
     margin: 0.25rem 0;
 }
 
-[data-mdx-editor-root] [data-mdx-node-type="task_item"] {
+/*
+ * A list item's text is a paragraph node, so without this every item carries
+ * full paragraph spacing and a tight list reads as a loose one.
+ */
+[data-mdx-markdown-editor] li > p {
+    margin: 0;
+}
+
+[data-mdx-markdown-editor] li[data-item-type="task"] {
     display: flex;
     gap: 0.5rem;
     list-style: none;
     margin: 0.25rem 0;
 }
 
-[data-mdx-editor-root] .mdx-task-item-control {
+[data-mdx-markdown-editor] .mdx-task-item-control {
     display: inline-flex;
     flex: 0 0 auto;
     padding-top: 0.15rem;
 }
 
-[data-mdx-editor-root] .mdx-task-item-content {
+[data-mdx-markdown-editor] .mdx-task-item-content {
     flex: 1 1 auto;
     min-width: 0;
 }

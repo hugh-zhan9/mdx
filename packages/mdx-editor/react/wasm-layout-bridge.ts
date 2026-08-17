@@ -51,52 +51,28 @@ export interface LayoutCanvasDrawOp {
     data: JsonValue;
 }
 
-export interface LayoutHitTestEntry {
-    blockId: string;
-    rect: LayoutRect;
-    pmFrom: number;
-    pmTo: number;
-}
-
-export interface LayoutCaretAnchor {
-    lineId: string;
-    pmPosition: number;
-    x: number;
-    y: number;
-    height: number;
-}
-
-export interface LayoutSelectionGeometry {
-    pmFrom: number;
-    pmTo: number;
-    rects: LayoutRect[];
-}
-
-export interface LayoutMirrorBlock {
-    blockId: string;
-    pmFrom: number;
-    pmTo: number;
-    semanticText: string;
-    ariaLabel: string;
-}
-
+/**
+ * What a laid-out document offers a reader: where the lines sit and what to
+ * paint. Hit-test entries, caret anchors, selection geometry and mirror blocks
+ * left with the interactive editor — those answered "what is under this point"
+ * and "where does this selection sit", questions read-only publishing does not
+ * ask. The Rust snapshot may still carry them; nothing here reads them.
+ */
 export interface LayoutSnapshot {
     revision: number;
     lines: LayoutLineSnapshot[];
     canvasDrawOps: LayoutCanvasDrawOp[];
-    hitTestEntries: LayoutHitTestEntry[];
-    caretAnchors: LayoutCaretAnchor[];
-    selectionGeometries: LayoutSelectionGeometry[];
-    mirrorBlocks: LayoutMirrorBlock[];
 }
 
-export interface LayoutHitTestResult {
-    blockId: string;
-    rect: LayoutRect;
-    pmFrom: number;
-    pmTo: number;
-}
-
+/**
+ * The WASM entry points publishing is allowed to reach.
+ *
+ * `loadLayoutWasmModule` returns this type through the package's public entry,
+ * so anything declared here is callable by product code. The interactive
+ * `layout_hit_test` and `layout_get_selection_geometry` exports are therefore
+ * deliberately absent: the artifact still provides them, but no typed path
+ * reaches them from outside this package.
+ */
 export interface LayoutBridgeModule {
     layout_initialize_document: (
         documentId: string,
@@ -118,19 +94,6 @@ export interface LayoutBridgeModule {
         viewportBytes: Uint8Array,
         devicePixelRatio: number,
     ) => Uint8Array;
-    layout_hit_test: (
-        documentId: string,
-        revision: number | bigint,
-        x: number,
-        y: number,
-        granularityBytes: Uint8Array,
-    ) => Uint8Array;
-    layout_get_selection_geometry: (
-        documentId: string,
-        revision: number | bigint,
-        pmFrom: number,
-        pmTo: number,
-    ) => Uint8Array;
 }
 
 export interface InitializeLayoutRequest extends LayoutDocument {
@@ -143,29 +106,10 @@ export interface ViewportSnapshotRequest extends LayoutDocument {
     devicePixelRatio?: number;
 }
 
-export interface HitTestLayoutRequest {
-    documentId: string;
-    revision: number;
-    x: number;
-    y: number;
-    granularity: LayoutLineSnapshot[];
-}
-
-export interface SelectionGeometryRequest {
-    documentId: string;
-    revision: number;
-    pmFrom: number;
-    pmTo: number;
-}
-
 export interface LayoutBridge {
     initialize(document: InitializeLayoutRequest): Promise<LayoutSnapshot>;
     update(request: UpdateLayoutRequest): Promise<LayoutSnapshot>;
     getViewportSnapshot(request: ViewportSnapshotRequest): Promise<LayoutSnapshot>;
-    hitTest(request: HitTestLayoutRequest): Promise<LayoutHitTestResult | null>;
-    getSelectionGeometry(
-        request: SelectionGeometryRequest,
-    ): Promise<LayoutSelectionGeometry>;
 }
 
 const encoder = new TextEncoder();
@@ -193,37 +137,6 @@ const INLINE_KIND_TO_RUST = {
 } as const;
 
 type FrontendInlineKind = keyof typeof INLINE_KIND_TO_RUST;
-
-interface RustLayoutTextRunPosition {
-    block_id: string;
-    pm_from: number;
-    pm_to: number;
-    left: number;
-    baseline: number;
-    width: number;
-    height: number;
-    font_family: string;
-    font_size: number;
-    text: string;
-    kind?: string;
-    style?: {
-        bold?: boolean;
-        italic?: boolean;
-        code?: boolean;
-        link?: string | null;
-        strike?: boolean;
-        underline?: boolean;
-    };
-}
-
-interface RustLayoutLineSnapshot {
-    id: string;
-    block_id: string;
-    y: number;
-    baseline: number;
-    height: number;
-    text_runs: RustLayoutTextRunPosition[];
-}
 
 interface RustLayoutViewport {
     width: number;
@@ -312,14 +225,11 @@ function decodeCamelCaseJson<T>(bytes: Uint8Array): T {
 
 function decodeLayoutSnapshot(bytes: Uint8Array): LayoutSnapshot {
     const snapshot = decodeCamelCaseJson<LayoutSnapshot>(bytes);
-    if (!Array.isArray(snapshot.hitTestEntries)) {
-        throw new Error("layout snapshot missing hitTestEntries");
+    if (!Array.isArray(snapshot.lines)) {
+        throw new Error("layout snapshot missing lines");
     }
-    if (!Array.isArray(snapshot.selectionGeometries)) {
-        throw new Error("layout snapshot missing selectionGeometries");
-    }
-    if (!Array.isArray(snapshot.mirrorBlocks)) {
-        throw new Error("layout snapshot missing mirrorBlocks");
+    if (!Array.isArray(snapshot.canvasDrawOps)) {
+        throw new Error("layout snapshot missing canvasDrawOps");
     }
     return {
         ...snapshot,
@@ -476,30 +386,6 @@ function rustWireToForInline(
     return from + Math.max(sourceWidth, inline.text.length);
 }
 
-function toRustLineSnapshot(line: LayoutLineSnapshot): RustLayoutLineSnapshot {
-    return {
-        id: line.id,
-        block_id: line.blockId,
-        y: line.y,
-        baseline: line.baseline,
-        height: line.height,
-        text_runs: line.textRuns.map((run) => ({
-            block_id: run.blockId,
-            pm_from: run.pmFrom,
-            pm_to: run.pmTo,
-            left: run.left,
-            baseline: run.baseline,
-            width: run.width,
-            height: run.height,
-            font_family: run.fontFamily,
-            font_size: run.fontSize,
-            text: run.text,
-            kind: run.kind,
-            style: run.style,
-        })),
-    };
-}
-
 export function createLayoutBridge(wasmModule: LayoutBridgeModule): LayoutBridge {
     return {
         async initialize(document) {
@@ -542,32 +428,6 @@ export function createLayoutBridge(wasmModule: LayoutBridgeModule): LayoutBridge
             );
             return decodeLayoutSnapshot(bytes);
         },
-
-        async hitTest(request) {
-            const bytes = wasmModule.layout_hit_test(
-                request.documentId,
-                BigInt(request.revision),
-                request.x,
-                request.y,
-                encodeJson(request.granularity.map(toRustLineSnapshot)),
-            );
-
-            if (bytes.length === 0) {
-                return null;
-            }
-
-            return decodeCamelCaseJson<LayoutHitTestResult>(bytes);
-        },
-
-        async getSelectionGeometry(request) {
-            const bytes = wasmModule.layout_get_selection_geometry(
-                request.documentId,
-                BigInt(request.revision),
-                request.pmFrom,
-                request.pmTo,
-            );
-            return decodeCamelCaseJson<LayoutSelectionGeometry>(bytes);
-        },
     };
 }
 
@@ -590,18 +450,4 @@ export function getViewportSnapshot(
     request: ViewportSnapshotRequest,
 ) {
     return createLayoutBridge(wasmModule).getViewportSnapshot(request);
-}
-
-export function hitTestLayout(
-    wasmModule: LayoutBridgeModule,
-    request: HitTestLayoutRequest,
-) {
-    return createLayoutBridge(wasmModule).hitTest(request);
-}
-
-export function getSelectionGeometry(
-    wasmModule: LayoutBridgeModule,
-    request: SelectionGeometryRequest,
-) {
-    return createLayoutBridge(wasmModule).getSelectionGeometry(request);
 }

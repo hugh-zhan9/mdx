@@ -48,3 +48,46 @@ describe("parseMarkdownOutline", () => {
         expect(headings.map((h) => h.text)).toEqual(["Visible"]);
     });
 });
+
+describe("parseMarkdownOutline source ranges", () => {
+    it("spans exactly the heading text in the source", () => {
+        const markdown = "# One\n\nbody\n\n### Three\n";
+        const headings = parseMarkdownOutline(markdown);
+
+        expect(
+            headings.map((heading) =>
+                markdown.slice(heading.range.anchor, heading.range.head),
+            ),
+        ).toEqual(["One", "Three"]);
+    });
+
+    it("counts both characters of a CRLF line ending", () => {
+        const markdown = "# One\r\n\r\nbody\r\n\r\n## Two\r\n";
+        const headings = parseMarkdownOutline(markdown);
+
+        expect(
+            headings.map((heading) =>
+                markdown.slice(heading.range.anchor, heading.range.head),
+            ),
+        ).toEqual(["One", "Two"]);
+    });
+
+    it("excludes the marker, its padding and a closing hash run", () => {
+        const markdown = "##   Padded  ##\n";
+        const [heading] = parseMarkdownOutline(markdown);
+
+        expect(heading.text).toBe("Padded");
+        expect(markdown.slice(heading.range.anchor, heading.range.head)).toBe(
+            "Padded",
+        );
+    });
+
+    it("keeps offsets past astral characters in the preceding lines", () => {
+        const markdown = "\u{1F600}\u{1F600}\n\n# After\n";
+        const [heading] = parseMarkdownOutline(markdown);
+
+        expect(markdown.slice(heading.range.anchor, heading.range.head)).toBe(
+            "After",
+        );
+    });
+});

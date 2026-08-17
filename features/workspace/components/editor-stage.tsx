@@ -2,9 +2,15 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode, RefObject } from "react";
-import { storeImageForWorkspace } from "@/common/lib/image-storage";
+import { loadImage, storeImageForWorkspace } from "@/common/lib/image-storage";
+import { tokenize } from "@/common/lib/prism";
 import { tauriCore } from "@/common/lib/tauri";
-import { EditorPane } from "@/features/editor/components/editor-pane";
+import { MarkdownEditorSurface } from "@/features/editor/components/markdown-editor-surface";
+import type {
+  EditorCommandRefusal,
+  MarkdownEditorSurfaceHandle,
+} from "@/features/editor/components/markdown-editor-surface";
+import type { EditorSessionBinding } from "@/features/editor/lib/editor-session-binding";
 import { documentFingerprint } from "@/features/file-watch/lib/external-change";
 import { EmptyState } from "../../../common/components/ui-controls";
 import { HtmlPreview } from "./html-preview";
@@ -26,7 +32,17 @@ interface EditorStageProps {
   rootPath: string;
   activeTab: WorkspaceTab | null;
   dispatch: (action: WorkspaceAction) => void;
-  editorViewportRef?: RefObject<HTMLDivElement | null>;
+  /**
+   * Revision and identity bookkeeping for the controlled editor surface. The
+   * workspace session owns it; the stage only reads snapshots out of it.
+   */
+  editorSession: EditorSessionBinding;
+  /**
+   * Reaches the adapter surface for source-range navigation. It carries no
+   * editing capability of its own: the only thing a holder can ask for is that
+   * a Markdown range be revealed.
+   */
+  editorSurfaceRef?: RefObject<MarkdownEditorSurfaceHandle | null>;
   pendingCliCommand: PendingCliEditorCommand | null;
   onOpenWikilink?: (target: string, sourcePath: string) => void;
   onCreateMarkdownFile?: () => Promise<void> | void;
@@ -42,7 +58,8 @@ export function EditorStage({
   rootPath,
   activeTab,
   dispatch,
-  editorViewportRef,
+  editorSession,
+  editorSurfaceRef,
   pendingCliCommand,
   onOpenWikilink,
   onCreateMarkdownFile,
@@ -188,25 +205,52 @@ export function EditorStage({
             {activeLoadError ?? "正在加载文件..."}
           </div>
         ) : (
-          <EditorPane
-            rootPath={rootPath}
-            tab={activeTab}
+          <MarkdownEditorSurface
+            ref={editorSurfaceRef}
+            session={editorSession}
+            documentId={activeTab.tabId}
+            markdown={activeTab.markdown}
             onMarkdownChange={handleMarkdownChange}
+            onOpenWikilink={(activation) =>
+              onOpenWikilink?.(activation.target, activeTab.path)
+            }
             storeImage={(file) =>
               storeImageForWorkspace(file, {
                 rootPath,
                 currentFilePath: activeTab.path,
               })
             }
-            editorViewportRef={editorViewportRef}
+            services={{
+              // A relative asset is relative to the file that names it, which
+              // is a fact about the workspace and not about the editor.
+              imageLoader: (src) =>
+                loadImage(src, {
+                  rootPath,
+                  currentFilePath: activeTab.path,
+                }),
+              codeTokenizer: tokenize,
+            }}
             pendingCliCommand={activePendingCliCommand}
             onPendingCliCommandHandled={onPendingCliCommandHandled}
-            onOpenWikilink={onOpenWikilink}
+            onCommandRefused={reportRefusedEditorCommand}
             onSelectionChange={onSelectionChange}
           />
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * Surfaces a command the editor refused.
+ *
+ * A refusal means the position the request was aimed at no longer describes the
+ * document, so the action is over: it is reported and the user repeats it, and
+ * nothing is written at a substitute position.
+ */
+function reportRefusedEditorCommand(refusal: EditorCommandRefusal) {
+  console.warn(
+    `Editor refused ${refusal.kind} command ${refusal.commandId}: ${refusal.code}`,
   );
 }
 

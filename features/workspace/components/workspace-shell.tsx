@@ -2,6 +2,7 @@
 
 import {
   Brain,
+  FileDown,
   FileText,
   FolderOpen,
   PanelLeftClose,
@@ -18,8 +19,14 @@ import {
   useState,
 } from "react";
 import { nanoid } from "nanoid";
-import { tauriCore } from "@/common/lib/tauri";
+import { tauriCore, tauriDialog } from "@/common/lib/tauri";
 import { useFileWatch } from "@/features/file-watch/hooks/use-file-watch";
+import { createEditorSessionBinding } from "@/features/editor/lib/editor-session-binding";
+import {
+  describePublishingFailure,
+  exportPublishedDocumentPdf,
+} from "@/features/editor/lib/publishing-client";
+import type { EditorReplaceReason } from "../../../packages/mdx-editor";
 import {
   decideWorkspaceExternalChange,
   documentFingerprint,
@@ -50,7 +57,7 @@ import {
   buildRightPanelTabs,
   type RightPanelTabId,
 } from "../lib/right-panel-tabs";
-import { scrollRenderedHeadingIntoView } from "../lib/outline-scroll";
+import type { MarkdownEditorSurfaceHandle } from "@/features/editor/components/markdown-editor-surface";
 import {
   collectDirtySearchOverrides,
   ensureWorkspaceSearchState,
@@ -152,6 +159,10 @@ export function WorkspaceShell({
   onActionsChange,
 }: WorkspaceShellProps) {
   const dialogs = useAppDialogs();
+  // The workspace session owns editor revisions for every tab it holds. The
+  // binding decides nothing about files: it only stamps revisions on outgoing
+  // snapshots and judges the identity and revision of incoming changes.
+  const [editorSession] = useState(createEditorSessionBinding);
   const workspaceRef = useRef(workspace);
   const saveQueueRef = useRef<SaveQueue | null>(null);
   const workspaceRootRef = useRef<string | null>(null);
@@ -161,7 +172,7 @@ export function WorkspaceShell({
   );
   const draftMutationByPathRef = useRef<Record<string, Promise<void>>>({});
   const pendingSaveAsDraftByTabRef = useRef<Record<string, DraftSummary>>({});
-  const editorViewportRef = useRef<HTMLDivElement | null>(null);
+  const editorSurfaceRef = useRef<MarkdownEditorSurfaceHandle | null>(null);
   const workspaceBodyRef = useRef<HTMLDivElement | null>(null);
   const selectionByTabRef = useRef<Record<string, CliSelectionSnapshot | null>>(
     {},
@@ -181,6 +192,7 @@ export function WorkspaceShell({
     "editor",
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [rightPanelTab, setRightPanelTab] =
     useState<RightPanelTabId>("outline");
   const [workspaceBodyWidth, setWorkspaceBodyWidth] = useState(() =>
@@ -442,6 +454,13 @@ export function WorkspaceShell({
     }
   }, [llmWiki.handleRawFileSaved, workspace]);
 
+  // A closed tab is not a document any more, so a late change carrying its id
+  // has nowhere to land. Dropping it here also keeps the tracked Markdown from
+  // outliving the tabs of a long session.
+  useEffect(() => {
+    editorSession.retain(workspace.tabOrder);
+  }, [editorSession, workspace.tabOrder]);
+
   useEffect(() => {
     if (
       syncedCliWorkspaceRootRef.current === workspace.rootPath ||
@@ -588,6 +607,28 @@ export function WorkspaceShell({
       }
     },
     [dispatch, flushWorkspaceDraftForTab],
+  );
+
+  /**
+   * Dispatches content the session itself authored — a disk reload, a conflict
+   * resolution, a restored draft — and tells the editor binding so the surface
+   * is replaced deliberately instead of being asked to accept content it never
+   * produced.
+   */
+  const dispatchEditorReplace = useCallback(
+    (
+      declaration: { tabId: string; markdown: string; reason: EditorReplaceReason },
+      action: WorkspaceAction,
+      options?: { skipDraftFlush?: boolean },
+    ) => {
+      editorSession.declareReplace({
+        documentId: declaration.tabId,
+        markdown: declaration.markdown,
+        reason: declaration.reason,
+      });
+      dispatchAndMirror(action, options);
+    },
+    [dispatchAndMirror, editorSession],
   );
 
   const refreshCurrentTree = useCallback(async () => {
@@ -757,12 +798,15 @@ export function WorkspaceShell({
           !current.dirty &&
           normalizeWorkspacePath(current.path) === normalizeWorkspacePath(path)
         ) {
-          dispatchAndMirror({
-            type: "tab/saved",
-            tabId,
-            markdown,
-            fingerprint: documentFingerprint(markdown),
-          });
+          dispatchEditorReplace(
+            { tabId, markdown, reason: "clean-reload" },
+            {
+              type: "tab/saved",
+              tabId,
+              markdown,
+              fingerprint: documentFingerprint(markdown),
+            },
+          );
           setExternalConflict((conflict) =>
             conflict?.tabId === tabId ? null : conflict,
           );
@@ -774,7 +818,7 @@ export function WorkspaceShell({
     },
     [
       clearExternalDeletedPromptForTab,
-      dispatchAndMirror,
+      dispatchEditorReplace,
       isCurrentExternalPathVersion,
       readWorkspaceMarkdown,
     ],
@@ -846,12 +890,15 @@ export function WorkspaceShell({
           setExternalConflictDiffOpen(true);
           clearExternalDeletedPromptForTab(tabId);
         } else {
-          dispatchAndMirror({
-            type: "tab/saved",
-            tabId,
-            markdown: diskMarkdown,
-            fingerprint: documentFingerprint(diskMarkdown),
-          });
+          dispatchEditorReplace(
+            { tabId, markdown: diskMarkdown, reason: "clean-reload" },
+            {
+              type: "tab/saved",
+              tabId,
+              markdown: diskMarkdown,
+              fingerprint: documentFingerprint(diskMarkdown),
+            },
+          );
           clearExternalDeletedPromptForTab(tabId);
         }
         return;
@@ -868,7 +915,7 @@ export function WorkspaceShell({
     },
     [
       clearExternalDeletedPromptForTab,
-      dispatchAndMirror,
+      dispatchEditorReplace,
       isCurrentExternalPathVersion,
       readWorkspaceMarkdown,
     ],
@@ -1141,14 +1188,21 @@ export function WorkspaceShell({
       return;
     }
 
-    dispatchAndMirror({
-      type: "tab/contentChanged",
-      tabId: recovery.tabId,
-      markdown: recovery.draft.markdown,
-    });
+    dispatchEditorReplace(
+      {
+        tabId: recovery.tabId,
+        markdown: recovery.draft.markdown,
+        reason: "restore",
+      },
+      {
+        type: "tab/contentChanged",
+        tabId: recovery.tabId,
+        markdown: recovery.draft.markdown,
+      },
+    );
     setActiveDraftRecovery(null);
     setActiveDraftDiffOpen(false);
-  }, [activeDraftRecovery, dispatchAndMirror]);
+  }, [activeDraftRecovery, dispatchEditorReplace]);
 
   const keepActiveDiskVersion = useCallback(() => {
     const recovery = activeDraftRecovery;
@@ -1542,7 +1596,12 @@ export function WorkspaceShell({
         current &&
         normalizeWorkspacePath(current.path) === normalizeWorkspacePath(conflict.path)
       ) {
-        dispatchAndMirror(
+        dispatchEditorReplace(
+          {
+            tabId: conflict.tabId,
+            markdown,
+            reason: "conflict-resolution",
+          },
           {
             type: "tab/saved",
             tabId: conflict.tabId,
@@ -1561,7 +1620,7 @@ export function WorkspaceShell({
         message: formatError(error, "无法重新加载磁盘版本。"),
       });
     }
-  }, [deleteWorkspaceDraftForPath, dialogs, dispatchAndMirror, externalConflict, readWorkspaceMarkdown]);
+  }, [deleteWorkspaceDraftForPath, dialogs, dispatchEditorReplace, externalConflict, readWorkspaceMarkdown]);
 
   const postponeExternalConflict = useCallback(() => {
     setExternalConflictDiffOpen(false);
@@ -1724,6 +1783,63 @@ export function WorkspaceShell({
       await saveTab(tabId);
     }
   }, [saveTab]);
+
+  /**
+   * Publishes the active tab's revision as a PDF.
+   *
+   * The revision is captured from the session binding before the file dialog
+   * opens, so the output corresponds to the tab the user was looking at when
+   * they asked. A failure is reported and nothing else happens: this path
+   * cannot save a tab, clear dirty state or touch a draft.
+   */
+  const exportActiveTabPdf = useCallback(async () => {
+    const workspaceNow = workspaceRef.current;
+    const tabId = workspaceNow.activeTabId;
+    const tab = tabId ? workspaceNow.tabs[tabId] : undefined;
+
+    if (
+      exportingPdf ||
+      !tab ||
+      tab.markdown === undefined ||
+      !isMarkdownFilePath(tab.path)
+    ) {
+      return;
+    }
+
+    const snapshot = editorSession.snapshotFor({
+      documentId: tab.tabId,
+      markdown: tab.markdown,
+    });
+
+    setExportingPdf(true);
+    try {
+      const outputPath = await choosePdfExportPath(tab.path);
+
+      if (!outputPath) {
+        return;
+      }
+
+      const outcome = await exportPublishedDocumentPdf({
+        snapshot,
+        rootPath: workspaceNow.rootPath,
+        outputPath,
+      });
+
+      if (!outcome.ok) {
+        void dialogs.alert({
+          title: "导出 PDF",
+          message: describePublishingFailure(outcome),
+        });
+      }
+    } catch (error) {
+      void dialogs.alert({
+        title: "导出 PDF",
+        message: formatError(error, "导出 PDF 失败。"),
+      });
+    } finally {
+      setExportingPdf(false);
+    }
+  }, [dialogs, editorSession, exportingPdf]);
   const closeActiveTab = useCallback(async () => {
     const tabId = workspaceRef.current.activeTabId;
 
@@ -1896,7 +2012,23 @@ export function WorkspaceShell({
           void handleCliFileUpdated(
             event.payload,
             workspaceRef.current,
-            dispatchAndMirror,
+            // Refreshing a clean tab from disk replaces editor content the same
+            // way a watcher reload does, so it is declared the same way.
+            (action) => {
+              if (action.type === "tab/saved" && action.markdown !== undefined) {
+                dispatchEditorReplace(
+                  {
+                    tabId: action.tabId,
+                    markdown: action.markdown,
+                    reason: "clean-reload",
+                  },
+                  action,
+                );
+                return;
+              }
+
+              dispatchAndMirror(action);
+            },
           );
         }),
         listen<CliFolderCreatedEvent>("cli-folder-created", (event) => {
@@ -1931,15 +2063,19 @@ export function WorkspaceShell({
       disposed = true;
       unlisteners.forEach((unlisten) => unlisten());
     };
-  }, [dispatchAndMirror, preferences, queuePendingCliCommand, saveTab]);
+  }, [
+    dispatchAndMirror,
+    dispatchEditorReplace,
+    preferences,
+    queuePendingCliCommand,
+    saveTab,
+  ]);
 
+  // The editing surface is navigated by the heading's own Markdown source
+  // range, so nothing here reads rendered output to find a heading.
   const scrollToHeading = useCallback((heading: MarkdownOutlineHeading) => {
-    scrollRenderedHeadingIntoView(
-      editorViewportRef.current,
-      heading,
-      activeHeadings,
-    );
-  }, [activeHeadings]);
+    void editorSurfaceRef.current?.reveal(heading.range);
+  }, []);
   const panelLayout = calculateWorkspacePanelLayout({
     containerWidth: workspaceBodyWidth,
     leftCollapsed: isMemoryView || leftPanel.isCollapsed,
@@ -1986,6 +2122,13 @@ export function WorkspaceShell({
           >
             <FolderOpen aria-hidden="true" />
             打开文件夹
+          </TextControlButton>
+          <TextControlButton
+            onClick={() => void exportActiveTabPdf()}
+            disabled={isMemoryView || !activeTabIsLoadedMarkdown || exportingPdf}
+          >
+            <FileDown aria-hidden="true" />
+            {exportingPdf ? "导出中" : "导出 PDF"}
           </TextControlButton>
           <TextControlButton
             onClick={() =>
@@ -2242,7 +2385,8 @@ export function WorkspaceShell({
             rootPath={workspace.rootPath}
             activeTab={activeTab}
             dispatch={dispatchAndMirror}
-            editorViewportRef={editorViewportRef}
+            editorSession={editorSession}
+            editorSurfaceRef={editorSurfaceRef}
             pendingCliCommand={pendingCliCommand}
             onOpenWikilink={openWikilink}
             onCreateMarkdownFile={fileTreeActions?.createMarkdownFile}
@@ -2396,6 +2540,26 @@ async function refreshTree(
 
 function isTauriRuntime() {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+async function choosePdfExportPath(markdownPath: string) {
+  if (!isTauriRuntime()) {
+    throw new Error("导出 PDF 仅在桌面版中可用。");
+  }
+
+  const { save } = await tauriDialog();
+  const selectedPath = await save({
+    title: "导出 PDF",
+    defaultPath: markdownPath.replace(/\.(md|markdown)$/i, "") + ".pdf",
+    filters: [
+      {
+        name: "PDF",
+        extensions: ["pdf"],
+      },
+    ],
+  });
+
+  return typeof selectedPath === "string" ? selectedPath : null;
 }
 
 function draftTabsForAction(

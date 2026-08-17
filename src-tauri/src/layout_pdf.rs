@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use pdf_core::model::{PdfExportRequest, PdfExportResult};
 use serde_json::Value;
 
@@ -14,7 +16,84 @@ pub fn validate_export_request(request: &PdfExportRequest) -> Result<(), Workspa
         ));
     }
 
+    validate_revision_binding(request)?;
+
     Ok(())
+}
+
+/// Rejects a payload whose layout was not computed for the exported revision.
+///
+/// An export is captured against one document revision and the output has to
+/// correspond to that revision. Editing during an export is allowed, so the
+/// only thing that keeps the output honest is refusing a layout that answered
+/// for anything other than the captured revision.
+fn validate_revision_binding(request: &PdfExportRequest) -> Result<(), WorkspaceError> {
+    let document = parse_payload(&request.layout_document_json)?;
+    let snapshot = parse_payload(&request.layout_snapshot_json)?;
+
+    for (payload, label) in [(&document, "layout document"), (&snapshot, "layout snapshot")] {
+        let Some(revision) = payload.get("revision").and_then(Value::as_u64) else {
+            continue;
+        };
+
+        if revision != request.revision {
+            return Err(WorkspaceError::new(
+                "revision_mismatch",
+                format!(
+                    "{label} is for revision {revision}, export requested revision {}",
+                    request.revision
+                ),
+            ));
+        }
+    }
+
+    if let Some(document_id) = document.get("documentId").and_then(Value::as_str) {
+        if document_id != request.document_id {
+            return Err(WorkspaceError::new(
+                "revision_mismatch",
+                format!(
+                    "layout document is for {document_id}, export requested {}",
+                    request.document_id
+                ),
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn parse_payload(json: &str) -> Result<Value, WorkspaceError> {
+    serde_json::from_str(json)
+        .map_err(|error| WorkspaceError::new("invalid_pdf_snapshot", error.to_string()))
+}
+
+/// Refuses an output path the process cannot write, without leaving a file.
+///
+/// This runs after every stage that can still fail, so a refused export never
+/// leaves an empty or partial PDF behind for the user to mistake for a result.
+fn ensure_output_writable(output_path: &str) -> Result<(), WorkspaceError> {
+    let output = Path::new(output_path);
+    let existed = output.exists();
+
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(output)
+    {
+        Ok(_) => {
+            if !existed {
+                let _ = std::fs::remove_file(output);
+            }
+
+            Ok(())
+        }
+        Err(error) => Err(WorkspaceError::from_io(
+            "output_path_denied",
+            "cannot write the PDF export path",
+            &error,
+        )),
+    }
 }
 
 #[tauri::command]
@@ -24,6 +103,7 @@ pub fn layout_export_pdf(
 ) -> Result<PdfExportResult, WorkspaceError> {
     validate_export_request(&request)?;
     let request = enrich_image_draw_ops(root_path, request)?;
+    ensure_output_writable(&request.output_path)?;
     pdf_core::export_pdf(&request).map_err(|error| WorkspaceError::new("pdf_export_failed", error))
 }
 
@@ -73,11 +153,16 @@ fn enrich_image_draw_ops(
         else {
             continue;
         };
+        // Image failures during an export are reported under one publishing
+        // code. The asset loader's own codes describe file resolution, and two
+        // of them collide with codes this command already uses for other
+        // reasons, which would leave the caller unable to tell what failed.
         let image = load_image_asset(
             Some(root_path.clone()),
             Some(request.document_id.clone()),
             src,
-        )?;
+        )
+        .map_err(|error| WorkspaceError::new("image_read_failed", error.to_string()))?;
 
         data["mimeType"] = Value::String(image.mime_type);
         data["bytesBase64"] = Value::String(BASE64_STANDARD.encode(image.bytes));

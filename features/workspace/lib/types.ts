@@ -1,3 +1,5 @@
+import type { EditorSourceSelection } from "../../../packages/mdx-editor";
+
 export type FileTreeNode = FileTreeFileNode | FileTreeFolderNode;
 
 export interface FileTreeFileNode {
@@ -32,6 +34,14 @@ export interface MarkdownOutlineHeading {
     level: 1 | 2 | 3 | 4 | 5 | 6;
     text: string;
     line: number;
+    /**
+     * The heading text's span in the Markdown source, as UTF-16 offsets.
+     *
+     * Navigation reveals this range through the editor adapter. It is the only
+     * coordinate the outline hands across a module boundary: no rendered
+     * element, no editor position.
+     */
+    range: EditorSourceSelection;
 }
 
 export interface WorkspaceTab {

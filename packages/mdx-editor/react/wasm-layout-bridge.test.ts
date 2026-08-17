@@ -127,20 +127,17 @@ describe("createLayoutBridge", () => {
             layout_initialize_document: layoutInitializeDocument,
             layout_update_document: vi.fn(),
             layout_get_viewport_snapshot: vi.fn(),
-            layout_hit_test: vi.fn(),
-            layout_get_selection_geometry: vi.fn(),
         });
 
         const snapshot = await bridge.initialize(baseDocument);
 
         expect(layoutInitializeDocument).toHaveBeenCalledTimes(1);
+        // The Rust payload above still carries the interactive arrays. Decoding
+        // tolerates them; the decoded contract is lines and draw ops.
         expect(snapshot).toMatchObject({
             revision: 1,
+            lines: [],
             canvasDrawOps: [],
-            hitTestEntries: [],
-            caretAnchors: [],
-            selectionGeometries: [],
-            mirrorBlocks: [],
         });
     });
 
@@ -164,8 +161,6 @@ describe("createLayoutBridge", () => {
             layout_initialize_document: layoutInitializeDocument,
             layout_update_document: vi.fn(),
             layout_get_viewport_snapshot: vi.fn(),
-            layout_hit_test: vi.fn(),
-            layout_get_selection_geometry: vi.fn(),
         });
 
         await bridge.initialize({
@@ -218,8 +213,6 @@ describe("createLayoutBridge", () => {
             layout_initialize_document: layoutInitializeDocument,
             layout_update_document: vi.fn(),
             layout_get_viewport_snapshot: vi.fn(),
-            layout_hit_test: vi.fn(),
-            layout_get_selection_geometry: vi.fn(),
         });
 
         const snapshot = await bridge.initialize({
@@ -261,19 +254,31 @@ describe("createLayoutBridge", () => {
         });
     });
 
-    it("rejects snapshots missing required product arrays", async () => {
+    it("rejects a snapshot with no lines to render", async () => {
         const bridge = createLayoutBridge({
             layout_initialize_document: vi.fn(() =>
-                new TextEncoder().encode('{"revision":1,"lines":[],"canvas_draw_ops":[],"caret_anchors":[]}'),
+                new TextEncoder().encode('{"revision":1,"canvas_draw_ops":[]}'),
             ),
             layout_update_document: vi.fn(),
             layout_get_viewport_snapshot: vi.fn(),
-            layout_hit_test: vi.fn(),
-            layout_get_selection_geometry: vi.fn(),
         });
 
         await expect(bridge.initialize(baseDocument)).rejects.toThrow(
-            "layout snapshot missing hitTestEntries",
+            "layout snapshot missing lines",
+        );
+    });
+
+    it("rejects a snapshot with no draw ops to paint", async () => {
+        const bridge = createLayoutBridge({
+            layout_initialize_document: vi.fn(() =>
+                new TextEncoder().encode('{"revision":1,"lines":[]}'),
+            ),
+            layout_update_document: vi.fn(),
+            layout_get_viewport_snapshot: vi.fn(),
+        });
+
+        await expect(bridge.initialize(baseDocument)).rejects.toThrow(
+            "layout snapshot missing canvasDrawOps",
         );
     });
 
@@ -307,8 +312,6 @@ describe("createLayoutBridge", () => {
             ),
             layout_update_document: vi.fn(),
             layout_get_viewport_snapshot: vi.fn(),
-            layout_hit_test: vi.fn(),
-            layout_get_selection_geometry: vi.fn(),
         });
 
         const snapshot = await bridge.initialize(baseDocument);
@@ -367,8 +370,6 @@ describe("createLayoutBridge", () => {
             layout_initialize_document: vi.fn(),
             layout_update_document: layoutUpdateDocument,
             layout_get_viewport_snapshot: layoutGetViewportSnapshot,
-            layout_hit_test: vi.fn(),
-            layout_get_selection_geometry: vi.fn(),
         });
 
         await expect(
@@ -391,114 +392,4 @@ describe("createLayoutBridge", () => {
         ).resolves.toMatchObject({ revision: 3 });
     });
 
-    it("serializes hit-test granularity and decodes helper responses", async () => {
-        const layoutHitTest = vi.fn(
-            (
-                documentId: string,
-                revision: bigint,
-                x: number,
-                y: number,
-                granularityBytes: number[],
-            ) => {
-                expect(documentId).toBe("doc-1");
-                expect(revision).toBe(1n);
-                expect(x).toBe(10);
-                expect(y).toBe(20);
-                expect(decodeJson(granularityBytes)).toEqual([
-                    {
-                        id: "line-1",
-                        block_id: "block-1",
-                        y: 12,
-                        baseline: 18,
-                        height: 24,
-                        text_runs: [
-                            {
-                                block_id: "block-1",
-                                pm_from: 0,
-                                pm_to: 5,
-                                left: 4,
-                                baseline: 18,
-                                width: 40,
-                                height: 20,
-                                font_family: "Inter",
-                                font_size: 14,
-                                text: "Hello",
-                            },
-                        ],
-                    },
-                ]);
-
-                return new TextEncoder().encode(
-                    '{"block_id":"b1","rect":{"x":10,"y":20,"width":30,"height":40},"pm_from":3,"pm_to":4}',
-                );
-            },
-        );
-
-        const bridge = createLayoutBridge({
-            layout_initialize_document: vi.fn(),
-            layout_update_document: vi.fn(),
-            layout_get_viewport_snapshot: vi.fn(),
-            layout_hit_test: layoutHitTest,
-            layout_get_selection_geometry: vi.fn(() =>
-                new TextEncoder().encode(
-                    '{"pm_from":3,"pm_to":7,"rects":[{"x":1,"y":2,"width":3,"height":4}]}',
-                ),
-            ),
-        });
-
-        await expect(
-            bridge.hitTest({
-                documentId: "doc-1",
-                revision: 1,
-                x: 10,
-                y: 20,
-                granularity: [
-                    {
-                        id: "line-1",
-                        blockId: "block-1",
-                        y: 12,
-                        baseline: 18,
-                        height: 24,
-                        textRuns: [
-                            {
-                                blockId: "block-1",
-                                pmFrom: 0,
-                                pmTo: 5,
-                                left: 4,
-                                baseline: 18,
-                                width: 40,
-                                height: 20,
-                                fontFamily: "Inter",
-                                fontSize: 14,
-                                text: "Hello",
-                            },
-                        ],
-                    },
-                ],
-            }),
-        ).resolves.toEqual({
-            blockId: "b1",
-            rect: {
-                x: 10,
-                y: 20,
-                width: 30,
-                height: 40,
-            },
-            pmFrom: 3,
-            pmTo: 4,
-        });
-
-        await expect(
-            bridge.getSelectionGeometry({
-                documentId: "doc-1",
-                revision: 1,
-                pmFrom: 3,
-                pmTo: 7,
-            }),
-        ).resolves.toEqual({
-            pmFrom: 3,
-            pmTo: 7,
-            rects: [{ x: 1, y: 2, width: 3, height: 4 }],
-        });
-    });
 });

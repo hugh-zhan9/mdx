@@ -20,6 +20,12 @@
 # production
 /build
 
+# Editor performance fixtures and measurement artifacts. The fixtures are
+# generated from a seeded, pure generator (scripts/editor-perf-fixture.mjs) and
+# pinned by checksum in the P-007 design notes, so they are reproducible rather
+# than stored; the measurement artifacts describe one run on one machine.
+/artifacts
+
 # misc
 .DS_Store
 *.pem
