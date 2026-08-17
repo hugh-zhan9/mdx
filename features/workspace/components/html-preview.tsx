@@ -94,7 +94,7 @@ export function HtmlPreview({ rootPath, path }: HtmlPreviewProps) {
   if (state.status === "error") {
     return (
       <div className="flex h-full flex-col overflow-hidden bg-base-100">
-        <div className="flex shrink-0 items-center gap-3 border-b border-base-300 px-4 py-3 text-sm text-base-content/70">
+        <div className="flex shrink-0 items-center gap-3 border-b border-[var(--mdx-separator)] px-4 py-3 text-sm text-base-content/70">
           <div className="min-w-0 flex-1 break-words">{state.message}</div>
           {state.rawText !== undefined ? (
             <TextControlButton

@@ -1038,18 +1038,24 @@ export function DocumentShell({
     >
       <header
         data-mdx-document-toolbar=""
-        className="flex min-w-0 items-center justify-between border-b border-base-content/10 bg-[var(--mdx-chrome-bg)] px-3"
+        // Drags the window, as in the workspace: the title bar is an overlay,
+        // so an unmarked toolbar is a window that cannot be moved.
+        data-tauri-drag-region
+        className="flex min-w-0 items-center justify-between border-b border-[var(--mdx-separator)] bg-[var(--mdx-chrome-bg)] px-3"
       >
         <div
           data-tauri-drag-region
-          className="min-w-0 truncate pl-16 text-sm font-medium"
+          className="min-w-0 flex-1 truncate pl-[var(--mdx-traffic-light-inset)] text-sm font-medium"
           title={state.displayPath}
         >
           {state.dirty ? "● " : ""}
           {state.fileName}
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
+        <div
+          data-tauri-drag-region
+          className="flex shrink-0 items-center gap-2"
+        >
           <TextControlButton onClick={() => void save()} disabled={saving}>
             <Save aria-hidden="true" />
             {saving ? "保存中" : "保存"}
@@ -1318,9 +1324,9 @@ function CopyMarkdownDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="mdx-copy-markdown-title"
-        className="flex max-h-[88vh] w-full max-w-3xl min-w-0 flex-col border border-base-300 bg-base-100 text-base-content shadow-xl"
+        className="flex max-h-[88vh] w-full max-w-3xl min-w-0 flex-col rounded-xl bg-base-100 text-base-content shadow-[var(--mdx-panel-shadow)]"
       >
-        <header className="flex items-center justify-between border-b border-base-300 px-4 py-3">
+        <header className="flex items-center justify-between border-b border-[var(--mdx-separator)] px-4 py-3">
           <h2 id="mdx-copy-markdown-title" className="text-sm font-semibold">
             复制当前内容
           </h2>

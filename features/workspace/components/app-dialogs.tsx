@@ -290,7 +290,7 @@ function DialogBody({
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby={`mdx-dialog-title-${dialog.id}`}
-                className="w-full max-w-sm border border-base-300 bg-base-100 p-4 text-base-content shadow-xl"
+                className="w-full max-w-sm rounded-xl bg-base-100 p-5 text-base-content shadow-[var(--mdx-panel-shadow)]"
             >
                 <div
                     id={`mdx-dialog-title-${dialog.id}`}
@@ -313,7 +313,7 @@ function DialogBody({
                         ) : null}
                         <input
                             ref={inputRef}
-                            className="h-8 w-full border border-base-300 bg-base-100 px-2 text-sm text-base-content outline-none focus:border-primary"
+                            className="h-8 w-full rounded-md border border-base-content/12 bg-base-100 px-2.5 text-sm text-base-content outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/20"
                             value={value}
                             placeholder={dialog.placeholder}
                             onChange={(event) =>

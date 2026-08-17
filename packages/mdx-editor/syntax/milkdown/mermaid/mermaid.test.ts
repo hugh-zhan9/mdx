@@ -495,15 +495,24 @@ describe("mermaid render lifecycle", () => {
 });
 
 describe("mermaid default renderer", () => {
-    it("reports a failure rather than throwing when it cannot render", async () => {
-        const result = await renderMermaidDiagram({
-            code: "graph TD\n  A --> B",
-            id: "mdx-mermaid-default-probe",
-        });
-        expect(result.ok).toBe(false);
-        if (result.ok) throw new Error("unreachable");
-        expect(result.error.length).toBeGreaterThan(0);
-    });
+    // The real renderer, which means the real `import("mermaid")` — the whole
+    // library, loaded once, and slow enough in jsdom to sit either side of the
+    // 5s default under parallel load. The import is what is being exercised (a
+    // stub could not fail the way this asserts), so the time is inherent rather
+    // than incidental and the budget says so.
+    it(
+        "reports a failure rather than throwing when it cannot render",
+        async () => {
+            const result = await renderMermaidDiagram({
+                code: "graph TD\n  A --> B",
+                id: "mdx-mermaid-default-probe",
+            });
+            expect(result.ok).toBe(false);
+            if (result.ok) throw new Error("unreachable");
+            expect(result.error.length).toBeGreaterThan(0);
+        },
+        30_000,
+    );
 
     it("shows the failure locally and leaves the document alone", async () => {
         const { host, root } = await mount(`${ANCHOR}${GRAPH}`);

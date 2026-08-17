@@ -1,5 +1,8 @@
 import type { ReactNode } from "react";
-import { TextControlButton } from "../../../common/components/ui-controls";
+import {
+  Card,
+  TextControlButton,
+} from "../../../common/components/ui-controls";
 import type { MemoryThreadRecord, ThreadListItem } from "../lib/types";
 
 interface MemorySessionsTabProps {
@@ -38,7 +41,7 @@ export function MemorySessionsTab({
             key={thread.thread_id}
             type="button"
             className={[
-              "block w-full border-t border-base-300 py-2 text-left outline-none first:border-t-0 first:pt-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+              "block w-full border-t border-[var(--mdx-separator)] py-2 text-left outline-none first:border-t-0 first:pt-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20",
               selectedThreadId === thread.thread_id
                 ? "text-base-content"
                 : "text-base-content/75",
@@ -55,7 +58,7 @@ export function MemorySessionsTab({
         ))}
       </ListPanel>
       {selectedThreadId ? (
-        <div className="space-y-2 border border-base-300 bg-base-200/60 p-2">
+        <Card className="space-y-2">
           <div className="flex min-w-0 items-center justify-between gap-2">
             <div className="min-w-0 truncate font-medium text-base-content">
               {selectedThread?.frontmatter.title ?? selectedThreadId}
@@ -78,7 +81,7 @@ export function MemorySessionsTab({
           <pre className="max-h-72 overflow-auto whitespace-pre-wrap font-sans text-xs leading-relaxed text-base-content/75">
             {threadLoading ? "加载中..." : previewBody(selectedThread?.body ?? "")}
           </pre>
-        </div>
+        </Card>
       ) : null}
     </div>
   );
@@ -114,7 +117,7 @@ function ListPanel({
     : Boolean(children);
 
   return (
-    <div className="space-y-2 border border-base-300 bg-base-200/60 p-2">
+    <Card className="space-y-2">
       <div className="flex min-w-0 items-center justify-between gap-2">
         <div className="truncate font-medium text-base-content">{title}</div>
         <TextControlButton onClick={() => void onRefresh()} disabled={loading}>
@@ -130,6 +133,6 @@ function ListPanel({
           <div className="text-base-content/60">{empty}</div>
         )}
       </div>
-    </div>
+    </Card>
   );
 }

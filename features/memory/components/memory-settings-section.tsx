@@ -1,3 +1,4 @@
+import { SegmentedControl } from "@/common/components/ui-controls";
 import type {
   MemoryConfig,
   MemoryStorageMigrationReport,
@@ -89,7 +90,7 @@ export function MemorySettingsSection({
             >
               <input
                 type="checkbox"
-                className="h-4 w-4 border border-base-300 bg-base-100"
+                className="h-4 w-4 rounded-sm border border-base-content/20 bg-base-100"
                 defaultChecked={toggle.defaultChecked}
                 disabled={disabled}
                 onChange={(event) =>
@@ -101,67 +102,33 @@ export function MemorySettingsSection({
           ))}
         </div>
 
-        <div className="space-y-2 border-t border-base-300 pt-3">
+        <div className="space-y-2 border-t border-[var(--mdx-separator)] pt-3">
           <div className="text-xs text-base-content/70">Provider</div>
-          <div className="grid grid-cols-2 gap-1 bg-base-200 p-1 sm:grid-cols-4">
-            {PROVIDER_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                className={[
-                  "h-8 text-xs disabled:cursor-not-allowed disabled:text-base-content/40",
-                  selectedProvider === option.value
-                    ? "bg-base-100 text-base-content shadow-sm"
-                    : "text-base-content/70 hover:bg-base-100 hover:text-base-content",
-                ].join(" ")}
-                disabled={disabled}
-                onClick={() => onProviderChange(option.value)}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            label="Memory provider"
+            fill
+            value={selectedProvider}
+            options={PROVIDER_OPTIONS}
+            onChange={onProviderChange}
+            disabled={disabled}
+          />
         </div>
 
-        <div className="space-y-2 border-t border-base-300 pt-3">
+        <div className="space-y-2 border-t border-[var(--mdx-separator)] pt-3">
           <div className="text-xs text-base-content/70">存储与迁移</div>
-          <div
-            role="group"
-            aria-label="Memory storage backend"
-            className="grid grid-cols-2 gap-1 bg-base-200 p-1"
-          >
-            <button
-              type="button"
-              className={[
-                "h-8 text-xs disabled:cursor-not-allowed disabled:text-base-content/40",
-                selectedStorage === "sqlite"
-                  ? "bg-base-100 text-base-content shadow-sm"
-                  : "text-base-content/70 hover:bg-base-100 hover:text-base-content",
-              ].join(" ")}
-              disabled={disabled}
-              onClick={() => onStorageBackendChange("sqlite")}
-            >
-              SQLite
-            </button>
-            <button
-              type="button"
-              className={[
-                "h-8 text-xs disabled:cursor-not-allowed disabled:text-base-content/40",
-                selectedStorage === "postgresql"
-                  ? "bg-base-100 text-base-content shadow-sm"
-                  : "text-base-content/70 hover:bg-base-100 hover:text-base-content",
-              ].join(" ")}
-              disabled={disabled}
-              onClick={() => onStorageBackendChange("postgresql")}
-            >
-              PostgreSQL
-            </button>
-          </div>
+          <SegmentedControl
+            label="Memory storage backend"
+            fill
+            value={selectedStorage}
+            options={STORAGE_BACKEND_OPTIONS}
+            onChange={onStorageBackendChange}
+            disabled={disabled}
+          />
           {selectedStorage === "postgresql" ? (
             <label className="block space-y-1.5 text-xs text-base-content/70">
               <span>PostgreSQL URL</span>
               <input
-                className="h-8 w-full border border-base-300 bg-base-100 px-2 text-xs text-base-content outline-none placeholder:text-base-content/65 focus:border-primary focus:outline focus:outline-2 focus:outline-offset-1 focus:outline-primary"
+                className="h-8 w-full rounded-md border border-base-content/12 bg-base-100 px-2.5 text-xs text-base-content outline-none transition-colors placeholder:text-base-content/45 focus:border-primary/60 focus:ring-2 focus:ring-primary/20"
                 value={postgresTarget}
                 onChange={(event) =>
                   onPostgresTargetChange(event.currentTarget.value)
@@ -172,10 +139,10 @@ export function MemorySettingsSection({
               />
             </label>
           ) : null}
-          <div className="grid grid-cols-2 gap-1">
+          <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
-              className="h-8 border border-base-300 text-xs text-base-content/70 hover:bg-base-200 hover:text-base-content disabled:cursor-not-allowed disabled:text-base-content/40"
+              className="h-8 rounded-md border border-base-content/12 text-xs text-base-content/75 outline-none transition-colors hover:bg-base-content/6 hover:text-base-content focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:border-base-content/8 disabled:text-base-content/35 disabled:hover:bg-transparent"
               disabled={
                 disabled || selectedStorage !== "postgresql" || migrationBusy
               }
@@ -185,7 +152,7 @@ export function MemorySettingsSection({
             </button>
             <button
               type="button"
-              className="h-8 border border-base-300 text-xs text-base-content/70 hover:bg-base-200 hover:text-base-content disabled:cursor-not-allowed disabled:text-base-content/40"
+              className="h-8 rounded-md border border-base-content/12 text-xs text-base-content/75 outline-none transition-colors hover:bg-base-content/6 hover:text-base-content focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:border-base-content/8 disabled:text-base-content/35 disabled:hover:bg-transparent"
               disabled={
                 disabled ||
                 selectedStorage !== "postgresql" ||
@@ -199,7 +166,7 @@ export function MemorySettingsSection({
             </button>
           </div>
           {migrationReport ? (
-            <div className="space-y-1 border border-base-300 bg-base-200 p-2 text-xs text-base-content/70">
+            <div className="space-y-1 rounded-md bg-base-200 p-2.5 text-xs text-base-content/70">
               <div>
                 预检：{migrationReport.validation_errors.length === 0 ? "通过" : "有问题"}
               </div>
@@ -257,3 +224,11 @@ function selectedMemoryStorage(
 ): MemoryStorageBackend {
   return config?.storage.backend === "postgresql" ? "postgresql" : "sqlite";
 }
+
+const STORAGE_BACKEND_OPTIONS: Array<{
+  value: MemoryStorageBackend;
+  label: string;
+}> = [
+  { value: "sqlite", label: "SQLite" },
+  { value: "postgresql", label: "PostgreSQL" },
+];

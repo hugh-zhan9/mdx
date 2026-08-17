@@ -1,4 +1,7 @@
-import { TextControlButton } from "../../../common/components/ui-controls";
+import {
+  Card,
+  TextControlButton,
+} from "../../../common/components/ui-controls";
 import type {
   MemoryBackendStatus,
   MemoryDoctorReport,
@@ -49,7 +52,7 @@ export function MemoryDiagnosticsTab({
         </TextControlButton>
       </div>
 
-      <div className="space-y-1 border border-base-300 bg-base-200/60 p-2 text-base-content/75">
+      <Card className="space-y-1 text-base-content/75">
         <StatusLine
           label="后端"
           value={backendStatus ? backendStatus.daemon.status : "加载中"}
@@ -83,10 +86,10 @@ export function MemoryDiagnosticsTab({
             />
           </>
         ) : null}
-      </div>
+      </Card>
 
       {diagnostics ? (
-        <div className="space-y-2 border border-base-300 bg-base-200/60 p-2">
+        <Card className="space-y-2">
           <div className="font-medium text-base-content">
             集成诊断：{diagnostics.ok ? "通过" : "需要处理"}
           </div>
@@ -107,18 +110,18 @@ export function MemoryDiagnosticsTab({
               {warning}
             </div>
           ))}
-        </div>
+        </Card>
       ) : null}
 
       {repairResult ? (
-        <div className="space-y-1 border border-base-300 bg-base-200/60 p-2 text-base-content/70">
+        <Card className="space-y-1 text-base-content/70">
           <div>已修复路径：{repairResult.repaired_paths.length}</div>
           {repairResult.warnings.map((warning) => (
             <div key={warning} className="break-words">
               {warning}
             </div>
           ))}
-        </div>
+        </Card>
       ) : null}
     </div>
   );

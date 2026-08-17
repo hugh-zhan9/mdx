@@ -4,7 +4,7 @@ import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   IconButton,
-  PanelHeader,
+  SegmentedControl,
   TextControlButton,
 } from "../../../common/components/ui-controls";
 import { useMemoryWorkspace } from "../hooks/use-memory-workspace";
@@ -911,48 +911,53 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
   );
 
   return (
-    <section className="flex h-full min-h-0 flex-col border-t border-base-300 bg-base-100">
-      <PanelHeader
-        title="记忆"
-        actions={
-          <IconButton
-            label="刷新记忆状态"
-            icon={
-              <RefreshCw
-                className={
-                  memory.loading || backendLoading ? "animate-spin" : undefined
-                }
-              />
-            }
-            onClick={() => {
-              void memory.refresh();
-              void refreshBackend();
-            }}
-            disabled={memory.loading || backendLoading}
-          />
-        }
-      />
+    <section className="flex h-full min-h-0 flex-col border-t border-[var(--mdx-separator)] bg-base-100">
+      {/*
+       * Tabs and refresh on one row, with no separate title.
+       *
+       * This is a full-window view, so the tabs were being stretched across two
+       * thousand pixels — seven labels with a hand's width of empty space
+       * between each. They are now as wide as their labels, left-aligned, which
+       * is where the eye goes to find them. The row also absorbs the "记忆"
+       * heading (the toolbar already says which view this is) and the refresh,
+       * which had been stranded on a line of its own.
+       */}
+      <div className="flex min-w-0 items-center justify-between gap-3 border-b border-[var(--mdx-separator)] px-4 py-2">
+        <SegmentedControl
+          variant="tabs"
+          label="Memory 视图"
+          value={effectiveTab}
+          options={memory.tabs.map((tab) => ({
+            value: tab.id,
+            label: tab.label,
+            disabled: tab.disabled,
+          }))}
+          onChange={setActiveTab}
+        />
+        <IconButton
+          label="刷新记忆状态"
+          icon={
+            <RefreshCw
+              className={
+                memory.loading || backendLoading ? "animate-spin" : undefined
+              }
+            />
+          }
+          onClick={() => {
+            void memory.refresh();
+            void refreshBackend();
+          }}
+          disabled={memory.loading || backendLoading}
+        />
+      </div>
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3 text-xs">
-        <div className="grid grid-cols-2 gap-1 bg-base-200 p-1 sm:grid-cols-4">
-          {memory.tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              className={[
-                "h-7 truncate px-2 text-xs outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:text-base-content/40",
-                effectiveTab === tab.id
-                  ? "bg-base-100 text-base-content shadow-sm"
-                  : "text-base-content/70 hover:text-base-content",
-              ].join(" ")}
-              disabled={tab.disabled}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
+      {/*
+       * The content is held to a readable measure rather than run to the window
+       * edge. At full width a status card was a thousand pixels wide holding
+       * three short lines, which is what made this page read as empty rather
+       * than as spacious.
+       */}
+      <div className="min-h-0 flex-1 space-y-3 overflow-auto px-4 py-3 text-xs">
         {memory.error ? (
           <ErrorBlock
             message={memory.error}
@@ -968,7 +973,7 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
           />
         ) : null}
         {statusMessage ? (
-          <div className="border border-base-300 bg-base-200/60 p-2 text-base-content/70">
+          <div className="rounded-[var(--mdx-control-radius)] bg-[var(--mdx-card-bg)] p-2.5 text-base-content/70">
             {statusMessage}
           </div>
         ) : null}
@@ -976,12 +981,10 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
         {effectiveTab === "overview" ? (
           <MemoryOverviewTab
             status={backendStatus}
-            loading={backendLoading}
             hasMemory={memory.hasMemory}
             canInitialize={memory.viewState?.canInitialize ?? false}
             initializing={memory.loading}
             onInitialize={handleInitialize}
-            onRefresh={refreshBackend}
           />
         ) : effectiveTab === "integrations" ? (
           <MemoryIntegrationsTab

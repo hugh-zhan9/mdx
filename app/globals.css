@@ -143,6 +143,15 @@
     --mdx-editor-font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", Arial, sans-serif;
     --mdx-mono-font: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     --mdx-window-toolbar-height: 52px;
+    /*
+     * Clearance for the traffic lights, which macOS draws over the WebView.
+     *
+     * They start 20px in and the third ends around 72px, so anything of ours
+     * before this is crowding them. Named rather than repeated as a utility
+     * class because it is a measurement of the platform, not a spacing choice,
+     * and both windows have to agree on it.
+     */
+    --mdx-traffic-light-inset: 84px;
     --mdx-editor-max-width: 52rem;
     --mdx-focus-ring: color-mix(in srgb, var(--color-primary) 24%, transparent);
     /*
@@ -163,6 +172,32 @@
      */
     --mdx-code-bg: color-mix(in srgb, var(--color-base-200) 86%, var(--color-base-100) 14%);
     --mdx-selection-bg: color-mix(in srgb, var(--color-primary) 22%, transparent);
+
+    /*
+     * Shape and weight, in one place.
+     *
+     * These are read by the shared controls in `common/components/ui-controls`
+     * and by nothing else — a feature component that wants a field or a card
+     * uses the control, not these values. That is what makes "make every border
+     * a shade lighter" one edit here instead of a search across forty files,
+     * which is how they drifted apart in the first place.
+     *
+     * A theme may override them, which is why they are variables rather than
+     * Tailwind utilities baked into each component.
+     */
+    --mdx-control-radius: 6px;
+    --mdx-panel-radius: 12px;
+    /* Field and control outlines: present, but never the loudest thing. */
+    --mdx-field-border: color-mix(in srgb, var(--color-base-content) 12%, transparent);
+    --mdx-field-border-focus: color-mix(in srgb, var(--color-primary) 60%, transparent);
+    /* Grouped information sits on a tint rather than inside a box. */
+    --mdx-card-bg: color-mix(in srgb, var(--color-base-content) 4%, transparent);
+    --mdx-track-bg: color-mix(in srgb, var(--color-base-content) 6%, transparent);
+    /* The lift on a raised segment or a floating panel. */
+    --mdx-raised-shadow: 0 0.5px 1.5px color-mix(in srgb, var(--color-base-content) 14%, transparent);
+    --mdx-panel-shadow:
+        0 0 0 0.5px color-mix(in srgb, var(--color-base-content) 14%, transparent),
+        0 24px 64px -16px color-mix(in srgb, var(--color-base-content) 45%, transparent);
 }
 
 ::selection {

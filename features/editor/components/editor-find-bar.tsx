@@ -101,7 +101,7 @@ export function EditorFindBar({
     }
 
     return (
-        <div className="border-b border-base-300 bg-base-100 px-2 py-2">
+        <div className="border-b border-[var(--mdx-separator)] bg-[var(--mdx-chrome-bg)] px-2 py-2">
             <div className="flex items-center gap-2">
                 <span
                     aria-hidden="true"

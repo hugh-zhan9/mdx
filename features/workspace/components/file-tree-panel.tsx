@@ -730,7 +730,7 @@ export function FileTreePanel({
 
                         <div className="min-h-0 flex-1 overflow-auto py-1">
                             {message ? (
-                                <div className="border-b border-base-300 px-3 py-2 text-xs text-warning">
+                                <div className="border-b border-[var(--mdx-separator)] px-3 py-2 text-xs text-warning">
                                     {message}
                                 </div>
                             ) : null}
@@ -817,7 +817,7 @@ export function FileTreePanel({
                              */}
                             {searchActive ? (
                                 <>
-                                    <p className="border-t border-base-300/60 px-3 pb-1 pt-2.5 text-[11px] text-base-content/45">
+                                    <p className="border-t border-[var(--mdx-separator)]/60 px-3 pb-1 pt-2.5 text-[11px] text-base-content/45">
                                         内容
                                     </p>
                                     <WorkspaceSearchPanel

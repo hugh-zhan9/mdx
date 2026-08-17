@@ -40,7 +40,7 @@ export function TabStrip({
                                 // its ground, the way a macOS tab is. A box
                                 // around every tab draws more lines than there
                                 // are distinctions to make.
-                                "group flex h-8 min-w-32 max-w-52 items-center rounded-[7px] text-[13px] transition-colors",
+                                "group flex h-8 min-w-32 max-w-52 items-center rounded-[var(--mdx-control-radius)] text-[13px] transition-colors",
                                 activeTabId === tab.tabId
                                     ? "bg-base-content/8 text-base-content"
                                     : "text-base-content/60 hover:bg-base-content/4 hover:text-base-content/85",
@@ -87,7 +87,7 @@ export function TabStrip({
                                 <IconButton
                                     label={`关闭 ${tab.title}`}
                                     icon={<X />}
-                                    className="h-5 min-w-5 rounded-[5px] px-0 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
+                                    className="h-5 min-w-5 rounded px-0 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
                                     onClick={() => void onCloseTab(tab.tabId)}
                                 />
                             </span>

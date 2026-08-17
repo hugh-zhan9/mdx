@@ -219,10 +219,8 @@ describe("LlmWikiPanel", () => {
             );
         });
 
-        act(() => {
-            getButton(host, "提问").click();
-        });
-
+        // The ask section is on the page rather than behind a tab, so the
+        // question box is reachable without a navigation step.
         const question = host.querySelector("textarea");
 
         expect(question).not.toBeNull();
@@ -243,17 +241,17 @@ describe("LlmWikiPanel", () => {
             );
         });
 
-        act(() => {
-            getButton(host, "综述").click();
-        });
-
+        // Digest is also on the page. Its fields stay disabled while an ingest
+        // is running, which is the actual subject here.
         const digestTitle = host.querySelector("input");
-        const digestPrompt = host.querySelector("textarea");
+        const textareas = host.querySelectorAll("textarea");
+        // Two textareas now share the page: the question, then the digest topic.
+        const digestPrompt = textareas[textareas.length - 1];
 
         expect(digestTitle).not.toBeNull();
-        expect(digestPrompt).not.toBeNull();
+        expect(digestPrompt).not.toBeUndefined();
         expect(digestTitle?.disabled).toBe(true);
-        expect(digestPrompt?.disabled).toBe(true);
+        expect(digestPrompt.disabled).toBe(true);
     });
 });
 

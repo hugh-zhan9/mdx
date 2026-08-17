@@ -1,4 +1,7 @@
-import { TextControlButton } from "../../../common/components/ui-controls";
+import {
+  Card,
+  TextControlButton,
+} from "../../../common/components/ui-controls";
 import type { MemoryIntegrationStatus } from "../lib/types";
 
 interface AgentSetupOptions {
@@ -51,7 +54,7 @@ export function MemoryIntegrationsTab({
         {(statuses.length > 0 ? statuses : fallbackStatuses()).map((status) => (
           <div
             key={status.agent_source}
-            className="space-y-2 border border-base-300 bg-base-200/60 p-2"
+            className="space-y-2 rounded-[var(--mdx-control-radius)] bg-[var(--mdx-card-bg)] p-2.5"
           >
             <div className="flex min-w-0 items-center justify-between gap-2">
               <div className="min-w-0">
@@ -76,7 +79,7 @@ export function MemoryIntegrationsTab({
         ))}
       </div>
 
-      <div className="space-y-2 border border-base-300 bg-base-200/60 p-2">
+      <Card className="space-y-2">
         <div className="font-medium text-base-content">配置 Agent 集成</div>
         <div className="grid grid-cols-2 gap-2">
           <CheckboxControl
@@ -111,7 +114,7 @@ export function MemoryIntegrationsTab({
         >
           {actionLoading ? "配置中" : "配置智能体"}
         </TextControlButton>
-      </div>
+      </Card>
     </div>
   );
 }

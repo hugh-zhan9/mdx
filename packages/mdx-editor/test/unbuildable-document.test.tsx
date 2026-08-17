@@ -17,11 +17,20 @@ import type {
  * raw HTML and deep `<div>` nesting all go to fallback and build fine, which is
  * fallback doing its job.
  *
- * The measured floor is between 1000 (builds) and 1500 (throws). 3000 keeps a
- * wide margin while staying cheap enough not to add a timeout risk to a suite
- * that runs it under parallel load.
+ * The measured floor is between 1000 (builds) and 1500 (throws), and 3000 keeps
+ * a wide margin against that floor drifting.
+ *
+ * It is not cheap, though — an earlier note here claimed it was, and the suite
+ * has since grown past that being true. Parsing this much nesting takes seconds,
+ * which under parallel load lands either side of the 5s default and makes these
+ * tests flake rather than fail. So every test that mounts it says how long it is
+ * allowed to take. The margin is worth more than the seconds: lowering the
+ * nesting to go faster would weaken the very bound being asserted.
  */
 const UNBUILDABLE = `${"> ".repeat(3000)}deep\n`;
+
+/** Long enough for the nesting above, with room for a loaded machine. */
+const UNBUILDABLE_TIMEOUT_MS = 30_000;
 
 const roots: Array<{ root: Root; container: HTMLElement }> = [];
 
@@ -127,7 +136,7 @@ describe("regression: unbuildable content cannot tear down the editor", () => {
         expect(
             harness.diagnostics.map((entry) => entry.code),
         ).toContain("unsafe_visual_parse");
-    });
+    }, UNBUILDABLE_TIMEOUT_MS);
 
     it("does not throw the editor tree away", async () => {
         const harness = await open("# Fine\n\nBody.\n");
@@ -139,7 +148,7 @@ describe("regression: unbuildable content cannot tear down the editor", () => {
             harness.container.querySelectorAll(".ProseMirror").length +
             harness.container.querySelectorAll(".cm-editor").length;
         expect(surfaces).toBeGreaterThan(0);
-    });
+    }, UNBUILDABLE_TIMEOUT_MS);
 
     it("can still reach source mode after refusing the content", async () => {
         const harness = await open("# Fine\n\nBody.\n");
@@ -150,7 +159,7 @@ describe("regression: unbuildable content cannot tear down the editor", () => {
         );
 
         expect(result).toEqual({ ok: true });
-    });
+    }, UNBUILDABLE_TIMEOUT_MS);
 });
 
 /**
@@ -211,7 +220,7 @@ describe("regression: opening unbuildable content still gives an editor", () => 
             "editor_init_failed",
         );
         expect(modeChanges).toEqual(["source"]);
-    });
+    }, UNBUILDABLE_TIMEOUT_MS);
 
     it("asks again when the session did not act on the first request", async () => {
         const { handle, modeChanges } = await openFailedVisualBuild();
@@ -225,7 +234,7 @@ describe("regression: opening unbuildable content still gives an editor", () => 
         // adapter said as settled would make the second press — and every press
         // after it — silently do nothing.
         expect(modeChanges).toEqual(["source", "source", "source"]);
-    });
+    }, UNBUILDABLE_TIMEOUT_MS);
 
     it("reports the switch to source instead of refusing it", async () => {
         const { handle, container, modeChanges, diagnostics } =
@@ -243,5 +252,5 @@ describe("regression: opening unbuildable content still gives an editor", () => 
         expect(result).toEqual({ ok: true });
         expect(modeChanges[modeChanges.length - 1]).toBe("source");
         expect(diagnostics).toEqual([]);
-    });
+    }, UNBUILDABLE_TIMEOUT_MS);
 });

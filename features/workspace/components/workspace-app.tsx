@@ -518,7 +518,7 @@ function WorkspaceEmptyState({
 
     return (
         <div className="grid h-full min-h-0 grid-rows-[44px_minmax(0,1fr)]">
-            <header className="flex items-center justify-between border-b border-base-300 bg-base-200 px-3">
+            <header className="flex items-center justify-between border-b border-[var(--mdx-separator)] bg-base-200 px-3">
                 <div />
                 <div className="flex items-center gap-2">
                     {canChooseWorkspace ? (

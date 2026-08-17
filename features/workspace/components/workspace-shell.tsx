@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  BookOpen,
   Brain,
   FileDown,
   FileText,
@@ -54,9 +55,9 @@ import { parseMarkdownOutline } from "../lib/outline";
 import { calculateWorkspacePanelLayout } from "../lib/panel-layout";
 import { isMarkdownFilePath, normalizeWorkspacePath } from "../lib/path";
 import {
-  buildRightPanelTabs,
-  type RightPanelTabId,
-} from "../lib/right-panel-tabs";
+  buildWorkspaceViewToggles,
+  type WorkspaceView,
+} from "../lib/workspace-views";
 import type { MarkdownEditorSurfaceHandle } from "@/features/editor/components/markdown-editor-surface";
 import {
   collectDirtySearchOverrides,
@@ -146,7 +147,7 @@ interface ExternalDeletedPrompt {
   dirty: boolean;
 }
 
-const RIGHT_PANEL_TABS = buildRightPanelTabs();
+const WORKSPACE_VIEW_TOGGLES = buildWorkspaceViewToggles();
 
 export function WorkspaceShell({
   workspace,
@@ -185,13 +186,11 @@ export function WorkspaceShell({
     useState<WorkspaceFileTreeActions | null>(null);
   const [pendingCliCommand, setPendingCliCommand] =
     useState<PendingCliEditorCommand | null>(null);
-  const [workspaceView, setWorkspaceView] = useState<"editor" | "memory">(
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>(
     "editor",
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
-  const [rightPanelTab, setRightPanelTab] =
-    useState<RightPanelTabId>("outline");
   const [workspaceBodyWidth, setWorkspaceBodyWidth] = useState(() =>
     typeof window === "undefined" ? 1280 : window.innerWidth,
   );
@@ -273,6 +272,15 @@ export function WorkspaceShell({
       ? externalDeletedPrompt
       : null;
   const isMemoryView = workspaceView === "memory";
+  const isLlmWikiView = workspaceView === "llmWiki";
+  /**
+   * Whether the editor is what the window is showing.
+   *
+   * Memory and LLM Wiki are full-window views that replace it, so everything
+   * that acts on a document — the panels, the outline, PDF export — is asking
+   * this rather than naming any one of them.
+   */
+  const isEditorView = workspaceView === "editor";
 
   useEffect(() => {
     externalConflictRef.current = externalConflict;
@@ -2075,9 +2083,9 @@ export function WorkspaceShell({
   }, []);
   const panelLayout = calculateWorkspacePanelLayout({
     containerWidth: workspaceBodyWidth,
-    leftCollapsed: isMemoryView || leftPanel.isCollapsed,
+    leftCollapsed: !isEditorView || leftPanel.isCollapsed,
     leftWidth: leftPanel.width,
-    rightCollapsed: isMemoryView || rightPanel.isCollapsed,
+    rightCollapsed: !isEditorView || rightPanel.isCollapsed,
     rightWidth: rightPanel.width,
   });
   const gridTemplateColumns = [
@@ -2090,11 +2098,20 @@ export function WorkspaceShell({
     <div className="grid h-full min-h-0 grid-rows-[var(--mdx-window-toolbar-height)_minmax(0,1fr)] bg-[var(--mdx-content-bg)]">
       <header
         data-mdx-workspace-toolbar=""
+        // The whole toolbar drags the window. The title bar is an overlay with
+        // no native bar behind it, so anything not marked here is dead space
+        // the window cannot be moved by — and with the controls pushed to
+        // either end, that dead space was most of the toolbar.
+        //
+        // Safe to put on the container: the drag only starts when the mousedown
+        // target *is* this element, so a click that lands on a button inside it
+        // is a click on that button.
+        data-tauri-drag-region
         className="flex min-w-0 items-center justify-between border-b border-[var(--mdx-separator)] bg-[var(--mdx-chrome-bg)] px-3"
       >
         <div
           data-tauri-drag-region
-          className="flex min-w-0 items-center gap-2 pl-16"
+          className="flex min-w-0 flex-1 items-center gap-2 pl-[var(--mdx-traffic-light-inset)]"
         >
           <IconButton
             onClick={leftPanel.toggleCollapsed}
@@ -2103,11 +2120,14 @@ export function WorkspaceShell({
             icon={
               leftPanel.isCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />
             }
-            disabled={isMemoryView}
+            disabled={!isEditorView}
           />
         </div>
 
-        <div className="flex min-w-0 shrink-0 items-center gap-2">
+        <div
+          data-tauri-drag-region
+          className="flex min-w-0 shrink-0 items-center gap-2"
+        >
           {message ? (
             <div className="max-w-80 truncate text-xs text-warning">
               {message}
@@ -2122,28 +2142,44 @@ export function WorkspaceShell({
           </TextControlButton>
           <TextControlButton
             onClick={() => void exportActiveTabPdf()}
-            disabled={isMemoryView || !activeTabIsLoadedMarkdown || exportingPdf}
+            disabled={!isEditorView || !activeTabIsLoadedMarkdown || exportingPdf}
           >
             <FileDown aria-hidden="true" />
             {exportingPdf ? "导出中" : "导出 PDF"}
           </TextControlButton>
-          <TextControlButton
-            onClick={() =>
-              setWorkspaceView((current) =>
-                current === "memory" ? "editor" : "memory",
-              )
-            }
-            className={
-              isMemoryView ? "bg-base-300 text-base-content" : undefined
-            }
-          >
-            {isMemoryView ? (
-              <FileText aria-hidden="true" />
-            ) : (
-              <Brain aria-hidden="true" />
-            )}
-            {isMemoryView ? "返回编辑器" : "记忆"}
-          </TextControlButton>
+          {/*
+           * One button per full-window view, each toggling back to the editor.
+           * They are separate rather than one cycling control so the toolbar
+           * shows what is available without the user clicking to find out.
+           */}
+          {WORKSPACE_VIEW_TOGGLES.map((toggle) => {
+            const active = workspaceView === toggle.view;
+            return (
+              <TextControlButton
+                key={toggle.view}
+                aria-pressed={active}
+                onClick={() =>
+                  setWorkspaceView((current) =>
+                    current === toggle.view ? "editor" : toggle.view,
+                  )
+                }
+                className={
+                  active
+                    ? "bg-base-content/10 text-base-content"
+                    : undefined
+                }
+              >
+                {active ? (
+                  <FileText aria-hidden="true" />
+                ) : toggle.view === "memory" ? (
+                  <Brain aria-hidden="true" />
+                ) : (
+                  <BookOpen aria-hidden="true" />
+                )}
+                {active ? toggle.closeLabel : toggle.openLabel}
+              </TextControlButton>
+            );
+          })}
           <SettingsButton
             open={settingsOpen}
             onOpenChange={setSettingsOpen}
@@ -2158,7 +2194,7 @@ export function WorkspaceShell({
               rightPanel.isCollapsed ? <PanelRightOpen /> : <PanelRightClose />
             }
             onClick={rightPanel.toggleCollapsed}
-            disabled={isMemoryView}
+            disabled={!isEditorView}
           />
         </div>
       </header>
@@ -2205,6 +2241,13 @@ export function WorkspaceShell({
           {isMemoryView ? (
             <div className="min-h-0 flex-1 overflow-hidden bg-[var(--mdx-content-bg)]">
               <MemoryPanel rootPath={workspace.rootPath} />
+            </div>
+          ) : isLlmWikiView ? (
+            <div className="min-h-0 flex-1 overflow-hidden bg-[var(--mdx-content-bg)]">
+              <LlmWikiPanel
+                llmWiki={llmWiki}
+                onConfigureLlm={() => setSettingsOpen(true)}
+              />
             </div>
           ) : (
             <>
@@ -2399,56 +2442,21 @@ export function WorkspaceShell({
           className="relative min-h-0 overflow-hidden"
           style={{ gridColumn: 3 }}
         >
-          {isMemoryView || rightPanel.isCollapsed ? null : (
-            <aside className="h-full min-h-0 overflow-hidden border-l border-base-content/10 bg-[var(--mdx-sidebar-bg)]">
+          {!isEditorView || rightPanel.isCollapsed ? null : (
+            <aside className="h-full min-h-0 overflow-hidden border-l border-[var(--mdx-separator)] bg-[var(--mdx-sidebar-bg)]">
+              {/*
+               * The outline alone, with no switch above it. LLM Wiki moved to a
+               * full-window view, and a tab bar holding one tab labels nothing
+               * while costing a row.
+               */}
               <div className="flex h-full min-h-0 flex-col">
-                <div
-                  data-mdx-right-panel-tabs=""
-                  role="tablist"
-                  aria-label="Right panel"
-                  className="border-b border-[var(--mdx-separator)] bg-[var(--mdx-chrome-bg)] px-2 py-1.5"
-                >
-                  {/*
-                   * A segmented control, as macOS draws one: a single recessed
-                   * track with a raised slice on the current segment. The
-                   * previous shape gave each segment its own box and inset
-                   * outline, which reads as two buttons that happen to be
-                   * adjacent rather than as one control with two positions.
-                   */}
-                  <div className="flex gap-0.5 rounded-[7px] bg-base-content/6 p-0.5">
-                    {RIGHT_PANEL_TABS.map((tab) => (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        role="tab"
-                        aria-selected={rightPanelTab === tab.id}
-                        className={[
-                          "h-6 flex-1 truncate rounded-[5px] px-2 text-xs outline-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25",
-                          rightPanelTab === tab.id
-                            ? "bg-base-100 text-base-content shadow-[0_0.5px_1.5px_color-mix(in_srgb,var(--color-base-content)_14%,transparent)]"
-                            : "text-base-content/55 hover:text-base-content/80",
-                        ].join(" ")}
-                        onClick={() => setRightPanelTab(tab.id)}
-                      >
-                        {tab.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
                 <div className="min-h-0 flex-1 overflow-hidden [&>aside]:h-full [&>aside]:border-l-0 [&>aside]:border-t-0 [&>aside>div:last-child]:hidden">
-                  {rightPanelTab === "outline" ? (
-                    <OutlinePanel
-                      headings={activeHeadings}
-                      collapsed={false}
-                      onHeadingClick={scrollToHeading}
-                      resizeHandleProps={{}}
-                    />
-                  ) : rightPanelTab === "llmWiki" ? (
-                    <LlmWikiPanel
-                      llmWiki={llmWiki}
-                      onConfigureLlm={() => setSettingsOpen(true)}
-                    />
-                  ) : null}
+                  <OutlinePanel
+                    headings={activeHeadings}
+                    collapsed={false}
+                    onHeadingClick={scrollToHeading}
+                    resizeHandleProps={{}}
+                  />
                 </div>
               </div>
               <div

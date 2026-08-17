@@ -49,7 +49,7 @@ export function WorkspaceSearchPanel({
                     aria-pressed={state.caseSensitive}
                     title="区分大小写"
                     className={[
-                        "h-5 shrink-0 rounded-[5px] px-1.5 text-[11px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary/25",
+                        "h-5 shrink-0 rounded px-1.5 text-[11px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary/25",
                         state.caseSensitive
                             ? "bg-primary/12 text-primary"
                             : "text-base-content/55 hover:bg-base-content/6 hover:text-base-content/80",
@@ -71,7 +71,7 @@ export function WorkspaceSearchPanel({
                         <button
                             key={resultKey(result)}
                             type="button"
-                            className="w-full border-b border-base-300/70 px-3 py-3 text-left outline-none transition-colors hover:bg-base-200/70 focus-visible:bg-base-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
+                            className="w-full border-b border-[var(--mdx-separator)] px-3 py-3 text-left outline-none transition-colors hover:bg-base-content/4 focus-visible:bg-base-content/6 focus-visible:outline-none"
                             onClick={() => onResultClick(result)}
                         >
                             <div className="flex items-start justify-between gap-3">
@@ -84,7 +84,7 @@ export function WorkspaceSearchPanel({
                             </div>
                             <div className="mt-2 flex items-center gap-2">
                                 {result.dirty ? (
-                                    <span className="inline-flex shrink-0 border border-warning/50 bg-warning/10 px-1.5 py-0.5 text-[11px] text-warning">
+                                    <span className="inline-flex shrink-0 rounded-sm bg-warning/15 px-1.5 py-0.5 text-[11px] text-warning">
                                         未保存
                                     </span>
                                 ) : null}

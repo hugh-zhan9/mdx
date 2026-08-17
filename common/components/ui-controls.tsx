@@ -1,4 +1,9 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type {
+    ButtonHTMLAttributes,
+    InputHTMLAttributes,
+    ReactNode,
+    TextareaHTMLAttributes,
+} from "react";
 
 interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
     label: string;
@@ -21,7 +26,7 @@ interface PanelHeaderProps {
 }
 
 const baseButtonClass =
-    "inline-flex items-center justify-center rounded-md border border-transparent outline-none transition-[background-color,border-color,color,box-shadow] duration-150 focus-visible:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:text-base-content/40 disabled:hover:bg-transparent disabled:hover:text-base-content/40";
+    "inline-flex items-center justify-center rounded-[var(--mdx-control-radius)] border border-transparent outline-none transition-[background-color,border-color,color,box-shadow] duration-150 focus-visible:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:text-base-content/40 disabled:hover:bg-transparent disabled:hover:text-base-content/40";
 
 export function IconButton({
     label,
@@ -62,6 +67,98 @@ export function IconButton({
                 {icon}
             </span>
         </button>
+    );
+}
+
+/**
+ * One control with several positions, drawn the way macOS draws one: a recessed
+ * track with a raised slice on the current segment.
+ *
+ * Shared because it was written five separate times — the right panel, the
+ * memory provider, the storage backend, the API mode, the wiki tabs — and every
+ * copy had drifted. Each drew its own square boxes with their own borders,
+ * which reads as several adjacent buttons rather than one control with a
+ * position, and no two agreed on radius or weight. One definition is what makes
+ * "the same control" true rather than a coincidence that has to be maintained.
+ */
+export function SegmentedControl<Value extends string>({
+    value,
+    options,
+    onChange,
+    disabled = false,
+    label,
+    variant = "control",
+    fill = false,
+    className,
+}: {
+    value: Value;
+    options: ReadonlyArray<{
+        value: Value;
+        label: string;
+        /** Selectable but not right now — a backend with no configuration yet. */
+        disabled?: boolean;
+    }>;
+    onChange: (value: Value) => void;
+    disabled?: boolean;
+    /** Names the group for assistive technology when there is no visible label. */
+    label?: string;
+    /**
+     * What the segments mean, which decides the semantics but not the drawing.
+     *
+     * `control` picks a value — a provider, a storage backend — and is a group
+     * of pressable buttons. `tabs` picks which panel is shown, which is a
+     * tablist. They look identical on purpose and are announced differently on
+     * purpose: a screen reader user needs to know whether they just changed a
+     * setting or moved to another view.
+     */
+    variant?: "control" | "tabs";
+    /**
+     * Whether the control stretches to its container.
+     *
+     * Off by default, because a control is as wide as its labels need — the
+     * alternative put three two-character labels across seven hundred pixels
+     * and called the result a tab bar. Turn it on where the segments are meant
+     * to line up with something else, such as fields in a form.
+     */
+    fill?: boolean;
+    className?: string;
+}) {
+    const isTabs = variant === "tabs";
+    return (
+        <div
+            role={isTabs ? "tablist" : "group"}
+            aria-label={label}
+            className={[
+                `${fill ? "flex" : "inline-flex"} gap-0.5 ${radiusClass} bg-[var(--mdx-track-bg)] p-0.5`,
+                className,
+            ]
+                .filter(Boolean)
+                .join(" ")}
+        >
+            {options.map((option) => {
+                const selected = option.value === value;
+                return (
+                    <button
+                        key={option.value}
+                        type="button"
+                        role={isTabs ? "tab" : undefined}
+                        aria-selected={isTabs ? selected : undefined}
+                        aria-pressed={isTabs ? undefined : selected}
+                        disabled={disabled || option.disabled}
+                        className={[
+                            `h-7 min-w-0 truncate rounded px-2.5 text-xs ${fill ? "flex-1" : ""}`,
+                            " outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:text-base-content/35",
+                            selected
+                                ? "bg-base-100 text-base-content shadow-[var(--mdx-raised-shadow)]"
+                                : "text-base-content/55 hover:text-base-content/80",
+                        ].join(" ")}
+                        onClick={() => onChange(option.value)}
+                    >
+                        {option.label}
+                    </button>
+                );
+            })}
+        </div>
     );
 }
 
@@ -140,5 +237,111 @@ export function EmptyState({
                 </button>
             ) : null}
         </div>
+    );
+}
+
+/**
+ * The shared shapes for fields and grouped information.
+ *
+ * These exist because the same Tailwind strings were being written out by hand
+ * wherever they were needed — one card pattern appeared eleven times, an input
+ * pattern half a dozen — and no two copies had stayed identical. Radii, focus
+ * rings and border weights had all drifted apart, which is what makes an
+ * interface look assembled rather than designed.
+ *
+ * The point is not brevity. It is that "the same kind of thing looks the same"
+ * becomes a fact about the code rather than something each new screen has to
+ * remember.
+ */
+
+/** The focus treatment every field and pressable surface shares. */
+const focusRingClass =
+    "outline-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20";
+
+/** Shape and weight come from the variables; only structure lives here. */
+const radiusClass = "rounded-[var(--mdx-control-radius)]";
+
+const fieldClass = `w-full min-w-0 ${radiusClass} border border-[var(--mdx-field-border)] bg-base-100 text-base-content placeholder:text-base-content/45 focus:border-[var(--mdx-field-border-focus)] disabled:cursor-not-allowed disabled:bg-base-200/60 disabled:text-base-content/40 ${focusRingClass}`;
+
+/** A single-line field. */
+export function TextInput({
+    className,
+    ...props
+}: InputHTMLAttributes<HTMLInputElement>) {
+    return (
+        <input
+            className={[fieldClass, "h-8 px-2.5 text-sm", className]
+                .filter(Boolean)
+                .join(" ")}
+            {...props}
+        />
+    );
+}
+
+/** A multi-line field. Grows by drag, not by content. */
+export function TextArea({
+    className,
+    ...props
+}: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+    return (
+        <textarea
+            className={[fieldClass, "resize-y p-2.5 text-sm", className]
+                .filter(Boolean)
+                .join(" ")}
+            {...props}
+        />
+    );
+}
+
+/**
+ * A group of related facts, set off from the text around it.
+ *
+ * Tinted rather than outlined: a border around every group draws far more lines
+ * than there are groupings, which is most of what made these panels look busy.
+ */
+export function Card({
+    children,
+    className,
+}: {
+    children: ReactNode;
+    className?: string;
+}) {
+    return (
+        <div
+            className={[
+                `${radiusClass} bg-[var(--mdx-card-bg)] p-2.5`,
+                className,
+            ]
+                .filter(Boolean)
+                .join(" ")}
+        >
+            {children}
+        </div>
+    );
+}
+
+/**
+ * Preformatted output — a log, a report, a diagnostic dump.
+ *
+ * Scrolls inside itself, so a long log cannot stretch the panel holding it.
+ */
+export function LogBlock({
+    children,
+    className,
+}: {
+    children: ReactNode;
+    className?: string;
+}) {
+    return (
+        <pre
+            className={[
+                `max-h-72 overflow-auto whitespace-pre-wrap ${radiusClass} bg-[var(--mdx-card-bg)] p-2.5 font-sans text-xs leading-relaxed text-base-content/75`,
+                className,
+            ]
+                .filter(Boolean)
+                .join(" ")}
+        >
+            {children}
+        </pre>
     );
 }

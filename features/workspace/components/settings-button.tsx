@@ -30,6 +30,7 @@ import type { LlmWikiKnowledgeConfig } from "@/features/llm-wiki/lib/types";
 import type { LlmProviderApiMode } from "@/features/llm-wiki/lib/types";
 import {
   PrimaryTextControlButton,
+  SegmentedControl,
   TextControlButton,
 } from "../../../common/components/ui-controls";
 import type { AppPreferences } from "../lib/types";
@@ -538,7 +539,7 @@ function SettingsDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 px-4 py-14 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/20 px-4 py-14 backdrop-blur-[2px]"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
@@ -550,9 +551,13 @@ function SettingsDialog({
         role="dialog"
         aria-modal="true"
         aria-label="设置"
-        className="grid h-[min(680px,78dvh,calc(100dvh-2rem))] min-h-0 w-[min(90vw,840px)] min-w-0 grid-cols-[minmax(104px,152px)_minmax(0,1fr)] overflow-hidden border border-base-300 bg-base-100 shadow-2xl"
+        // Rounded and softly shadowed, the way macOS draws a panel. A square
+        // sheet with a hard border and a heavy drop shadow reads as a web modal
+        // dropped on top of the app; the hairline is inside the shadow rather
+        // than a border of its own, so the corner stays clean.
+        className="grid h-[min(680px,78dvh,calc(100dvh-2rem))] min-h-0 w-[min(90vw,840px)] min-w-0 grid-cols-[minmax(104px,152px)_minmax(0,1fr)] overflow-hidden rounded-xl bg-base-100 shadow-[var(--mdx-panel-shadow)]"
       >
-        <aside className="min-h-0 min-w-0 overflow-auto border-r border-base-300 bg-base-200 px-3 py-4">
+        <aside className="min-h-0 min-w-0 overflow-auto border-r border-[var(--mdx-separator)] bg-base-200 px-3 py-4">
           <h2 className="px-2 text-sm font-semibold">设置</h2>
           <div className="mt-4 space-y-1">
             {SETTINGS_SECTIONS.map((section) => (
@@ -560,7 +565,7 @@ function SettingsDialog({
                 key={section.id}
                 type="button"
                 className={[
-                  "block w-full px-2 py-1.5 text-left text-xs",
+                  "block w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors",
                   activeSection === section.id
                     ? "bg-base-100 font-medium text-base-content"
                     : "text-base-content/70 hover:bg-base-100/70 hover:text-base-content",
@@ -574,7 +579,7 @@ function SettingsDialog({
         </aside>
 
         <div className="flex min-w-0 min-h-0 flex-col">
-          <header className="flex min-w-0 items-center justify-between gap-3 border-b border-base-300 px-5 py-3">
+          <header className="flex min-w-0 items-center justify-between gap-3 border-b border-[var(--mdx-separator)] px-5 py-3">
             <div className="min-w-0 text-sm font-medium">设置</div>
             <div className="flex min-w-0 shrink-0 items-center gap-2">
               {message ? (
@@ -674,7 +679,7 @@ function SettingsDialog({
                 <label className="block space-y-1.5 text-xs text-base-content/70">
                   <span>单文件最大搜索大小（字节）</span>
                   <input
-                    className="h-9 w-full border border-base-300 bg-base-100 px-2.5 text-sm text-base-content outline-none focus:border-primary focus:outline focus:outline-2 focus:outline-offset-1 focus:outline-primary"
+                    className="h-9 w-full rounded-md border border-base-content/12 bg-base-100 px-2.5 text-sm text-base-content outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/20"
                     value={searchMaxFileBytesText}
                     inputMode="numeric"
                     onChange={(event) =>
@@ -686,7 +691,7 @@ function SettingsDialog({
                 <label className="block space-y-1.5 text-xs text-base-content/70">
                   <span>最大结果数</span>
                   <input
-                    className="h-9 w-full border border-base-300 bg-base-100 px-2.5 text-sm text-base-content outline-none focus:border-primary focus:outline focus:outline-2 focus:outline-offset-1 focus:outline-primary"
+                    className="h-9 w-full rounded-md border border-base-content/12 bg-base-100 px-2.5 text-sm text-base-content outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/20"
                     value={searchMaxResultsText}
                     inputMode="numeric"
                     onChange={(event) =>
@@ -698,7 +703,7 @@ function SettingsDialog({
                 <label className="block space-y-1.5 text-xs text-base-content/70">
                   <span>每个文件最大匹配数</span>
                   <input
-                    className="h-9 w-full border border-base-300 bg-base-100 px-2.5 text-sm text-base-content outline-none focus:border-primary focus:outline focus:outline-2 focus:outline-offset-1 focus:outline-primary"
+                    className="h-9 w-full rounded-md border border-base-content/12 bg-base-100 px-2.5 text-sm text-base-content outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/20"
                     value={searchMaxMatchesPerFileText}
                     inputMode="numeric"
                     onChange={(event) =>
@@ -724,7 +729,7 @@ function SettingsDialog({
                 <label className="flex items-center gap-3 text-sm text-base-content">
                   <input
                     type="checkbox"
-                    className="h-4 w-4 border border-base-300 bg-base-100"
+                    className="h-4 w-4 rounded-sm border border-base-content/20 bg-base-100"
                     checked={fileWatchEnabled}
                     onChange={(event) =>
                       setFileWatchEnabled(event.currentTarget.checked)
@@ -736,12 +741,12 @@ function SettingsDialog({
                 <p className="text-xs leading-relaxed text-base-content/65">
                   未保存正文会以明文草稿保存在 ~/.mdx/drafts/，保存或丢弃后会清理对应草稿。
                 </p>
-                <div className="border-t border-base-300 pt-3">
+                <div className="border-t border-[var(--mdx-separator)] pt-3">
                   <div className="mb-2 text-xs text-base-content/70">
                     过滤项目
                   </div>
                   <textarea
-                    className="min-h-24 w-full resize-y border border-base-300 bg-base-100 px-2.5 py-2 text-sm text-base-content outline-none placeholder:text-base-content/65 focus:border-primary focus:outline focus:outline-2 focus:outline-offset-1 focus:outline-primary"
+                    className="min-h-24 w-full resize-y rounded-md border border-base-content/12 bg-base-100 px-2.5 py-2 text-sm text-base-content outline-none transition-colors placeholder:text-base-content/45 focus:border-primary/60 focus:ring-2 focus:ring-primary/20"
                     value={excludeDirsText}
                     onChange={(event) =>
                       setExcludeDirsText(event.currentTarget.value)
@@ -800,7 +805,7 @@ function SettingsDialog({
                 <label className="block space-y-1.5 text-xs text-base-content/70">
                   <span>Base URL</span>
                   <input
-                    className="h-9 w-full border border-base-300 bg-base-100 px-2.5 text-sm text-base-content outline-none focus:border-primary focus:outline focus:outline-2 focus:outline-offset-1 focus:outline-primary"
+                    className="h-9 w-full rounded-md border border-base-content/12 bg-base-100 px-2.5 text-sm text-base-content outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/20"
                     value={baseUrl}
                     onChange={(event) => setBaseUrl(event.currentTarget.value)}
                     disabled={loadingConfig || savingSettings}
@@ -809,7 +814,7 @@ function SettingsDialog({
                 <label className="block space-y-1.5 text-xs text-base-content/70">
                   <span>Model</span>
                   <input
-                    className="h-9 w-full border border-base-300 bg-base-100 px-2.5 text-sm text-base-content outline-none focus:border-primary focus:outline focus:outline-2 focus:outline-offset-1 focus:outline-primary"
+                    className="h-9 w-full rounded-md border border-base-content/12 bg-base-100 px-2.5 text-sm text-base-content outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/20"
                     value={model}
                     onChange={(event) => setModel(event.currentTarget.value)}
                     disabled={loadingConfig || savingSettings}
@@ -817,29 +822,19 @@ function SettingsDialog({
                 </label>
                 <div className="space-y-1.5 text-xs text-base-content/70">
                   <span>API 模式</span>
-                  <div className="grid grid-cols-2 gap-1 bg-base-200 p-1">
-                    {LLM_API_MODE_OPTIONS.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        className={[
-                          "h-8 text-xs",
-                          apiMode === option.value
-                            ? "bg-base-100 text-base-content shadow-sm"
-                            : "text-base-content/60 hover:text-base-content",
-                        ].join(" ")}
-                        onClick={() => setApiMode(option.value)}
-                        disabled={loadingConfig || savingSettings}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
+                  <SegmentedControl
+                    label="API 模式"
+                    fill
+                    value={apiMode}
+                    options={LLM_API_MODE_OPTIONS}
+                    onChange={setApiMode}
+                    disabled={loadingConfig || savingSettings}
+                  />
                 </div>
                 <label className="block space-y-1.5 text-xs text-base-content/70">
                   <span>API Key</span>
                   <input
-                    className="h-9 w-full border border-base-300 bg-base-100 px-2.5 text-sm text-base-content outline-none placeholder:text-base-content/65 focus:border-primary focus:outline focus:outline-2 focus:outline-offset-1 focus:outline-primary"
+                    className="h-9 w-full rounded-md border border-base-content/12 bg-base-100 px-2.5 text-sm text-base-content outline-none transition-colors placeholder:text-base-content/45 focus:border-primary/60 focus:ring-2 focus:ring-primary/20"
                     value={apiKey}
                     type="password"
                     placeholder={
@@ -851,13 +846,13 @@ function SettingsDialog({
                     disabled={loadingConfig || savingSettings}
                   />
                 </label>
-                <div className="border-t border-base-300 pt-3">
+                <div className="border-t border-[var(--mdx-separator)] pt-3">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-xs text-base-content/70">
                       LLM Wiki 后台处理
                     </div>
                     <TextControlButton
-                      className="h-8 bg-base-content px-3 text-base-100 hover:bg-base-content/85 hover:text-base-100 disabled:bg-base-content/30 disabled:hover:bg-base-content/30"
+                      className="h-8 px-3"
                       onClick={() => void toggleLlmWiki()}
                       disabled={!workspaceRoot || !llmWikiConfig || loadingLlmWiki}
                     >
@@ -877,7 +872,7 @@ function SettingsDialog({
                       刷新
                     </TextControlButton>
                   </div>
-                  <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap border border-base-300 bg-base-200 p-2 font-sans text-xs leading-relaxed text-base-content/75">
+                  <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-base-200 p-2.5 font-sans text-xs leading-relaxed text-base-content/75">
                     {workspaceRoot
                       ? llmWikiLog || "暂无日志"
                       : "打开工作区后显示 LLM Wiki 日志"}
@@ -929,7 +924,7 @@ function UserThemeSection({
         <p className="text-[11px] text-base-content/45">自定义主题</p>
         <button
           type="button"
-          className="h-5 rounded-[5px] px-1.5 text-[11px] text-base-content/55 outline-none transition-colors hover:bg-base-content/6 hover:text-base-content/80 focus-visible:ring-2 focus-visible:ring-primary/25"
+          className="h-5 rounded px-1.5 text-[11px] text-base-content/55 outline-none transition-colors hover:bg-base-content/6 hover:text-base-content/80 focus-visible:ring-2 focus-visible:ring-primary/25"
           onClick={onRefresh}
           disabled={loading}
         >

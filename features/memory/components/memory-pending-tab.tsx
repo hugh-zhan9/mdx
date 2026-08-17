@@ -1,5 +1,8 @@
 import type { ReactNode } from "react";
-import { TextControlButton } from "../../../common/components/ui-controls";
+import {
+  Card,
+  TextControlButton,
+} from "../../../common/components/ui-controls";
 import type { InboxRecord } from "../lib/types";
 
 interface MemoryPendingTabProps {
@@ -33,7 +36,7 @@ export function MemoryPendingTab({
         return (
           <div
             key={entry.frontmatter.inbox_id}
-            className="border-t border-base-300 py-2 first:border-t-0 first:pt-0"
+            className="border-t border-[var(--mdx-separator)] py-2 first:border-t-0 first:pt-0"
           >
             <div className="flex min-w-0 items-start justify-between gap-2">
               <div className="min-w-0">
@@ -88,7 +91,7 @@ function ListPanel({
     : Boolean(children);
 
   return (
-    <div className="space-y-2 border border-base-300 bg-base-200/60 p-2">
+    <Card className="space-y-2">
       <div className="flex min-w-0 items-center justify-between gap-2">
         <div className="truncate font-medium text-base-content">{title}</div>
         <TextControlButton onClick={() => void onRefresh()} disabled={loading}>
@@ -104,6 +107,6 @@ function ListPanel({
           <div className="text-base-content/60">{empty}</div>
         )}
       </div>
-    </div>
+    </Card>
   );
 }

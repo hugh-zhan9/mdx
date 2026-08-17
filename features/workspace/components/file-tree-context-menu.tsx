@@ -41,7 +41,7 @@ export function FileTreeContextMenu({
 
     return (
         <div
-            className="fixed z-30 min-w-48 border border-base-300 bg-base-100 py-1 text-sm shadow-lg"
+            className="fixed z-30 min-w-48 rounded-lg bg-base-100 py-1 text-sm shadow-[0_0_0_0.5px_color-mix(in_srgb,var(--color-base-content)_14%,transparent),0_12px_32px_-8px_color-mix(in_srgb,var(--color-base-content)_40%,transparent)]"
             style={{ left: x, top: y }}
             onClick={(event) => event.stopPropagation()}
             onContextMenu={(event) => event.preventDefault()}
@@ -62,7 +62,7 @@ export function FileTreeContextMenu({
                     >
                         新建文档
                     </button>
-                    <div className="my-1 border-t border-base-300" />
+                    <div className="my-1 border-t border-[var(--mdx-separator)]" />
                 </>
             ) : null}
             <button

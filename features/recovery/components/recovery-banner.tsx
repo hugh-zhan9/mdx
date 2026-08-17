@@ -25,7 +25,7 @@ export function RecoveryBanner({
                 "flex w-full min-w-0 flex-col gap-3 border-b px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between",
                 priority === "high"
                     ? "border-warning/40 bg-warning/10 text-base-content"
-                    : "border-base-300 bg-base-200/70 text-base-content",
+                    : "border-[var(--mdx-separator)] bg-base-200/70 text-base-content",
             ].join(" ")}
         >
             <div className="min-w-0 flex-1 break-words">
@@ -41,7 +41,7 @@ export function RecoveryBanner({
                         type="button"
                         disabled={action.disabled}
                         className={[
-                            "h-8 max-w-full min-w-0 px-3 text-xs outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-45",
+                            "h-8 max-w-full min-w-0 px-3 text-xs outline-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-45",
                             action.destructive
                                 ? "text-error hover:bg-error/10"
                                 : action.primary

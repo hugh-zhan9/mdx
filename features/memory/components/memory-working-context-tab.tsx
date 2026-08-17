@@ -1,4 +1,9 @@
-import { TextControlButton } from "../../../common/components/ui-controls";
+import {
+  Card,
+  TextArea,
+  TextControlButton,
+  TextInput,
+} from "../../../common/components/ui-controls";
 
 export type WorkingQuickSection =
   | "Updated"
@@ -47,7 +52,7 @@ export function MemoryWorkingContextTab({
 }: MemoryWorkingContextTabProps) {
   return (
     <div className="space-y-2">
-      <div className="space-y-2 border border-base-300 bg-base-200/60 p-2">
+      <Card className="space-y-2">
         <div className="font-medium text-base-content">快捷记录</div>
         <div className="grid grid-cols-2 gap-1 sm:grid-cols-4">
           {WORKING_QUICK_SECTIONS.map((section) => (
@@ -55,7 +60,7 @@ export function MemoryWorkingContextTab({
               key={section.value}
               type="button"
               className={[
-                "h-7 truncate px-2 text-xs outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                "h-7 truncate px-2 text-xs outline-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20",
                 quickSection === section.value
                   ? "bg-base-100 text-base-content shadow-sm"
                   : "bg-base-200 text-base-content/70 hover:text-base-content",
@@ -66,8 +71,8 @@ export function MemoryWorkingContextTab({
             </button>
           ))}
         </div>
-        <input
-          className="h-8 w-full min-w-0 border border-base-300 bg-base-100 px-2 text-xs outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        <TextInput
+          className="text-xs"
           value={quickNote}
           onChange={(event) => onQuickNoteChange(event.currentTarget.value)}
           placeholder="记录一句当前上下文"
@@ -86,7 +91,7 @@ export function MemoryWorkingContextTab({
             记到长期记忆
           </TextControlButton>
         </div>
-      </div>
+      </Card>
       <div className="flex justify-end gap-1">
         <TextControlButton onClick={() => void onRefresh()} disabled={loading}>
           刷新
@@ -95,8 +100,8 @@ export function MemoryWorkingContextTab({
           {saving ? "保存中" : "保存"}
         </TextControlButton>
       </div>
-      <textarea
-        className="min-h-72 w-full resize-y border border-base-300 bg-base-100 p-2 font-mono text-xs leading-relaxed outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      <TextArea
+        className="min-h-72 font-mono text-xs leading-relaxed"
         value={loading ? "加载中..." : text}
         disabled={loading}
         onChange={(event) => onTextChange(event.currentTarget.value)}

@@ -77,7 +77,7 @@ export function FileTreeToolbar({
              * outlined white box on a tinted sidebar reads as a form control
              * borrowed from a web page.
              */}
-            <label className="flex min-w-0 items-center gap-2 rounded-[7px] bg-base-content/6 px-2.5 transition-colors focus-within:bg-base-content/9 focus-within:ring-2 focus-within:ring-primary/25">
+            <label className="flex min-w-0 items-center gap-2 rounded-[var(--mdx-control-radius)] bg-base-content/6 px-2.5 transition-colors focus-within:bg-base-content/9 focus-within:ring-2 focus-within:ring-primary/25">
                 <Search
                     aria-hidden="true"
                     className="h-4 w-4 shrink-0 text-base-content/55"
@@ -109,7 +109,7 @@ function ToolbarButton({
             type="button"
             aria-label={label}
             className={[
-                "inline-flex h-7 min-w-7 shrink-0 items-center justify-center text-base-content/75 outline-none transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:cursor-not-allowed disabled:text-base-content/35 disabled:hover:bg-transparent [&>svg]:h-4 [&>svg]:w-4",
+                "inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-[var(--mdx-control-radius)] text-base-content/75 outline-none transition-colors hover:bg-base-200 hover:text-base-content focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:text-base-content/35 disabled:hover:bg-transparent [&>svg]:h-4 [&>svg]:w-4",
                 className,
             ]
                 .filter(Boolean)

@@ -15,6 +15,15 @@ import type {
 /** Deep blockquote nesting exhausts the parser's stack. */
 const UNBUILDABLE = `${"> ".repeat(3000)}deep\n`;
 
+/**
+ * Long enough for the nesting above, with room for a loaded machine.
+ *
+ * Parsing 3000 levels takes seconds, which under parallel load lands either
+ * side of the 5s default and flakes. The nesting is not reduced to go faster:
+ * the margin above the ~1500 floor is the point of the fixture.
+ */
+const UNBUILDABLE_TIMEOUT_MS = 30_000;
+
 const roots: Array<{ root: Root; container: HTMLElement }> = [];
 
 afterEach(async () => {
@@ -108,7 +117,7 @@ describe("regression: a refused document does not strand the surface", () => {
 
         expect(harness.container.textContent).toContain("Repaired body.");
         expect(harness.container.textContent).not.toContain("Original body.");
-    });
+    }, UNBUILDABLE_TIMEOUT_MS);
 
     it("still edits normally after the recovery", async () => {
         const harness = await open("# First\n\nOriginal body.\n");
@@ -125,7 +134,7 @@ describe("regression: a refused document does not strand the surface", () => {
         });
 
         expect(result).toEqual({ ok: true });
-    });
+    }, UNBUILDABLE_TIMEOUT_MS);
 
     it("falls to source when the content stays unbuildable", async () => {
         const harness = await open("# First\n\nOriginal body.\n");
@@ -139,5 +148,5 @@ describe("regression: a refused document does not strand the surface", () => {
         // fails in turn the session is asked for source mode rather than being
         // left with no editor.
         expect(harness.mode()).toBe("source");
-    });
+    }, UNBUILDABLE_TIMEOUT_MS);
 });

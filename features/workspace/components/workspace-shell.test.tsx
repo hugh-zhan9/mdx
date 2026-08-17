@@ -29,7 +29,7 @@ vi.mock("@/features/file-watch/hooks/use-file-watch", () => ({
 }));
 
 vi.mock("@/features/llm-wiki", () => ({
-  LlmWikiPanel: () => null,
+  LlmWikiPanel: () => <div data-testid="llm-wiki-page">LLM Wiki 页面</div>,
   useLlmWikiWorkspace: () => ({
     status: "idle",
     operations: [],
@@ -234,18 +234,64 @@ describe("WorkspaceShell", () => {
 
     expect(host.querySelector("[data-testid='editor']")).not.toBeNull();
     expect(host.querySelector("[data-testid='memory-page']")).toBeNull();
-    expect(host.textContent).toContain("目录");
-    expect(host.textContent).toContain("LLM Wiki");
+    expect(host.querySelector("[data-testid='outline']")).not.toBeNull();
 
     await act(async () => {
       getButton("记忆").click();
       await flushPromises();
     });
 
+    // A full-window view: the editor and both side panels give way to it.
     expect(host.querySelector("[data-testid='editor']")).toBeNull();
     expect(host.querySelector("[data-testid='memory-page']")).not.toBeNull();
     expect(host.textContent).toContain("返回编辑器");
-    expect(host.textContent).not.toContain("LLM Wiki");
+    expect(host.querySelector("[data-testid='outline']")).toBeNull();
+  });
+
+  it("opens LLM Wiki as a standalone workspace view", async () => {
+    // It used to be a tab inside the right panel, sharing about seven hundred
+    // pixels with the outline. It is a workspace-level tool, so it now takes the
+    // window the way memory does.
+    let workspace = workspaceReducer(createWorkspaceState("/tmp/ws"), {
+      type: "tab/opened",
+      tab: {
+        tabId: "tab-1",
+        path: "/tmp/ws/note.md",
+        title: "note.md",
+        dirty: false,
+        needsRenameOnFirstSave: false,
+        markdown: "# Note",
+      },
+    });
+    const dispatch = (action: WorkspaceAction) => {
+      workspace = workspaceReducer(workspace, action);
+    };
+
+    await act(async () => {
+      root.render(
+        <WorkspaceShell
+          workspace={workspace}
+          dispatch={dispatch}
+          onChooseWorkspace={vi.fn()}
+          canChooseWorkspace={true}
+          preferences={preferences}
+          onPreferencesChange={vi.fn()}
+          onActionsChange={vi.fn()}
+        />,
+      );
+      await flushPromises();
+    });
+
+    expect(host.querySelector("[data-testid='llm-wiki-page']")).toBeNull();
+
+    await act(async () => {
+      getButton("LLM Wiki").click();
+      await flushPromises();
+    });
+
+    expect(host.querySelector("[data-testid='llm-wiki-page']")).not.toBeNull();
+    expect(host.querySelector("[data-testid='editor']")).toBeNull();
+    expect(host.textContent).toContain("返回编辑器");
   });
 
   it("renders macos workspace chrome regions", async () => {
@@ -278,7 +324,33 @@ describe("WorkspaceShell", () => {
 
     expect(host.querySelector("[data-mdx-workspace-toolbar]")).not.toBeNull();
     expect(host.querySelector("[data-mdx-workspace-main-tabs]")).not.toBeNull();
-    expect(host.querySelector("[data-mdx-right-panel-tabs]")).not.toBeNull();
+    // No tab bar in the right panel any more: it holds the outline alone.
+    expect(host.querySelector("[data-mdx-right-panel-tabs]")).toBeNull();
+    expect(host.querySelector("[data-testid='outline']")).not.toBeNull();
+  });
+
+  it("lets the window be dragged by its toolbar", async () => {
+    // The title bar is an overlay with no native bar behind it, so the window
+    // can only be moved by an element carrying this attribute. Without it the
+    // application cannot be moved at all — a whole-window failure that no other
+    // assertion here would notice, since everything still renders and works.
+    await act(async () => {
+      root.render(
+        <WorkspaceShell
+          workspace={createWorkspaceState("/tmp/ws")}
+          dispatch={vi.fn()}
+          onChooseWorkspace={vi.fn()}
+          canChooseWorkspace={true}
+          preferences={preferences}
+          onPreferencesChange={vi.fn()}
+          onActionsChange={vi.fn()}
+        />,
+      );
+      await flushPromises();
+    });
+
+    const toolbar = host.querySelector("[data-mdx-workspace-toolbar]");
+    expect(toolbar?.hasAttribute("data-tauri-drag-region")).toBe(true);
   });
 
   function getButton(label: string) {
