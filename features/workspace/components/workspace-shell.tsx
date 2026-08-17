@@ -185,9 +185,6 @@ export function WorkspaceShell({
     useState<WorkspaceFileTreeActions | null>(null);
   const [pendingCliCommand, setPendingCliCommand] =
     useState<PendingCliEditorCommand | null>(null);
-  const [leftPanelMode, setLeftPanelMode] = useState<"tree" | "search">(
-    "tree",
-  );
   const [workspaceView, setWorkspaceView] = useState<"editor" | "memory">(
     "editor",
   );
@@ -2093,7 +2090,7 @@ export function WorkspaceShell({
     <div className="grid h-full min-h-0 grid-rows-[var(--mdx-window-toolbar-height)_minmax(0,1fr)] bg-[var(--mdx-content-bg)]">
       <header
         data-mdx-workspace-toolbar=""
-        className="flex min-w-0 items-center justify-between border-b border-base-content/10 bg-[var(--mdx-chrome-bg)] px-3"
+        className="flex min-w-0 items-center justify-between border-b border-[var(--mdx-separator)] bg-[var(--mdx-chrome-bg)] px-3"
       >
         <div
           data-tauri-drag-region
@@ -2179,14 +2176,12 @@ export function WorkspaceShell({
             rootPath={workspace.rootPath}
             fileTree={workspace.fileTree}
             treeFilterQuery={treeFilterQuery}
-            mode={leftPanelMode}
             searchState={fullTextSearchState}
             collapsed={leftPanel.isCollapsed}
             dispatch={dispatchAndMirror}
             preferences={preferences}
             activeTabPath={activeTab?.path ?? null}
             onActionsChange={setFileTreeActions}
-            onModeChange={setLeftPanelMode}
             onSearchQueryChange={(query) =>
               dispatchAndMirror({
                 type: "search/queryChanged",
@@ -2220,7 +2215,7 @@ export function WorkspaceShell({
             onCloseTab={closeTab}
           />
           {draftMessage ? (
-            <div className="border-b border-base-content/10 bg-[var(--mdx-chrome-bg)] px-3 py-1.5 text-xs text-base-content/65">
+            <div className="border-b border-[var(--mdx-separator)] bg-[var(--mdx-chrome-bg)] px-3 py-1.5 text-xs text-base-content/65">
               {draftMessage}
             </div>
           ) : null}
@@ -2411,25 +2406,34 @@ export function WorkspaceShell({
                   data-mdx-right-panel-tabs=""
                   role="tablist"
                   aria-label="Right panel"
-                  className="grid grid-cols-2 gap-1 border-b border-base-content/10 bg-[var(--mdx-chrome-bg)] p-1"
+                  className="border-b border-[var(--mdx-separator)] bg-[var(--mdx-chrome-bg)] px-2 py-1.5"
                 >
-                  {RIGHT_PANEL_TABS.map((tab) => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={rightPanelTab === tab.id}
-                      className={[
-                        "h-7 truncate rounded-md px-2 text-xs font-medium outline-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20",
-                        rightPanelTab === tab.id
-                          ? "bg-base-content/10 text-base-content shadow-[inset_0_0_0_0.5px_color-mix(in_srgb,var(--color-base-content)_8%,transparent)]"
-                          : "text-base-content/65 hover:bg-[var(--mdx-control-hover-bg)] hover:text-base-content",
-                      ].join(" ")}
-                      onClick={() => setRightPanelTab(tab.id)}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
+                  {/*
+                   * A segmented control, as macOS draws one: a single recessed
+                   * track with a raised slice on the current segment. The
+                   * previous shape gave each segment its own box and inset
+                   * outline, which reads as two buttons that happen to be
+                   * adjacent rather than as one control with two positions.
+                   */}
+                  <div className="flex gap-0.5 rounded-[7px] bg-base-content/6 p-0.5">
+                    {RIGHT_PANEL_TABS.map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={rightPanelTab === tab.id}
+                        className={[
+                          "h-6 flex-1 truncate rounded-[5px] px-2 text-xs outline-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25",
+                          rightPanelTab === tab.id
+                            ? "bg-base-100 text-base-content shadow-[0_0.5px_1.5px_color-mix(in_srgb,var(--color-base-content)_14%,transparent)]"
+                            : "text-base-content/55 hover:text-base-content/80",
+                        ].join(" ")}
+                        onClick={() => setRightPanelTab(tab.id)}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="min-h-0 flex-1 overflow-hidden [&>aside]:h-full [&>aside]:border-l-0 [&>aside]:border-t-0 [&>aside>div:last-child]:hidden">
                   {rightPanelTab === "outline" ? (

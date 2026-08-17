@@ -49,14 +49,12 @@ interface FileTreePanelProps {
     rootPath: string;
     fileTree: FileTreeNode[];
     treeFilterQuery: string;
-    mode: "tree" | "search";
     searchState: WorkspaceFullTextSearchState;
     collapsed: boolean;
     dispatch: (action: WorkspaceAction) => void;
     preferences: AppPreferences;
     activeTabPath: string | null;
     onActionsChange: (actions: WorkspaceFileTreeActions | null) => void;
-    onModeChange: (mode: "tree" | "search") => void;
     onSearchQueryChange: (query: string) => void;
     onSearchCaseSensitiveToggle: () => void;
     onSearchResultClick: (result: WorkspaceSearchResultItem) => void;
@@ -90,14 +88,12 @@ export function FileTreePanel({
     rootPath,
     fileTree,
     treeFilterQuery,
-    mode,
     searchState,
     collapsed,
     dispatch,
     preferences,
     activeTabPath,
     onActionsChange,
-    onModeChange,
     onSearchQueryChange,
     onSearchCaseSensitiveToggle,
     onSearchResultClick,
@@ -689,37 +685,24 @@ export function FileTreePanel({
     const emptyState = createFileTreeEmptyState({ searchActive });
 
     return (
-        <aside className="relative h-full min-h-0 overflow-hidden border-r border-base-300 bg-base-100">
+        <aside
+            // The sidebar sits on its own ground rather than the content's, so
+            // the boundary between them is a change of surface with a hairline
+            // on it — not a heavy rule doing the separating by itself.
+            className="relative h-full min-h-0 overflow-hidden border-r border-[var(--mdx-separator)] bg-[var(--mdx-sidebar-bg)]"
+        >
             <div className="flex h-full min-h-0 flex-col">
-                <div className="grid grid-cols-2 gap-1 border-b border-base-300 bg-base-200 p-1">
-                    <button
-                        type="button"
-                        className={[
-                            "h-7 text-xs outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                            mode === "tree"
-                                ? "bg-base-100 text-base-content shadow-sm"
-                                : "text-base-content/70 hover:text-base-content",
-                        ].join(" ")}
-                        onClick={() => onModeChange("tree")}
-                    >
-                        文件
-                    </button>
-                    <button
-                        type="button"
-                        className={[
-                            "h-7 text-xs outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                            mode === "search"
-                                ? "bg-base-100 text-base-content shadow-sm"
-                                : "text-base-content/70 hover:text-base-content",
-                        ].join(" ")}
-                        onClick={() => onModeChange("search")}
-                    >
-                        全文
-                    </button>
-                </div>
-
-                {mode === "tree" ? (
-                    <>
+                {/*
+                 * One search box, two kinds of answer.
+                 *
+                 * There used to be a "文件 / 全文" pair of tabs here, which made
+                 * the user choose which kind of search they wanted before they
+                 * had typed anything — and the answer to "which one is my file
+                 * in" is usually "I don't know yet". Now the same query filters
+                 * the tree and searches the content, and both sets of results
+                 * are shown under headings.
+                 */}
+                <>
                         <FileTreeToolbar
                             query={treeFilterQuery}
                             canMutateSelection={Boolean(actionTargetNode)}
@@ -731,12 +714,18 @@ export function FileTreePanel({
                             onDelete={() => void deleteSelection()}
                             onRefresh={() => void refreshTree()}
                             refreshing={refreshing}
-                            onQueryChange={(query) =>
+                            onQueryChange={(query) => {
+                                // Both searches, one keystroke. The content
+                                // search debounces and cancels its own
+                                // in-flight request, so driving it from every
+                                // keystroke costs nothing the tree filter does
+                                // not already cost.
                                 dispatch({
                                     type: "treeFilter/queryChanged",
                                     query,
-                                })
-                            }
+                                });
+                                onSearchQueryChange(query);
+                            }}
                         />
 
                         <div className="min-h-0 flex-1 overflow-auto py-1">
@@ -744,6 +733,16 @@ export function FileTreePanel({
                                 <div className="border-b border-base-300 px-3 py-2 text-xs text-warning">
                                     {message}
                                 </div>
+                            ) : null}
+                            {/*
+                             * The heading appears only while searching. With no
+                             * query this panel is the file tree, and a "文件"
+                             * heading over the whole tree labels nothing.
+                             */}
+                            {searchActive ? (
+                                <p className="px-3 pb-1 pt-1.5 text-[11px] text-base-content/45">
+                                    文件
+                                </p>
                             ) : null}
                             {visibleNodes.length === 0 ? (
                                 <div className="py-8">
@@ -809,20 +808,30 @@ export function FileTreePanel({
                                     />
                                 ))
                             )}
+                            {/*
+                             * Content matches follow the file matches in the
+                             * same scroller, rather than in a pane of their
+                             * own: they answer the same question the user
+                             * asked, so they belong in the same list of
+                             * answers.
+                             */}
+                            {searchActive ? (
+                                <>
+                                    <p className="border-t border-base-300/60 px-3 pb-1 pt-2.5 text-[11px] text-base-content/45">
+                                        内容
+                                    </p>
+                                    <WorkspaceSearchPanel
+                                        state={searchState}
+                                        preferences={preferences}
+                                        onCaseSensitiveToggle={
+                                            onSearchCaseSensitiveToggle
+                                        }
+                                        onResultClick={onSearchResultClick}
+                                    />
+                                </>
+                            ) : null}
                         </div>
                     </>
-                ) : (
-                    <div className="min-h-0 flex-1">
-                        <WorkspaceSearchPanel
-                            rootPath={rootPath}
-                            state={searchState}
-                            preferences={preferences}
-                            onQueryChange={onSearchQueryChange}
-                            onCaseSensitiveToggle={onSearchCaseSensitiveToggle}
-                            onResultClick={onSearchResultClick}
-                        />
-                    </div>
-                )}
             </div>
 
             <FileTreeContextMenu

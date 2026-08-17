@@ -46,6 +46,98 @@
     --depth: 0;
 }
 
+/*
+ * 纸感 — warm paper and ink, for long-form writing.
+ */
+@plugin "daisyui/theme" {
+    name: "paper";
+    --color-accent: #7a5c3a;
+    --color-accent-content: #ffffff;
+    --color-base-100: #fdfcfa;
+    --color-base-200: #f4f1ea;
+    --color-base-300: #e2ddd1;
+    --color-base-content: #2b2724;
+    --color-primary: #9a5b34;
+    --color-primary-content: #ffffff;
+    --color-neutral: #eae5db;
+    --color-neutral-content: #4a443c;
+    --color-info: #8a4b2a;
+    --color-info-content: #6d3a20;
+    --color-warning: #a86a1b;
+    --color-error: #b3402e;
+    --color-error-content: #ffffff;
+    --depth: 0;
+}
+
+/*
+ * 石墨 — cool neutral greys, accent held back, density first.
+ */
+@plugin "daisyui/theme" {
+    name: "graphite";
+    --color-accent: #3f4854;
+    --color-accent-content: #ffffff;
+    --color-base-100: #f8f9fa;
+    --color-base-200: #eceef1;
+    --color-base-300: #d8dce1;
+    --color-base-content: #23282e;
+    --color-primary: #46536b;
+    --color-primary-content: #ffffff;
+    --color-neutral: #e4e7eb;
+    --color-neutral-content: #3d444d;
+    --color-info: #2f6291;
+    --color-info-content: #244d73;
+    --color-warning: #8a5a12;
+    --color-error: #b23a3a;
+    --color-error-content: #ffffff;
+    --depth: 0;
+}
+
+/*
+ * 午夜 — near-black for dark rooms and OLED panels.
+ */
+@plugin "daisyui/theme" {
+    name: "midnight";
+    --color-accent: #d1d5db;
+    --color-accent-content: #000000;
+    --color-base-100: #0b0b0d;
+    --color-base-200: #000000;
+    --color-base-300: #212126;
+    --color-base-content: #f5f5f7;
+    --color-primary: #0a84ff;
+    --color-primary-content: #ffffff;
+    --color-neutral: #16161a;
+    --color-neutral-content: #c7c7cc;
+    --color-info: #5ac8fa;
+    --color-info-content: #9bdcff;
+    --color-warning: #ffd60a;
+    --color-error: #ff453a;
+    --color-error-content: #ffffff;
+    --depth: 0;
+}
+
+/*
+ * 墨蓝 — blue-black at low contrast, for reading without glare.
+ */
+@plugin "daisyui/theme" {
+    name: "ink";
+    --color-accent: #9fb3cc;
+    --color-accent-content: #10141c;
+    --color-base-100: #1a1f2b;
+    --color-base-200: #151a24;
+    --color-base-300: #2a3242;
+    --color-base-content: #c6d0de;
+    --color-primary: #6ba3d6;
+    --color-primary-content: #10141c;
+    --color-neutral: #222937;
+    --color-neutral-content: #9aa7b8;
+    --color-info: #7fb5e0;
+    --color-info-content: #a9cff0;
+    --color-warning: #d9a441;
+    --color-error: #d97066;
+    --color-error-content: #10141c;
+    --depth: 0;
+}
+
 :root {
     --mdx-ui-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
     --mdx-editor-font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", Arial, sans-serif;
@@ -53,12 +145,28 @@
     --mdx-window-toolbar-height: 52px;
     --mdx-editor-max-width: 52rem;
     --mdx-focus-ring: color-mix(in srgb, var(--color-primary) 24%, transparent);
-    --mdx-separator: color-mix(in srgb, var(--color-base-content) 12%, transparent);
-    --mdx-chrome-bg: color-mix(in srgb, var(--color-base-200) 92%, var(--color-base-100) 8%);
-    --mdx-sidebar-bg: color-mix(in srgb, var(--color-base-200) 96%, var(--color-base-100) 4%);
+    /*
+     * A hairline, not a rule. macOS separates panes with the faintest line that
+     * still reads as an edge, and leans on the difference in ground either side
+     * of it to do the rest of the work.
+     */
+    --mdx-separator: color-mix(in srgb, var(--color-base-content) 9%, transparent);
+    --mdx-chrome-bg: var(--color-base-200);
+    --mdx-sidebar-bg: var(--color-base-200);
     --mdx-content-bg: var(--color-base-100);
     --mdx-control-hover-bg: color-mix(in srgb, var(--color-base-content) 7%, transparent);
     --mdx-control-active-bg: color-mix(in srgb, var(--color-base-content) 11%, transparent);
+    /*
+     * Named rather than inlined because a theme may set them. Every theme
+     * property has to land on a variable something actually reads — a contract
+     * entry that maps nowhere is a promise the product does not keep.
+     */
+    --mdx-code-bg: color-mix(in srgb, var(--color-base-200) 86%, var(--color-base-100) 14%);
+    --mdx-selection-bg: color-mix(in srgb, var(--color-primary) 22%, transparent);
+}
+
+::selection {
+    background: var(--mdx-selection-bg);
 }
 
 * {
@@ -94,11 +202,20 @@ textarea {
     }
 }
 
-html[data-theme="light"] {
+/*
+ * Appearance is carried separately from theme identity.
+ *
+ * `data-theme` names the palette; `data-mdx-appearance` says whether that
+ * palette sits on a light or a dark ground. Scrollbars, form controls, the
+ * syntax-highlighting palette and the native window chrome all need the second
+ * question answered and do not care about the first — so adding a theme is
+ * adding a palette, not editing every rule that has ever asked "is it dark".
+ */
+html[data-mdx-appearance="light"] {
     color-scheme: light;
 }
 
-html[data-theme="dark"] {
+html[data-mdx-appearance="dark"] {
     color-scheme: dark;
 }
 
@@ -135,17 +252,27 @@ html[data-theme="dark"] {
      * this a long document is simply cut off at the bottom of the pane.
      */
     overflow-y: auto;
-    padding: 1.25rem 1.75rem 45vh;
 }
 
 /*
- * The trailing padding above is deliberate: it lets the last line be scrolled
- * up to a comfortable reading position rather than sitting against the bottom
- * edge of the window.
+ * The text column, rather than the window, decides the measure.
+ *
+ * A line that runs the full width of a maximised window is 150 characters or
+ * more, and the eye loses its place returning to the start of the next one.
+ * Capping it and centring what is left is the single largest difference
+ * between this reading like a document and like a terminal.
+ *
+ * The padding lives here rather than on the scrolling box so that clicking the
+ * margin still lands in the editor: this element is the editable one, and
+ * padding on its ancestor would be dead space that swallows the click. The
+ * generous bottom lets the last line be scrolled up to a comfortable position
+ * instead of sitting against the window's edge.
  */
-
 [data-mdx-markdown-editor] .ProseMirror {
+    margin-inline: auto;
+    max-width: var(--mdx-editor-max-width);
     min-height: 100%;
+    padding: 1.5rem 1.75rem 45vh;
 }
 
 [data-mdx-markdown-editor]:focus,
@@ -171,8 +298,35 @@ html[data-theme="dark"] {
     top: 0;
 }
 
+/*
+ * Find matches.
+ *
+ * The same two classes are used by both editing surfaces — ProseMirror
+ * decorations in the visual view, CodeMirror decorations in the source view —
+ * so a theme cannot end up styling one and forgetting the other.
+ *
+ * Derived from theme colors rather than fixed yellow, because a highlight that
+ * ignores the palette is the one element that looks wrong in every theme. The
+ * current match is the same hue at higher strength: the reader is looking for
+ * "which one am I on", and a different hue would read as a different kind of
+ * thing.
+ */
+.mdx-find-match {
+    background: color-mix(in srgb, var(--color-warning) 32%, transparent);
+    border-radius: 2px;
+}
+
+.mdx-find-match-active {
+    background: color-mix(in srgb, var(--color-warning) 68%, transparent);
+    /* Outlined as well as filled, so the current match is still identifiable
+     * where the fill alone is ambiguous — a run of adjacent matches, or a theme
+     * whose warning color sits close to its background. */
+    box-shadow: 0 0 0 1px
+        color-mix(in srgb, var(--color-warning) 85%, var(--color-base-content));
+}
+
 [data-mdx-code-block] {
-    background: color-mix(in srgb, var(--color-base-200) 86%, var(--color-base-100) 14%);
+    background: var(--mdx-code-bg);
     border: 1px solid var(--mdx-separator);
     border-radius: 7px;
     font-family: var(--mdx-mono-font);
@@ -643,7 +797,7 @@ html[data-theme="dark"] {
 }
 
 [data-mdx-markdown-editor] th {
-    background: color-mix(in srgb, var(--color-base-200) 86%, var(--color-base-100) 14%);
+    background: var(--mdx-code-bg);
     font-weight: 600;
 }
 
@@ -662,7 +816,18 @@ html[data-theme="dark"] {
 }
 
 [data-mdx-markdown-editor] ul ul ul {
-    list-style: square;
+    /*
+     * The cycle returns to `disc` rather than reaching for `square`, which is
+     * the heaviest mark in the set and would land on the *least* important
+     * level. Depth is already carried by indentation; a marker only has to
+     * differ from the one directly above it.
+     */
+    list-style: disc;
+}
+
+/* The markers carry no meaning of their own, so they recede. */
+[data-mdx-markdown-editor] li::marker {
+    color: color-mix(in srgb, var(--color-base-content) 45%, transparent);
 }
 
 [data-mdx-markdown-editor] ol {

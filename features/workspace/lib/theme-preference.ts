@@ -2,39 +2,61 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 
-export type ThemePreference = "system" | "light" | "dark";
-export type ResolvedTheme = "light" | "dark";
+import {
+    SYSTEM_THEME_IDS,
+    findTheme,
+    type ThemeAppearance,
+} from "./themes";
+
+/**
+ * `"system"`, or the id of a theme.
+ *
+ * `"light"` and `"dark"` remain valid values because they are theme ids, which
+ * is what keeps every preference stored by an earlier version meaningful.
+ */
+export type ThemePreference = string;
+/** The id of the theme actually in effect. */
+export type ResolvedTheme = string;
 
 const STORAGE_KEY = "themePreference";
 const LEGACY_STORAGE_KEY = "theme";
 const CHANGE_EVENT = "mdx-theme-change";
 
+export const SYSTEM_THEME_PREFERENCE = "system";
+
 export function resolveThemePreference(
     preference: string | null | undefined,
 ): ThemePreference {
-    return preference === "light" ||
-        preference === "dark" ||
-        preference === "system"
+    if (preference === SYSTEM_THEME_PREFERENCE) return SYSTEM_THEME_PREFERENCE;
+    // A theme that no longer exists — one the user imported and then removed,
+    // or one a later version dropped — must not leave the application with no
+    // palette at all, so following the system is what it falls back to.
+    return preference && findTheme(preference)
         ? preference
-        : "system";
+        : SYSTEM_THEME_PREFERENCE;
 }
 
 export function themeFromPreference(
     preference: ThemePreference,
     osPrefersDark: boolean,
 ): ResolvedTheme {
-    if (preference === "dark" || preference === "light") {
+    if (preference !== SYSTEM_THEME_PREFERENCE && findTheme(preference)) {
         return preference;
     }
 
-    return osPrefersDark ? "dark" : "light";
+    return SYSTEM_THEME_IDS[osPrefersDark ? "dark" : "light"];
+}
+
+/** Whether the theme in effect sits on a light or a dark ground. */
+export function appearanceOfTheme(themeId: string): ThemeAppearance {
+    return findTheme(themeId)?.appearance ?? "light";
 }
 
 export function useThemePreference() {
     const preference = useSyncExternalStore<ThemePreference>(
         subscribeToThemePreference,
         readThemePreference,
-        () => "system",
+        () => SYSTEM_THEME_PREFERENCE,
     );
     const resolvedTheme = themeFromPreference(preference, osPrefersDark());
 
@@ -53,7 +75,7 @@ export function useThemePreference() {
 
 export function readThemePreference(): ThemePreference {
     if (typeof localStorage === "undefined") {
-        return "system";
+        return SYSTEM_THEME_PREFERENCE;
     }
 
     try {
@@ -65,7 +87,7 @@ export function readThemePreference(): ThemePreference {
 
         return resolveThemePreference(localStorage.getItem(LEGACY_STORAGE_KEY));
     } catch {
-        return "system";
+        return SYSTEM_THEME_PREFERENCE;
     }
 }
 
@@ -89,7 +111,7 @@ export function applyThemePreference(preference: ThemePreference) {
 }
 
 function subscribeToThemePreference(callback: () => void) {
-    if (typeof window === "undefined") {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
         return () => {};
     }
 
@@ -100,8 +122,8 @@ function subscribeToThemePreference(callback: () => void) {
         }
     };
     const handleSystemThemeChange = () => {
-        if (readThemePreference() === "system") {
-            applyThemePreference("system");
+        if (readThemePreference() === SYSTEM_THEME_PREFERENCE) {
+            applyThemePreference(SYSTEM_THEME_PREFERENCE);
             callback();
         }
     };
@@ -118,32 +140,41 @@ function subscribeToThemePreference(callback: () => void) {
 }
 
 function osPrefersDark() {
+    // `matchMedia` is checked rather than assumed: not every environment this
+    // runs in provides it, and an environment that cannot report the OS
+    // appearance should resolve to the light default rather than throw on a
+    // path that is only trying to pick a colour.
     return (
         typeof window !== "undefined" &&
+        typeof window.matchMedia === "function" &&
         window.matchMedia("(prefers-color-scheme: dark)").matches
     );
 }
 
-async function syncNativeTheme(theme: ResolvedTheme | null) {
+async function syncNativeTheme(appearance: ThemeAppearance | null) {
     if (!isTauriRuntime()) {
         return;
     }
 
     const { setTheme } = await import("@tauri-apps/api/app");
-    await setTheme(theme);
+    // macOS draws the title bar and native menus itself and knows nothing of
+    // our palettes, so it is told the appearance rather than the theme.
+    await setTheme(appearance);
 }
 
 async function syncNativeThemePreference(
     preference: ThemePreference,
     resolvedTheme: ResolvedTheme,
 ) {
-    if (preference !== "system") {
-        await syncNativeTheme(resolvedTheme);
+    if (preference !== SYSTEM_THEME_PREFERENCE) {
+        await syncNativeTheme(appearanceOfTheme(resolvedTheme));
         return;
     }
 
     await syncNativeTheme(null);
-    applyResolvedTheme(themeFromPreference("system", osPrefersDark()));
+    applyResolvedTheme(
+        themeFromPreference(SYSTEM_THEME_PREFERENCE, osPrefersDark()),
+    );
 }
 
 function applyResolvedTheme(theme: ResolvedTheme) {
@@ -151,8 +182,13 @@ function applyResolvedTheme(theme: ResolvedTheme) {
         return;
     }
 
+    // Two attributes, because two questions are being answered: which palette
+    // to paint with, and whether that palette is light or dark. Everything that
+    // only needs the second — scrollbars, form controls, syntax colors — reads
+    // the appearance and stays correct as themes are added.
     document.documentElement.dataset.theme = theme;
-    document.documentElement.style.colorScheme = theme;
+    document.documentElement.dataset.mdxAppearance = appearanceOfTheme(theme);
+    document.documentElement.style.colorScheme = appearanceOfTheme(theme);
 }
 
 function isTauriRuntime() {

@@ -65,6 +65,7 @@ mod models;
 mod path_guard;
 mod search_index;
 mod state_store;
+mod user_themes;
 mod window_appearance;
 mod window_sessions;
 mod workspace_fs;
@@ -422,6 +423,8 @@ mod llm_wiki_tests;
 mod memory_tests;
 #[cfg(test)]
 mod state_store_tests;
+#[cfg(test)]
+mod user_themes_tests;
 #[cfg(test)]
 mod window_sessions_tests;
 #[cfg(test)]
@@ -1051,6 +1054,7 @@ pub fn run() {
             cli_server::cli_update_tab_state,
             state_store::load_app_state,
             state_store::save_app_state,
+            user_themes::list_user_themes,
             assets::save_image_asset,
             assets::save_document_image_asset,
             assets::load_image_asset,

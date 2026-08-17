@@ -29,6 +29,14 @@ import type { FindReplaceState } from "../lib/find-bar-state";
  */
 export interface AdapterFindHost {
     find(request: EditorFindRequest): EditorFindResult;
+    /**
+     * Paints every match, marking one as current.
+     *
+     * Distinct from `reveal`, which moves the caret to one of them. Counting
+     * matches the user cannot see is most of a find feature and none of the
+     * point, so the list is painted whenever it changes.
+     */
+    highlight(ranges: EditorSourceSelection[], activeIndex: number | null): void;
     /** Selects and scrolls to a match. Never moves keyboard focus. */
     reveal(range: EditorSourceSelection): void;
     /** Replaces the source a match covers, reporting whether it applied. */
@@ -104,6 +112,26 @@ export function useAdapterFindReplace({
         state.currentMatchIndex < matchCount ? state.currentMatchIndex : 0;
     const activeMatch = matches[currentMatchIndex] ?? null;
     const countLabel = findBarCountLabel(currentMatchIndex, matchCount);
+
+    // Painting follows the match list for the same reason revealing follows the
+    // active match: it is a property of what find currently knows, not of the
+    // gesture that changed it. Closing the bar clears the highlights, which is
+    // why this runs on close too rather than bailing out early.
+    useEffect(() => {
+        host.highlight(
+            state.isOpen ? matches.map((match) => match.range) : [],
+            state.isOpen ? currentMatchIndex : null,
+        );
+    }, [currentMatchIndex, host, matches, state.isOpen]);
+
+    // The highlights belong to the mounted surface, so they go when it does. A
+    // surface built after this one starts with none, and a bar left open across
+    // a mode switch repaints through the effect above.
+    useEffect(() => {
+        return () => {
+            host.highlight([], null);
+        };
+    }, [host]);
 
     // Revealing is what "the current match" means to the user, so it follows the
     // match rather than the gesture that changed it: typing a query, stepping to

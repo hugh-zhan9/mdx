@@ -43,6 +43,11 @@ import type {
     EditorImageInsertion,
 } from "../adapter/types";
 import { createBaseMilkdownPlugins } from "./base-plugins";
+import {
+    createFindHighlightPlugin,
+    findHighlightKey,
+    type FindHighlightRange,
+} from "./find-highlight";
 
 /**
  * How many emitted document states stay mappable for pinned commands.
@@ -114,6 +119,16 @@ export interface MilkdownEditorHost {
      * bottom edge of the window reads as having missed.
      */
     revealRange(range: DocumentSelectionRange): boolean;
+    /**
+     * Paints the find matches, marking one of them as current.
+     *
+     * Purely visual: the highlights are decorations, so they never enter the
+     * document, the Markdown, or the clipboard. An empty list clears them.
+     */
+    setFindHighlights(
+        ranges: DocumentSelectionRange[],
+        activeIndex: number | null,
+    ): void;
     /**
      * Replaces the whole document for an explicit external replace, reporting
      * whether it applied. History is rebuilt, so the replaced content cannot be
@@ -343,6 +358,11 @@ export async function createMilkdownEditorHost(
         scheduleChangeEmission(emitPendingChange);
     }
 
+    // Draws the find matches. It holds no document state of its own — the match
+    // list arrives as transaction metadata — so it cannot change what the
+    // document is, only what it looks like.
+    const findHighlighter = $prose(() => createFindHighlightPlugin());
+
     // The observer runs from the plugin's view, not from `state.apply`. By the
     // time `update` fires the new state is installed, so reading the selection
     // here reports where the caret actually is rather than where it was.
@@ -427,7 +447,8 @@ export async function createMilkdownEditorHost(
         })
         .use(plugins)
         .use(changeObserver)
-        .use(transactionObserver);
+        .use(transactionObserver)
+        .use(findHighlighter);
 
     await editor.create();
 
@@ -659,6 +680,36 @@ export async function createMilkdownEditorHost(
 
         revealRange(range) {
             return applySelection(range, "bring-into-view");
+        },
+
+        setFindHighlights(ranges, activeIndex) {
+            // Not flushed first, unlike a selection change: this only paints,
+            // so a pending keystroke is neither read nor disturbed by it. The
+            // match list is about to be recomputed against that keystroke
+            // anyway, which is what replaces these highlights.
+            const map = currentOffsetMap();
+            if (!map) return;
+            const mapped: FindHighlightRange[] = [];
+            for (const range of ranges) {
+                const fromOffset = toDocumentOffset(range.anchor);
+                const toOffset = toDocumentOffset(range.head);
+                if (fromOffset === null || toOffset === null) continue;
+                const from = map.positionForSourceOffset(fromOffset);
+                const to = map.positionForSourceOffset(toOffset);
+                // A match that has no faithful position is dropped silently:
+                // this is decoration, and reporting a diagnostic per unmappable
+                // match would turn a cosmetic gap into a stream of noise.
+                if (from === null || to === null) continue;
+                mapped.push({ from: Math.min(from, to), to: Math.max(from, to) });
+            }
+            withView((view) => {
+                view.dispatch(
+                    view.state.tr.setMeta(findHighlightKey, {
+                        ranges: mapped,
+                        activeIndex,
+                    }),
+                );
+            });
         },
 
         replaceMarkdown(markdown) {

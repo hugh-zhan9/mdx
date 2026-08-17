@@ -1,5 +1,7 @@
 /*
- * Prism syntax-highlighting themes scoped to daisyui's `data-theme` attribute.
+ * Prism syntax-highlighting themes scoped to the root `data-mdx-appearance`
+ * attribute, so a new palette inherits the right token colors by declaring
+ * whether it is light or dark rather than by being added here.
  * prism.js token colors depend on the active UI theme, so we ship both
  * bundled themes here and let the cascade pick the right one via nesting.
  *
@@ -8,7 +10,7 @@
  * `--mdx-pre-bg` so they stay aligned with daisyui tokens.
  */
 
-[data-theme="light"] {
+[data-mdx-appearance="light"] {
     code[class*="language-"],
     pre[class*="language-"] {
         color: black;
@@ -139,7 +141,7 @@
     }
 }
 
-[data-theme="dark"] {
+[data-mdx-appearance="dark"] {
     code[class*="language-"],
     pre[class*="language-"] {
         color: #ccc;

@@ -8,19 +8,15 @@ import type {
 } from "../lib/types";
 
 interface WorkspaceSearchPanelProps {
-    rootPath: string;
     state: WorkspaceFullTextSearchState;
     preferences: AppPreferences;
-    onQueryChange: (query: string) => void;
     onCaseSensitiveToggle: () => void;
     onResultClick: (result: WorkspaceSearchResultItem) => void;
 }
 
 export function WorkspaceSearchPanel({
-    rootPath,
     state,
     preferences,
-    onQueryChange,
     onCaseSensitiveToggle,
     onResultClick,
 }: WorkspaceSearchPanelProps) {
@@ -29,54 +25,44 @@ export function WorkspaceSearchPanel({
         state.status === "complete" ? formatSearchSummary(state.summary) : null;
 
     return (
-        <div className="flex h-full min-h-0 flex-col">
-            <div className="border-b border-base-300 bg-base-100 px-2 py-2">
-                <input
-                    type="search"
-                    className="h-8 w-full border border-base-300 bg-base-100 px-2 text-xs text-base-content outline-none transition-colors placeholder:text-base-content/65 focus:border-primary focus:outline focus:outline-2 focus:outline-offset-1 focus:outline-primary"
-                    value={state.query}
-                    onChange={(event) => onQueryChange(event.target.value)}
-                    placeholder="搜索 Markdown 内容"
-                    aria-label="搜索工作区 Markdown 内容"
-                />
-                <div className="mt-2 flex items-center justify-between gap-2">
-                    <button
-                        type="button"
-                        aria-pressed={state.caseSensitive}
-                        className={[
-                            "h-7 shrink-0 border px-2 text-xs outline-none transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary",
-                            state.caseSensitive
-                                ? "border-primary bg-primary/10 text-primary"
-                                : "border-base-300 text-base-content/75 hover:bg-base-200 hover:text-base-content",
-                        ].join(" ")}
-                        onClick={onCaseSensitiveToggle}
-                    >
-                        区分大小写
-                    </button>
-                    <div className="min-w-0 text-right text-[11px] leading-relaxed text-base-content/55 break-words">
-                        {`当前工作区：${rootPath}`}
-                    </div>
-                </div>
+        <div className="flex min-h-0 flex-col">
+            {/*
+             * No query field of its own: content search and the file filter are
+             * driven by the one search box above the tree. Two boxes asking for
+             * a search in the same panel made the user decide which kind of
+             * search they wanted before they had typed anything.
+             */}
+            <div className="flex items-center justify-between gap-2 px-3 py-1.5 text-[11px] text-base-content/55">
+                <span className="min-w-0 break-words">
+                    {state.status === "typing"
+                        ? "停止输入后开始搜索…"
+                        : state.status === "searching"
+                          ? "正在搜索…"
+                          : state.status === "error"
+                            ? (state.error ?? "搜索失败。")
+                            : state.status === "complete"
+                              ? summaryLabel
+                              : `最多显示 ${preferences.searchMaxResults} 条结果`}
+                </span>
+                <button
+                    type="button"
+                    aria-pressed={state.caseSensitive}
+                    title="区分大小写"
+                    className={[
+                        "h-5 shrink-0 rounded-[5px] px-1.5 text-[11px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary/25",
+                        state.caseSensitive
+                            ? "bg-primary/12 text-primary"
+                            : "text-base-content/55 hover:bg-base-content/6 hover:text-base-content/80",
+                    ].join(" ")}
+                    onClick={onCaseSensitiveToggle}
+                >
+                    Aa
+                </button>
             </div>
 
-            <div className="border-b border-base-300 bg-base-200/40 px-3 py-2 text-xs text-base-content/70 break-words">
-                {state.status === "idle"
-                    ? `输入后自动搜索，最多显示 ${preferences.searchMaxResults} 条结果。`
-                    : state.status === "typing"
-                      ? "停止输入后开始搜索..."
-                      : state.status === "searching"
-                        ? "正在搜索..."
-                        : state.status === "error"
-                          ? state.error ?? "搜索失败。"
-                          : summaryLabel}
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-auto">
-                {!hasQuery ? (
-                    <div className="px-3 py-4 text-sm leading-relaxed text-base-content/60">
-                        {`支持搜索 .md 和 .markdown，最多显示 ${preferences.searchMaxResults} 条结果，每个文件最多 ${preferences.searchMaxMatchesPerFile} 条匹配。`}
-                    </div>
-                ) : state.status === "complete" && state.results.length === 0 ? (
+            <div className="min-h-0 flex-1">
+                {!hasQuery ? null : state.status === "complete" &&
+                  state.results.length === 0 ? (
                     <div className="px-3 py-4 text-sm leading-relaxed text-base-content/60">
                         未找到匹配项。
                     </div>

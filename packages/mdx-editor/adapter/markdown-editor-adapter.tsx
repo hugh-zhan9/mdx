@@ -737,6 +737,13 @@ export const MarkdownEditorAdapter = forwardRef<
                     matches[0];
                 return { matches, activeMatchId: active.id };
             },
+
+            highlightMatches(
+                ranges: DocumentSelectionRange[],
+                activeIndex: number | null,
+            ): void {
+                hostRef.current?.setFindHighlights(ranges, activeIndex);
+            },
         }),
         [emitDiagnostic, guard, runSwitch],
     );

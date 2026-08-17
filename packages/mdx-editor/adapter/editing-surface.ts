@@ -44,6 +44,18 @@ export interface EditingSurface {
      * barely visible".
      */
     revealRange(range: DocumentSelectionRange): boolean;
+    /**
+     * Paints the find matches so every one of them is visible, marking one as
+     * current.
+     *
+     * Decoration only: the highlights never enter the document, the Markdown or
+     * the clipboard, and a document with them serializes identically to the same
+     * document without them. An empty list clears them.
+     */
+    setFindHighlights(
+        ranges: DocumentSelectionRange[],
+        activeIndex: number | null,
+    ): void;
     replaceMarkdown(markdown: string): boolean;
     setEditable(editable: boolean): void;
     focus(): void;
@@ -118,6 +130,8 @@ function wrapMilkdown(host: MilkdownEditorHost): EditingSurface {
         getSelection: () => host.getSelection(),
         setSelection: (range) => host.setSelection(range),
         revealRange: (range) => host.revealRange(range),
+        setFindHighlights: (ranges, activeIndex) =>
+            host.setFindHighlights(ranges, activeIndex),
         replaceMarkdown: (markdown) => host.replaceMarkdown(markdown),
         setEditable: (editable) => host.setEditable(editable),
         focus: () => host.focus(),
@@ -138,6 +152,8 @@ function wrapSource(host: SourceEditorHost): EditingSurface {
         getSelection: () => host.getSelection(),
         setSelection: (range) => host.setSelection(range),
         revealRange: (range) => host.revealRange(range),
+        setFindHighlights: (ranges, activeIndex) =>
+            host.setFindHighlights(ranges, activeIndex),
         replaceMarkdown: (markdown) => host.replaceMarkdown(markdown),
         setEditable: (editable) => host.setEditable(editable),
         focus: () => host.focus(),

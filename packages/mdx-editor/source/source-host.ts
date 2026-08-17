@@ -2,15 +2,11 @@ import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { ChangeSet, Compartment, EditorState, MapMode } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
-
-/**
- * How far below the top of the viewport a revealed line comes to rest.
- *
- * Enough to leave the preceding lines visible, so a jump reads as arriving
- * somewhere rather than as the document having moved.
- */
-const REVEAL_TOP_MARGIN_PX = 96;
-
+import {
+    findHighlightExtension,
+    setSourceFindHighlights,
+    type SourceFindHighlight,
+} from "./find-highlight";
 import type { MarkdownAnalyzer } from "../milkdown/markdown-analyzer";
 import {
     MIXED_LINE_ENDINGS_DIAGNOSTIC,
@@ -31,6 +27,14 @@ import type {
     EditorAdapterDiagnostic,
     EditorFindRequest,
 } from "../adapter/types";
+
+/**
+ * How far below the top of the viewport a revealed line comes to rest.
+ *
+ * Enough to leave the preceding lines visible, so a jump reads as arriving
+ * somewhere rather than as the document having moved.
+ */
+const REVEAL_TOP_MARGIN_PX = 96;
 
 export interface SourceEditorHostOptions {
     root: HTMLElement;
@@ -76,6 +80,11 @@ export interface SourceEditorHost {
     setSelection(range: DocumentSelectionRange): boolean;
     /** Applies a selection and scrolls it to the top of the viewport. */
     revealRange(range: DocumentSelectionRange): boolean;
+    /** Paints the find matches. Decoration only; never enters the text. */
+    setFindHighlights(
+        ranges: DocumentSelectionRange[],
+        activeIndex: number | null,
+    ): void;
     /** Replaces the whole document for an explicit external replace. */
     replaceMarkdown(markdown: string): boolean;
     setEditable(editable: boolean): void;
@@ -280,6 +289,7 @@ export function createSourceEditorHost(
                 history(),
                 keymap.of([...defaultKeymap, ...historyKeymap]),
                 markdown(),
+                findHighlightExtension(),
                 EditorView.lineWrapping,
                 editableCompartment.of(EditorView.editable.of(editable)),
                 EditorView.updateListener.of((update) => {
@@ -357,6 +367,22 @@ export function createSourceEditorHost(
 
         revealRange(range) {
             return applySelection(range, true);
+        },
+
+        setFindHighlights(ranges, activeIndex) {
+            if (destroyed) return;
+            const highlights: SourceFindHighlight[] = [];
+            ranges.forEach((range, index) => {
+                const from = toDocumentOffset(range.anchor);
+                const to = toDocumentOffset(range.head);
+                if (from === null || to === null) return;
+                highlights.push({
+                    from: Math.min(from, to),
+                    to: Math.max(from, to),
+                    active: index === activeIndex,
+                });
+            });
+            view.dispatch({ effects: setSourceFindHighlights.of(highlights) });
         },
 
         replaceMarkdown(markdown) {

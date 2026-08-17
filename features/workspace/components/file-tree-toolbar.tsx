@@ -34,7 +34,9 @@ export function FileTreeToolbar({
     onQueryChange,
 }: FileTreeToolbarProps) {
     return (
-        <div className="border-b border-base-300 bg-base-100 px-2 py-2">
+        // Transparent, so it sits on the sidebar's ground rather than cutting a
+        // lighter strip across the top of it.
+        <div className="border-b border-[var(--mdx-separator)] px-2 py-2">
             <div className="mb-2 flex min-w-0 items-center gap-1">
                 <ToolbarButton
                     label="新建文件夹"
@@ -63,11 +65,19 @@ export function FileTreeToolbar({
                     icon={<Trash2 />}
                     onClick={onDelete}
                     disabled={!canMutateSelection}
-                    className="text-error hover:bg-error/10 hover:text-error"
+                    // Red on hover, neutral at rest: a toolbar that is red
+                    // before anything is even selected is warning about
+                    // nothing, and it is the loudest thing on screen.
+                    className="hover:bg-error/10 hover:text-error"
                 />
             </div>
 
-            <label className="flex min-w-0 items-center gap-2 border border-base-300 bg-base-100 px-2">
+            {/*
+             * A filled, borderless field, as macOS draws a search box. An
+             * outlined white box on a tinted sidebar reads as a form control
+             * borrowed from a web page.
+             */}
+            <label className="flex min-w-0 items-center gap-2 rounded-[7px] bg-base-content/6 px-2.5 transition-colors focus-within:bg-base-content/9 focus-within:ring-2 focus-within:ring-primary/25">
                 <Search
                     aria-hidden="true"
                     className="h-4 w-4 shrink-0 text-base-content/55"

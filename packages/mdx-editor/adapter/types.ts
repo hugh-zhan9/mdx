@@ -226,6 +226,17 @@ export interface MarkdownEditorAdapterHandle {
     /** The last stable visual state, or null if no visual surface ever built. */
     getLastStableVisual(): LastStableVisual | null;
     find(request: EditorFindRequest): EditorFindResult;
+    /**
+     * Paints the find matches, marking one as current.
+     *
+     * Separate from `find` because the two answer different questions: `find`
+     * says where the matches are, this says which of them the user can see. A
+     * caller that only counts matches never has to paint them.
+     */
+    highlightMatches(
+        ranges: DocumentSelectionRange[],
+        activeIndex: number | null,
+    ): void;
 }
 
 export interface MarkdownEditorAdapterProps {

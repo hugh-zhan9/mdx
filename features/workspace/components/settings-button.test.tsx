@@ -79,7 +79,11 @@ vi.mock("@/features/memory/lib/memory-client", () => ({
   })),
 }));
 
-vi.mock("../lib/theme-preference", () => ({
+vi.mock("../lib/theme-preference", async (importOriginal) => ({
+  // Only the hook is replaced: the rest of the module is plain data and pure
+  // functions the theme list reads, and a stub of those would be a second
+  // definition of what a preference means.
+  ...(await importOriginal<typeof import("../lib/theme-preference")>()),
   useThemePreference: () => ({
     preference: "system",
     resolvedTheme: "light",

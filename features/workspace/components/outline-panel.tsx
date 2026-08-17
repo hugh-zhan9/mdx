@@ -22,7 +22,7 @@ export function OutlinePanel({
     }
 
     return (
-        <aside className="relative h-full min-h-0 overflow-hidden border-l border-base-content/10 bg-[var(--mdx-sidebar-bg)]">
+        <aside className="relative h-full min-h-0 overflow-hidden border-l border-[var(--mdx-separator)] bg-[var(--mdx-sidebar-bg)]">
             <div className="h-full overflow-auto py-2 text-sm">
                 {headings.length === 0 ? (
                     <div className="flex min-h-36 items-center">

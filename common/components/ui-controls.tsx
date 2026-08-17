@@ -32,8 +32,12 @@ export function IconButton({
     title,
     ...props
 }: IconButtonProps) {
+    // A destructive action rests in the same neutral tone as its neighbours and
+    // turns red under the pointer. Colouring it red at rest makes the toolbar
+    // shout a warning nobody asked for, and it is the single most eye-catching
+    // thing in a window whose subject is the document.
     const toneClass = destructive
-        ? "text-error hover:bg-error/10 hover:text-error"
+        ? "text-base-content/70 hover:bg-error/10 hover:text-error active:bg-error/15"
         : active
           ? "border-base-content/10 bg-base-content/10 text-base-content shadow-[inset_0_0_0_0.5px_color-mix(in_srgb,var(--color-base-content)_10%,transparent)]"
           : "text-base-content/70 hover:bg-[var(--mdx-control-hover-bg)] hover:text-base-content active:bg-[var(--mdx-control-active-bg)]";

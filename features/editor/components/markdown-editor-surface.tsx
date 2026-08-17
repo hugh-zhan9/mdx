@@ -416,6 +416,9 @@ export const MarkdownEditorSurface = forwardRef<
                     matches: [],
                     activeMatchId: null,
                 },
+            highlight: (ranges, activeIndex) => {
+                adapterRef.current?.highlightMatches(ranges, activeIndex);
+            },
             reveal: (range) => {
                 void revealRange(range);
             },
