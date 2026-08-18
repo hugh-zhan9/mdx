@@ -15,10 +15,12 @@ import {
     MDX_SEARCH_ATTRIBUTE,
     MDX_SEARCH_EXCLUDE,
     MERMAID_DOM_MARKER,
+    MERMAID_EDITING_MARKER,
     MERMAID_ERROR_MARKER,
     MERMAID_NODE_NAME,
     MERMAID_PREVIEW_MARKER,
     MERMAID_RENDER_DELAY_MS,
+    MERMAID_RENDERED_MARKER,
     MERMAID_SOURCE_MARKER,
     mermaidPlugins,
     mermaidRendererCtx,
@@ -526,5 +528,163 @@ describe("mermaid default renderer", () => {
         expect(host.replaceSourceRange({ anchor: 0, head: 0 }, "X")).toBe(true);
         host.flush();
         expect(host.getMarkdown()).toBe(`X${ANCHOR}${GRAPH}`);
+    });
+});
+
+describe("a drawn diagram standing in for its source", () => {
+    /** Where the caret is, as a document position, or null. */
+    function caretIn(view: EditorView): number | null {
+        return view.state.selection.empty ? view.state.selection.from : null;
+    }
+
+    function block(root: ParentNode): HTMLElement {
+        return requireElement<HTMLElement>(root, `[${MERMAID_DOM_MARKER}]`);
+    }
+
+    async function mountDrawn(markdown = GRAPH) {
+        const mountedEditor = await mount(markdown, succeedingRenderer());
+        await waitFor(
+            () => block(mountedEditor.root).hasAttribute(MERMAID_RENDERED_MARKER),
+            "the diagram to be drawn",
+        );
+
+        return mountedEditor;
+    }
+
+    it("says so on the block once the diagram is drawn", async () => {
+        // The mark is what a stylesheet reads to tell a diagram that speaks for
+        // its source from a fence that still has to speak for itself.
+        const { root } = await mountDrawn();
+
+        expect(block(root).hasAttribute(MERMAID_RENDERED_MARKER)).toBe(true);
+        // The source is still in the document, and still the only content: what
+        // is put away is only put away on screen.
+        expect(
+            requireElement(root, `[${MERMAID_SOURCE_MARKER}]`).textContent,
+        ).toContain("graph TD");
+    });
+
+    it("says nothing of the kind while the diagram is only text", async () => {
+        const { root } = await mount(GRAPH);
+
+        await tick(MERMAID_RENDER_DELAY_MS * 3);
+
+        expect(block(root).hasAttribute(MERMAID_RENDERED_MARKER)).toBe(false);
+    });
+
+    it("takes the mark off a diagram that stops drawing", async () => {
+        // A fence whose diagram cannot be drawn is the only thing left that can
+        // say what is wrong, so it must never be the thing that is hidden.
+        let ok = true;
+        const { root, view } = await mount(GRAPH, async () =>
+            ok ? { ok: true, svg: SVG } : { ok: false, error: "broken" },
+        );
+        await waitFor(
+            () => block(root).hasAttribute(MERMAID_RENDERED_MARKER),
+            "the first draw",
+        );
+
+        ok = false;
+        rewriteSource(view, "graph TD\n  A[[[");
+        await waitFor(
+            () => !block(root).hasAttribute(MERMAID_RENDERED_MARKER),
+            "the mark to come off",
+        );
+
+        expect(
+            requireElement<HTMLElement>(root, `[${MERMAID_ERROR_MARKER}]`).hidden,
+        ).toBe(false);
+    });
+
+    it("marks the block being edited while the caret is inside it", async () => {
+        // Behind a paragraph, because a caret opens at the start of the document
+        // — and a document that begins with a diagram opens with the caret in it,
+        // which is a block genuinely being edited.
+        const { root, view } = await mountDrawn(`${ANCHOR}${GRAPH}`);
+
+        expect(block(root).hasAttribute(MERMAID_EDITING_MARKER)).toBe(false);
+
+        rewriteSource(view, "graph TD\n  A[Start]");
+
+        expect(block(root).hasAttribute(MERMAID_EDITING_MARKER)).toBe(true);
+    });
+
+    it("stops marking it once the caret leaves", async () => {
+        const { root, view } = await mountDrawn(`${GRAPH}\nAfter.\n`);
+        rewriteSource(view, "graph TD\n  A[Start]");
+        expect(block(root).hasAttribute(MERMAID_EDITING_MARKER)).toBe(true);
+
+        // The last paragraph, which is outside the diagram.
+        const end = view.state.doc.content.size - 2;
+        view.dispatch(
+            view.state.tr.setSelection(
+                TextSelection.create(view.state.doc, end),
+            ),
+        );
+
+        expect(block(root).hasAttribute(MERMAID_EDITING_MARKER)).toBe(false);
+    });
+
+    it("puts the caret in the source when the diagram is pressed", async () => {
+        // With the source out of sight this is the only way back into it, so it
+        // is load-bearing rather than a convenience.
+        const { root, view } = await mountDrawn();
+        const preview = requireElement(root, `[${MERMAID_PREVIEW_MARKER}]`);
+
+        const press = new MouseEvent("mousedown", {
+            bubbles: true,
+            cancelable: true,
+            button: 0,
+        });
+        preview.dispatchEvent(press);
+
+        // Answered here, not left to the editor, which would have selected the
+        // whole block instead of letting its text be edited.
+        expect(press.defaultPrevented).toBe(true);
+        expect(caretIn(view)).not.toBeNull();
+        expect(block(root).hasAttribute(MERMAID_EDITING_MARKER)).toBe(true);
+    });
+
+    it("leaves a press on the diagram alone where nothing can be edited", async () => {
+        const root = document.createElement("div");
+        document.body.append(root);
+        const host = await createMilkdownEditorHost({
+            root,
+            markdown: GRAPH,
+            editable: false,
+            plugins: pluginsFor(succeedingRenderer()),
+            onMarkdownChange: () => {},
+            onSelectionChange: () => {},
+        });
+        mounted.push(host);
+        await waitFor(
+            () =>
+                requireElement<HTMLElement>(
+                    root,
+                    `[${MERMAID_DOM_MARKER}]`,
+                ).hasAttribute(MERMAID_RENDERED_MARKER),
+            "the diagram to be drawn",
+        );
+
+        const press = new MouseEvent("mousedown", {
+            bubbles: true,
+            cancelable: true,
+            button: 0,
+        });
+        requireElement(root, `[${MERMAID_PREVIEW_MARKER}]`).dispatchEvent(press);
+
+        expect(press.defaultPrevented).toBe(false);
+    });
+
+    it("leaves a right-click to whatever answers right-clicks", async () => {
+        const { root } = await mountDrawn();
+        const press = new MouseEvent("mousedown", {
+            bubbles: true,
+            cancelable: true,
+            button: 2,
+        });
+        requireElement(root, `[${MERMAID_PREVIEW_MARKER}]`).dispatchEvent(press);
+
+        expect(press.defaultPrevented).toBe(false);
     });
 });

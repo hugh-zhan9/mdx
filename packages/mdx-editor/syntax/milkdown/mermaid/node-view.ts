@@ -1,5 +1,7 @@
+import { TextSelection } from "prosemirror-state";
 import type { Node as ProseMirrorNode } from "prosemirror-model";
 import type {
+    EditorView,
     NodeView,
     NodeViewConstructor,
     ViewMutationRecord,
@@ -12,6 +14,7 @@ import {
     MERMAID_DOM_MARKER,
     MERMAID_ERROR_MARKER,
     MERMAID_PREVIEW_MARKER,
+    MERMAID_RENDERED_MARKER,
     MERMAID_SOURCE_MARKER,
 } from "./syntax";
 
@@ -49,6 +52,11 @@ function parseRenderedSvg(markup: string): Element | null {
  * diagram and the failure report live outside `contentDOM`, so they are not
  * part of the node's text, never reach the serializer, and carry the
  * search-exclusion attribute that keeps them out of semantic scans.
+ *
+ * A successful render is announced on the block, which is what lets a stylesheet
+ * put the source away: the picture already says what the fence says. Pressing
+ * the diagram brings the caret back into that source, and is the only way in
+ * once it is out of sight.
  */
 class MermaidNodeView implements NodeView {
     readonly dom: HTMLElement;
@@ -69,7 +77,12 @@ class MermaidNodeView implements NodeView {
     private generation = 0;
     private destroyed = false;
 
-    constructor(node: ProseMirrorNode, renderer: () => MermaidRenderer) {
+    constructor(
+        node: ProseMirrorNode,
+        renderer: () => MermaidRenderer,
+        private readonly view: EditorView,
+        private readonly getPos: () => number | undefined,
+    ) {
         this.node = node;
         this.renderer = renderer;
         nextDiagramId += 1;
@@ -91,6 +104,7 @@ class MermaidNodeView implements NodeView {
         this.preview.setAttribute(MERMAID_PREVIEW_MARKER, "");
         this.preview.setAttribute(MDX_SEARCH_ATTRIBUTE, MDX_SEARCH_EXCLUDE);
         this.preview.setAttribute("contenteditable", "false");
+        this.preview.addEventListener("mousedown", this.onPreviewPress);
 
         this.error = document.createElement("div");
         this.error.className = "mdx-mermaid-error";
@@ -117,6 +131,7 @@ class MermaidNodeView implements NodeView {
     }
 
     destroy(): void {
+        this.preview.removeEventListener("mousedown", this.onPreviewPress);
         this.destroyed = true;
         this.generation += 1;
         if (this.timer !== null) {
@@ -124,6 +139,34 @@ class MermaidNodeView implements NodeView {
             this.timer = null;
         }
     }
+
+    /**
+     * Puts the caret into the source the diagram was drawn from.
+     *
+     * The press is answered rather than the click, and answered instead of the
+     * editor's own handling: a press on a region that cannot be edited would
+     * otherwise select the whole block, and what the reader is asking for is to
+     * change the diagram, which means being in its text.
+     */
+    private onPreviewPress = (event: MouseEvent) => {
+        if (!this.view.editable || event.button !== 0) {
+            return;
+        }
+
+        const pos = this.getPos();
+
+        if (pos === undefined) {
+            return;
+        }
+
+        event.preventDefault();
+        this.view.dispatch(
+            this.view.state.tr.setSelection(
+                TextSelection.near(this.view.state.doc.resolve(pos + 1)),
+            ),
+        );
+        this.view.focus();
+    };
 
     private schedule(): void {
         if (this.timer !== null) clearTimeout(this.timer);
@@ -159,11 +202,15 @@ class MermaidNodeView implements NodeView {
             return;
         }
         this.preview.replaceChildren(svg);
+        this.dom.setAttribute(MERMAID_RENDERED_MARKER, "");
         this.error.hidden = true;
         this.error.textContent = "";
     }
 
     private showError(message: string): void {
+        // Off, not just empty: a fence whose diagram could not be drawn has to
+        // speak for itself, and it is the only thing left that can.
+        this.dom.removeAttribute(MERMAID_RENDERED_MARKER);
         this.preview.replaceChildren();
         this.error.textContent = message;
         this.error.hidden = false;
@@ -173,5 +220,6 @@ class MermaidNodeView implements NodeView {
 export function createMermaidNodeView(
     renderer: () => MermaidRenderer,
 ): NodeViewConstructor {
-    return (node) => new MermaidNodeView(node, renderer);
+    return (node, view, getPos) =>
+        new MermaidNodeView(node, renderer, view, getPos);
 }

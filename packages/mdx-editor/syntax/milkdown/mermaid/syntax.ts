@@ -25,6 +25,23 @@ export const MERMAID_PREVIEW_MARKER = "data-mdx-mermaid-preview";
 export const MERMAID_ERROR_MARKER = "data-mdx-mermaid-error";
 
 /**
+ * Marks a block whose diagram is currently drawn.
+ *
+ * Set by the NodeView when a render succeeds and taken off when one fails, so a
+ * stylesheet can tell a diagram that stands in for its source from a fence that
+ * still has to speak for itself.
+ */
+export const MERMAID_RENDERED_MARKER = "data-mdx-mermaid-rendered";
+
+/**
+ * Marks the block the selection is inside.
+ *
+ * A drawn diagram can hide the fence it came from, but not while someone is in
+ * there changing it — and that source is the only place it can be changed.
+ */
+export const MERMAID_EDITING_MARKER = "data-mdx-mermaid-editing";
+
+/**
  * Marks DOM that holds no document text.
  *
  * Everything under an element carrying `data-mdx-search="exclude"` is preview

@@ -420,9 +420,23 @@ html[data-mdx-appearance="dark"] {
         color-mix(in srgb, var(--color-warning) 85%, var(--color-base-content));
 }
 
-[data-mdx-code-block] {
+/*
+ * A block of literal text — a fenced code block, the source a diagram or a
+ * formula is written from, a fence the parser could not close — is one object,
+ * and it needs an edge that says where it begins and ends.
+ *
+ * These rules hung off `data-mdx-code-block` until now, an attribute the visual
+ * surface has never set: the style was written and nothing could wear it, so
+ * every code block in the app has been sitting on the bare page. The element the
+ * document really produces is a plain `pre`.
+ *
+ * The edge is `base-300` rather than the separator hairline, because the fill
+ * alone disappears in any theme whose two lightest surfaces are the same colour,
+ * and a theme here can be written by anyone.
+ */
+[data-mdx-markdown-editor] pre {
     background: var(--mdx-code-bg);
-    border: 1px solid var(--mdx-separator);
+    border: 1px solid var(--color-base-300);
     border-radius: 7px;
     font-family: var(--mdx-mono-font);
     line-height: 1.6;
@@ -433,33 +447,7 @@ html[data-mdx-appearance="dark"] {
     white-space: pre;
 }
 
-[data-mdx-code-block-toolbar] {
-    display: flex;
-    margin-bottom: 0.55rem;
-}
-
-[data-mdx-code-block-language-input] {
-    background: color-mix(in srgb, var(--color-base-100) 78%, transparent);
-    border: 1px solid var(--color-base-300);
-    border-radius: 5px;
-    color: color-mix(in srgb, var(--color-base-content) 78%, transparent);
-    font: inherit;
-    font-size: 0.78rem;
-    line-height: 1.4;
-    max-width: 11rem;
-    min-width: 4rem;
-    outline: none;
-    padding: 0.12rem 0.4rem;
-    white-space: normal;
-    width: auto;
-}
-
-[data-mdx-code-block-language-input]:focus {
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 18%, transparent);
-}
-
-[data-mdx-code-block] code {
+[data-mdx-markdown-editor] pre > code {
     display: block;
     font-family: inherit;
 }
@@ -1066,13 +1054,36 @@ html[data-mdx-appearance="dark"] {
     color: inherit;
 }
 
-.mdx-mermaid-source-hidden {
-    display: none !important;
+/*
+ * Once the diagram is drawn, the fence it was drawn from says the same thing a
+ * second time, in the language the picture was made from — so it goes away.
+ *
+ * It comes back the instant the selection is inside the block, because that
+ * source is the only place a diagram can be changed: pressing the diagram is
+ * what puts the caret there, and arriving with the keyboard or landing there
+ * from a search does the same. A diagram that failed to draw never carries the
+ * rendered mark at all, so a broken fence always stays on screen.
+ */
+[data-mdx-mermaid-rendered]:not([data-mdx-mermaid-editing])
+    [data-mdx-mermaid-source] {
+    display: none;
 }
 
-.mdx-mermaid-source-editing,
-.mdx-mermaid-source-error {
-    display: block;
+/* Offered only where the press leads somewhere: a surface nobody can edit has
+ * no caret to hand over. */
+.ProseMirror[contenteditable="true"]
+    [data-mdx-mermaid-rendered]:not([data-mdx-mermaid-editing])
+    [data-mdx-mermaid-preview] {
+    cursor: pointer;
+}
+
+/*
+ * An empty frame is not a diagram. The preview is empty before the first render
+ * finishes and again whenever one fails, and a bordered blank box in either case
+ * reads as something that broke rather than something that has not happened.
+ */
+.mdx-mermaid-preview:empty {
+    display: none;
 }
 
 .mdx-mermaid-preview {
@@ -1083,37 +1094,6 @@ html[data-mdx-appearance="dark"] {
     overflow-x: auto;
     padding: 0.75rem;
     position: relative;
-}
-
-.mdx-mermaid-preview-toolbar {
-    display: flex;
-    justify-content: flex-end;
-    margin-bottom: 0.5rem;
-}
-
-.mdx-mermaid-edit-button {
-    border: 1px solid color-mix(in srgb, var(--color-base-content) 12%, transparent);
-    border-radius: 4px;
-    color: var(--color-base-content);
-    cursor: pointer;
-    font-size: 0.75rem;
-    line-height: 1;
-    padding: 0.35rem 0.5rem;
-}
-
-.mdx-mermaid-edit-button:hover,
-.mdx-mermaid-edit-button:focus-visible {
-    background: var(--color-base-200);
-}
-
-.mdx-mermaid-svg {
-    min-width: max-content;
-}
-
-.mdx-mermaid-svg svg {
-    display: block;
-    height: auto;
-    max-width: none;
 }
 
 .mdx-mermaid-error {
@@ -1383,6 +1363,13 @@ html[data-mdx-appearance="dark"] {
     [data-mdx-document-toolbar],
     [data-mdx-document-shell] aside,
     [data-mdx-document-status-bar],
+    /*
+     * The fence behind a drawn diagram, whatever the caret happens to be doing.
+     * On screen the source comes back while the block is being edited; on paper
+     * nobody is editing, and printing the picture and its code together was
+     * never what anyone asked the printer for.
+     */
+    [data-mdx-mermaid-rendered] [data-mdx-mermaid-source],
     [data-mdx-context-menu],
     [data-mdx-link-editor],
     [data-mdx-note-list],

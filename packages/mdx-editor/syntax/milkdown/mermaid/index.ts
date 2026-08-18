@@ -2,6 +2,7 @@ import type { Ctx, MilkdownPlugin } from "@milkdown/kit/ctx";
 import { $ctx, $nodeSchema, $remark, $view } from "@milkdown/kit/utils";
 import type { Node as ProseMirrorNode } from "prosemirror-model";
 
+import { mermaidEditingProsePlugin } from "./editing";
 import { createMermaidNodeView } from "./node-view";
 import { mermaidRemarkPlugin } from "./remark-mermaid";
 import { renderMermaidDiagram, type MermaidRenderer } from "./renderer";
@@ -23,12 +24,15 @@ export {
     MDX_SEARCH_ATTRIBUTE,
     MDX_SEARCH_EXCLUDE,
     MERMAID_DOM_MARKER,
+    MERMAID_EDITING_MARKER,
     MERMAID_ERROR_MARKER,
     MERMAID_LANGUAGE,
     MERMAID_NODE_NAME,
     MERMAID_PREVIEW_MARKER,
+    MERMAID_RENDERED_MARKER,
     MERMAID_SOURCE_MARKER,
 } from "./syntax";
+export { mermaidBlockAtSelection } from "./editing";
 
 /**
  * The renderer the preview calls. Replaceable so a host that cannot run
@@ -113,5 +117,8 @@ export function mermaidPlugins(): MilkdownPlugin[] {
         mermaidRemark,
         mermaidSchema,
         mermaidView,
+        // After the view, so the mark it applies lands on a block the view has
+        // already built.
+        mermaidEditingProsePlugin,
     ].flat();
 }
