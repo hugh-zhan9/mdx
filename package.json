@@ -7,8 +7,7 @@
     "license": "MIT",
     "scripts": {
         "dev": "next dev",
-        "build": "npm run build:layout-wasm && next build",
-        "build:layout-wasm": "node scripts/build-layout-wasm.mjs",
+        "build": "next build",
         "build:sidecars": "NODE_ENV=production node scripts/prepare-tauri-sidecars.mjs",
         "build:app": "npx tauri build",
         "install:local": "node scripts/install-local-app.mjs",
@@ -16,7 +15,6 @@
         "lint": "eslint",
         "test": "vitest run",
         "test:workspace": "vitest run features/workspace/lib/*.test.ts",
-        "verify:layout-wasm": "npm run build:layout-wasm && node scripts/verify-layout-wasm.mjs",
         "audit:editor:boundaries": "node scripts/audit-editor-boundaries.mjs",
         "fixtures:editor:perf": "node scripts/generate-editor-perf-fixtures.mjs",
         "fixtures:editor:perf:check": "node scripts/generate-editor-perf-fixtures.mjs --check",
@@ -76,7 +74,6 @@
         "jsdom": "^29.1.1",
         "tailwindcss": "^4",
         "typescript": "^5",
-        "vitest": "^4.0.14",
-        "wasm-pack": "^0.15.0"
+        "vitest": "^4.0.14"
     }
 }

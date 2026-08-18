@@ -1,9 +1,8 @@
+# Still the workspace root, now with no member crates: the WASM layout engine,
+# the font subsystem and the PDF writer left with the exporter that used them.
+# Printing is the export path, and the browser owns that.
 [workspace]
-members = [
-    "crates/layout-core",
-    "crates/font-core",
-    "crates/pdf-core",
-]
+members = []
 
 [package]
 name = "mdx"
@@ -37,8 +36,6 @@ clap = { version = "4", features = ["derive"] }
 libc = "0.2"
 log = "0.4"
 notify = "6"
-font-core = { path = "crates/font-core" }
-pdf-core = { path = "crates/pdf-core" }
 pdf-extract = "0.10.0"
 reqwest = { version = "0.13.2", default-features = false, features = ["blocking", "json", "rustls"] }
 rusqlite = { version = "0.37", features = ["bundled"] }

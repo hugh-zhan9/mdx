@@ -269,10 +269,7 @@ const LEGACY_PRIVATE_DOM_BASELINE = {};
  * `packages/mdx-editor/` is private: a deep import is the same boundary
  * violation as importing ProseMirror directly, just spelled differently.
  */
-const PUBLIC_EDITOR_ENTRIES = new Set([
-    "packages/mdx-editor",
-    "packages/mdx-editor/publishing",
-]);
+const PUBLIC_EDITOR_ENTRIES = new Set(["packages/mdx-editor"]);
 
 /** The legacy surface's remaining deep imports, pinned on the same terms. */
 const LEGACY_DEEP_IMPORT_BASELINE = {};

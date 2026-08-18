@@ -45,15 +45,6 @@ export type {
 /** Markdown-offset selection, which the product surface builds its pins from. */
 export { selectionSnapshotFromMarkdownOffsets } from "./core/selection";
 
-/**
- * Read-only publishing: the only source of a layout module, and the only
- * read-only port built on one. Nothing interactive is reachable from here.
- */
-export {
-    createReadOnlyPreviewLayoutPort,
-    loadLayoutWasmModule,
-    type WasmLayoutBridgeModule,
-} from "./react";
 export type {
     EditorDiagnostic,
     DocumentSelectionRange,

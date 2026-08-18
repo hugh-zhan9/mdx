@@ -1,6 +1,6 @@
 "use client";
 
-import { FileDown, PanelRightOpen, PanelRightClose, Save } from "lucide-react";
+import { PanelRightOpen, PanelRightClose, Printer, Save } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { loadImage, storeImageForDocument } from "@/common/lib/image-storage";
 import { tokenize } from "@/common/lib/prism";
@@ -10,10 +10,6 @@ import type { AppWindowSession } from "@/features/app/lib/app-session";
 import { MarkdownEditorSurface } from "@/features/editor/components/markdown-editor-surface";
 import type { MarkdownEditorSurfaceHandle } from "@/features/editor/components/markdown-editor-surface";
 import { createEditorSessionBinding } from "@/features/editor/lib/editor-session-binding";
-import {
-  describePublishingFailure,
-  exportPublishedDocumentPdf,
-} from "@/features/editor/lib/publishing-client";
 import { useFileWatch } from "@/features/file-watch/hooks/use-file-watch";
 import type {
   FrontendFileWatchEvent,
@@ -85,7 +81,6 @@ export function DocumentShell({
   const [state, setState] = useState<LoadedDocumentState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [exporting, setExporting] = useState(false);
   const [workspaceDirty, setWorkspaceDirty] = useState(
     session.workspaceDirty === true,
   );
@@ -360,78 +355,22 @@ export function DocumentShell({
   }, [save]);
 
   /**
-   * Publishes the revision on screen as a PDF.
+   * Hands the rendered document to the system's print dialog, which is also
+   * where a PDF comes from.
    *
-   * The revision is captured from the session binding before the file dialog
-   * opens, so the output corresponds to what the user was looking at when they
-   * asked, not to whatever the document became while they picked a path. A
-   * failure is reported and nothing else happens: this path cannot save, clear
-   * dirty state or touch a draft.
+   * The same path as the workspace window: one print stylesheet lays out what is
+   * already on screen, so there is no second renderer to disagree with the
+   * editor about what the document looks like. The visual surface first, because
+   * that stylesheet paints the rendered document rather than its Markdown.
    */
-  const exportPdf = useCallback(async () => {
-    const current = stateRef.current;
-
-    if (!current || exporting) {
-      return;
-    }
-
-    const snapshot = editorSession.snapshotFor({
-      documentId: current.realPath,
-      markdown: current.markdown,
-    });
-    // A document window has no workspace root; the file's own folder is what
-    // its relative asset paths are written against.
-    const rootPath = parentDirectoryForPath(current.realPath);
-
-    if (!rootPath) {
-      void dialogs.alert({
-        title: "导出 PDF",
-        message: "文档路径没有可用的父文件夹。",
-      });
-      return;
-    }
-
-    setExporting(true);
-    try {
-      const outputPath = await choosePdfExportPath(current.realPath);
-
-      if (!outputPath) {
-        return;
-      }
-
-      const outcome = await exportPublishedDocumentPdf({
-        snapshot,
-        rootPath,
-        outputPath,
-      });
-
-      if (!outcome.ok) {
-        void dialogs.alert({
-          title: "导出 PDF",
-          message: describePublishingFailure(outcome),
-        });
-        return;
-      }
-
-      // A warning means the file was written but something in it is not what
-      // the document says — a character with no glyph in the embedded font
-      // comes out blank. Staying silent about that hands over a PDF with holes
-      // in it and calls the export a success.
-      if (outcome.warnings.length > 0) {
-        void dialogs.alert({
-          title: "导出 PDF",
-          message: `已导出，但有以下情况：\n${outcome.warnings.join("\n")}`,
-        });
-      }
-    } catch (exportError) {
-      void dialogs.alert({
-        title: "导出 PDF",
-        message: formatError(exportError, "导出 PDF 失败。"),
-      });
-    } finally {
-      setExporting(false);
-    }
-  }, [dialogs, editorSession, exporting]);
+  const printDocument = useCallback(() => {
+    void (async () => {
+      await editorSurfaceRef.current?.setMode("wysiwyg");
+      // One frame, so a surface built by that switch is in the document before
+      // the print snapshot is taken.
+      window.requestAnimationFrame(() => window.print());
+    })();
+  }, []);
 
   const recoverDraft = useCallback(() => {
     const recovery = draftRecovery;
@@ -1073,12 +1012,9 @@ export function DocumentShell({
             <Save aria-hidden="true" />
             {saving ? "保存中" : "保存"}
           </TextControlButton>
-          <TextControlButton
-            onClick={() => void exportPdf()}
-            disabled={exporting}
-          >
-            <FileDown aria-hidden="true" />
-            {exporting ? "导出中" : "导出 PDF"}
+          <TextControlButton onClick={printDocument}>
+            <Printer aria-hidden="true" />
+            打印 / 存为 PDF
           </TextControlButton>
           <TextControlButton onClick={toggleOutline}>
             {state.outlineCollapsed ? (
@@ -1423,25 +1359,6 @@ async function chooseDocumentSavePath(defaultPath: string) {
   return typeof selectedPath === "string" ? selectedPath : null;
 }
 
-async function choosePdfExportPath(documentPath: string) {
-  if (!isTauriRuntime()) {
-    throw new Error("导出 PDF 仅在桌面版中可用。");
-  }
-
-  const { save } = await tauriDialog();
-  const selectedPath = await save({
-    title: "导出 PDF",
-    defaultPath: documentPath.replace(/\.(md|markdown)$/i, "") + ".pdf",
-    filters: [
-      {
-        name: "PDF",
-        extensions: ["pdf"],
-      },
-    ],
-  });
-
-  return typeof selectedPath === "string" ? selectedPath : null;
-}
 
 async function writeDocumentMarkdownPath(path: string, content: string) {
   const rootPath = parentDirectoryForPath(path);

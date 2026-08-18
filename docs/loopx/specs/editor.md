@@ -12,7 +12,7 @@ That design is implemented. The contract below describes the product as it ships
 
 The self-owned kernel and the hybrid DOM/Canvas host are gone: `HybridEditorHost`, the `createMdxEditorKernel`/`defaultMarkdownSyntax` composition, the ProseMirror-side layout normalizers, the custom caret/selection/hit-test path, and the implementation-private DOM classes were all deleted rather than deprecated, so there is no old path to fall back to and none to deepen a dependency on. The interactive WASM entry points are no longer named in the layout bridge's typed contract either — the built artifact still exports them, but nothing outside the editor package can reach them.
 
-Publishing-only consumers continue to use the layout/font/PDF code, through the read-only preview port described below.
+The layout/font/PDF code is gone as well. Its only remaining consumer was PDF export, and export is now the system print dialog acting on the rendered document — so the WASM layout engine, the font subsystem, the PDF writer, the read-only preview port and their two clients were deleted rather than kept warm for a caller that no longer exists. The build no longer has a `wasm-pack` step.
 
 ## Target Markdown Editor Contract
 
@@ -86,9 +86,11 @@ Find searches document semantic text, and both surfaces return the same matches 
 
 ## Publishing Boundary
 
-Rust/WASM layout, font, and PDF code consumes an immutable Markdown document revision for read-only preview or PDF generation. It must not participate in interactive input, caret, selection, or hit-test and has no capability to mutate Markdown, dirty, selection, drafts, or conflicts.
+A PDF is produced by printing the rendered document: one print stylesheet over the page that is already on screen, in both the Workspace and the Document window. There is no second renderer, so there is no way for an exported page to disagree with what was being edited — which is what the earlier native path could do, and did.
 
-Screen editing and publishing share content semantics, not line boxes or pixel geometry. Preview/PDF failure is isolated from editing and saving; there is no runtime fallback to the old hybrid editor or to a browser-print path reported as native export success.
+Printing is therefore not a fallback, and nothing is reported as a native export. The clause that forbade presenting a browser print as native export success stood while a native exporter existed to be confused with; the exporter is gone, and the print dialog is named as what it is in the interface (`打印 / 存为 PDF`).
+
+Whatever replaces or supplements this must keep the same property: no second layout of the same document. A renderer that lays a document out again owes an answer for every place it disagrees with the editor, and that answer is the defect class this boundary exists to prevent.
 
 ## Dependency, License, And Rollback
 
