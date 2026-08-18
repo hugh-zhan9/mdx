@@ -1098,9 +1098,10 @@ export function DocumentShell({
           {draftRecovery ? (
             <RecoveryBanner
               title="发现未保存草稿"
+              path={draftDetailsOpen ? displayPath(draftRecovery.draft) : null}
               message={
                 draftDetailsOpen
-                  ? `${displayPath(draftRecovery.draft)} 有一个自动保存的草稿。`
+                  ? "这个文件有一个自动保存的草稿。"
                   : "自动保存的草稿仍可恢复。"
               }
               priority={draftRecovery.fileExists ? "normal" : "high"}
@@ -1128,7 +1129,8 @@ export function DocumentShell({
           {externalConflict && !state.deletedOnDisk ? (
             <RecoveryBanner
               title="文件已被外部修改"
-              message={`${externalConflict.displayPath} 的磁盘内容已变化。`}
+              path={externalConflict.displayPath}
+              message="磁盘内容已变化。"
               priority="high"
               actions={[
                 {
@@ -1159,10 +1161,11 @@ export function DocumentShell({
           {state.deletedOnDisk ? (
             <RecoveryBanner
               title="文件已被外部删除"
+              path={state.displayPath}
               message={
                 state.dirty
-                  ? `${state.displayPath} 已从磁盘删除，当前文档还有未保存编辑。`
-                  : `${state.displayPath} 已从磁盘删除。`
+                  ? "已从磁盘删除，当前文档还有未保存编辑。"
+                  : "已从磁盘删除。"
               }
               priority={state.dirty ? "high" : "normal"}
               actions={

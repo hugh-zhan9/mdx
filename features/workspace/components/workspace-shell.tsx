@@ -2265,9 +2265,14 @@ export function WorkspaceShell({
           {activeDraftRecovery ? (
             <RecoveryBanner
               title="发现未保存草稿"
+              path={
+                activeDraftDetailsOpen
+                  ? displayPath(activeDraftRecovery.draft)
+                  : null
+              }
               message={
                 activeDraftDetailsOpen
-                  ? `${displayPath(activeDraftRecovery.draft)} 有一个自动保存的草稿。`
+                  ? "这个文件有一个自动保存的草稿。"
                   : "自动保存的草稿仍可恢复。"
               }
               priority={activeDraftRecovery.fileExists ? "normal" : "high"}
@@ -2303,10 +2308,11 @@ export function WorkspaceShell({
               <RecoveryBanner
                 key={draft.draftId}
                 title="发现孤立草稿"
+                path={displayPath(draft)}
                 message={
                   canRestoreOriginal
-                    ? `${displayPath(draft)} 的原文件不存在，可以恢复到原路径或另存为新文件。`
-                    : `${displayPath(draft)} 的原文件不存在，原路径父文件夹也不存在。`
+                    ? "原文件不存在，可以恢复到原路径或另存为新文件。"
+                    : "原文件不存在，原路径父文件夹也不存在。"
                 }
                 priority="high"
                 actions={[
@@ -2338,7 +2344,8 @@ export function WorkspaceShell({
           {activeExternalConflict ? (
             <RecoveryBanner
               title="文件已被外部修改"
-              message={`${activeExternalConflict.path} 的磁盘内容已变化，请选择保留当前编辑或重新加载磁盘版本。`}
+              path={activeExternalConflict.path}
+              message="磁盘内容已变化，请选择保留当前编辑或重新加载磁盘版本。"
               priority="high"
               actions={[
                 {
@@ -2365,10 +2372,11 @@ export function WorkspaceShell({
           {activeExternalDeletedPrompt ? (
             <RecoveryBanner
               title="文件已被外部删除"
+              path={activeExternalDeletedPrompt.path}
               message={
                 activeExternalDeletedPrompt.dirty
-                  ? `${activeExternalDeletedPrompt.path} 已从磁盘删除，当前标签页还有未保存编辑。`
-                  : `${activeExternalDeletedPrompt.path} 已从磁盘删除。`
+                  ? "已从磁盘删除，当前标签页还有未保存编辑。"
+                  : "已从磁盘删除。"
               }
               priority={activeExternalDeletedPrompt.dirty ? "high" : "normal"}
               actions={
