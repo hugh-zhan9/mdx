@@ -87,7 +87,7 @@ pub fn preflight(workspace_root: &Path) -> Result<LegacyImportPreflight, Workspa
 /// abandoning the other hundred — a half-finished import that says so beats an
 /// all-or-nothing one that leaves the user guessing which half happened.
 ///
-/// The report is written to `~/.mdx/memory/import-reports/` before this
+/// The report is written to `~/.loam/memory/import-reports/` before this
 /// returns, so its path is available whether or not individual files failed.
 pub fn import<E: Embedder + ?Sized>(
     database: &Database,

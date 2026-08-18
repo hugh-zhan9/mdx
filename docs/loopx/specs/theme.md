@@ -1,6 +1,6 @@
 # Theme Contract
 
-Long-lived contract for how MDX is themed, and what a user-written theme file
+Long-lived contract for how Loam is themed, and what a user-written theme file
 may do. The variable names here are a public promise: people write files against
 them. Adding a property is additive; renaming or removing one breaks every theme
 that used it and must go through `spec`.
@@ -23,7 +23,7 @@ diagnose than a theme that refuses to load and says why.
 
 ## A theme is data, not code
 
-User themes are read from `~/.mdx/themes/*.css`, the same `~/.mdx` the product
+User themes are read from `~/.loam/themes/*.css`, the same `~/.loam` the product
 already uses for drafts and assets. The file is **never given to the browser to
 execute**. Rust reads the text, the front end extracts the declarations it
 recognises, checks each value, and generates one rule per theme.
@@ -80,7 +80,7 @@ layout, and "a theme cannot change layout" is the promise that makes an
 unfamiliar theme safe to try. Opening them up later is additive; taking them
 back would not be.
 
-The names are MDX's own rather than the UI framework's. Exposing
+The names are Loam's own rather than the UI framework's. Exposing
 `--color-base-100` would turn "which UI framework we currently use" into a
 promise we could never take back.
 
@@ -99,7 +99,7 @@ one exception and rejects the whole file.
 ## Example
 
 ```css
-/* ~/.mdx/themes/kraft.css */
+/* ~/.loam/themes/kraft.css */
 :root {
   --mdx-theme-name: "牛皮纸";
   --mdx-theme-appearance: light;
@@ -119,7 +119,7 @@ one exception and rejects the whole file.
 
 | Situation | Result |
 |---|---|
-| `~/.mdx/themes/` does not exist | No error. Empty list. The directory is not created. |
+| `~/.loam/themes/` does not exist | No error. Empty list. The directory is not created. |
 | File is not `.css`, or is a directory | Skipped silently. |
 | File is a symlink | Not followed. Listed with a reason. |
 | File is not UTF-8, or over 64 KiB | Listed with a reason. |

@@ -260,7 +260,7 @@ function ThemeDesigner({
         <span className="block text-[11px] text-base-content/45">
           {fileName === null
             ? "取个名字，它同时是文件名。"
-            : `保存为 ~/.mdx/themes/${fileName}`}
+            : `保存为 ~/.loam/themes/${fileName}`}
         </span>
       </label>
 
@@ -373,7 +373,7 @@ function UserThemeSection({
         </p>
       ) : entries.length === 0 ? (
         <p className="px-2.5 text-[11px] leading-relaxed text-base-content/45">
-          点「新建」从当前主题改一个出来，或把自己写的 .css 放进 ~/.mdx/themes/
+          点「新建」从当前主题改一个出来，或把自己写的 .css 放进 ~/.loam/themes/
           后点刷新。
         </p>
       ) : (

@@ -57,7 +57,7 @@ describe("AppRenderErrorBoundary", () => {
     });
 
     expect(host.querySelector('[role="alert"]')?.textContent).toContain(
-      "MDX 渲染失败",
+      "Loam 渲染失败",
     );
   });
 

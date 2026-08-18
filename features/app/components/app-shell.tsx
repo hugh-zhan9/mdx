@@ -31,7 +31,7 @@ export function AppShell() {
                     setSession(normalizeAppWindowSession(rawSession));
                 }
             } catch (error) {
-                console.warn("Failed to load MDX window session.", error);
+                console.warn("Failed to load Loam window session.", error);
                 if (!cancelled) {
                     setSession(normalizeSessionFromLocation());
                 }
@@ -48,7 +48,7 @@ export function AppShell() {
     if (!session) {
         return (
             <main className="flex h-screen items-center justify-center bg-base-100 text-sm text-base-content/70">
-                正在打开 MDX...
+                正在打开 Loam...
             </main>
         );
     }
@@ -116,7 +116,7 @@ export class AppRenderErrorBoundary extends Component<
     }
 
     componentDidCatch(error: Error, info: ErrorInfo) {
-        console.error("MDX render failed.", error, info);
+        console.error("Loam render failed.", error, info);
     }
 
     render() {
@@ -128,7 +128,7 @@ export class AppRenderErrorBoundary extends Component<
                 >
                     <div className="max-w-md text-sm">
                         <h1 className="mb-2 text-base font-semibold">
-                            MDX 渲染失败
+                            Loam 渲染失败
                         </h1>
                         <p className="text-base-content/70">
                             诊断信息已写入开发者控制台。重新加载会重建界面，磁盘上的文件不受影响。

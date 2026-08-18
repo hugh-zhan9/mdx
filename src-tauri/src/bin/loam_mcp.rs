@@ -1,9 +1,9 @@
 use std::io::{self, BufRead, Write};
 
-use mdx_lib::memory::api;
-use mdx_lib::memory::wiki_promote::{promote as promote_to_wiki, PromoteRequest};
-use mdx_lib::memory_models::MemoryDoctorReport;
-use mdx_lib::memory_agent_setup::{memory_agent_doctor, memory_agent_status};
+use loam_lib::memory::api;
+use loam_lib::memory::wiki_promote::{promote as promote_to_wiki, PromoteRequest};
+use loam_lib::memory_models::MemoryDoctorReport;
+use loam_lib::memory_agent_setup::{memory_agent_doctor, memory_agent_status};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -103,7 +103,7 @@ fn main() {
     };
 
     if let Err(error) = run_stdio(&workspace, io::stdin().lock(), io::stdout().lock()) {
-        eprintln!("mdx-mcp stdio error: {error}");
+        eprintln!("loam-mcp stdio error: {error}");
         std::process::exit(1);
     }
 }
@@ -119,25 +119,25 @@ where
         match arg.as_str() {
             "--workspace" => {
                 if workspace.is_some() {
-                    return Err("mdx-mcp received duplicate --workspace argument".to_string());
+                    return Err("loam-mcp received duplicate --workspace argument".to_string());
                 }
 
                 let value = args
                     .next()
-                    .ok_or_else(|| "mdx-mcp requires --workspace <path>".to_string())?;
+                    .ok_or_else(|| "loam-mcp requires --workspace <path>".to_string())?;
                 if value.trim().is_empty() || value.starts_with("--") {
-                    return Err("mdx-mcp requires --workspace <path>".to_string());
+                    return Err("loam-mcp requires --workspace <path>".to_string());
                 }
 
                 workspace = Some(value);
             }
             _ => {
-                return Err(format!("mdx-mcp unknown argument: {arg}"));
+                return Err(format!("loam-mcp unknown argument: {arg}"));
             }
         }
     }
 
-    workspace.ok_or_else(|| "mdx-mcp requires --workspace <path>".to_string())
+    workspace.ok_or_else(|| "loam-mcp requires --workspace <path>".to_string())
 }
 
 fn run_stdio<R, W>(workspace: &str, reader: R, mut writer: W) -> io::Result<()>
@@ -219,7 +219,7 @@ fn initialize_result() -> Value {
             }
         },
         "serverInfo": {
-            "name": "mdx-memory",
+            "name": "loam-memory",
             "version": env!("CARGO_PKG_VERSION")
         }
     })
@@ -529,7 +529,7 @@ mod tests {
 
     impl HomeEnvGuard {
         fn use_home(path: impl AsRef<std::path::Path>) -> Self {
-            let lock = mdx_lib::llm_wiki_llm::llm_config_env_lock()
+            let lock = loam_lib::llm_wiki_llm::llm_config_env_lock()
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             let home = std::env::var_os("HOME");
@@ -695,7 +695,7 @@ mod tests {
         assert!(response.error.is_none());
         let result = response.result.unwrap();
         assert_eq!(result["protocolVersion"], "2024-11-05");
-        assert_eq!(result["serverInfo"]["name"], "mdx-memory");
+        assert_eq!(result["serverInfo"]["name"], "loam-memory");
         assert_eq!(result["capabilities"]["tools"]["listChanged"], false);
     }
 
@@ -813,21 +813,21 @@ mod tests {
         let error = parse_workspace_arg(["--bogus", "--workspace", "/tmp/mdx"].map(String::from))
             .unwrap_err();
 
-        assert_eq!(error, "mdx-mcp unknown argument: --bogus");
+        assert_eq!(error, "loam-mcp unknown argument: --bogus");
     }
 
     #[test]
     fn parse_workspace_arg_rejects_missing_workspace_value() {
         let error = parse_workspace_arg(["--workspace"].map(String::from)).unwrap_err();
 
-        assert_eq!(error, "mdx-mcp requires --workspace <path>");
+        assert_eq!(error, "loam-mcp requires --workspace <path>");
     }
 
     #[test]
     fn parse_workspace_arg_rejects_empty_workspace_value() {
         let error = parse_workspace_arg(["--workspace", "  "].map(String::from)).unwrap_err();
 
-        assert_eq!(error, "mdx-mcp requires --workspace <path>");
+        assert_eq!(error, "loam-mcp requires --workspace <path>");
     }
 
     #[test]
@@ -837,6 +837,6 @@ mod tests {
         )
         .unwrap_err();
 
-        assert_eq!(error, "mdx-mcp received duplicate --workspace argument");
+        assert_eq!(error, "loam-mcp received duplicate --workspace argument");
     }
 }

@@ -42,7 +42,7 @@ const TIMEOUT_MS = Number(process.env.QUALIFICATION_TIMEOUT_MS ?? (smoke ? 300_0
 const server = spawn("npm", ["run", "dev", "--", "--hostname", HOST, "--port", PORT], {
     cwd: REPO_ROOT,
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, NEXT_PUBLIC_MDX_MILKDOWN_QUALIFICATION: "1" },
+    env: { ...process.env, NEXT_PUBLIC_LOAM_MILKDOWN_QUALIFICATION: "1" },
 });
 
 let serverOutput = "";
@@ -80,7 +80,7 @@ try {
         });
     } catch {
         throw new Error(
-            "the qualification route rendered inert; NEXT_PUBLIC_MDX_MILKDOWN_QUALIFICATION was not seen by the build",
+            "the qualification route rendered inert; NEXT_PUBLIC_LOAM_MILKDOWN_QUALIFICATION was not seen by the build",
         );
     }
 

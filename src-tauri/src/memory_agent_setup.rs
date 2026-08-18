@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::memory_models::{MemoryDoctorReport, MemoryIntegrationStatus};
 
-pub const MDX_MEMORY_HOOK_VERSION: &str = "1";
-pub const MDX_MEMORY_BLOCK_BEGIN: &str = "<!-- BEGIN MDX MEMORY v1 -->";
-pub const MDX_MEMORY_BLOCK_END: &str = "<!-- END MDX MEMORY -->";
+pub const LOAM_MEMORY_HOOK_VERSION: &str = "1";
+pub const LOAM_MEMORY_BLOCK_BEGIN: &str = "<!-- BEGIN LOAM MEMORY v1 -->";
+pub const LOAM_MEMORY_BLOCK_END: &str = "<!-- END LOAM MEMORY -->";
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct MemoryAgentSetupRequest {
@@ -272,19 +272,19 @@ impl AgentSetupPaths {
         let current_exe = env::current_exe()?;
         let mdx_cli = match mdx_cli {
             Some(path) => normalize_path(path)?,
-            None => find_bundled_binary(&current_exe, "mdx-cli")
+            None => find_bundled_binary(&current_exe, "loam-cli")
                 .unwrap_or_else(|| current_exe.clone())
                 .to_string_lossy()
                 .into_owned(),
         };
         let mdx_mcp = match mdx_mcp {
             Some(path) => normalize_path(path)?,
-            None => find_bundled_binary(&current_exe, "mdx-mcp")
+            None => find_bundled_binary(&current_exe, "loam-mcp")
                 .unwrap_or_else(|| {
                     current_exe
                         .parent()
                         .unwrap_or_else(|| Path::new(""))
-                        .join("mdx-mcp")
+                        .join("loam-mcp")
                 })
                 .to_string_lossy()
                 .into_owned(),
@@ -344,8 +344,8 @@ pub fn plan_memory_agent_setup(
 
     if targets.codex {
         for skill_root in [
-            paths.home.join(".codey/skills/mdx-memory/SKILL.md"),
-            paths.home.join(".agents/skills/mdx-memory/SKILL.md"),
+            paths.home.join(".codey/skills/loam-memory/SKILL.md"),
+            paths.home.join(".agents/skills/loam-memory/SKILL.md"),
         ] {
             changes.push(AgentSetupChange {
                 path: skill_root,
@@ -368,7 +368,7 @@ pub fn plan_memory_agent_setup(
 
     if targets.claude {
         changes.push(AgentSetupChange {
-            path: paths.home.join(".claude/skills/mdx-memory/SKILL.md"),
+            path: paths.home.join(".claude/skills/loam-memory/SKILL.md"),
             contents: mdx_memory_skill(root_path, &paths.mdx_cli),
             executable: false,
             action: AgentSetupChangeAction::Write,
@@ -398,7 +398,7 @@ pub fn plan_memory_agent_setup(
 
     if targets.cursor {
         changes.push(AgentSetupChange {
-            path: paths.home.join(".cursor/skills/mdx-memory/SKILL.md"),
+            path: paths.home.join(".cursor/skills/loam-memory/SKILL.md"),
             contents: mdx_memory_skill(root_path, &paths.mdx_cli),
             executable: false,
             action: AgentSetupChangeAction::Write,
@@ -414,7 +414,7 @@ pub fn plan_memory_agent_setup(
             action: AgentSetupChangeAction::Write,
         });
         changes.push(AgentSetupChange {
-            path: paths.home.join(".cursor/rules/mdx-memory.mdc"),
+            path: paths.home.join(".cursor/rules/loam-memory.mdc"),
             contents: cursor_memory_rule(root_path, &paths.mdx_cli),
             executable: false,
             action: AgentSetupChangeAction::Write,
@@ -454,8 +454,8 @@ pub fn plan_memory_agent_uninstall(
 
     if selected.iter().any(|agent| agent == "codex") {
         for path in [
-            paths.home.join(".codey/skills/mdx-memory/SKILL.md"),
-            paths.home.join(".agents/skills/mdx-memory/SKILL.md"),
+            paths.home.join(".codey/skills/loam-memory/SKILL.md"),
+            paths.home.join(".agents/skills/loam-memory/SKILL.md"),
         ] {
             push_remove_file_contents_if_exists(&mut changes, path)?;
         }
@@ -469,7 +469,7 @@ pub fn plan_memory_agent_uninstall(
     if selected.iter().any(|agent| agent == "claude") {
         push_remove_file_contents_if_exists(
             &mut changes,
-            paths.home.join(".claude/skills/mdx-memory/SKILL.md"),
+            paths.home.join(".claude/skills/loam-memory/SKILL.md"),
         )?;
         push_if_changed(
             &mut changes,
@@ -486,11 +486,11 @@ pub fn plan_memory_agent_uninstall(
     if selected.iter().any(|agent| agent == "cursor") {
         push_remove_file_contents_if_exists(
             &mut changes,
-            paths.home.join(".cursor/skills/mdx-memory/SKILL.md"),
+            paths.home.join(".cursor/skills/loam-memory/SKILL.md"),
         )?;
         push_remove_file_contents_if_exists(
             &mut changes,
-            paths.home.join(".cursor/rules/mdx-memory.mdc"),
+            paths.home.join(".cursor/rules/loam-memory.mdc"),
         )?;
         push_if_changed(
             &mut changes,
@@ -582,22 +582,22 @@ fn inspect_codex_status(
 ) -> MemoryIntegrationStatus {
     let config = read_status_file(&home.join(".codey/config.toml"), "codex", errors);
     let agents_skill = read_status_file(
-        &home.join(".agents/skills/mdx-memory/SKILL.md"),
+        &home.join(".agents/skills/loam-memory/SKILL.md"),
         "codex",
         errors,
     );
     let codey_skill = read_status_file(
-        &home.join(".codey/skills/mdx-memory/SKILL.md"),
+        &home.join(".codey/skills/loam-memory/SKILL.md"),
         "codex",
         errors,
     );
     let config_ok = config.as_deref().is_some_and(|contents| {
-        contents.contains("[mcp_servers.mdx-memory]") && contents.contains(root_path)
+        contents.contains("[mcp_servers.loam-memory]") && contents.contains(root_path)
     });
     let skill_ok = agents_skill
         .as_deref()
         .or(codey_skill.as_deref())
-        .is_some_and(|contents| contents.contains("name: mdx-memory"));
+        .is_some_and(|contents| contents.contains("name: loam-memory"));
     build_status("codex", config_ok && skill_ok, None, warnings)
 }
 
@@ -610,18 +610,18 @@ fn inspect_claude_status(
     let claude_md = read_status_file(&home.join(".claude/CLAUDE.md"), "claude", errors);
     let hooks = read_status_file(&home.join(".claude/hooks/hooks.json"), "claude", errors);
     let skill = read_status_file(
-        &home.join(".claude/skills/mdx-memory/SKILL.md"),
+        &home.join(".claude/skills/loam-memory/SKILL.md"),
         "claude",
         errors,
     );
     let block_ok = claude_md
         .as_deref()
-        .is_some_and(|contents| contents.contains(MDX_MEMORY_BLOCK_BEGIN));
+        .is_some_and(|contents| contents.contains(LOAM_MEMORY_BLOCK_BEGIN));
     let skill_ok = skill
         .as_deref()
-        .is_some_and(|contents| contents.contains("name: mdx-memory"));
+        .is_some_and(|contents| contents.contains("name: loam-memory"));
     let hook_ok = hooks.as_deref().is_some_and(|contents| {
-        contents.contains("\"mdx-memory\"")
+        contents.contains("\"loam-memory\"")
             && contents.contains("\"hook\"")
             && contents.contains("\"claude\"")
             && contents.contains(root_path)
@@ -629,7 +629,7 @@ fn inspect_claude_status(
     build_status(
         "claude",
         block_ok && skill_ok && hook_ok,
-        hook_ok.then(|| MDX_MEMORY_HOOK_VERSION.to_string()),
+        hook_ok.then(|| LOAM_MEMORY_HOOK_VERSION.to_string()),
         warnings,
     )
 }
@@ -642,31 +642,31 @@ fn inspect_cursor_status(
 ) -> MemoryIntegrationStatus {
     let mcp = read_status_file(&home.join(".cursor/mcp.json"), "cursor", errors);
     let hooks = read_status_file(&home.join(".cursor/hooks.json"), "cursor", errors);
-    let rule = read_status_file(&home.join(".cursor/rules/mdx-memory.mdc"), "cursor", errors);
+    let rule = read_status_file(&home.join(".cursor/rules/loam-memory.mdc"), "cursor", errors);
     let skill = read_status_file(
-        &home.join(".cursor/skills/mdx-memory/SKILL.md"),
+        &home.join(".cursor/skills/loam-memory/SKILL.md"),
         "cursor",
         errors,
     );
     let mcp_ok = mcp.as_deref().is_some_and(|contents| {
-        contents.contains("\"mdx-memory\"") && contents.contains(root_path)
+        contents.contains("\"loam-memory\"") && contents.contains(root_path)
     });
     let hook_ok = hooks.as_deref().is_some_and(|contents| {
-        contents.contains("\"mdx-memory\"")
+        contents.contains("\"loam-memory\"")
             && contents.contains("\"hook\"")
             && contents.contains("\"cursor\"")
             && contents.contains(root_path)
     });
     let rule_ok = rule
         .as_deref()
-        .is_some_and(|contents| contents.contains("MDX Memory"));
+        .is_some_and(|contents| contents.contains("Loam Memory"));
     let skill_ok = skill
         .as_deref()
-        .is_some_and(|contents| contents.contains("name: mdx-memory"));
+        .is_some_and(|contents| contents.contains("name: loam-memory"));
     build_status(
         "cursor",
         mcp_ok && hook_ok && rule_ok && skill_ok,
-        hook_ok.then(|| MDX_MEMORY_HOOK_VERSION.to_string()),
+        hook_ok.then(|| LOAM_MEMORY_HOOK_VERSION.to_string()),
         warnings,
     )
 }
@@ -728,12 +728,12 @@ fn normalize_path(input: &str) -> io::Result<String> {
 
 fn update_codex_config(path: &Path, mdx_mcp: &str, root_path: &str) -> io::Result<String> {
     let existing = read_optional_file(path)?;
-    let filtered = remove_toml_table(&existing, "[mcp_servers.mdx-memory]");
+    let filtered = remove_toml_table(&existing, "[mcp_servers.loam-memory]");
     let mut output = filtered.trim_end().to_string();
     if !output.is_empty() {
         output.push_str("\n\n");
     }
-    output.push_str("[mcp_servers.mdx-memory]\n");
+    output.push_str("[mcp_servers.loam-memory]\n");
     output.push_str(&format!("command = \"{}\"\n", toml_escape(mdx_mcp)));
     output.push_str(&format!(
         "args = [\"--workspace\", \"{}\"]\n",
@@ -744,10 +744,10 @@ fn update_codex_config(path: &Path, mdx_mcp: &str, root_path: &str) -> io::Resul
 
 fn remove_codex_config(path: &Path) -> io::Result<String> {
     let existing = read_optional_file(path)?;
-    if !existing.contains("[mcp_servers.mdx-memory]") {
+    if !existing.contains("[mcp_servers.loam-memory]") {
         return Ok(existing);
     }
-    Ok(remove_toml_table(&existing, "[mcp_servers.mdx-memory]"))
+    Ok(remove_toml_table(&existing, "[mcp_servers.loam-memory]"))
 }
 
 fn remove_toml_table(contents: &str, table_header: &str) -> String {
@@ -785,7 +785,7 @@ fn update_cursor_mcp(path: &Path, mdx_mcp: &str, root_path: &str) -> io::Result<
     {
         value["mcpServers"] = serde_json::json!({});
     }
-    value["mcpServers"]["mdx-memory"] = serde_json::json!({
+    value["mcpServers"]["loam-memory"] = serde_json::json!({
         "command": mdx_mcp,
         "args": ["--workspace", root_path]
     });
@@ -794,7 +794,7 @@ fn update_cursor_mcp(path: &Path, mdx_mcp: &str, root_path: &str) -> io::Result<
 
 fn remove_cursor_mcp(path: &Path) -> io::Result<String> {
     let existing = read_optional_file(path)?;
-    if !existing.contains("\"mdx-memory\"") {
+    if !existing.contains("\"loam-memory\"") {
         return Ok(existing);
     }
     let mut value = read_optional_json(path)?;
@@ -802,7 +802,7 @@ fn remove_cursor_mcp(path: &Path) -> io::Result<String> {
         .get_mut("mcpServers")
         .and_then(|item| item.as_object_mut())
     {
-        servers.remove("mdx-memory");
+        servers.remove("loam-memory");
     }
     pretty_json(&value)
 }
@@ -833,9 +833,9 @@ fn update_cursor_hooks(path: &Path, mdx_cli: &str, root_path: &str) -> io::Resul
     let precompact = value["hooks"]["preCompact"].as_array_mut().unwrap();
     precompact.retain(|entry| !is_mdx_memory_json_entry(entry));
     precompact.push(serde_json::json!({
-        "id": "mdx-memory",
-        "name": "mdx-memory",
-        "version": MDX_MEMORY_HOOK_VERSION,
+        "id": "loam-memory",
+        "name": "loam-memory",
+        "version": LOAM_MEMORY_HOOK_VERSION,
         "command": mdx_cli,
         "args": ["memory", "--root", root_path, "hook", "cursor", "preCompact"],
         "timeout": 60
@@ -894,10 +894,10 @@ fn update_claude_hooks(path: &Path, mdx_cli: &str, root_path: &str) -> io::Resul
             "async": true,
             "timeout": 60
         }],
-        "description": "Capture and accept MDX Memory before context compaction when transcript_path is available",
-        "id": "mdx-memory",
-        "name": "mdx-memory",
-        "version": MDX_MEMORY_HOOK_VERSION
+        "description": "Capture and accept Loam Memory before context compaction when transcript_path is available",
+        "id": "loam-memory",
+        "name": "loam-memory",
+        "version": LOAM_MEMORY_HOOK_VERSION
     }));
     pretty_json(&value)
 }
@@ -936,8 +936,8 @@ fn is_mdx_memory_json_entry(entry: &serde_json::Value) -> bool {
     entry
         .get("id")
         .and_then(|id| id.as_str())
-        .is_some_and(|id| id == "mdx-memory" || id.starts_with("mdx-memory:"))
-        || entry.get("name").and_then(|name| name.as_str()) == Some("mdx-memory")
+        .is_some_and(|id| id == "loam-memory" || id.starts_with("loam-memory:"))
+        || entry.get("name").and_then(|name| name.as_str()) == Some("loam-memory")
         || entry
             .get("command")
             .and_then(|command| command.as_str())
@@ -1016,11 +1016,11 @@ fn update_agent_markdown_block(path: &Path, block: &str) -> io::Result<String> {
     if !output.is_empty() {
         output.push_str("\n\n");
     }
-    output.push_str(MDX_MEMORY_BLOCK_BEGIN);
+    output.push_str(LOAM_MEMORY_BLOCK_BEGIN);
     output.push('\n');
     output.push_str(block);
     output.push('\n');
-    output.push_str(MDX_MEMORY_BLOCK_END);
+    output.push_str(LOAM_MEMORY_BLOCK_END);
     output.push('\n');
     Ok(output)
 }
@@ -1030,13 +1030,13 @@ fn remove_agent_markdown_block(path: &Path) -> io::Result<String> {
 }
 
 fn remove_managed_markdown_block(contents: &str) -> String {
-    let Some(begin) = contents.find(MDX_MEMORY_BLOCK_BEGIN) else {
+    let Some(begin) = contents.find(LOAM_MEMORY_BLOCK_BEGIN) else {
         return contents.to_string();
     };
-    let Some(relative_end) = contents[begin..].find(MDX_MEMORY_BLOCK_END) else {
+    let Some(relative_end) = contents[begin..].find(LOAM_MEMORY_BLOCK_END) else {
         return contents.to_string();
     };
-    let end = begin + relative_end + MDX_MEMORY_BLOCK_END.len();
+    let end = begin + relative_end + LOAM_MEMORY_BLOCK_END.len();
     let mut output = String::new();
     output.push_str(contents[..begin].trim_end());
     let tail = contents[end..].trim_start_matches(['\r', '\n']);
@@ -1055,7 +1055,7 @@ import {{ existsSync }} from "node:fs";
 import {{ basename }} from "node:path";
 import {{ spawnSync }} from "node:child_process";
 
-const MDX_CLI = {mdx_cli_json};
+const LOAM_CLI = {mdx_cli_json};
 const MEMORY_ROOT = {root_json};
 
 function readStdin() {{
@@ -1107,7 +1107,7 @@ if (!transcriptPath || !existsSync(transcriptPath)) {{
 }}
 
 const captureResult = spawnSync(
-  MDX_CLI,
+  LOAM_CLI,
   [
     "memory",
     "--root",
@@ -1121,13 +1121,13 @@ const captureResult = spawnSync(
 );
 
 if (captureResult.error) {{
-  process.stderr.write(`[mdx-memory] pre-compact capture skipped: ${{captureResult.error.message}}\n`);
+  process.stderr.write(`[loam-memory] pre-compact capture skipped: ${{captureResult.error.message}}\n`);
   process.exit(0);
 }}
 
 if (captureResult.status !== 0) {{
   process.stderr.write(
-    `[mdx-memory] pre-compact capture failed: ${{captureResult.stderr || captureResult.stdout || "unknown error"}}\n`,
+    `[loam-memory] pre-compact capture failed: ${{captureResult.stderr || captureResult.stdout || "unknown error"}}\n`,
   );
 }}
 
@@ -1141,13 +1141,13 @@ process.exit(0);
 fn mdx_memory_skill(root_path: &str, mdx_cli: &str) -> String {
     format!(
         r#"---
-name: mdx-memory
-description: Use when the user asks to remember, save, recall, search, summarize for future sessions, persist decisions, load prior context, manage MDX Memory, or distinguish memory capture from full thread archival across Codex, Claude, or Cursor.
+name: loam-memory
+description: Use when the user asks to remember, save, recall, search, summarize for future sessions, persist decisions, load prior context, manage Loam Memory, or distinguish memory capture from full thread archival across Codex, Claude, or Cursor.
 ---
 
-# MDX Memory
+# Loam Memory
 
-Use MDX Memory as the user's durable cross-agent memory store. The configured workspace is:
+Use Loam Memory as the user's durable cross-agent memory store. The configured workspace is:
 
 ```text
 {root_path}
@@ -1243,18 +1243,18 @@ CLI fallback:
 
 fn claude_memory_block(root_path: &str, mdx_cli: &str) -> String {
     format!(
-        "## MDX Memory\nWhen the user asks to remember, save, recall, search, persist decisions, or load prior context, use the `mdx-memory` skill and the `mdx-memory` MCP server.\n\nUse `memory_recall` for task context and cite what you use. Store what happened with `memory_add` during the turn it happens; draw conclusions from stored material with `memory_distill`, which produces a candidate that only a person can adopt. Do not wait for background capture or pre-compact hooks before preserving something confirmed. Ask before storing anything sensitive or uncertain — capture is one-way. Pre-compact hooks capture and accept distilled memory before compression; the installed Claude hook command is `{mdx_cli} memory --root \"{root_path}\" hook claude PreCompact`. Full thread archival is separate and should only be used when preserving original conversation text matters. Do not store secrets or promote memory into wiki/raw material unless the user explicitly asks."
+        "## Loam Memory\nWhen the user asks to remember, save, recall, search, persist decisions, or load prior context, use the `loam-memory` skill and the `loam-memory` MCP server.\n\nUse `memory_recall` for task context and cite what you use. Store what happened with `memory_add` during the turn it happens; draw conclusions from stored material with `memory_distill`, which produces a candidate that only a person can adopt. Do not wait for background capture or pre-compact hooks before preserving something confirmed. Ask before storing anything sensitive or uncertain — capture is one-way. Pre-compact hooks capture and accept distilled memory before compression; the installed Claude hook command is `{mdx_cli} memory --root \"{root_path}\" hook claude PreCompact`. Full thread archival is separate and should only be used when preserving original conversation text matters. Do not store secrets or promote memory into wiki/raw material unless the user explicitly asks."
     )
 }
 
 fn cursor_memory_rule(root_path: &str, mdx_cli: &str) -> String {
     format!(
         r#"---
-description: Use MDX Memory when remembering, saving, recalling, searching prior context, persisting decisions, or summarizing durable lessons.
+description: Use Loam Memory when remembering, saving, recalling, searching prior context, persisting decisions, or summarizing durable lessons.
 alwaysApply: true
 ---
 
-Use the `mdx-memory` skill and the `mdx-memory` MCP server for durable memory.
+Use the `loam-memory` skill and the `loam-memory` MCP server for durable memory.
 
 Read task context with `memory_recall` and cite what you use. Find specific items with `memory_search`. Store what happened with `memory_add` during the turn it happens; draw conclusions from stored material with `memory_distill`, which produces a candidate that only a person can adopt. Do not wait for background capture or pre-compact hooks before preserving something confirmed. Ask before storing anything sensitive or uncertain — capture is one-way. Pre-compact hooks capture and accept distilled memory before compression; the installed Cursor hook command is `{mdx_cli} memory --root "{root_path}" hook cursor preCompact`. Full thread archival is separate and should only be used when preserving original conversation text matters. Do not store secrets.
 "#

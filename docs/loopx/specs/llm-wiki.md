@@ -41,6 +41,6 @@
 
 ## CLI
 
-- `mdx-cli llm-wiki` uses the active running Workspace Mode root.
+- `loam-cli llm-wiki` uses the active running Workspace Mode root.
 - Current commands are `status`, `ingest`, `query`, `digest`, `lint`, and `search`.
 - CLI input validation belongs at both the binary boundary and socket-server boundary.

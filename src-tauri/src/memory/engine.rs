@@ -1,6 +1,6 @@
 //! Opening the library, and deciding which project a workspace is.
 //!
-//! One library serves every workspace: `~/.mdx/memory/palace.db`. That is what
+//! One library serves every workspace: `~/.loam/memory/palace.db`. That is what
 //! makes cross-project recall possible at all, and it is also why the process
 //! holds a single handle behind a mutex — several windows and a sidecar now
 //! write to the same file, and the in-process serialization is the part we can

@@ -26,7 +26,7 @@ pub struct UserThemeFile {
     pub error: Option<String>,
 }
 
-/// Every `.css` file directly inside `~/.mdx/themes/`.
+/// Every `.css` file directly inside `~/.loam/themes/`.
 ///
 /// A missing directory is not an error — most users will never create one — and
 /// answers with an empty list. A file that cannot be read is reported in place
@@ -279,7 +279,7 @@ fn reveal_directory_os(_directory: &Path) -> Result<(), WorkspaceError> {
     ))
 }
 
-/// The directory user themes live in, under the same `~/.mdx` the rest of the
+/// The directory user themes live in, under the same `~/.loam` the rest of the
 /// product already uses for drafts and assets.
 pub fn user_themes_dir() -> Result<PathBuf, WorkspaceError> {
     let home = std::env::var_os("HOME")
@@ -287,5 +287,5 @@ pub fn user_themes_dir() -> Result<PathBuf, WorkspaceError> {
         .ok_or_else(|| {
             WorkspaceError::new("theme_path_failed", "home directory is not set")
         })?;
-    Ok(PathBuf::from(home).join(".mdx").join("themes"))
+    Ok(PathBuf::from(home).join(".loam").join("themes"))
 }

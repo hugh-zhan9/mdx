@@ -18,8 +18,8 @@ import { BUILT_IN_THEMES } from "../lib/themes";
 const spies = vi.hoisted(() => ({
   setPreference: vi.fn(),
   refresh: vi.fn(async () => {}),
-  saveThemeDraft: vi.fn(async () => "/Users/x/.mdx/themes/theme.css"),
-  revealUserThemesDir: vi.fn(async () => "/Users/x/.mdx/themes"),
+  saveThemeDraft: vi.fn(async () => "/Users/x/.loam/themes/theme.css"),
+  revealUserThemesDir: vi.fn(async () => "/Users/x/.loam/themes"),
 }));
 
 vi.mock("../lib/theme-preference", async (importOriginal) => ({
@@ -176,7 +176,7 @@ describe("AppearanceButton", () => {
       true,
     );
     // The ground it starts on is the one the window is already standing on.
-    expect(panel()?.textContent).toContain("保存为 ~/.mdx/themes/我的主题.css");
+    expect(panel()?.textContent).toContain("保存为 ~/.loam/themes/我的主题.css");
   });
 
   it("saves a theme and then wears it", async () => {

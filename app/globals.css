@@ -381,7 +381,7 @@ html[data-mdx-appearance="dark"] {
 }
 
 /*
- * Reserved root selector for MDX workspace-level theme bridges.
+ * Reserved root selector for Loam workspace-level theme bridges.
  */
 [data-mdx-root] {
 }

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "MDX",
+  "productName": "Loam",
   "version": "0.3.0",
-  "identifier": "com.hugh.mdx",
+  "identifier": "com.hugh.loam",
   "build": {
     "frontendDist": "../out",
     "devUrl": "http://localhost:3000",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "workspace-main",
-        "title": "MDX",
+        "title": "Loam",
         "url": "/",
         "create": false,
         "width": 1480,
@@ -40,8 +40,8 @@
       "icons/icon.ico"
     ],
     "externalBin": [
-      "binaries/mdx-cli",
-      "binaries/mdx-mcp"
+      "binaries/loam-cli",
+      "binaries/loam-mcp"
     ],
     "fileAssociations": [
       {

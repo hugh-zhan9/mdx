@@ -18,8 +18,8 @@
 
 ## 存储
 
-- 全局单库 `~/.mdx/memory/palace.db`，由 mempal 的 SQLite 存储层管理，schema 版本由上游决定。
-- 工作区绝对路径 → 项目（wing）的绑定记在 `~/.mdx/memory/wings.json`；项目名是「目录名 + 路径哈希前 6 位」，同名目录不会合并成一个项目。
+- 全局单库 `~/.loam/memory/palace.db`，由 mempal 的 SQLite 存储层管理，schema 版本由上游决定。
+- 工作区绝对路径 → 项目（wing）的绑定记在 `~/.loam/memory/wings.json`；项目名是「目录名 + 路径哈希前 6 位」，同名目录不会合并成一个项目。
 - 工作区改名或移动后不自动认亲，需要显式重绑。
 - 库比本版新（schema 不兼容）时整体只读并明确报错，**不自动迁移**。
 - 库不可写时记忆整体停用，编辑器不受影响。
@@ -28,7 +28,7 @@
 
 ## 嵌入模型
 
-- 模型文件在 `~/.mdx/models/<slug>/`，需要 `tokenizer.json`、`model.safetensors`、`config.json` 三件齐全。
+- 模型文件在 `~/.loam/models/<slug>/`，需要 `tokenizer.json`、`model.safetensors`、`config.json` 三件齐全。
 - 齐全 → 零网络加载；不齐全 → `embedding_model_missing`，**写入与语义检索都不可用**，不降级成关键词模式。
 - 下载是用户显式确认后的动作：下到临时目录，三件齐全再原子移入。
 - 换模型或维度不符要走一次全量重嵌（`memory_reindex`）。
@@ -80,9 +80,9 @@
 
 ## 配置
 
-**全局** `~/.mdx/memory/config.json`：嵌入模型、检索默认值（`topK`、`contextMaxItems`、`daoTianLimit`、`includeCards`）。
+**全局** `~/.loam/memory/config.json`：嵌入模型、检索默认值（`topK`、`contextMaxItems`、`daoTianLimit`、`includeCards`）。
 
-**每工作区** `<workspace>/.mdx/memory-config.json`（v3）：`enabled`、`capture.{enabled,sources}`、`agents.{claude,codex,cursor}.enabled`。
+**每工作区** `<workspace>/.loam/memory-config.json`（v3）：`enabled`、`capture.{enabled,sources}`、`agents.{claude,codex,cursor}.enabled`。
 
 读到 v2 配置时按新默认重建并留 `.v2.bak`——配置不是用户数据，不写迁移器。
 
@@ -120,7 +120,7 @@
 - 两步：预检报告将导入多少素材与会话、跳过多少 inbox 条目、`working.md` 是否存在；执行逐文件导入为**素材**，room 为 `legacy/<子目录>`。
 - 旧 `<workspace>/memory/**` 原地只读保留，任何路径都不修改它。
 - inbox 与 `working.md` 不导入。
-- 重跑幂等，单文件失败不影响其余并进报告，报告落 `~/.mdx/memory/import-reports/`。
+- 重跑幂等，单文件失败不影响其余并进报告，报告落 `~/.loam/memory/import-reports/`。
 - 导入结果是素材不是结论：要重新进入 agent 的上下文，得走一次 distill + adopt。
 
 ## 备份包

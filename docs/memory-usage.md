@@ -1,4 +1,4 @@
-# MDX Memory 使用说明
+# Loam Memory 使用说明
 
 本文面向使用者。底层契约见 [loopx/specs/memory.md](./loopx/specs/memory.md)。
 
@@ -42,9 +42,9 @@
 
 ## 数据在哪
 
-- 记忆库：`~/.mdx/memory/palace.db`，**一个库服务所有工作区**，按项目区分。
-- 嵌入模型：`~/.mdx/models/`。
-- 项目绑定：`~/.mdx/memory/wings.json`。
+- 记忆库：`~/.loam/memory/palace.db`，**一个库服务所有工作区**，按项目区分。
+- 嵌入模型：`~/.loam/models/`。
+- 项目绑定：`~/.loam/memory/wings.json`。
 
 这意味着记忆**跟着你走，不跟着仓库走**。换台机器 clone 仓库不会把记忆带过去——要带只能导出备份。
 
@@ -78,13 +78,13 @@ agent 能用的工具：`memory_recall`（拿上下文）、`memory_search`、`m
 ## 命令行
 
 ```bash
-/Applications/MDX.app/Contents/MacOS/mdx-cli memory --root /path/to/workspace <子命令>
+/Applications/Loam.app/Contents/MacOS/loam-cli memory --root /path/to/workspace <子命令>
 ```
 
 MCP：
 
 ```bash
-/Applications/MDX.app/Contents/MacOS/mdx-mcp --workspace /path/to/workspace
+/Applications/Loam.app/Contents/MacOS/loam-mcp --workspace /path/to/workspace
 ```
 
 ## 出问题时
@@ -94,4 +94,4 @@ MCP：
 - **提示模型缺失**：没下载或被删了，重新下载即可。
 - **提示 schema 比本版新**：你用过更新版本的应用打开过这个库。升级应用；在那之前记忆是只读的，数据不会被动。
 - **提示项目绑定失效**：工作区被移动或删除了，重新绑定或忽略。
-- **库不可写**：检查 `~/.mdx/memory/` 的权限。这种情况下编辑器本身不受影响。
+- **库不可写**：检查 `~/.loam/memory/` 的权限。这种情况下编辑器本身不受影响。

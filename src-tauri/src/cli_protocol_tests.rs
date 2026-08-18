@@ -6,17 +6,17 @@ use crate::cli_protocol::{
 mod mdx_cli_for_tests {
     #![allow(dead_code)]
 
-    use crate as mdx_lib;
+    use crate as loam_lib;
 
-    include!("bin/mdx_cli.rs");
+    include!("bin/loam_cli.rs");
 }
 
 mod mdx_mcp_for_tests {
     #![allow(dead_code)]
 
-    use crate as mdx_lib;
+    use crate as loam_lib;
 
-    include!("bin/mdx_mcp.rs");
+    include!("bin/loam_mcp.rs");
 }
 
 #[test]
@@ -77,7 +77,7 @@ fn parses_llm_wiki_status_request() {
 #[test]
 fn parses_memory_hook_command_without_desktop_socket() {
     let command = mdx_cli_for_tests::parse_command_for_test([
-        "mdx-cli",
+        "loam-cli",
         "memory",
         "--root",
         "/tmp/ws",
@@ -101,17 +101,17 @@ fn parses_memory_hook_command_without_desktop_socket() {
 #[test]
 fn the_commands_of_the_abandoned_model_no_longer_parse() {
     for arguments in [
-        vec!["mdx-cli", "memory", "--root", "/tmp/ws", "inbox", "list"],
-        vec!["mdx-cli", "memory", "--root", "/tmp/ws", "working", "get"],
+        vec!["loam-cli", "memory", "--root", "/tmp/ws", "inbox", "list"],
+        vec!["loam-cli", "memory", "--root", "/tmp/ws", "working", "get"],
         vec![
-            "mdx-cli", "memory", "--root", "/tmp/ws", "thread", "show", "thread-1",
+            "loam-cli", "memory", "--root", "/tmp/ws", "thread", "show", "thread-1",
         ],
-        vec!["mdx-cli", "memory", "--root", "/tmp/ws", "index", "rebuild"],
+        vec!["loam-cli", "memory", "--root", "/tmp/ws", "index", "rebuild"],
         vec![
-            "mdx-cli", "memory", "--root", "/tmp/ws", "migrate", "storage", "--to", "postgres",
+            "loam-cli", "memory", "--root", "/tmp/ws", "migrate", "storage", "--to", "postgres",
         ],
-        vec!["mdx-cli", "memory", "--root", "/tmp/ws", "repair"],
-        vec!["mdx-cli", "memory", "--root", "/tmp/ws", "archive", "mem_1"],
+        vec!["loam-cli", "memory", "--root", "/tmp/ws", "repair"],
+        vec!["loam-cli", "memory", "--root", "/tmp/ws", "archive", "mem_1"],
     ] {
         let command = arguments[4];
         assert!(
@@ -125,20 +125,20 @@ fn the_commands_of_the_abandoned_model_no_longer_parse() {
 #[test]
 fn the_memory_command_surface_is_the_new_one() {
     for arguments in [
-        vec!["mdx-cli", "memory", "status"],
-        vec!["mdx-cli", "memory", "init"],
-        vec!["mdx-cli", "memory", "model", "--download"],
-        vec!["mdx-cli", "memory", "reindex"],
-        vec!["mdx-cli", "memory", "add", "--body", "we chose X"],
-        vec!["mdx-cli", "memory", "show", "drawer-1"],
-        vec!["mdx-cli", "memory", "list", "--kind", "conclusion"],
-        vec!["mdx-cli", "memory", "delete", "drawer-1"],
-        vec!["mdx-cli", "memory", "search", "auth"],
-        vec!["mdx-cli", "memory", "context", "auth"],
-        vec!["mdx-cli", "memory", "brief", "auth"],
-        vec!["mdx-cli", "memory", "recall", "auth"],
+        vec!["loam-cli", "memory", "status"],
+        vec!["loam-cli", "memory", "init"],
+        vec!["loam-cli", "memory", "model", "--download"],
+        vec!["loam-cli", "memory", "reindex"],
+        vec!["loam-cli", "memory", "add", "--body", "we chose X"],
+        vec!["loam-cli", "memory", "show", "drawer-1"],
+        vec!["loam-cli", "memory", "list", "--kind", "conclusion"],
+        vec!["loam-cli", "memory", "delete", "drawer-1"],
+        vec!["loam-cli", "memory", "search", "auth"],
+        vec!["loam-cli", "memory", "context", "auth"],
+        vec!["loam-cli", "memory", "brief", "auth"],
+        vec!["loam-cli", "memory", "recall", "auth"],
         vec![
-            "mdx-cli",
+            "loam-cli",
             "memory",
             "distill",
             "--statement",
@@ -148,10 +148,10 @@ fn the_memory_command_surface_is_the_new_one() {
             "--ref",
             "drawer-1",
         ],
-        vec!["mdx-cli", "memory", "gate", "drawer-1"],
-        vec!["mdx-cli", "memory", "adopt", "drawer-1"],
+        vec!["loam-cli", "memory", "gate", "drawer-1"],
+        vec!["loam-cli", "memory", "adopt", "drawer-1"],
         vec![
-            "mdx-cli",
+            "loam-cli",
             "memory",
             "demote",
             "drawer-1",
@@ -162,19 +162,19 @@ fn the_memory_command_surface_is_the_new_one() {
             "--evidence-ref",
             "drawer-2",
         ],
-        vec!["mdx-cli", "memory", "promote", "drawer-1"],
-        vec!["mdx-cli", "memory", "capture", "scan", "--path", "/tmp/ws/notes"],
+        vec!["loam-cli", "memory", "promote", "drawer-1"],
+        vec!["loam-cli", "memory", "capture", "scan", "--path", "/tmp/ws/notes"],
         vec![
-            "mdx-cli",
+            "loam-cli",
             "memory",
             "capture",
             "import",
             "--path",
             "/tmp/ws/notes",
         ],
-        vec!["mdx-cli", "memory", "legacy-import", "--dry-run"],
-        vec!["mdx-cli", "memory", "export", "--output", "/tmp/bundle"],
-        vec!["mdx-cli", "memory", "import", "--input", "/tmp/bundle"],
+        vec!["loam-cli", "memory", "legacy-import", "--dry-run"],
+        vec!["loam-cli", "memory", "export", "--output", "/tmp/bundle"],
+        vec!["loam-cli", "memory", "import", "--input", "/tmp/bundle"],
     ] {
         let command = arguments[2];
         assert!(

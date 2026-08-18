@@ -88,7 +88,7 @@ export function markDocumentDeleted(
 }
 
 export function documentWindowTitle(state: LoadedDocumentState) {
-  return `${state.dirty ? "● " : ""}${state.fileName} - MDX`;
+  return `${state.dirty ? "● " : ""}${state.fileName} - Loam`;
 }
 
 export function canCloseDocumentWithoutPrompt(state: LoadedDocumentState) {

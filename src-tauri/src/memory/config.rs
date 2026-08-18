@@ -30,7 +30,7 @@ pub struct GlobalMemoryConfig {
 pub struct EmbeddingConfig {
     pub model: String,
     /// Overrides where the model files are read from. Normally left unset so
-    /// the model lives under `~/.mdx/models/`.
+    /// the model lives under `~/.loam/models/`.
     #[serde(default)]
     pub local_dir: Option<String>,
 }
@@ -159,7 +159,7 @@ pub fn global_config_path() -> Result<PathBuf, WorkspaceError> {
 }
 
 pub fn workspace_config_path(root: &Path) -> PathBuf {
-    root.join(".mdx").join("memory-config.json")
+    root.join(".loam").join("memory-config.json")
 }
 
 pub fn read_global_config() -> Result<GlobalMemoryConfig, WorkspaceError> {

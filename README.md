@@ -1,23 +1,23 @@
 <p align="center">
-  <img src="src-tauri/icons/icon.png" alt="MDX app icon" width="128" height="128">
+  <img src="src-tauri/icons/icon.png" alt="Loam app icon" width="128" height="128">
 </p>
 
 <p align="center">
   English · <a href="README.zh-CN.md">简体中文</a>
 </p>
 
-# MDX
+# Loam
 
-**MDX is a local-first Markdown app with two modes: single-document editing and folder workspaces.**
+**Loam is a local-first Markdown app with two modes: single-document editing and folder workspaces.**
 
 It combines a Markdown-native editing kernel with a Tauri desktop shell for working with local folders and individual Markdown documents.
 
 ## Modes
 
 - Document Mode: opens when Finder or the system “Open With” flow launches a single `.md` / `.markdown` file. The window contains only the Markdown editor and the current document outline, without the file tree, tabs, or LLM Wiki.
-- Workspace Mode: opens when you launch MDX directly, restore the recent workspace, or open a folder inside the app. The window contains the file tree, tabs, outline, and optional LLM Wiki knowledge-base features.
+- Workspace Mode: opens when you launch Loam directly, restore the recent workspace, or open a folder inside the app. The window contains the file tree, tabs, outline, and optional LLM Wiki knowledge-base features.
 
-Document Mode is not controlled by `mdx-cli`, does not restore the recent workspace, and does not support `.mdx`.
+Document Mode is not controlled by `loam-cli`, does not restore the recent workspace, and does not support `.mdx`.
 
 ## Features
 
@@ -29,15 +29,15 @@ Document Mode is not controlled by `mdx-cli`, does not restore the recent worksp
 - Workspace Mode: full-text search across `.md` and `.markdown`, including `raw/`
 - Workspace Mode: default search limits of 2 MB per file, 200 total results, and 20 matches per file
 - Workspace Mode and Document Mode: external file watching; clean content auto-reloads while dirty content shows a conflict prompt and read-only diff
-- Unsaved Markdown bodies are stored as plaintext drafts under `~/.mdx/drafts/`
+- Unsaved Markdown bodies are stored as plaintext drafts under `~/.loam/drafts/`
 - Drafts are deleted after save/discard and expired drafts are cleaned after 30 days
-- Local app state saved under `~/.mdx/state.json`
-- Image assets saved into the current document or workspace `.assets/` directory, with a global fallback under `~/.mdx/assets`
-- `mdx-cli` for Workspace Mode local automation and agent-driven editing
+- Local app state saved under `~/.loam/state.json`
+- Image assets saved into the current document or workspace `.assets/` directory, with a global fallback under `~/.loam/assets`
+- `loam-cli` for Workspace Mode local automation and agent-driven editing
 
 ## Scope
 
-MDX is desktop-first. The current app does not provide a web product, Quick Look extension, an auto-update flow, multi-root workspaces, PDF/image/binary full-text search, or LLM Wiki onboarding.
+Loam is desktop-first. The current app does not provide a web product, Quick Look extension, an auto-update flow, multi-root workspaces, PDF/image/binary full-text search, or LLM Wiki onboarding.
 
 The editor currently supports `.md` and `.markdown` files. This MVP does not treat `.mdx` as a Document Mode file and does not display `.mdx` files in the workspace file tree.
 
@@ -53,53 +53,53 @@ The frontend owns workspace UI state, tabs, outline parsing, panel sizing, and e
 
 ## CLI
 
-The macOS build includes `mdx-cli`, which talks to the running Workspace Mode app over a local Unix socket at `~/.mdx/cli.sock`.
+The macOS build includes `loam-cli`, which talks to the running Workspace Mode app over a local Unix socket at `~/.loam/cli.sock`.
 
 Supported commands include:
 
 ```bash
-mdx-cli new
-mdx-cli list
-mdx-cli open <path>
-mdx-cli content [--tab <id>]
-mdx-cli selection [--tab <id>]
-mdx-cli insert [--tab <id>] <text>
-mdx-cli save [--tab <id>]
-mdx-cli focus [--tab <id>]
-mdx-cli close [--tab <id>] [--force]
-mdx-cli create-file <dir> [name]
-mdx-cli create-folder <dir> <name>
-mdx-cli rename <path> <new-name>
-mdx-cli llm-wiki status
-mdx-cli llm-wiki ingest <raw-path>
-mdx-cli llm-wiki digest --title "..." <prompt...>
-mdx-cli llm-wiki lint [--json]
-mdx-cli llm-wiki query [--json] <question...>
-mdx-cli llm-wiki search <query...>
-mdx-cli memory status [--json]
-mdx-cli memory init
-mdx-cli memory repair [--rebuild-index]
-mdx-cli memory index rebuild
-mdx-cli memory thread save --source manual --title "..." --file <path>
-mdx-cli memory add --title "..." --body "..."
-mdx-cli memory recall [--json] <query...>
-mdx-cli memory working get
-mdx-cli memory inbox list
-mdx-cli memory inbox accept <inbox-id>
-mdx-cli memory distill --thread <thread-id>
-mdx-cli memory capture import --source codex --file <path>
-mdx-cli memory promote <thread-id|memory-id|path>
-mdx-cli memory agent setup [--all|--codex|--claude|--cursor] [--no-hooks] [--dry-run]
-mdx-cli memory export --output <dir>
-mdx-cli memory import --input <dir> --dry-run
-mdx-cli memory --root <workspace> status
-mdx-cli serve --workspace <workspace> --port 14243
-mdx-mcp --workspace <workspace>
+loam-cli new
+loam-cli list
+loam-cli open <path>
+loam-cli content [--tab <id>]
+loam-cli selection [--tab <id>]
+loam-cli insert [--tab <id>] <text>
+loam-cli save [--tab <id>]
+loam-cli focus [--tab <id>]
+loam-cli close [--tab <id>] [--force]
+loam-cli create-file <dir> [name]
+loam-cli create-folder <dir> <name>
+loam-cli rename <path> <new-name>
+loam-cli llm-wiki status
+loam-cli llm-wiki ingest <raw-path>
+loam-cli llm-wiki digest --title "..." <prompt...>
+loam-cli llm-wiki lint [--json]
+loam-cli llm-wiki query [--json] <question...>
+loam-cli llm-wiki search <query...>
+loam-cli memory status [--json]
+loam-cli memory init
+loam-cli memory repair [--rebuild-index]
+loam-cli memory index rebuild
+loam-cli memory thread save --source manual --title "..." --file <path>
+loam-cli memory add --title "..." --body "..."
+loam-cli memory recall [--json] <query...>
+loam-cli memory working get
+loam-cli memory inbox list
+loam-cli memory inbox accept <inbox-id>
+loam-cli memory distill --thread <thread-id>
+loam-cli memory capture import --source codex --file <path>
+loam-cli memory promote <thread-id|memory-id|path>
+loam-cli memory agent setup [--all|--codex|--claude|--cursor] [--no-hooks] [--dry-run]
+loam-cli memory export --output <dir>
+loam-cli memory import --input <dir> --dry-run
+loam-cli memory --root <workspace> status
+loam-cli serve --workspace <workspace> --port 14243
+loam-mcp --workspace <workspace>
 ```
 
-Memory commands manage Markdown-native records under `memory/` and `.mdx/`. They can run through the active Workspace Mode socket, or headlessly with `mdx-cli memory --root <workspace> ...`.
+Memory commands manage Markdown-native records under `memory/` and `.loam/`. They can run through the active Workspace Mode socket, or headlessly with `loam-cli memory --root <workspace> ...`.
 
-Packaged builds include `mdx-cli` and `mdx-mcp` sidecars. Agent integration for Codex, Claude, and Cursor is opt-in from the Memory Settings panel or `mdx-cli memory --root <workspace> agent setup ...`.
+Packaged builds include `loam-cli` and `loam-mcp` sidecars. Agent integration for Codex, Claude, and Cursor is opt-in from the Memory Settings panel or `loam-cli memory --root <workspace> agent setup ...`.
 
 For the full Memory usage guide, see [docs/memory-usage.md](docs/memory-usage.md).
 

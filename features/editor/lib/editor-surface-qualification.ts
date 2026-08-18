@@ -13,8 +13,8 @@
  * from builds that do not set it.
  */
 export const MILKDOWN_QUALIFICATION_SURFACE_ENV =
-    "NEXT_PUBLIC_MDX_MILKDOWN_QUALIFICATION";
+    "NEXT_PUBLIC_LOAM_MILKDOWN_QUALIFICATION";
 
 export function usesMilkdownQualificationSurface(): boolean {
-    return process.env.NEXT_PUBLIC_MDX_MILKDOWN_QUALIFICATION === "1";
+    return process.env.NEXT_PUBLIC_LOAM_MILKDOWN_QUALIFICATION === "1";
 }

@@ -471,7 +471,7 @@ pub fn write_markdown_file(
             if expected_fingerprint.is_some() {
                 return Err(WorkspaceError::new(
                     "external_modified",
-                    "workspace file was modified outside MDX",
+                    "workspace file was modified outside Loam",
                 ));
             }
             ensure_target_available(&target.path)?;
@@ -498,7 +498,7 @@ fn verify_existing_markdown_fingerprint(
     if current_fingerprint != expected_fingerprint {
         return Err(WorkspaceError::new(
             "external_modified",
-            "workspace file was modified outside MDX",
+            "workspace file was modified outside Loam",
         ));
     }
 

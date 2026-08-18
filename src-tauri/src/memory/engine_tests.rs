@@ -128,7 +128,7 @@ fn the_model_directory_lives_under_the_mdx_home() {
 #[test]
 fn a_pre_migration_workspace_config_is_rebuilt_and_kept_aside() {
     let root = tempfile::tempdir().expect("workspace");
-    let path = root.path().join(".mdx").join("memory-config.json");
+    let path = root.path().join(".loam").join("memory-config.json");
     std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
     std::fs::write(
         &path,

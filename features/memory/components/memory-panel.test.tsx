@@ -42,7 +42,7 @@ function status(overrides: Partial<MemoryStatus> = {}): MemoryStatus {
     enabled: true,
     wing: "notes-9f3c1a",
     library: {
-      path: "/home/u/.mdx/memory/palace.db",
+      path: "/home/u/.loam/memory/palace.db",
       exists: true,
       schemaVersion: 9,
       supportedSchemaVersion: 9,

@@ -14,7 +14,7 @@ describe("workspace empty state copy", () => {
         });
 
         expect(emptyState.title).toBe("需要桌面版打开本地工作区");
-        expect(emptyState.description).toContain("文件夹访问只能在 MDX 桌面版中使用");
+        expect(emptyState.description).toContain("文件夹访问只能在 Loam 桌面版中使用");
         expect(emptyState.actionLabel).toBeNull();
     });
 

@@ -509,7 +509,7 @@ fn new_workspace_window_with_route(app: &AppHandle, route: &str) -> tauri::Resul
     }
 
     let builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(route.into()))
-        .title("MDX")
+        .title("Loam")
         .inner_size(1480.0, 860.0)
         .min_inner_size(1100.0, 640.0)
         .resizable(true);
@@ -542,8 +542,8 @@ pub(crate) fn new_document_window(
     let title = real_path
         .file_name()
         .and_then(|name| name.to_str())
-        .map(|name| format!("{name} - MDX"))
-        .unwrap_or_else(|| "MDX".to_string());
+        .map(|name| format!("{name} - Loam"))
+        .unwrap_or_else(|| "Loam".to_string());
 
     let builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(route.into()))
         .title(&title)
@@ -574,7 +574,7 @@ fn new_document_error_window(
     }
 
     let builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(route.into()))
-        .title("无法打开文档 - MDX")
+        .title("无法打开文档 - Loam")
         .inner_size(720.0, 420.0)
         .min_inner_size(520.0, 320.0)
         .resizable(true);

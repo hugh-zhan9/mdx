@@ -59,7 +59,7 @@ pub fn save_document_file_sync(
     if current_fingerprint != expected_fingerprint {
         return Err(WorkspaceError::new(
             "external_modified",
-            "document was modified outside MDX",
+            "document was modified outside Loam",
         ));
     }
 

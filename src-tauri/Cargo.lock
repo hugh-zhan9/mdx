@@ -2663,6 +2663,39 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92daf443525c4cce67b150400bc2316076100ce0b3686209eb8cf3c31612e6f0"
 
 [[package]]
+name = "loam"
+version = "0.3.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "block2",
+ "clap",
+ "hf-hub",
+ "libc",
+ "log",
+ "mempal-runtime",
+ "notify",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
+ "pdf-extract",
+ "png",
+ "reqwest 0.13.2",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng",
+ "sha2",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-log",
+ "tempfile",
+ "time",
+ "trash",
+]
+
+[[package]]
 name = "lock_api"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2796,39 +2829,6 @@ checksum = "d89e7ee0cfbedfc4da3340218492196241d89eefb6dab27de5df917a6d2e78cf"
 dependencies = [
  "cfg-if",
  "digest",
-]
-
-[[package]]
-name = "mdx"
-version = "0.3.0"
-dependencies = [
- "async-trait",
- "base64 0.22.1",
- "block2",
- "clap",
- "hf-hub",
- "libc",
- "log",
- "mempal-runtime",
- "notify",
- "objc2",
- "objc2-app-kit",
- "objc2-foundation",
- "pdf-extract",
- "png",
- "reqwest 0.13.2",
- "rusqlite",
- "serde",
- "serde_json",
- "serde_yaml_ng",
- "sha2",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-log",
- "tempfile",
- "time",
- "trash",
 ]
 
 [[package]]

@@ -364,7 +364,7 @@ auditAgainstBaseline(
  * user-visible the moment a menu item, a settings row, a keyboard shortcut or a
  * `<Link>` reaches either one — so the audit looks for exactly that.
  */
-const QUALIFICATION_FLAG = "NEXT_PUBLIC_MDX_MILKDOWN_QUALIFICATION";
+const QUALIFICATION_FLAG = "NEXT_PUBLIC_LOAM_MILKDOWN_QUALIFICATION";
 const HARNESS_ROUTE = "/mdx-editor-qualification";
 const NAVIGATION_MARKERS = [
     /<Link\b/,

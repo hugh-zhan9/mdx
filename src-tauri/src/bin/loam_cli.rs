@@ -9,12 +9,12 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use clap::{Parser, Subcommand};
-use mdx_lib::cli_protocol::{CliRequest, CliResponse};
+use loam_lib::cli_protocol::{CliRequest, CliResponse};
 
 #[derive(Parser)]
 #[command(
-    name = "mdx-cli",
-    about = "Control the running MDX desktop workspace over its local socket."
+    name = "loam-cli",
+    about = "Control the running Loam desktop workspace over its local socket."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -488,7 +488,7 @@ fn request_from_command(command: &CommandLine) -> io::Result<CliRequest> {
         CommandLine::Serve { .. } => {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "serve does not use the MDX desktop socket",
+                "serve does not use the Loam desktop socket",
             ));
         }
     })
@@ -721,7 +721,7 @@ fn execute_memory_headless(command: &CommandLine, root_path: String) -> io::Resu
 
     let request = request_from_memory_command(command)?;
 
-    Ok(mdx_lib::cli_protocol::run_memory_request(
+    Ok(loam_lib::cli_protocol::run_memory_request(
         std::path::Path::new(&root_path),
         request,
     ))
@@ -751,7 +751,7 @@ fn execute_memory_agent_headless(
     }
 
     let configure_all = *all || (!*codex && !*claude && !*cursor);
-    let request = mdx_lib::memory_agent_setup::MemoryAgentSetupRequest {
+    let request = loam_lib::memory_agent_setup::MemoryAgentSetupRequest {
         codex: configure_all || *codex,
         claude: configure_all || *claude,
         cursor: configure_all || *cursor,
@@ -761,7 +761,7 @@ fn execute_memory_agent_headless(
         mdx_mcp: mdx_mcp.clone(),
     };
 
-    match mdx_lib::memory_agent_setup::memory_agent_setup(root_path.clone(), request) {
+    match loam_lib::memory_agent_setup::memory_agent_setup(root_path.clone(), request) {
         Ok(result) => Ok(CliResponse {
             ok: true,
             root_path: Some(root_path),
@@ -794,7 +794,7 @@ fn execute_memory_hook_headless(
     // The hook speaks the daemon's shape directly. Everything a hook can
     // usefully say is in the payload it was handed: which agent, which event,
     // the transcript to keep, and the prompt that is starting.
-    let request = mdx_lib::memory::daemon::HookEventRequest {
+    let request = loam_lib::memory::daemon::HookEventRequest {
         agent_source: agent.to_string(),
         event_name: event_name.to_string(),
         workspace_root: Some(root_path.clone()),
@@ -820,12 +820,12 @@ fn execute_memory_hook_headless(
         )
     })?;
     let daemon_response =
-        mdx_lib::memory::daemon::dispatch(root_path.clone(), "POST", "/hook/events", &body)
+        loam_lib::memory::daemon::dispatch(root_path.clone(), "POST", "/hook/events", &body)
             .map_err(workspace_error_to_io)?;
     if !(200..300).contains(&daemon_response.status) {
         return Err(io::Error::new(io::ErrorKind::Other, daemon_response.body));
     }
-    let response = serde_json::from_str::<mdx_lib::memory::daemon::HookEventResponse>(
+    let response = serde_json::from_str::<loam_lib::memory::daemon::HookEventResponse>(
         &daemon_response.body,
     )
     .map_err(|error| {
@@ -834,7 +834,7 @@ fn execute_memory_hook_headless(
             format!("invalid hook response: {error}"),
         )
     })?;
-    let output = mdx_lib::memory_hooks::format_hook_output(
+    let output = loam_lib::memory_hooks::format_hook_output(
         &request.agent_source,
         &request.event_name,
         Some(&response.additional_context),
@@ -854,9 +854,9 @@ fn execute_memory_agent_install_headless(
     agent: Option<String>,
     dry_run: bool,
 ) -> io::Result<CliResponse> {
-    let result = mdx_lib::memory_agent_setup::memory_agent_install(
+    let result = loam_lib::memory_agent_setup::memory_agent_install(
         root_path.clone(),
-        mdx_lib::memory_agent_setup::MemoryAgentCommandRequest {
+        loam_lib::memory_agent_setup::MemoryAgentCommandRequest {
             agent,
             dry_run,
             keep_data: false,
@@ -875,9 +875,9 @@ fn execute_memory_agent_repair_headless(
     agent: Option<String>,
     dry_run: bool,
 ) -> io::Result<CliResponse> {
-    let result = mdx_lib::memory_agent_setup::memory_agent_repair(
+    let result = loam_lib::memory_agent_setup::memory_agent_repair(
         root_path.clone(),
-        mdx_lib::memory_agent_setup::MemoryAgentCommandRequest {
+        loam_lib::memory_agent_setup::MemoryAgentCommandRequest {
             agent,
             dry_run,
             keep_data: false,
@@ -897,9 +897,9 @@ fn execute_memory_agent_uninstall_headless(
     keep_data: bool,
     dry_run: bool,
 ) -> io::Result<CliResponse> {
-    let result = mdx_lib::memory_agent_setup::memory_agent_uninstall(
+    let result = loam_lib::memory_agent_setup::memory_agent_uninstall(
         root_path.clone(),
-        mdx_lib::memory_agent_setup::MemoryAgentCommandRequest {
+        loam_lib::memory_agent_setup::MemoryAgentCommandRequest {
             agent,
             dry_run,
             keep_data,
@@ -917,7 +917,7 @@ fn execute_memory_agent_status_headless(
     root_path: String,
     agent: Option<String>,
 ) -> io::Result<CliResponse> {
-    let statuses = mdx_lib::memory_agent_setup::memory_agent_status(root_path.clone(), agent)?;
+    let statuses = loam_lib::memory_agent_setup::memory_agent_status(root_path.clone(), agent)?;
     Ok(CliResponse {
         ok: true,
         root_path: Some(root_path),
@@ -930,7 +930,7 @@ fn execute_memory_agent_doctor_headless(
     root_path: String,
     agent: Option<String>,
 ) -> io::Result<CliResponse> {
-    let report = mdx_lib::memory_agent_setup::memory_agent_doctor(root_path.clone(), agent)?;
+    let report = loam_lib::memory_agent_setup::memory_agent_doctor(root_path.clone(), agent)?;
     Ok(CliResponse {
         ok: true,
         root_path: Some(root_path),
@@ -992,7 +992,7 @@ fn handle_http_connection(
     if !is_authorized(api_key, request.authorization.as_deref()) {
         return write_http_response(
             stream,
-            mdx_lib::memory::daemon::DaemonResponse {
+            loam_lib::memory::daemon::DaemonResponse {
                 status: 401,
                 body: serde_json::json!({
                     "ok": false,
@@ -1004,9 +1004,9 @@ fn handle_http_connection(
         );
     }
     let response =
-        match mdx_lib::memory::daemon::dispatch(root_path, &request.method, &request.path, &request.body) {
+        match loam_lib::memory::daemon::dispatch(root_path, &request.method, &request.path, &request.body) {
             Ok(response) => response,
-            Err(error) => mdx_lib::memory::daemon::DaemonResponse {
+            Err(error) => loam_lib::memory::daemon::DaemonResponse {
                 status: 500,
                 body: serde_json::json!({
                     "ok": false,
@@ -1105,7 +1105,7 @@ fn is_authorized(api_key: Option<&str>, authorization: Option<&str>) -> bool {
 
 fn write_http_response(
     stream: &mut TcpStream,
-    response: mdx_lib::memory::daemon::DaemonResponse,
+    response: loam_lib::memory::daemon::DaemonResponse,
 ) -> io::Result<()> {
     let status_text = match response.status {
         200 => "OK",
@@ -1189,7 +1189,7 @@ fn response_from_io_error(error: &io::Error) -> CliResponse {
     CliResponse::error(code, message)
 }
 
-fn workspace_error_to_io(error: mdx_lib::WorkspaceError) -> io::Error {
+fn workspace_error_to_io(error: loam_lib::WorkspaceError) -> io::Error {
     io::Error::new(
         io::ErrorKind::Other,
         format!("{}: {}", error.error_code(), error),
@@ -1277,7 +1277,7 @@ impl Connection {
         if read == 0 {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
-                "MDX socket closed before responding",
+                "Loam socket closed before responding",
             ));
         }
 
@@ -1304,7 +1304,7 @@ fn connect_with_bootstrap() -> io::Result<UnixStream> {
 
     Err(io::Error::new(
         io::ErrorKind::TimedOut,
-        format!("could not reach MDX socket at {}", path.display()),
+        format!("could not reach Loam socket at {}", path.display()),
     ))
 }
 
@@ -1324,19 +1324,19 @@ fn launch_mdx() {
             }
         }
 
-        let _ = Command::new("open").args(["-b", "com.hugh.mdx"]).spawn();
+        let _ = Command::new("open").args(["-b", "com.hugh.loam"]).spawn();
     }
 
     #[cfg(target_os = "linux")]
     {
-        let _ = Command::new("mdx").spawn();
+        let _ = Command::new("loam").spawn();
     }
 }
 
 fn socket_path() -> io::Result<PathBuf> {
     let home = env::var_os("HOME")
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME is not set"))?;
-    Ok(PathBuf::from(home).join(".mdx").join("cli.sock"))
+    Ok(PathBuf::from(home).join(".loam").join("cli.sock"))
 }
 
 fn normalize_cli_path(input: &str) -> io::Result<String> {
@@ -1374,7 +1374,7 @@ fn normalize_cli_path(input: &str) -> io::Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mdx_lib::cli_protocol::{CliResponse, CliWikiSearchResult};
+    use loam_lib::cli_protocol::{CliResponse, CliWikiSearchResult};
     use std::ffi::OsString;
     use std::sync::MutexGuard;
     use tempfile::TempDir;
@@ -1391,15 +1391,15 @@ mod tests {
             home_path: impl AsRef<std::path::Path>,
             session_dirs: impl AsRef<std::ffi::OsStr>,
         ) -> Self {
-            let lock = mdx_lib::llm_wiki_llm::llm_config_env_lock()
+            let lock = loam_lib::llm_wiki_llm::llm_config_env_lock()
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             let home = std::env::var_os("HOME");
             let userprofile = std::env::var_os("USERPROFILE");
-            let codex_session_dirs = std::env::var_os("MDX_CODEX_SESSION_DIRS");
+            let codex_session_dirs = std::env::var_os("LOAM_CODEX_SESSION_DIRS");
             std::env::set_var("HOME", home_path.as_ref());
             std::env::remove_var("USERPROFILE");
-            std::env::set_var("MDX_CODEX_SESSION_DIRS", session_dirs);
+            std::env::set_var("LOAM_CODEX_SESSION_DIRS", session_dirs);
             Self {
                 _lock: lock,
                 home,
@@ -1422,9 +1422,9 @@ mod tests {
                 std::env::remove_var("USERPROFILE");
             }
             if let Some(value) = self.codex_session_dirs.take() {
-                std::env::set_var("MDX_CODEX_SESSION_DIRS", value);
+                std::env::set_var("LOAM_CODEX_SESSION_DIRS", value);
             } else {
-                std::env::remove_var("MDX_CODEX_SESSION_DIRS");
+                std::env::remove_var("LOAM_CODEX_SESSION_DIRS");
             }
         }
     }
@@ -1681,7 +1681,7 @@ mod tests {
     #[test]
     fn memory_reading_requests_use_socket_protocol_without_root() {
         let context = Cli::try_parse_from([
-            "mdx-cli",
+            "loam-cli",
             "memory",
             "context",
             "--max-items",
@@ -1699,7 +1699,7 @@ mod tests {
             }
         );
 
-        let brief = Cli::try_parse_from(["mdx-cli", "memory", "brief", "auth", "flow"]).unwrap();
+        let brief = Cli::try_parse_from(["loam-cli", "memory", "brief", "auth", "flow"]).unwrap();
         assert_eq!(
             request_from_command(&brief.command).unwrap(),
             CliRequest::MemoryBrief {
@@ -1708,7 +1708,7 @@ mod tests {
         );
 
         let search =
-            Cli::try_parse_from(["mdx-cli", "memory", "search", "--limit", "5", "auth"]).unwrap();
+            Cli::try_parse_from(["loam-cli", "memory", "search", "--limit", "5", "auth"]).unwrap();
         assert_eq!(
             request_from_command(&search.command).unwrap(),
             CliRequest::MemorySearch {
@@ -1723,7 +1723,7 @@ mod tests {
     #[test]
     fn memory_conclusion_requests_use_socket_protocol_without_root() {
         let distill = Cli::try_parse_from([
-            "mdx-cli",
+            "loam-cli",
             "memory",
             "distill",
             "--statement",
@@ -1748,7 +1748,7 @@ mod tests {
             }
         );
 
-        let gate = Cli::try_parse_from(["mdx-cli", "memory", "gate", "drawer-1"]).unwrap();
+        let gate = Cli::try_parse_from(["loam-cli", "memory", "gate", "drawer-1"]).unwrap();
         assert_eq!(
             request_from_command(&gate.command).unwrap(),
             CliRequest::MemoryGate {
@@ -1757,7 +1757,7 @@ mod tests {
         );
 
         let adopt =
-            Cli::try_parse_from(["mdx-cli", "memory", "adopt", "drawer-1", "--note", "checked"])
+            Cli::try_parse_from(["loam-cli", "memory", "adopt", "drawer-1", "--note", "checked"])
                 .unwrap();
         assert_eq!(
             request_from_command(&adopt.command).unwrap(),
@@ -1768,7 +1768,7 @@ mod tests {
         );
 
         let demote = Cli::try_parse_from([
-            "mdx-cli",
+            "loam-cli",
             "memory",
             "demote",
             "drawer-1",
@@ -1798,7 +1798,7 @@ mod tests {
     #[test]
     fn memory_demote_requires_evidence() {
         let error = Cli::try_parse_from([
-            "mdx-cli",
+            "loam-cli",
             "memory",
             "demote",
             "drawer-1",
@@ -1818,7 +1818,7 @@ mod tests {
     #[test]
     fn memory_distill_requires_supporting_material() {
         let error = Cli::try_parse_from([
-            "mdx-cli",
+            "loam-cli",
             "memory",
             "distill",
             "--statement",
@@ -1834,20 +1834,20 @@ mod tests {
 
     #[test]
     fn memory_lifecycle_requests_use_socket_protocol_without_root() {
-        let model = Cli::try_parse_from(["mdx-cli", "memory", "model", "--download"]).unwrap();
+        let model = Cli::try_parse_from(["loam-cli", "memory", "model", "--download"]).unwrap();
         assert_eq!(
             request_from_command(&model.command).unwrap(),
             CliRequest::MemoryModel { download: true }
         );
 
-        let reindex = Cli::try_parse_from(["mdx-cli", "memory", "reindex"]).unwrap();
+        let reindex = Cli::try_parse_from(["loam-cli", "memory", "reindex"]).unwrap();
         assert_eq!(
             request_from_command(&reindex.command).unwrap(),
             CliRequest::MemoryReindex
         );
 
         let list = Cli::try_parse_from([
-            "mdx-cli", "memory", "list", "--kind", "conclusion", "--status", "candidate",
+            "loam-cli", "memory", "list", "--kind", "conclusion", "--status", "candidate",
         ])
         .unwrap();
         assert_eq!(
@@ -1859,7 +1859,7 @@ mod tests {
             }
         );
 
-        let delete = Cli::try_parse_from(["mdx-cli", "memory", "delete", "drawer-1"]).unwrap();
+        let delete = Cli::try_parse_from(["loam-cli", "memory", "delete", "drawer-1"]).unwrap();
         assert_eq!(
             request_from_command(&delete.command).unwrap(),
             CliRequest::MemoryDelete {
@@ -1868,7 +1868,7 @@ mod tests {
         );
 
         let legacy =
-            Cli::try_parse_from(["mdx-cli", "memory", "legacy-import", "--dry-run"]).unwrap();
+            Cli::try_parse_from(["loam-cli", "memory", "legacy-import", "--dry-run"]).unwrap();
         assert_eq!(
             request_from_command(&legacy.command).unwrap(),
             CliRequest::MemoryLegacyImport { dry_run: true }
@@ -1902,7 +1902,7 @@ mod tests {
 
     #[test]
     fn memory_promote_request_accepts_a_positional_or_flagged_target() {
-        let positional = Cli::try_parse_from(["mdx-cli", "memory", "promote", "drawer-1"]).unwrap();
+        let positional = Cli::try_parse_from(["loam-cli", "memory", "promote", "drawer-1"]).unwrap();
         assert_eq!(
             request_from_command(&positional.command).unwrap(),
             CliRequest::MemoryPromote {
@@ -1913,7 +1913,7 @@ mod tests {
         );
 
         let flagged = Cli::try_parse_from([
-            "mdx-cli",
+            "loam-cli",
             "memory",
             "promote",
             "--target",
@@ -1936,7 +1936,7 @@ mod tests {
     #[test]
     fn memory_capture_requests_use_socket_protocol_without_root() {
         let scan = Cli::try_parse_from([
-            "mdx-cli",
+            "loam-cli",
             "memory",
             "capture",
             "scan",
@@ -1952,7 +1952,7 @@ mod tests {
         );
 
         let import = Cli::try_parse_from([
-            "mdx-cli",
+            "loam-cli",
             "memory",
             "capture",
             "import",
@@ -2032,7 +2032,7 @@ mod tests {
     #[test]
     fn memory_status_agent_without_root_is_invalid_input() {
         let parsed =
-            Cli::try_parse_from(["mdx-cli", "memory", "status", "--agent", "codex"]).unwrap();
+            Cli::try_parse_from(["loam-cli", "memory", "status", "--agent", "codex"]).unwrap();
         let error = request_from_command(&parsed.command).unwrap_err();
 
         assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
@@ -2109,7 +2109,7 @@ mod tests {
 
         // An unknown path proves the key was accepted without opening the
         // library: a bin test has no scratch memory home, and a request that
-        // reached the engine would touch the developer's own `~/.mdx`.
+        // reached the engine would touch the developer's own `~/.loam`.
         let authorized = request(
             root_path,
             Some("secret"),
@@ -2149,28 +2149,28 @@ mod tests {
     fn memory_agent_setup_dry_run_plans_cross_agent_files_without_writing() {
         let home = TempDir::new().unwrap();
         let root = TempDir::new().unwrap();
-        let paths = mdx_lib::memory_agent_setup::AgentSetupPaths {
+        let paths = loam_lib::memory_agent_setup::AgentSetupPaths {
             home: home.path().to_path_buf(),
-            mdx_cli: "/tmp/mdx-cli".to_string(),
-            mdx_mcp: "/tmp/mdx-mcp".to_string(),
+            mdx_cli: "/tmp/loam-cli".to_string(),
+            mdx_mcp: "/tmp/loam-mcp".to_string(),
             hook_script: home.path().join(".mdx-memory-precompact-hook.mjs"),
         };
-        let targets = mdx_lib::memory_agent_setup::AgentSetupTargets {
+        let targets = loam_lib::memory_agent_setup::AgentSetupTargets {
             codex: true,
             claude: true,
             cursor: true,
             hooks: true,
         };
-        let changes = mdx_lib::memory_agent_setup::plan_memory_agent_setup(
+        let changes = loam_lib::memory_agent_setup::plan_memory_agent_setup(
             &root.path().to_string_lossy(),
             &targets,
             &paths,
         )
         .unwrap();
-        let summary = mdx_lib::memory_agent_setup::render_agent_setup_summary(&changes, true);
+        let summary = loam_lib::memory_agent_setup::render_agent_setup_summary(&changes, true);
         let skill = changes
             .iter()
-            .find(|change| change.path.ends_with(".codey/skills/mdx-memory/SKILL.md"))
+            .find(|change| change.path.ends_with(".codey/skills/loam-memory/SKILL.md"))
             .expect("codex skill change");
         assert!(skill.contents.contains("## Agent-Time Memory Extraction"));
         // The skill has to teach the two layers, because an agent that thinks
@@ -2224,7 +2224,7 @@ mod tests {
         }
         let cursor = changes
             .iter()
-            .find(|change| change.path.ends_with(".cursor/rules/mdx-memory.mdc"))
+            .find(|change| change.path.ends_with(".cursor/rules/loam-memory.mdc"))
             .expect("cursor memory rule change");
         assert!(cursor.contents.contains("cite what you use"));
         assert!(cursor.contents.contains("only a person can adopt"));
@@ -2244,8 +2244,8 @@ mod tests {
 
     #[test]
     fn memory_agent_commands_reject_invalid_agent_names() {
-        fn request() -> mdx_lib::memory_agent_setup::MemoryAgentCommandRequest {
-            mdx_lib::memory_agent_setup::MemoryAgentCommandRequest {
+        fn request() -> loam_lib::memory_agent_setup::MemoryAgentCommandRequest {
+            loam_lib::memory_agent_setup::MemoryAgentCommandRequest {
                 agent: Some("unknown".to_string()),
                 dry_run: true,
                 keep_data: false,
@@ -2257,20 +2257,20 @@ mod tests {
         let home = TempDir::new().unwrap();
         let _env = CodexCaptureEnvGuard::use_home_and_session_dirs(home.path(), "");
         let install_error =
-            mdx_lib::memory_agent_setup::memory_agent_install(root_path.clone(), request())
+            loam_lib::memory_agent_setup::memory_agent_install(root_path.clone(), request())
                 .unwrap_err();
         let repair_error =
-            mdx_lib::memory_agent_setup::memory_agent_repair(root_path.clone(), request())
+            loam_lib::memory_agent_setup::memory_agent_repair(root_path.clone(), request())
                 .unwrap_err();
         let uninstall_error =
-            mdx_lib::memory_agent_setup::memory_agent_uninstall(root_path.clone(), request())
+            loam_lib::memory_agent_setup::memory_agent_uninstall(root_path.clone(), request())
                 .unwrap_err();
-        let status_error = mdx_lib::memory_agent_setup::memory_agent_status(
+        let status_error = loam_lib::memory_agent_setup::memory_agent_status(
             root_path.clone(),
             Some("unknown".to_string()),
         )
         .unwrap_err();
-        let doctor_error = mdx_lib::memory_agent_setup::memory_agent_doctor(
+        let doctor_error = loam_lib::memory_agent_setup::memory_agent_doctor(
             root_path,
             Some("unknown".to_string()),
         )
@@ -2288,35 +2288,35 @@ mod tests {
         }
         assert!(!home.path().join(".codey/config.toml").exists());
         assert!(!home.path().join(".claude/CLAUDE.md").exists());
-        assert!(!home.path().join(".cursor/rules/mdx-memory.mdc").exists());
+        assert!(!home.path().join(".cursor/rules/loam-memory.mdc").exists());
     }
 
     #[test]
     fn memory_agent_setup_writes_cursor_mcp_and_precompact_hook() {
         let home = TempDir::new().unwrap();
         let root = TempDir::new().unwrap();
-        let paths = mdx_lib::memory_agent_setup::AgentSetupPaths {
+        let paths = loam_lib::memory_agent_setup::AgentSetupPaths {
             home: home.path().to_path_buf(),
-            mdx_cli: "/tmp/mdx-cli".to_string(),
-            mdx_mcp: "/tmp/mdx-mcp".to_string(),
+            mdx_cli: "/tmp/loam-cli".to_string(),
+            mdx_mcp: "/tmp/loam-mcp".to_string(),
             hook_script: home.path().join(".mdx-memory-precompact-hook.mjs"),
         };
-        let targets = mdx_lib::memory_agent_setup::AgentSetupTargets {
+        let targets = loam_lib::memory_agent_setup::AgentSetupTargets {
             codex: false,
             claude: false,
             cursor: true,
             hooks: true,
         };
-        let changes = mdx_lib::memory_agent_setup::plan_memory_agent_setup(
+        let changes = loam_lib::memory_agent_setup::plan_memory_agent_setup(
             &root.path().to_string_lossy(),
             &targets,
             &paths,
         )
         .unwrap();
-        mdx_lib::memory_agent_setup::apply_agent_setup_changes(&changes).unwrap();
+        loam_lib::memory_agent_setup::apply_agent_setup_changes(&changes).unwrap();
         let mcp = fs::read_to_string(home.path().join(".cursor/mcp.json")).unwrap();
-        assert!(mcp.contains("\"mdx-memory\""));
-        assert!(mcp.contains("/tmp/mdx-mcp"));
+        assert!(mcp.contains("\"loam-memory\""));
+        assert!(mcp.contains("/tmp/loam-mcp"));
         let hook = fs::read_to_string(home.path().join(".mdx-memory-precompact-hook.mjs")).unwrap();
         assert!(hook.contains("\"capture\""));
         assert!(hook.contains("\"import\""));

@@ -12,7 +12,7 @@
  * as non-qualifying for exactly that reason.
  *
  * It is reachable only when the build sets
- * `NEXT_PUBLIC_MDX_MILKDOWN_QUALIFICATION=1`, the same build-time flag
+ * `NEXT_PUBLIC_LOAM_MILKDOWN_QUALIFICATION=1`, the same build-time flag
  * `features/editor/lib/editor-surface-qualification.ts` already uses to reach
  * the Milkdown surface. Nothing links here: it is not in navigation, not in
  * settings, and not a preference. A build without the flag folds the whole
@@ -42,11 +42,11 @@ export default function MdxEditorQualificationPage() {
         return (
             <main className="p-8 font-mono text-sm">
                 <h1 className="text-base font-semibold">
-                    MDX editor qualification harness
+                    Loam editor qualification harness
                 </h1>
                 <p className="mt-2 max-w-2xl">
                     This route is inert. It runs only in a build that sets
-                    <code className="mx-1">NEXT_PUBLIC_MDX_MILKDOWN_QUALIFICATION=1</code>
+                    <code className="mx-1">NEXT_PUBLIC_LOAM_MILKDOWN_QUALIFICATION=1</code>
                     , the same build-time flag that reaches the Milkdown
                     qualification surface. There is no product-level switch, and
                     nothing in navigation or settings links here.

@@ -10,7 +10,7 @@ afterEach(() => {
 });
 
 describe("storeImage", () => {
-    it("uses workspace .assets first and falls back to ~/.mdx/assets", async () => {
+    it("uses workspace .assets first and falls back to ~/.loam/assets", async () => {
         const calls: Array<{ cmd: string; args: Record<string, unknown> }> = [];
         const invoke = vi.fn(async (cmd: string, args: Record<string, unknown>) => {
             calls.push({ cmd, args });
@@ -39,8 +39,8 @@ describe("storeImage", () => {
 
     it("returns the absolute global fallback path from Tauri", async () => {
         const invoke = vi.fn(async () => ({
-            markdownPath: "/Users/test/.mdx/assets/abc123.png",
-            storedPath: "/Users/test/.mdx/assets/abc123.png",
+            markdownPath: "/Users/test/.loam/assets/abc123.png",
+            storedPath: "/Users/test/.loam/assets/abc123.png",
             usedFallback: true,
         }));
         const file = new File([new Uint8Array([4, 5, 6])], "fallback.png", {
@@ -54,9 +54,9 @@ describe("storeImage", () => {
                 invoke,
             }),
         ).resolves.toMatchObject({
-            url: "/Users/test/.mdx/assets/abc123.png",
+            url: "/Users/test/.loam/assets/abc123.png",
             altText: "fallback.png",
-            storedPath: "/Users/test/.mdx/assets/abc123.png",
+            storedPath: "/Users/test/.loam/assets/abc123.png",
             usedFallback: true,
         });
     });

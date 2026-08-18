@@ -149,7 +149,7 @@ export function buildThemeCss(draft: ThemeDraft): string {
     const name = draft.name.replace(UNSAFE_IN_THEME_NAME, "").trim();
     const lines = [
         "/*",
-        " * 在 MDX 的「外观」里做的主题。",
+        " * 在 Loam 的「外观」里做的主题。",
         " *",
         " * 这就是一份普通的 CSS 文件，可以直接用编辑器改。属性名是公开契约的一部分",
         " * （--mdx-theme-*），改完保存，在「外观」里点刷新即可。选择器、@import、",

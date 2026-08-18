@@ -25,7 +25,7 @@ const sourceDir = explicitTarget
   : join(root, "src-tauri", "target", profile);
 const outputDir = join(root, "src-tauri", "binaries");
 
-for (const name of ["mdx-cli", "mdx-mcp"]) {
+for (const name of ["loam-cli", "loam-mcp"]) {
   const result = spawnSync(
     "cargo",
     [
@@ -53,7 +53,7 @@ for (const name of ["mdx-cli", "mdx-mcp"]) {
 
 mkdirSync(outputDir, { recursive: true });
 
-for (const name of ["mdx-cli", "mdx-mcp"]) {
+for (const name of ["loam-cli", "loam-mcp"]) {
   const source = join(sourceDir, name);
   if (!existsSync(source)) {
     throw new Error(

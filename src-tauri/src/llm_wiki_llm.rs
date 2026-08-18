@@ -401,7 +401,7 @@ pub fn default_llm_config_path() -> Result<PathBuf, WorkspaceError> {
         .ok_or_else(|| {
             WorkspaceError::new("llm_config_path_failed", "home directory is not set")
         })?;
-    Ok(PathBuf::from(home).join(".mdx").join("llm-config.json"))
+    Ok(PathBuf::from(home).join(".loam").join("llm-config.json"))
 }
 
 pub fn llm_config_env_lock() -> &'static std::sync::Mutex<()> {

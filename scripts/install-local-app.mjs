@@ -8,11 +8,11 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const sourceApp = resolve(
   root,
-  process.env.MDX_BUILT_APP ??
-    "src-tauri/target/release/bundle/macos/MDX.app",
+  process.env.LOAM_BUILT_APP ??
+    "src-tauri/target/release/bundle/macos/Loam.app",
 );
 const destinationApp = resolve(
-  process.env.MDX_INSTALL_APP ?? "/Applications/MDX.app",
+  process.env.LOAM_INSTALL_APP ?? "/Applications/Loam.app",
 );
 
 if (!existsSync(sourceApp)) {
@@ -21,7 +21,7 @@ if (!existsSync(sourceApp)) {
   );
 }
 
-spawnSync("osascript", ["-e", 'tell application "MDX" to quit'], {
+spawnSync("osascript", ["-e", 'tell application "Loam" to quit'], {
   stdio: "ignore",
 });
 

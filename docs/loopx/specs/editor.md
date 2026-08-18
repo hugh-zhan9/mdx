@@ -20,7 +20,7 @@ Milkdown/ProseMirror DOM view is the sole WYSIWYG Markdown editor in Workspace M
 
 The user reaches source mode with ⌘⇧M, and returns the same way. The binding is the only entry: there is no toolbar and the mode is deliberately not persisted, so a surface with no keystroke bound to it is one only tests can open. It is ⌘⇧M rather than ⌘/ because the source surface binds ⌘/ itself, to comment toggling; one key has to mean "switch" on both surfaces to bring the user back, so spending ⌘/ here would spend it there too. A refused switch — source that cannot be built into a visual document — leaves the user in source with their content, dirty state and drafts intact, and reports a diagnostic rather than changing surface.
 
-Product and workspace code must integrate through the MDX-owned `MarkdownEditorAdapter` contract. Cross-module selections use Markdown UTF-16 source offsets. Milkdown context, ProseMirror positions and plugin keys, CodeMirror views, third-party theme classes, and implementation-private DOM must not cross that boundary.
+Product and workspace code must integrate through the Loam-owned `MarkdownEditorAdapter` contract. Cross-module selections use Markdown UTF-16 source offsets. Milkdown context, ProseMirror positions and plugin keys, CodeMirror views, third-party theme classes, and implementation-private DOM must not cross that boundary.
 
 Markdown remains the only persisted content and the only content exchanged with file state, CLI integrations, and publishing. ProseMirror documents, CodeMirror state, source maps, and layout snapshots are derived session state.
 
@@ -32,7 +32,7 @@ If syntax cannot be represented safely, the editor must preserve it in a visible
 
 Mermaid fence source remains authoritative. Mermaid and HTML preview DOM are non-serializing chrome and do not count as duplicate find results. Mermaid uses strict security; clipboard HTML is sanitized before syntax metadata can be rehydrated.
 
-The editor must not depend on deprecated `@milkdown/plugin-math@7.5.9`. Math support is an MDX-owned Milkdown plugin using maintained public APIs and the existing math rendering capability.
+The editor must not depend on deprecated `@milkdown/plugin-math@7.5.9`. Math support is an Loam-owned Milkdown plugin using maintained public APIs and the existing math rendering capability.
 
 ### What the preservation layer claims
 
@@ -94,7 +94,7 @@ Whatever replaces or supplements this must keep the same property: no second lay
 
 ## Dependency, License, And Rollback
 
-MDX remains React + Tauri. ColaMD's Electron IPC, watcher, dirty/reload state, and overall `editor.ts` are not application dependencies. Milkdown packages stay on one supported, lockfile-pinned version line.
+Loam remains React + Tauri. ColaMD's Electron IPC, watcher, dirty/reload state, and overall `editor.ts` are not application dependencies. Milkdown packages stay on one supported, lockfile-pinned version line.
 
 ColaMD is a behavior and composition reference at commit `4c986a4e0920cf0598fb2a47cec2966fc5340c77`. Any substantively copied independent plugin code must record its upstream path and commit and retain the ColaMD MIT notice in distributed artifacts.
 

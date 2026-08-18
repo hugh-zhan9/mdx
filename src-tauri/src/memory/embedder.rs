@@ -29,7 +29,7 @@ impl ModelReadiness {
 }
 
 /// Where a model's files are read from: the configured override, or the slug
-/// of its repo id under `~/.mdx/models/`.
+/// of its repo id under `~/.loam/models/`.
 pub fn model_dir(config: &GlobalMemoryConfig) -> Result<PathBuf, WorkspaceError> {
     if let Some(local_dir) = config.embedding.local_dir.as_deref() {
         return Ok(PathBuf::from(local_dir));
@@ -82,7 +82,7 @@ pub fn build_embedder(config: &GlobalMemoryConfig) -> Result<Model2VecEmbedder, 
     })
 }
 
-/// Downloads the model into `~/.mdx/models/<slug>/`.
+/// Downloads the model into `~/.loam/models/<slug>/`.
 ///
 /// The files land in a temporary directory first and are only moved into place
 /// once all three are present, so an interrupted download leaves no directory

@@ -1,8 +1,8 @@
-# MDX Memory Agent Backend
+# Loam Memory Agent Backend
 
 ## Positioning
 
-MDX Memory is a local-first memory backend for Codex, Claude, and Cursor. Agents reach it through hooks, the CLI, and MCP; the desktop panel is for review, correction, setup, and diagnostics.
+Loam Memory is a local-first memory backend for Codex, Claude, and Cursor. Agents reach it through hooks, the CLI, and MCP; the desktop panel is for review, correction, setup, and diagnostics.
 
 The panel is not a secondary write path — it is where the one decision the agent cannot make gets made. An agent can store material and propose conclusions; only a person adopts one.
 
@@ -14,11 +14,11 @@ There is no holding area in front of the library. Material an agent stores is st
 
 ## Storage
 
-One SQLite library at `~/.mdx/memory/palace.db` serves every workspace, keyed by project. There is no second backend and no Markdown projection. A library newer than the running application is refused rather than migrated, and an unwritable one disables memory without touching the editor.
+One SQLite library at `~/.loam/memory/palace.db` serves every workspace, keyed by project. There is no second backend and no Markdown projection. A library newer than the running application is refused rather than migrated, and an unwritable one disables memory without touching the editor.
 
 ## Embedding model
 
-Every write embeds. Without the model at `~/.mdx/models/<slug>/`, writes and semantic search fail with `embedding_model_missing` — deliberately, rather than silently degrading to keyword-only ranking and filling the vector table with noise. Downloading is an explicit, user-confirmed action.
+Every write embeds. Without the model at `~/.loam/models/<slug>/`, writes and semantic search fail with `embedding_model_missing` — deliberately, rather than silently degrading to keyword-only ranking and filling the vector table with noise. Downloading is an explicit, user-confirmed action.
 
 ## Turning things off
 
@@ -33,8 +33,8 @@ Because capture cannot be undone after the fact, it is off by default and accept
 ## Agent integrations
 
 ```bash
-mdx-cli memory --root <workspace> install --agent codex   # or claude, cursor, or all
-mdx-cli memory --root <workspace> doctor --agent codex --json
+loam-cli memory --root <workspace> install --agent codex   # or claude, cursor, or all
+loam-cli memory --root <workspace> doctor --agent codex --json
 ```
 
 Hooks stay lightweight: they capture, optionally ask for context, and succeed even when the backend is degraded.

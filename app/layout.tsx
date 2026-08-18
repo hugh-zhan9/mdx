@@ -4,7 +4,7 @@ import "./globals.css";
 import "./prism-themes.css";
 
 export const metadata: Metadata = {
-    title: "MDX",
+    title: "Loam",
     description: "Markdown 工作区编辑器",
 };
 

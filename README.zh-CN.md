@@ -1,23 +1,23 @@
 <p align="center">
-  <img src="src-tauri/icons/icon.png" alt="MDX 应用图标" width="128" height="128">
+  <img src="src-tauri/icons/icon.png" alt="Loam 应用图标" width="128" height="128">
 </p>
 
 <p align="center">
   <a href="README.md">English</a> · 简体中文
 </p>
 
-# MDX
+# Loam
 
-**MDX 是一个本地优先 Markdown 应用，提供单文档编辑和文件夹工作区两种模式。**
+**Loam 是一个本地优先 Markdown 应用，提供单文档编辑和文件夹工作区两种模式。**
 
 它把 Markdown 原生可视化编辑内核，和 Tauri 桌面壳结合起来，用来编辑本机文件夹和单个 Markdown 文档。
 
 ## 两种模式
 
 - Document Mode：从 Finder 或系统“打开方式”打开单个 `.md` / `.markdown` 文件时进入。界面只包含 Markdown 编辑器和当前文档目录，不显示文件树、标签页或 LLM Wiki。
-- Workspace Mode：直接启动 MDX、恢复最近工作区，或在应用内打开文件夹时进入。界面包含文件树、多标签、目录和可选 LLM Wiki 知识库能力。
+- Workspace Mode：直接启动 Loam、恢复最近工作区，或在应用内打开文件夹时进入。界面包含文件树、多标签、目录和可选 LLM Wiki 知识库能力。
 
-Document Mode 不参与 `mdx-cli` 自动化，不恢复为最近工作区，也不支持 `.mdx`。
+Document Mode 不参与 `loam-cli` 自动化，不恢复为最近工作区，也不支持 `.mdx`。
 
 ## 功能
 
@@ -29,15 +29,15 @@ Document Mode 不参与 `mdx-cli` 自动化，不恢复为最近工作区，也�
 - Workspace Mode：全文搜索 `.md` 和 `.markdown`，包含 `raw/` 目录
 - Workspace Mode：默认搜索限制为单文件 2 MB、总结果 200 条、每个文件 20 条匹配
 - Workspace Mode / Document Mode：文件外部变更监听；干净内容自动重载，脏内容显示冲突提示和只读差异视图
-- 未保存 Markdown 正文会以明文草稿保存在 `~/.mdx/drafts/`
+- 未保存 Markdown 正文会以明文草稿保存在 `~/.loam/drafts/`
 - 草稿在保存或丢弃后会删除，过期草稿会在 30 天后清理
-- 应用状态保存到 `~/.mdx/state.json`
-- 图片优先保存到当前文档或工作区的 `.assets/`，异常时退回 `~/.mdx/assets`
-- Workspace Mode 提供 `mdx-cli`，支持本地自动化和 Agent 驱动编辑
+- 应用状态保存到 `~/.loam/state.json`
+- 图片优先保存到当前文档或工作区的 `.assets/`，异常时退回 `~/.loam/assets`
+- Workspace Mode 提供 `loam-cli`，支持本地自动化和 Agent 驱动编辑
 
 ## 范围
 
-MDX 当前优先服务桌面端。当前应用不提供 Web 产品形态、Quick Look 扩展、自动更新流程、多根工作区、PDF/图片/二进制全文搜索，也不包含 LLM Wiki onboarding。
+Loam 当前优先服务桌面端。当前应用不提供 Web 产品形态、Quick Look 扩展、自动更新流程、多根工作区、PDF/图片/二进制全文搜索，也不包含 LLM Wiki onboarding。
 
 当前编辑器支持 `.md` 和 `.markdown` 文件。这个 MVP 不把 `.mdx` 作为 Document Mode 文件处理，也不在工作区文件树中显示 `.mdx` 文件。
 
@@ -53,53 +53,53 @@ MDX 当前优先服务桌面端。当前应用不提供 Web 产品形态、Quick
 
 ## CLI
 
-macOS 构建包含 `mdx-cli`，它通过 `~/.mdx/cli.sock` 连接正在运行的 Workspace Mode 应用。
+macOS 构建包含 `loam-cli`，它通过 `~/.loam/cli.sock` 连接正在运行的 Workspace Mode 应用。
 
 支持的命令包括：
 
 ```bash
-mdx-cli new
-mdx-cli list
-mdx-cli open <path>
-mdx-cli content [--tab <id>]
-mdx-cli selection [--tab <id>]
-mdx-cli insert [--tab <id>] <text>
-mdx-cli save [--tab <id>]
-mdx-cli focus [--tab <id>]
-mdx-cli close [--tab <id>] [--force]
-mdx-cli create-file <dir> [name]
-mdx-cli create-folder <dir> <name>
-mdx-cli rename <path> <new-name>
-mdx-cli llm-wiki status
-mdx-cli llm-wiki ingest <raw-path>
-mdx-cli llm-wiki digest --title "..." <prompt...>
-mdx-cli llm-wiki lint [--json]
-mdx-cli llm-wiki query [--json] <question...>
-mdx-cli llm-wiki search <query...>
-mdx-cli memory status [--json]
-mdx-cli memory init
-mdx-cli memory repair [--rebuild-index]
-mdx-cli memory index rebuild
-mdx-cli memory thread save --source manual --title "..." --file <path>
-mdx-cli memory add --title "..." --body "..."
-mdx-cli memory recall [--json] <query...>
-mdx-cli memory working get
-mdx-cli memory inbox list
-mdx-cli memory inbox accept <inbox-id>
-mdx-cli memory distill --thread <thread-id>
-mdx-cli memory capture import --source codex --file <path>
-mdx-cli memory promote <thread-id|memory-id|path>
-mdx-cli memory agent setup [--all|--codex|--claude|--cursor] [--no-hooks] [--dry-run]
-mdx-cli memory export --output <dir>
-mdx-cli memory import --input <dir> --dry-run
-mdx-cli memory --root <workspace> status
-mdx-cli serve --workspace <workspace> --port 14243
-mdx-mcp --workspace <workspace>
+loam-cli new
+loam-cli list
+loam-cli open <path>
+loam-cli content [--tab <id>]
+loam-cli selection [--tab <id>]
+loam-cli insert [--tab <id>] <text>
+loam-cli save [--tab <id>]
+loam-cli focus [--tab <id>]
+loam-cli close [--tab <id>] [--force]
+loam-cli create-file <dir> [name]
+loam-cli create-folder <dir> <name>
+loam-cli rename <path> <new-name>
+loam-cli llm-wiki status
+loam-cli llm-wiki ingest <raw-path>
+loam-cli llm-wiki digest --title "..." <prompt...>
+loam-cli llm-wiki lint [--json]
+loam-cli llm-wiki query [--json] <question...>
+loam-cli llm-wiki search <query...>
+loam-cli memory status [--json]
+loam-cli memory init
+loam-cli memory repair [--rebuild-index]
+loam-cli memory index rebuild
+loam-cli memory thread save --source manual --title "..." --file <path>
+loam-cli memory add --title "..." --body "..."
+loam-cli memory recall [--json] <query...>
+loam-cli memory working get
+loam-cli memory inbox list
+loam-cli memory inbox accept <inbox-id>
+loam-cli memory distill --thread <thread-id>
+loam-cli memory capture import --source codex --file <path>
+loam-cli memory promote <thread-id|memory-id|path>
+loam-cli memory agent setup [--all|--codex|--claude|--cursor] [--no-hooks] [--dry-run]
+loam-cli memory export --output <dir>
+loam-cli memory import --input <dir> --dry-run
+loam-cli memory --root <workspace> status
+loam-cli serve --workspace <workspace> --port 14243
+loam-mcp --workspace <workspace>
 ```
 
-Memory 命令管理 `memory/` 和 `.mdx/` 下的 Markdown 原生记忆记录。它们可以通过当前 Workspace Mode socket 运行，也可以使用 `mdx-cli memory --root <workspace> ...` 无界面运行。
+Memory 命令管理 `memory/` 和 `.loam/` 下的 Markdown 原生记忆记录。它们可以通过当前 Workspace Mode socket 运行，也可以使用 `loam-cli memory --root <workspace> ...` 无界面运行。
 
-正式打包会随应用带上 `mdx-cli` 和 `mdx-mcp` sidecar。Codex、Claude、Cursor 的 Agent 集成需要用户在 Memory Settings 面板或 `mdx-cli memory --root <workspace> agent setup ...` 中主动配置。
+正式打包会随应用带上 `loam-cli` 和 `loam-mcp` sidecar。Codex、Claude、Cursor 的 Agent 集成需要用户在 Memory Settings 面板或 `loam-cli memory --root <workspace> agent setup ...` 中主动配置。
 
 Memory 的完整使用说明见 [docs/memory-usage.md](docs/memory-usage.md)。
 

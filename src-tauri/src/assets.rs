@@ -617,7 +617,7 @@ pub(crate) fn mdx_home_dir() -> Result<PathBuf, WorkspaceError> {
     let home = std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .ok_or_else(|| WorkspaceError::new("asset_path_failed", "home directory is not set"))?;
-    Ok(PathBuf::from(home).join(".mdx"))
+    Ok(PathBuf::from(home).join(".loam"))
 }
 
 fn path_to_string(path: &Path) -> String {

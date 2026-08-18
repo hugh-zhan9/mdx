@@ -26,7 +26,7 @@ export function createWorkspaceEmptyState({
     if (status === "loading") {
         return {
             title: "正在恢复工作区",
-            description: message ?? "MDX 正在读取上次打开的本地文件夹。",
+            description: message ?? "Loam 正在读取上次打开的本地文件夹。",
             actionLabel: null,
         };
     }
@@ -35,7 +35,7 @@ export function createWorkspaceEmptyState({
         return {
             title: "需要桌面版打开本地工作区",
             description:
-                message ?? "文件夹访问只能在 MDX 桌面版中使用。请启动桌面版后选择工作区。",
+                message ?? "文件夹访问只能在 Loam 桌面版中使用。请启动桌面版后选择工作区。",
             actionLabel: null,
         };
     }

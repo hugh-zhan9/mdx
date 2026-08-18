@@ -390,7 +390,7 @@ function frontmatterBlock(random, seed) {
     if (toml) {
         return [
             "+++",
-            `title = "MDX qualification fixture"`,
+            `title = "Loam qualification fixture"`,
             `seed = "${seed}"`,
             `tags = ["performance", "qualification"]`,
             "+++",
@@ -398,7 +398,7 @@ function frontmatterBlock(random, seed) {
     }
     return [
         "---",
-        "title: MDX qualification fixture",
+        "title: Loam qualification fixture",
         `seed: ${seed}`,
         "tags:",
         "  - performance",

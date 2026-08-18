@@ -109,7 +109,7 @@ fn promote_with_ingest(
 fn render(item: &api::StoredItem, title: &str) -> String {
     let mut text = String::from("---\n");
     text.push_str(&format!("title: {title}\n"));
-    text.push_str("source: mdx-memory\n");
+    text.push_str("source: loam-memory\n");
     text.push_str(&format!("memory_id: {}\n", item.drawer_id));
     text.push_str(&format!("memory_kind: {}\n", item.kind));
     if let Some(status) = item.status.as_deref() {

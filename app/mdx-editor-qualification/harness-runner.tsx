@@ -398,8 +398,8 @@ export default function HarnessRunner() {
             screen: { width: screen.width, height: screen.height },
             viewport: { width: window.innerWidth, height: window.innerHeight },
             webAssetsProfile: process.env.NODE_ENV,
-            appCommit: process.env.NEXT_PUBLIC_MDX_BUILD_COMMIT ?? null,
-            appVersion: process.env.NEXT_PUBLIC_MDX_APP_VERSION ?? null,
+            appCommit: process.env.NEXT_PUBLIC_LOAM_BUILD_COMMIT ?? null,
+            appVersion: process.env.NEXT_PUBLIC_LOAM_APP_VERSION ?? null,
             runtime: tauri ? "tauri" : "browser",
             longTaskObserverSupported: supported.includes("longtask"),
             supportedEntryTypes: supported,
@@ -885,7 +885,7 @@ export default function HarnessRunner() {
         }
         if (environment.appCommit === null) {
             disqualifications.push(
-                "NEXT_PUBLIC_MDX_BUILD_COMMIT was not baked into the build; the app commit cannot be recorded",
+                "NEXT_PUBLIC_LOAM_BUILD_COMMIT was not baked into the build; the app commit cannot be recorded",
             );
         }
         if (counts.smoke) {

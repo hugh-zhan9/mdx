@@ -548,7 +548,7 @@ function SettingsDialog({
                   <span>启用工作区文件监听</span>
                 </label>
                 <p className="text-xs leading-relaxed text-base-content/65">
-                  未保存正文会以明文草稿保存在 ~/.mdx/drafts/，保存或丢弃后会清理对应草稿。
+                  未保存正文会以明文草稿保存在 ~/.loam/drafts/，保存或丢弃后会清理对应草稿。
                 </p>
                 <div className="border-t border-[var(--mdx-separator)] pt-3">
                   <div className="mb-2 text-xs text-base-content/70">

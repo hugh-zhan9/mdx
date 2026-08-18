@@ -1135,7 +1135,7 @@ fn error_response(error: CliProtocolError) -> CliResponse {
 
 fn socket_path() -> Option<PathBuf> {
     let home = env::var_os("HOME")?;
-    let dir = PathBuf::from(home).join(".mdx");
+    let dir = PathBuf::from(home).join(".loam");
     fs::create_dir_all(&dir).ok()?;
     Some(dir.join("cli.sock"))
 }

@@ -28,7 +28,7 @@ describe("document state", () => {
     expect(state.savedMarkdown).toBe("# Note\n");
     expect(state.dirty).toBe(false);
     expect(state.outlineCollapsed).toBe(false);
-    expect(documentWindowTitle(state)).toBe("note.md - MDX");
+    expect(documentWindowTitle(state)).toBe("note.md - Loam");
   });
 
   it("marks dirty markdown and prefixes the window title", () => {
@@ -40,7 +40,7 @@ describe("document state", () => {
     expect(state.markdown).toBe("# Changed\n");
     expect(state.savedMarkdown).toBe("# Note\n");
     expect(state.dirty).toBe(true);
-    expect(documentWindowTitle(state)).toBe("● note.md - MDX");
+    expect(documentWindowTitle(state)).toBe("● note.md - Loam");
   });
 
   it("marks the current markdown as saved with the new fingerprint", () => {
@@ -54,7 +54,7 @@ describe("document state", () => {
     expect(saved.savedMarkdown).toBe("# Changed\n");
     expect(saved.fingerprint).toBe("fingerprint-b");
     expect(saved.dirty).toBe(false);
-    expect(documentWindowTitle(saved)).toBe("note.md - MDX");
+    expect(documentWindowTitle(saved)).toBe("note.md - Loam");
   });
 
   it("keeps newer edits dirty when an older save completes", () => {

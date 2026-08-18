@@ -162,7 +162,7 @@ impl LlmConfigEnvGuard {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let home = std::env::var_os("HOME");
         let userprofile = std::env::var_os("USERPROFILE");
-        let disable_pdftotext = std::env::var_os("MDX_DISABLE_PDFTOTEXT");
+        let disable_pdftotext = std::env::var_os("LOAM_DISABLE_PDFTOTEXT");
         std::env::set_var("HOME", path.as_ref());
         std::env::remove_var("USERPROFILE");
         Self {
@@ -175,7 +175,7 @@ impl LlmConfigEnvGuard {
     }
 
     fn disable_pdftotext(self) -> Self {
-        std::env::set_var("MDX_DISABLE_PDFTOTEXT", "1");
+        std::env::set_var("LOAM_DISABLE_PDFTOTEXT", "1");
         self
     }
 }
@@ -193,9 +193,9 @@ impl Drop for LlmConfigEnvGuard {
             std::env::remove_var("USERPROFILE");
         }
         if let Some(value) = self.disable_pdftotext.as_ref() {
-            std::env::set_var("MDX_DISABLE_PDFTOTEXT", value);
+            std::env::set_var("LOAM_DISABLE_PDFTOTEXT", value);
         } else {
-            std::env::remove_var("MDX_DISABLE_PDFTOTEXT");
+            std::env::remove_var("LOAM_DISABLE_PDFTOTEXT");
         }
     }
 }
@@ -285,7 +285,7 @@ fn llm_config_save_rejects_symlinked_ancestor_without_touching_target() {
     let outside = tempdir().unwrap();
     let symlink_ancestor = dir.path().join("mdx-home");
     std::os::unix::fs::symlink(outside.path(), &symlink_ancestor).unwrap();
-    let path = symlink_ancestor.join(".mdx").join("llm-config.json");
+    let path = symlink_ancestor.join(".loam").join("llm-config.json");
     let config = LlmProviderConfig {
         base_url: "https://api.example.com/v1".to_string(),
         model: "test-model".to_string(),
@@ -296,7 +296,7 @@ fn llm_config_save_rejects_symlinked_ancestor_without_touching_target() {
     let error = save_llm_config_to_path(&path, &config).unwrap_err();
 
     assert_eq!(error.error_code(), "path_type_conflict");
-    assert!(!outside.path().join(".mdx").exists());
+    assert!(!outside.path().join(".loam").exists());
 }
 
 #[cfg(unix)]
@@ -1421,7 +1421,7 @@ fn llm_wiki_lint_records_log_entry() {
     let root = tempdir().unwrap();
     let home = tempdir().unwrap();
     initialize_llm_wiki_workspace(root.path()).unwrap();
-    std::fs::create_dir(home.path().join(".mdx")).unwrap();
+    std::fs::create_dir(home.path().join(".loam")).unwrap();
     let _env_guard = LlmConfigEnvGuard::use_home(home.path().canonicalize().unwrap());
 
     let report = llm_wiki_lint(root.path().to_string_lossy().into_owned(), None).unwrap();
@@ -1438,9 +1438,9 @@ fn llm_wiki_lint_does_not_record_log_entry_when_semantic_lint_fails() {
     let home = tempdir().unwrap();
     let home_path = home.path().canonicalize().unwrap();
     initialize_llm_wiki_workspace(root.path()).unwrap();
-    std::fs::create_dir(home_path.join(".mdx")).unwrap();
+    std::fs::create_dir(home_path.join(".loam")).unwrap();
     save_llm_config_to_path(
-        home_path.join(".mdx/llm-config.json"),
+        home_path.join(".loam/llm-config.json"),
         &LlmProviderConfig {
             base_url: "http://127.0.0.1:9/v1".to_string(),
             model: "test-model".to_string(),
@@ -2041,9 +2041,9 @@ fn ingest_logs_raw_source_failure_before_llm_stage() {
     let root = tempdir().unwrap();
     let home = tempdir().unwrap();
     let home_path = home.path().canonicalize().unwrap();
-    std::fs::create_dir(home_path.join(".mdx")).unwrap();
+    std::fs::create_dir(home_path.join(".loam")).unwrap();
     save_llm_config_to_path(
-        home_path.join(".mdx/llm-config.json"),
+        home_path.join(".loam/llm-config.json"),
         &LlmProviderConfig {
             base_url: "https://api.example.com/v1".to_string(),
             model: "test-model".to_string(),
@@ -2099,9 +2099,9 @@ fn ingest_preserves_existing_failed_progress_when_processing_updates() {
     let root = tempdir().unwrap();
     let home = tempdir().unwrap();
     let home_path = home.path().canonicalize().unwrap();
-    std::fs::create_dir(home_path.join(".mdx")).unwrap();
+    std::fs::create_dir(home_path.join(".loam")).unwrap();
     save_llm_config_to_path(
-        home_path.join(".mdx/llm-config.json"),
+        home_path.join(".loam/llm-config.json"),
         &LlmProviderConfig {
             base_url: String::new(),
             model: "test-model".to_string(),

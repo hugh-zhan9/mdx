@@ -218,7 +218,7 @@ fn rejects_symlinked_global_assets_directory_on_save() {
     use std::os::unix::fs::symlink;
 
     let home = tempdir().unwrap();
-    let mdx_home = home.path().join(".mdx");
+    let mdx_home = home.path().join(".loam");
     let outside = tempdir().unwrap();
     std::fs::create_dir(&mdx_home).unwrap();
     symlink(outside.path(), mdx_home.join("assets")).unwrap();
@@ -242,7 +242,7 @@ fn rejects_symlinked_global_assets_directory_on_load() {
     use std::os::unix::fs::symlink;
 
     let home = tempdir().unwrap();
-    let mdx_home = home.path().join(".mdx");
+    let mdx_home = home.path().join(".loam");
     let outside = tempdir().unwrap();
     std::fs::create_dir(&mdx_home).unwrap();
     symlink(outside.path(), mdx_home.join("assets")).unwrap();

@@ -1,8 +1,8 @@
 {
-    "name": "mdx",
+    "name": "loam",
     "version": "0.3.0",
     "private": true,
-    "description": "MDX desktop workspace",
+    "description": "Loam desktop workspace",
     "author": "Jayden Wang",
     "license": "MIT",
     "scripts": {
@@ -21,7 +21,7 @@
         "qualify:editor:environment": "node scripts/editor-perf-environment.mjs",
         "qualify:editor:smoke": "node scripts/measure-editor-qualification.mjs --smoke",
         "qualify:editor:verify": "node scripts/verify-editor-qualification.mjs",
-        "qualify:editor:build": "NEXT_PUBLIC_MDX_MILKDOWN_QUALIFICATION=1 NEXT_PUBLIC_MDX_BUILD_COMMIT=$(git rev-parse HEAD) npm run build:app"
+        "qualify:editor:build": "NEXT_PUBLIC_LOAM_MILKDOWN_QUALIFICATION=1 NEXT_PUBLIC_LOAM_BUILD_COMMIT=$(git rev-parse HEAD) npm run build:app"
     },
     "dependencies": {
         "@codemirror/commands": "^6.10.3",

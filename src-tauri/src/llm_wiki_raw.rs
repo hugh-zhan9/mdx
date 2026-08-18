@@ -171,7 +171,7 @@ fn extract_pdf_with_builtin(bytes: &[u8]) -> Result<String, WorkspaceError> {
 }
 
 fn extract_pdf_with_pdftotext(bytes: &[u8]) -> Result<String, WorkspaceError> {
-    if std::env::var_os("MDX_DISABLE_PDFTOTEXT").is_some() {
+    if std::env::var_os("LOAM_DISABLE_PDFTOTEXT").is_some() {
         return Err(WorkspaceError::new(
             "pdf_extract_failed",
             "pdftotext fallback is disabled",
@@ -431,8 +431,8 @@ mod tests {
             let lock = path_env_lock()
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            let old_value = std::env::var_os("MDX_DISABLE_PDFTOTEXT");
-            std::env::set_var("MDX_DISABLE_PDFTOTEXT", "1");
+            let old_value = std::env::var_os("LOAM_DISABLE_PDFTOTEXT");
+            std::env::set_var("LOAM_DISABLE_PDFTOTEXT", "1");
             Self {
                 _lock: lock,
                 old_value,
@@ -444,9 +444,9 @@ mod tests {
     impl Drop for DisablePdftotextGuard {
         fn drop(&mut self) {
             if let Some(old_value) = self.old_value.as_ref() {
-                std::env::set_var("MDX_DISABLE_PDFTOTEXT", old_value);
+                std::env::set_var("LOAM_DISABLE_PDFTOTEXT", old_value);
             } else {
-                std::env::remove_var("MDX_DISABLE_PDFTOTEXT");
+                std::env::remove_var("LOAM_DISABLE_PDFTOTEXT");
             }
         }
     }

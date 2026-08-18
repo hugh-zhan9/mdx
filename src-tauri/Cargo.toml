@@ -5,26 +5,26 @@
 members = []
 
 [package]
-name = "mdx"
+name = "loam"
 version = "0.3.0"
-description = "MDX desktop workspace"
+description = "Loam desktop workspace"
 authors = ["Jayden Wang"]
 license = "MIT"
 repository = ""
 edition = "2021"
 rust-version = "1.85"
-default-run = "mdx"
+default-run = "loam"
 
 [[bin]]
-name = "mdx-cli"
-path = "src/bin/mdx_cli.rs"
+name = "loam-cli"
+path = "src/bin/loam_cli.rs"
 
 [[bin]]
-name = "mdx-mcp"
-path = "src/bin/mdx_mcp.rs"
+name = "loam-mcp"
+path = "src/bin/loam_mcp.rs"
 
 [lib]
-name = "mdx_lib"
+name = "loam_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

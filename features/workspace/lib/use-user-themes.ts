@@ -19,7 +19,7 @@ import {
  *
  * The registry is seeded synchronously from the last run's cache so the first
  * render already agrees with the pre-hydration script, then replaced by a real
- * read of `~/.mdx/themes/`. Re-applying the stored preference afterwards is what
+ * read of `~/.loam/themes/`. Re-applying the stored preference afterwards is what
  * makes a chosen theme survive the moment its file is confirmed to exist — or
  * fall back, on its own, when it turns out not to.
  */
