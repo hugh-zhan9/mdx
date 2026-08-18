@@ -106,6 +106,7 @@ import { FileTreePanel } from "./file-tree-panel";
 import { useAppDialogs } from "./app-dialogs";
 import { WorkspaceNavigator } from "./workspace-navigator";
 import type { NavigatorTab } from "./workspace-navigator";
+import { AppearanceButton } from "./appearance-button";
 import { SettingsButton } from "./settings-button";
 import { TabStrip } from "./tab-strip";
 import type {
@@ -2454,6 +2455,7 @@ export function WorkspaceShell({
                 />
               );
             })}
+            <AppearanceButton />
             <SettingsButton
               open={settingsOpen}
               onOpenChange={setSettingsOpen}

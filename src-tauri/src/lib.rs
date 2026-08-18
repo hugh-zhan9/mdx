@@ -1050,6 +1050,8 @@ pub fn run() {
             state_store::load_app_state,
             state_store::save_app_state,
             user_themes::list_user_themes,
+            user_themes::save_user_theme,
+            user_themes::reveal_user_themes_dir,
             assets::save_image_asset,
             assets::save_document_image_asset,
             assets::load_image_asset,

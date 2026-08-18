@@ -2,7 +2,7 @@ use std::fs;
 
 use tempfile::tempdir;
 
-use crate::user_themes::read_user_themes_in_dir;
+use crate::user_themes::{read_user_themes_in_dir, save_user_theme_in_dir};
 
 /// Reading the user's theme directory.
 ///
@@ -131,4 +131,108 @@ fn orders_themes_by_name_so_the_list_is_stable() {
         .map(|theme| theme.file_name.as_str())
         .collect();
     assert_eq!(names, vec!["alpha.css", "mike.css", "zulu.css"]);
+}
+
+/// Writing a theme file.
+///
+/// The front end sends a name and CSS text; the directory is chosen here and the
+/// name is checked here, so nothing a caller sends can name a place outside it.
+/// The text is never judged — a theme is data, and its contract lives on the
+/// other side of this boundary.
+
+#[test]
+fn writes_a_theme_the_reader_can_read_back() {
+    let directory = tempdir().expect("temp dir");
+    let css = ":root { --mdx-theme-name: \"Kraft\"; --mdx-theme-appearance: light; }";
+
+    let written =
+        save_user_theme_in_dir(directory.path(), "kraft.css", css).expect("write");
+
+    assert!(written.ends_with("kraft.css"));
+    let themes = read_user_themes_in_dir(directory.path()).expect("read");
+    assert_eq!(themes.len(), 1);
+    assert_eq!(themes[0].text.as_deref(), Some(css));
+}
+
+#[test]
+fn makes_the_directory_when_it_is_not_there_yet() {
+    // The first theme a user saves is also the moment the directory has to exist.
+    let home = tempdir().expect("temp dir");
+    let directory = home.path().join("themes");
+
+    save_user_theme_in_dir(&directory, "first.css", ":root { }").expect("write");
+
+    assert!(directory.join("first.css").is_file());
+}
+
+#[test]
+fn writing_the_same_name_replaces_it() {
+    // Which is what editing a theme is: the file is the theme's identity.
+    let directory = tempdir().expect("temp dir");
+    save_user_theme_in_dir(directory.path(), "one.css", "/* first */").expect("write");
+
+    save_user_theme_in_dir(directory.path(), "one.css", "/* second */").expect("write");
+
+    let themes = read_user_themes_in_dir(directory.path()).expect("read");
+    assert_eq!(themes.len(), 1);
+    assert_eq!(themes[0].text.as_deref(), Some("/* second */"));
+}
+
+#[test]
+fn refuses_a_name_that_is_a_path() {
+    let directory = tempdir().expect("temp dir");
+
+    for name in [
+        "../escape.css",
+        "nested/theme.css",
+        "/absolute.css",
+        "..",
+        ".",
+        "sub\\theme.css",
+    ] {
+        let error = save_user_theme_in_dir(directory.path(), name, ":root { }")
+            .expect_err(name);
+        assert_eq!(error.error_code(), "theme_name_invalid", "{name}");
+    }
+
+    // Nothing was created on the way to refusing.
+    assert!(read_user_themes_in_dir(directory.path())
+        .expect("read")
+        .is_empty());
+}
+
+#[test]
+fn refuses_a_name_that_is_not_a_theme_file() {
+    let directory = tempdir().expect("temp dir");
+
+    for name in ["", "   ", "theme", "theme.txt", ".css", ".hidden.css"] {
+        let error = save_user_theme_in_dir(directory.path(), name, ":root { }")
+            .expect_err(name);
+        assert_eq!(error.error_code(), "theme_name_invalid", "{name}");
+    }
+}
+
+#[test]
+fn refuses_a_theme_larger_than_the_reader_would_accept() {
+    // Writing what could never be read back is the one thing worse than
+    // refusing: the theme would be listed with an error instead of a palette.
+    let directory = tempdir().expect("temp dir");
+    let css = "a".repeat(64 * 1024 + 1);
+
+    let error =
+        save_user_theme_in_dir(directory.path(), "big.css", &css).expect_err("refused");
+
+    assert_eq!(error.error_code(), "theme_too_large");
+}
+
+#[test]
+fn accepts_a_name_with_spaces_and_unicode() {
+    // It is the user's own file in the user's own directory; only the shape of
+    // the name is this layer's business.
+    let directory = tempdir().expect("temp dir");
+
+    save_user_theme_in_dir(directory.path(), " 我的 主题.css ", ":root { }").expect("write");
+
+    let themes = read_user_themes_in_dir(directory.path()).expect("read");
+    assert_eq!(themes[0].file_name, "我的 主题.css");
 }

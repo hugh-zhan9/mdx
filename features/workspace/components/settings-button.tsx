@@ -1,8 +1,7 @@
 "use client";
 
 import { RefreshCw, Save, Settings, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   detectLlmWikiWorkspace,
   getLlmWikiConfig,
@@ -26,13 +25,6 @@ import {
   TextControlButton,
 } from "../../../common/components/ui-controls";
 import type { AppPreferences } from "../lib/types";
-import {
-  SYSTEM_THEME_PREFERENCE,
-  useThemePreference,
-} from "../lib/theme-preference";
-import { builtInThemesByAppearance } from "../lib/themes";
-import { useUserThemes } from "../lib/use-user-themes";
-import type { UserThemeEntry } from "../lib/user-themes";
 import {
   appPreferencesEqual,
   createDefaultAppPreferences,
@@ -93,14 +85,10 @@ function SettingsDialog({
   onPreferencesChange?: (preferences: AppPreferences) => Promise<void>;
   onLlmConfigSaved?: () => Promise<void> | void;
 }) {
-  const { preference, setPreference } = useThemePreference();
-  const themeGroups = useMemo(builtInThemesByAppearance, []);
-  const userThemes = useUserThemes();
   const [activeSection, setActiveSection] =
-    useState<SettingsSection>("general");
+    useState<SettingsSection>("search");
   const contentScrollRef = useRef<HTMLDivElement | null>(null);
   const sectionRefs = useRef<Record<SettingsSection, HTMLElement | null>>({
-    general: null,
     search: null,
     files: null,
     memory: null,
@@ -488,60 +476,6 @@ function SettingsDialog({
           >
             <section
               ref={(node) => {
-                sectionRefs.current.general = node;
-              }}
-              data-settings-section="general"
-              className="scroll-mt-5 grid grid-cols-[clamp(64px,12vw,96px)_minmax(0,1fr)] gap-x-5 gap-y-2"
-            >
-              <h3 className="pt-2 text-xs font-medium text-base-content/70">
-                外观
-              </h3>
-              <div className="space-y-3">
-                <ThemeChoice
-                  selected={preference === SYSTEM_THEME_PREFERENCE}
-                  name="跟随系统"
-                  description="随 macOS 的浅色与深色外观自动切换。"
-                  onSelect={() => setPreference(SYSTEM_THEME_PREFERENCE)}
-                />
-
-                {(
-                  [
-                    ["浅色主题", themeGroups.light],
-                    ["深色主题", themeGroups.dark],
-                  ] as const
-                ).map(([groupLabel, themes]) => (
-                  <div key={groupLabel} className="space-y-1.5">
-                    <p className="text-[11px] text-base-content/45">
-                      {groupLabel}
-                    </p>
-                    <div className="space-y-1">
-                      {themes.map((theme) => (
-                        <ThemeChoice
-                          key={theme.id}
-                          selected={preference === theme.id}
-                          name={theme.name}
-                          description={theme.description}
-                          swatch={<ThemeSwatch themeId={theme.id} />}
-                          onSelect={() => setPreference(theme.id)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ))}
-
-                <UserThemeSection
-                  entries={userThemes.entries}
-                  directoryError={userThemes.directoryError}
-                  loading={userThemes.loading}
-                  selected={preference}
-                  onSelect={setPreference}
-                  onRefresh={() => void userThemes.refresh()}
-                />
-              </div>
-            </section>
-
-            <section
-              ref={(node) => {
                 sectionRefs.current.search = node;
               }}
               data-settings-section="search"
@@ -751,161 +685,6 @@ function SettingsDialog({
   );
 }
 
-/**
- * A theme's own colors, painted by the theme itself.
- *
- * The swatch carries `data-theme`, so the palette it shows is the one the
- * stylesheet actually defines for that theme rather than a copy of it kept
- * here. A theme whose colors change is a swatch that changes with it, and one
- * that is added needs nothing added here.
- */
-/**
- * Themes the user wrote, and what happened to each file.
- *
- * A file that did not become a theme is listed with its reason rather than
- * omitted: a theme that silently fails to appear is a state the user cannot
- * diagnose. The same goes for values that were refused inside a theme that
- * otherwise loaded — the count is shown so a typo is findable.
- */
-function UserThemeSection({
-  entries,
-  directoryError,
-  loading,
-  selected,
-  onSelect,
-  onRefresh,
-}: {
-  entries: UserThemeEntry[];
-  directoryError: string | null;
-  loading: boolean;
-  selected: string;
-  onSelect: (id: string) => void;
-  onRefresh: () => void;
-}) {
-  return (
-    <div className="space-y-1.5 border-t border-[var(--mdx-separator)] pt-3">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] text-base-content/45">自定义主题</p>
-        <button
-          type="button"
-          className="h-5 rounded px-1.5 text-[11px] text-base-content/55 outline-none transition-colors hover:bg-base-content/6 hover:text-base-content/80 focus-visible:ring-2 focus-visible:ring-primary/25"
-          onClick={onRefresh}
-          disabled={loading}
-        >
-          {loading ? "读取中…" : "刷新"}
-        </button>
-      </div>
-
-      {directoryError ? (
-        <p className="px-2.5 text-[11px] leading-relaxed text-warning">
-          {`无法读取主题目录：${directoryError}`}
-        </p>
-      ) : entries.length === 0 ? (
-        <p className="px-2.5 text-[11px] leading-relaxed text-base-content/45">
-          把 .css 文件放进 ~/.mdx/themes/ 后点刷新。文件里用
-          <code className="px-1">--mdx-theme-*</code>
-          变量声明颜色，至少要有
-          <code className="px-1">--mdx-theme-appearance: light</code>
-          或 dark。
-        </p>
-      ) : (
-        <div className="space-y-1">
-          {entries.map((entry) =>
-            entry.status === "ready" ? (
-              <ThemeChoice
-                key={entry.id}
-                selected={selected === entry.id}
-                name={entry.name}
-                description={
-                  entry.ignored.length > 0
-                    ? `${entry.fileName} · 已忽略 ${String(entry.ignored.length)} 项`
-                    : entry.fileName
-                }
-                swatch={<ThemeSwatch themeId={entry.id} />}
-                onSelect={() => onSelect(entry.id)}
-              />
-            ) : (
-              <div
-                key={entry.id}
-                className="flex items-start gap-2.5 px-2.5 py-2 text-[11px]"
-              >
-                <span
-                  aria-hidden="true"
-                  className="mt-0.5 h-5 w-9 shrink-0 rounded-[3px] border border-dashed border-base-content/20"
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-xs text-base-content/60">
-                    {entry.fileName}
-                  </span>
-                  <span className="block text-warning">
-                    {`无法加载：${entry.reason}`}
-                  </span>
-                </span>
-              </div>
-            ),
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** One selectable theme, as a row with its name, purpose and colors. */
-function ThemeChoice({
-  selected,
-  name,
-  description,
-  swatch,
-  onSelect,
-}: {
-  selected: boolean;
-  name: string;
-  description: string;
-  swatch?: ReactNode;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={selected}
-      onClick={onSelect}
-      className={[
-        "flex w-full items-center gap-2.5 border px-2.5 py-2 text-left",
-        selected
-          ? "border-primary/60 bg-primary/8"
-          : "border-transparent hover:bg-base-content/5",
-      ].join(" ")}
-    >
-      {swatch ?? <span aria-hidden="true" className="h-5 w-9 shrink-0" />}
-      <span className="min-w-0 flex-1">
-        <span className="block text-xs text-base-content">{name}</span>
-        <span className="block truncate text-[11px] text-base-content/50">
-          {description}
-        </span>
-      </span>
-      {selected ? (
-        <span aria-hidden="true" className="text-xs text-primary">
-          ✓
-        </span>
-      ) : null}
-    </button>
-  );
-}
-
-function ThemeSwatch({ themeId }: { themeId: string }) {
-  return (
-    <span
-      data-theme={themeId}
-      aria-hidden="true"
-      className="flex h-5 w-9 shrink-0 overflow-hidden border border-base-content/15"
-    >
-      <span className="flex-1 bg-base-100" />
-      <span className="flex-1 bg-base-200" />
-      <span className="w-2 bg-primary" />
-    </span>
-  );
-}
-
 const LLM_API_MODE_OPTIONS: Array<{
   value: LlmProviderApiMode;
   label: string;
@@ -914,10 +693,13 @@ const LLM_API_MODE_OPTIONS: Array<{
   { value: "responses", label: "Responses" },
 ];
 
-type SettingsSection = "general" | "search" | "files" | "memory" | "llm";
+/**
+ * Appearance is not here: it lives on the title bar, where the window it changes
+ * is in view. See `appearance-button.tsx`.
+ */
+type SettingsSection = "search" | "files" | "memory" | "llm";
 
 const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string }> = [
-  { id: "general", label: "通用" },
   { id: "search", label: "搜索" },
   { id: "files", label: "文件" },
   { id: "memory", label: "Memory" },

@@ -135,6 +135,150 @@ pub fn read_user_themes_in_dir(
     Ok(themes)
 }
 
+/// Longest file name accepted, so a name can never be the thing that fails.
+const MAX_THEME_FILE_NAME_BYTES: usize = 96;
+
+/// Writes one theme file into the user's theme directory.
+///
+/// The directory is ours to choose and the name is ours to check: the caller
+/// sends a file name and CSS text, and nothing here lets either of them name a
+/// place outside that directory. Same size cap as the reader enforces, so
+/// anything this writes is something it can read back.
+///
+/// The text itself is not parsed or judged. A theme is data, and what a theme
+/// means belongs to the front end that holds the contract — a file this refused
+/// to write because it disliked a declaration would be a second, disagreeing
+/// opinion about that contract.
+#[tauri::command]
+pub fn save_user_theme(file_name: String, css: String) -> Result<String, WorkspaceError> {
+    let directory = user_themes_dir()?;
+    save_user_theme_in_dir(&directory, &file_name, &css)
+}
+
+pub fn save_user_theme_in_dir(
+    directory: &Path,
+    file_name: &str,
+    css: &str,
+) -> Result<String, WorkspaceError> {
+    let name = theme_file_name(file_name)?;
+
+    if css.len() as u64 > MAX_THEME_FILE_BYTES {
+        return Err(WorkspaceError::new(
+            "theme_too_large",
+            format!("主题超过 {} KiB 上限", MAX_THEME_FILE_BYTES / 1024),
+        ));
+    }
+
+    fs::create_dir_all(directory).map_err(|error| {
+        WorkspaceError::from_io("theme_dir_create_failed", "无法创建主题目录", &error)
+    })?;
+
+    let path = directory.join(&name);
+    fs::write(&path, css).map_err(|error| {
+        WorkspaceError::from_io("theme_write_failed", "无法写入主题文件", &error)
+    })?;
+
+    Ok(path.to_string_lossy().to_string())
+}
+
+/// The file name to write, or why it is not one.
+///
+/// One segment, ending in `.css`, not hidden. Everything a name could otherwise
+/// be — a path, a traversal, an empty string — is refused rather than repaired:
+/// a name this had to fix is a name the user would not recognise in their own
+/// directory.
+fn theme_file_name(file_name: &str) -> Result<String, WorkspaceError> {
+    let trimmed = file_name.trim();
+    let refuse = |reason: &str| {
+        Err(WorkspaceError::new(
+            "theme_name_invalid",
+            format!("主题文件名不可用：{reason}"),
+        ))
+    };
+
+    if trimmed.is_empty() {
+        return refuse("不能为空");
+    }
+
+    if trimmed.len() > MAX_THEME_FILE_NAME_BYTES {
+        return refuse("过长");
+    }
+
+    if !trimmed.to_ascii_lowercase().ends_with(".css") {
+        return refuse("必须以 .css 结尾");
+    }
+
+    if trimmed.starts_with('.') {
+        return refuse("不能以点开头");
+    }
+
+    if trimmed.contains('\0') {
+        return refuse("含有非法字符");
+    }
+
+    // One plain segment: this rejects `a/b.css`, `../b.css` and every absolute
+    // form, on every platform's separators rather than only this one's.
+    let mut components = Path::new(trimmed).components();
+    let Some(std::path::Component::Normal(only)) = components.next() else {
+        return refuse("必须是单个文件名");
+    };
+
+    if components.next().is_some() || only != std::ffi::OsStr::new(trimmed) {
+        return refuse("必须是单个文件名");
+    }
+
+    if trimmed.contains('\\') {
+        return refuse("必须是单个文件名");
+    }
+
+    Ok(trimmed.to_string())
+}
+
+/// Shows the theme directory in the file manager, making it first if it is not
+/// there — a directory that is only described and never opened is a path the user
+/// has to retype.
+#[tauri::command]
+pub fn reveal_user_themes_dir() -> Result<String, WorkspaceError> {
+    let directory = user_themes_dir()?;
+
+    fs::create_dir_all(&directory).map_err(|error| {
+        WorkspaceError::from_io("theme_dir_create_failed", "无法创建主题目录", &error)
+    })?;
+
+    reveal_directory_os(&directory)?;
+
+    Ok(directory.to_string_lossy().to_string())
+}
+
+#[cfg(target_os = "macos")]
+fn reveal_directory_os(directory: &Path) -> Result<(), WorkspaceError> {
+    std::process::Command::new("open")
+        .arg("--")
+        .arg(directory)
+        .status()
+        .map_err(|error| {
+            WorkspaceError::from_io("theme_dir_open_failed", "无法打开主题目录", &error)
+        })
+        .and_then(|status| {
+            if status.success() {
+                Ok(())
+            } else {
+                Err(WorkspaceError::new(
+                    "theme_dir_open_failed",
+                    format!("打开主题目录失败，退出码 {status}"),
+                ))
+            }
+        })
+}
+
+#[cfg(not(target_os = "macos"))]
+fn reveal_directory_os(_directory: &Path) -> Result<(), WorkspaceError> {
+    Err(WorkspaceError::new(
+        "theme_dir_open_failed",
+        "只在 macOS 上支持打开主题目录",
+    ))
+}
+
 /// The directory user themes live in, under the same `~/.mdx` the rest of the
 /// product already uses for drafts and assets.
 pub fn user_themes_dir() -> Result<PathBuf, WorkspaceError> {
