@@ -359,7 +359,23 @@ pub fn delete(drawer_id: &str) -> Result<bool, WorkspaceError> {
 }
 
 pub fn purge(before: Option<String>) -> Result<u64, WorkspaceError> {
-    with_library(|database| purge_evidence(database, before.as_deref()))
+    with_library(|database| {
+        let purged = purge_evidence(database, before.as_deref())?;
+
+        // Then give the file its pages back. Without this the rows are gone and
+        // the library is exactly as large as before — and the space is the reason
+        // anyone purges. `VACUUM` runs through the library's own connection
+        // because it rewrites the whole file and refuses to start while another
+        // connection holds a lock; that handle is the only one in this process.
+        database.conn().execute_batch("VACUUM;").map_err(|error| {
+            WorkspaceError::new(
+                "memory_unavailable",
+                format!("erased, but failed to reclaim the space: {error}"),
+            )
+        })?;
+
+        Ok(purged)
+    })
 }
 
 pub fn distill_conclusion(

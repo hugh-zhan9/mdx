@@ -21,9 +21,9 @@ pub struct MemoryAgentSetupRequest {
     #[serde(default)]
     pub dry_run: bool,
     #[serde(default)]
-    pub mdx_cli: Option<String>,
+    pub loam_cli: Option<String>,
     #[serde(default)]
-    pub mdx_mcp: Option<String>,
+    pub loam_mcp: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -54,7 +54,7 @@ pub fn memory_agent_setup(
         cursor: configure_all || request.cursor,
         hooks: request.hooks,
     };
-    let paths = AgentSetupPaths::resolve(request.mdx_cli.as_deref(), request.mdx_mcp.as_deref())?;
+    let paths = AgentSetupPaths::resolve(request.loam_cli.as_deref(), request.loam_mcp.as_deref())?;
     let changes = plan_memory_agent_setup(&root_path, &targets, &paths)?;
 
     if !request.dry_run {
@@ -183,8 +183,8 @@ fn setup_request_for_agent(
         cursor,
         hooks: true,
         dry_run,
-        mdx_cli: None,
-        mdx_mcp: None,
+        loam_cli: None,
+        loam_mcp: None,
     })
 }
 
@@ -261,23 +261,23 @@ pub struct AgentSetupTargets {
 
 pub struct AgentSetupPaths {
     pub home: PathBuf,
-    pub mdx_cli: String,
-    pub mdx_mcp: String,
+    pub loam_cli: String,
+    pub loam_mcp: String,
     pub hook_script: PathBuf,
 }
 
 impl AgentSetupPaths {
-    pub fn resolve(mdx_cli: Option<&str>, mdx_mcp: Option<&str>) -> io::Result<Self> {
+    pub fn resolve(loam_cli: Option<&str>, loam_mcp: Option<&str>) -> io::Result<Self> {
         let home = home_dir()?;
         let current_exe = env::current_exe()?;
-        let mdx_cli = match mdx_cli {
+        let loam_cli = match loam_cli {
             Some(path) => normalize_path(path)?,
             None => find_bundled_binary(&current_exe, "loam-cli")
                 .unwrap_or_else(|| current_exe.clone())
                 .to_string_lossy()
                 .into_owned(),
         };
-        let mdx_mcp = match mdx_mcp {
+        let loam_mcp = match loam_mcp {
             Some(path) => normalize_path(path)?,
             None => find_bundled_binary(&current_exe, "loam-mcp")
                 .unwrap_or_else(|| {
@@ -290,10 +290,10 @@ impl AgentSetupPaths {
                 .into_owned(),
         };
         Ok(Self {
-            hook_script: home.join(".mdx-memory-precompact-hook.mjs"),
+            hook_script: home.join(".loam-memory-precompact-hook.mjs"),
             home,
-            mdx_cli,
-            mdx_mcp,
+            loam_cli,
+            loam_mcp,
         })
     }
 }
@@ -336,7 +336,7 @@ pub fn plan_memory_agent_setup(
     if targets.hooks && (targets.claude || targets.cursor) {
         changes.push(AgentSetupChange {
             path: paths.hook_script.clone(),
-            contents: precompact_hook_script(&paths.mdx_cli, root_path),
+            contents: precompact_hook_script(&paths.loam_cli, root_path),
             executable: true,
             action: AgentSetupChangeAction::Write,
         });
@@ -349,7 +349,7 @@ pub fn plan_memory_agent_setup(
         ] {
             changes.push(AgentSetupChange {
                 path: skill_root,
-                contents: mdx_memory_skill(root_path, &paths.mdx_cli),
+                contents: loam_memory_skill(root_path, &paths.loam_cli),
                 executable: false,
                 action: AgentSetupChangeAction::Write,
             });
@@ -358,7 +358,7 @@ pub fn plan_memory_agent_setup(
             path: paths.home.join(".codey/config.toml"),
             contents: update_codex_config(
                 &paths.home.join(".codey/config.toml"),
-                &paths.mdx_mcp,
+                &paths.loam_mcp,
                 root_path,
             )?,
             executable: false,
@@ -369,7 +369,7 @@ pub fn plan_memory_agent_setup(
     if targets.claude {
         changes.push(AgentSetupChange {
             path: paths.home.join(".claude/skills/loam-memory/SKILL.md"),
-            contents: mdx_memory_skill(root_path, &paths.mdx_cli),
+            contents: loam_memory_skill(root_path, &paths.loam_cli),
             executable: false,
             action: AgentSetupChangeAction::Write,
         });
@@ -377,7 +377,7 @@ pub fn plan_memory_agent_setup(
             path: paths.home.join(".claude/CLAUDE.md"),
             contents: update_agent_markdown_block(
                 &paths.home.join(".claude/CLAUDE.md"),
-                &claude_memory_block(root_path, &paths.mdx_cli),
+                &claude_memory_block(root_path, &paths.loam_cli),
             )?,
             executable: false,
             action: AgentSetupChangeAction::Write,
@@ -387,7 +387,7 @@ pub fn plan_memory_agent_setup(
                 path: paths.home.join(".claude/hooks/hooks.json"),
                 contents: update_claude_hooks(
                     &paths.home.join(".claude/hooks/hooks.json"),
-                    &paths.mdx_cli,
+                    &paths.loam_cli,
                     root_path,
                 )?,
                 executable: false,
@@ -399,7 +399,7 @@ pub fn plan_memory_agent_setup(
     if targets.cursor {
         changes.push(AgentSetupChange {
             path: paths.home.join(".cursor/skills/loam-memory/SKILL.md"),
-            contents: mdx_memory_skill(root_path, &paths.mdx_cli),
+            contents: loam_memory_skill(root_path, &paths.loam_cli),
             executable: false,
             action: AgentSetupChangeAction::Write,
         });
@@ -407,7 +407,7 @@ pub fn plan_memory_agent_setup(
             path: paths.home.join(".cursor/mcp.json"),
             contents: update_cursor_mcp(
                 &paths.home.join(".cursor/mcp.json"),
-                &paths.mdx_mcp,
+                &paths.loam_mcp,
                 root_path,
             )?,
             executable: false,
@@ -415,7 +415,7 @@ pub fn plan_memory_agent_setup(
         });
         changes.push(AgentSetupChange {
             path: paths.home.join(".cursor/rules/loam-memory.mdc"),
-            contents: cursor_memory_rule(root_path, &paths.mdx_cli),
+            contents: cursor_memory_rule(root_path, &paths.loam_cli),
             executable: false,
             action: AgentSetupChangeAction::Write,
         });
@@ -424,7 +424,7 @@ pub fn plan_memory_agent_setup(
                 path: paths.home.join(".cursor/hooks.json"),
                 contents: update_cursor_hooks(
                     &paths.home.join(".cursor/hooks.json"),
-                    &paths.mdx_cli,
+                    &paths.loam_cli,
                     root_path,
                 )?,
                 executable: false,
@@ -726,7 +726,7 @@ fn normalize_path(input: &str) -> io::Result<String> {
     Ok(absolute.to_string_lossy().into_owned())
 }
 
-fn update_codex_config(path: &Path, mdx_mcp: &str, root_path: &str) -> io::Result<String> {
+fn update_codex_config(path: &Path, loam_mcp: &str, root_path: &str) -> io::Result<String> {
     let existing = read_optional_file(path)?;
     let filtered = remove_toml_table(&existing, "[mcp_servers.loam-memory]");
     let mut output = filtered.trim_end().to_string();
@@ -734,7 +734,7 @@ fn update_codex_config(path: &Path, mdx_mcp: &str, root_path: &str) -> io::Resul
         output.push_str("\n\n");
     }
     output.push_str("[mcp_servers.loam-memory]\n");
-    output.push_str(&format!("command = \"{}\"\n", toml_escape(mdx_mcp)));
+    output.push_str(&format!("command = \"{}\"\n", toml_escape(loam_mcp)));
     output.push_str(&format!(
         "args = [\"--workspace\", \"{}\"]\n",
         toml_escape(root_path)
@@ -773,7 +773,7 @@ fn toml_escape(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
-fn update_cursor_mcp(path: &Path, mdx_mcp: &str, root_path: &str) -> io::Result<String> {
+fn update_cursor_mcp(path: &Path, loam_mcp: &str, root_path: &str) -> io::Result<String> {
     let mut value = read_optional_json(path)?;
     if !value.is_object() {
         value = serde_json::json!({});
@@ -786,7 +786,7 @@ fn update_cursor_mcp(path: &Path, mdx_mcp: &str, root_path: &str) -> io::Result<
         value["mcpServers"] = serde_json::json!({});
     }
     value["mcpServers"]["loam-memory"] = serde_json::json!({
-        "command": mdx_mcp,
+        "command": loam_mcp,
         "args": ["--workspace", root_path]
     });
     pretty_json(&value)
@@ -807,7 +807,7 @@ fn remove_cursor_mcp(path: &Path) -> io::Result<String> {
     pretty_json(&value)
 }
 
-fn update_cursor_hooks(path: &Path, mdx_cli: &str, root_path: &str) -> io::Result<String> {
+fn update_cursor_hooks(path: &Path, loam_cli: &str, root_path: &str) -> io::Result<String> {
     let mut value = read_optional_json(path)?;
     if !value.is_object() {
         value = serde_json::json!({});
@@ -831,12 +831,12 @@ fn update_cursor_hooks(path: &Path, mdx_cli: &str, root_path: &str) -> io::Resul
         value["hooks"]["preCompact"] = serde_json::json!([]);
     }
     let precompact = value["hooks"]["preCompact"].as_array_mut().unwrap();
-    precompact.retain(|entry| !is_mdx_memory_json_entry(entry));
+    precompact.retain(|entry| !is_loam_memory_json_entry(entry));
     precompact.push(serde_json::json!({
         "id": "loam-memory",
         "name": "loam-memory",
         "version": LOAM_MEMORY_HOOK_VERSION,
-        "command": mdx_cli,
+        "command": loam_cli,
         "args": ["memory", "--root", root_path, "hook", "cursor", "preCompact"],
         "timeout": 60
     }));
@@ -854,13 +854,13 @@ fn remove_cursor_hooks(path: &Path) -> io::Result<String> {
             .get_mut("preCompact")
             .and_then(|item| item.as_array_mut())
         {
-            precompact.retain(|entry| !is_mdx_memory_json_entry(entry));
+            precompact.retain(|entry| !is_loam_memory_json_entry(entry));
         }
     }
     pretty_json(&value)
 }
 
-fn update_claude_hooks(path: &Path, mdx_cli: &str, root_path: &str) -> io::Result<String> {
+fn update_claude_hooks(path: &Path, loam_cli: &str, root_path: &str) -> io::Result<String> {
     let mut value = read_optional_json(path)?;
     if !value.is_object() {
         value = serde_json::json!({ "hooks": {} });
@@ -880,10 +880,10 @@ fn update_claude_hooks(path: &Path, mdx_cli: &str, root_path: &str) -> io::Resul
         value["hooks"]["PreCompact"] = serde_json::json!([]);
     }
     let precompact = value["hooks"]["PreCompact"].as_array_mut().unwrap();
-    precompact.retain(|entry| !is_mdx_memory_json_entry(entry));
+    precompact.retain(|entry| !is_loam_memory_json_entry(entry));
     let command = format!(
         "{} memory --root {} hook claude PreCompact",
-        shell_quote(mdx_cli),
+        shell_quote(loam_cli),
         shell_quote(root_path)
     );
     precompact.push(serde_json::json!({
@@ -926,13 +926,13 @@ fn remove_claude_hooks(path: &Path) -> io::Result<String> {
             .get_mut("PreCompact")
             .and_then(|item| item.as_array_mut())
         {
-            precompact.retain(|entry| !is_mdx_memory_json_entry(entry));
+            precompact.retain(|entry| !is_loam_memory_json_entry(entry));
         }
     }
     pretty_json(&value)
 }
 
-fn is_mdx_memory_json_entry(entry: &serde_json::Value) -> bool {
+fn is_loam_memory_json_entry(entry: &serde_json::Value) -> bool {
     entry
         .get("id")
         .and_then(|id| id.as_str())
@@ -1047,7 +1047,7 @@ fn remove_managed_markdown_block(contents: &str) -> String {
     output
 }
 
-fn precompact_hook_script(mdx_cli: &str, root_path: &str) -> String {
+fn precompact_hook_script(loam_cli: &str, root_path: &str) -> String {
     format!(
         r#"#!/usr/bin/env node
 
@@ -1055,7 +1055,7 @@ import {{ existsSync }} from "node:fs";
 import {{ basename }} from "node:path";
 import {{ spawnSync }} from "node:child_process";
 
-const LOAM_CLI = {mdx_cli_json};
+const LOAM_CLI = {loam_cli_json};
 const MEMORY_ROOT = {root_json};
 
 function readStdin() {{
@@ -1133,12 +1133,12 @@ if (captureResult.status !== 0) {{
 
 process.exit(0);
 "#,
-        mdx_cli_json = serde_json::to_string(mdx_cli).unwrap(),
+        loam_cli_json = serde_json::to_string(loam_cli).unwrap(),
         root_json = serde_json::to_string(root_path).unwrap()
     )
 }
 
-fn mdx_memory_skill(root_path: &str, mdx_cli: &str) -> String {
+fn loam_memory_skill(root_path: &str, loam_cli: &str) -> String {
     format!(
         r#"---
 name: loam-memory
@@ -1177,8 +1177,8 @@ At the start of substantive work, or when prior context matters:
 CLI fallback:
 
 ```bash
-{mdx_cli} memory --root "{root_path}" recall "<task query>"
-{mdx_cli} memory --root "{root_path}" search "<exact query>"
+{loam_cli} memory --root "{root_path}" recall "<task query>"
+{loam_cli} memory --root "{root_path}" search "<exact query>"
 ```
 
 ## Durable Memory Write Flow
@@ -1200,8 +1200,8 @@ Good material to keep:
 CLI fallback:
 
 ```bash
-{mdx_cli} memory --root "{root_path}" add --body "<what happened>"
-{mdx_cli} memory --root "{root_path}" distill --statement "<the claim>" --body "<why>" --ref <material-id>
+{loam_cli} memory --root "{root_path}" add --body "<what happened>"
+{loam_cli} memory --root "{root_path}" distill --statement "<the claim>" --body "<why>" --ref <material-id>
 ```
 
 Capture is one-way. Anything written can be deleted afterwards but never unremembered, so do not store secrets, credentials, or anything the user has not confirmed.
@@ -1227,8 +1227,8 @@ A transcript is material like anything else: read it in with `capture import --p
 CLI fallback:
 
 ```bash
-{mdx_cli} memory --root "{root_path}" capture scan --path <file-or-dir>
-{mdx_cli} memory --root "{root_path}" capture import --path <file-or-dir>
+{loam_cli} memory --root "{root_path}" capture scan --path <file-or-dir>
+{loam_cli} memory --root "{root_path}" capture import --path <file-or-dir>
 ```
 
 ## Safety
@@ -1241,13 +1241,13 @@ CLI fallback:
     )
 }
 
-fn claude_memory_block(root_path: &str, mdx_cli: &str) -> String {
+fn claude_memory_block(root_path: &str, loam_cli: &str) -> String {
     format!(
-        "## Loam Memory\nWhen the user asks to remember, save, recall, search, persist decisions, or load prior context, use the `loam-memory` skill and the `loam-memory` MCP server.\n\nUse `memory_recall` for task context and cite what you use. Store what happened with `memory_add` during the turn it happens; draw conclusions from stored material with `memory_distill`, which produces a candidate that only a person can adopt. Do not wait for background capture or pre-compact hooks before preserving something confirmed. Ask before storing anything sensitive or uncertain — capture is one-way. Pre-compact hooks capture and accept distilled memory before compression; the installed Claude hook command is `{mdx_cli} memory --root \"{root_path}\" hook claude PreCompact`. Full thread archival is separate and should only be used when preserving original conversation text matters. Do not store secrets or promote memory into wiki/raw material unless the user explicitly asks."
+        "## Loam Memory\nWhen the user asks to remember, save, recall, search, persist decisions, or load prior context, use the `loam-memory` skill and the `loam-memory` MCP server.\n\nUse `memory_recall` for task context and cite what you use. Store what happened with `memory_add` during the turn it happens; draw conclusions from stored material with `memory_distill`, which produces a candidate that only a person can adopt. Do not wait for background capture or pre-compact hooks before preserving something confirmed. Ask before storing anything sensitive or uncertain — capture is one-way. Pre-compact hooks capture and accept distilled memory before compression; the installed Claude hook command is `{loam_cli} memory --root \"{root_path}\" hook claude PreCompact`. Full thread archival is separate and should only be used when preserving original conversation text matters. Do not store secrets or promote memory into wiki/raw material unless the user explicitly asks."
     )
 }
 
-fn cursor_memory_rule(root_path: &str, mdx_cli: &str) -> String {
+fn cursor_memory_rule(root_path: &str, loam_cli: &str) -> String {
     format!(
         r#"---
 description: Use Loam Memory when remembering, saving, recalling, searching prior context, persisting decisions, or summarizing durable lessons.
@@ -1256,7 +1256,7 @@ alwaysApply: true
 
 Use the `loam-memory` skill and the `loam-memory` MCP server for durable memory.
 
-Read task context with `memory_recall` and cite what you use. Find specific items with `memory_search`. Store what happened with `memory_add` during the turn it happens; draw conclusions from stored material with `memory_distill`, which produces a candidate that only a person can adopt. Do not wait for background capture or pre-compact hooks before preserving something confirmed. Ask before storing anything sensitive or uncertain — capture is one-way. Pre-compact hooks capture and accept distilled memory before compression; the installed Cursor hook command is `{mdx_cli} memory --root "{root_path}" hook cursor preCompact`. Full thread archival is separate and should only be used when preserving original conversation text matters. Do not store secrets.
+Read task context with `memory_recall` and cite what you use. Find specific items with `memory_search`. Store what happened with `memory_add` during the turn it happens; draw conclusions from stored material with `memory_distill`, which produces a candidate that only a person can adopt. Do not wait for background capture or pre-compact hooks before preserving something confirmed. Ask before storing anything sensitive or uncertain — capture is one-way. Pre-compact hooks capture and accept distilled memory before compression; the installed Cursor hook command is `{loam_cli} memory --root "{root_path}" hook cursor preCompact`. Full thread archival is separate and should only be used when preserving original conversation text matters. Do not store secrets.
 "#
     )
 }

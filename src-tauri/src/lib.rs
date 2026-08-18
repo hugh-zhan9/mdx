@@ -747,7 +747,7 @@ fn schedule_workspace_frontend_recovery_check(
             recover_stale_workspace_frontend(&app_for_recovery, &label_for_recovery, trigger);
         }) {
             log::warn!(
-                target: "mdx::webview_recovery",
+                target: "loam::webview_recovery",
                 "failed to schedule recovery check label={} trigger={} error={}",
                 label,
                 trigger,
@@ -788,7 +788,7 @@ fn recover_stale_workspace_frontend(app: &AppHandle, label: &str, trigger: &str)
     };
 
     log::warn!(
-        target: "mdx::webview_recovery",
+        target: "loam::webview_recovery",
         "reloading stale workspace webview label={} trigger={} reason={}",
         label,
         trigger,
@@ -797,7 +797,7 @@ fn recover_stale_workspace_frontend(app: &AppHandle, label: &str, trigger: &str)
 
     if let Err(error) = window.reload() {
         log::error!(
-            target: "mdx::webview_recovery",
+            target: "loam::webview_recovery",
             "failed to reload stale workspace webview label={} trigger={} reason={} error={}",
             label,
             trigger,

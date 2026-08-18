@@ -218,17 +218,17 @@ fn rejects_symlinked_global_assets_directory_on_save() {
     use std::os::unix::fs::symlink;
 
     let home = tempdir().unwrap();
-    let mdx_home = home.path().join(".loam");
+    let loam_home = home.path().join(".loam");
     let outside = tempdir().unwrap();
-    std::fs::create_dir(&mdx_home).unwrap();
-    symlink(outside.path(), mdx_home.join("assets")).unwrap();
+    std::fs::create_dir(&loam_home).unwrap();
+    symlink(outside.path(), loam_home.join("assets")).unwrap();
 
     let err = save_image_asset_with_global_assets_dir(
         None,
         None,
         "paste.png".to_string(),
         vec![1, 2, 3],
-        &mdx_home.join("assets"),
+        &loam_home.join("assets"),
     )
     .unwrap_err();
 
@@ -242,18 +242,18 @@ fn rejects_symlinked_global_assets_directory_on_load() {
     use std::os::unix::fs::symlink;
 
     let home = tempdir().unwrap();
-    let mdx_home = home.path().join(".loam");
+    let loam_home = home.path().join(".loam");
     let outside = tempdir().unwrap();
-    std::fs::create_dir(&mdx_home).unwrap();
-    symlink(outside.path(), mdx_home.join("assets")).unwrap();
-    let symlinked_image = mdx_home.join("assets").join("abc123.png");
+    std::fs::create_dir(&loam_home).unwrap();
+    symlink(outside.path(), loam_home.join("assets")).unwrap();
+    let symlinked_image = loam_home.join("assets").join("abc123.png");
     std::fs::write(outside.path().join("abc123.png"), [9, 9, 9]).unwrap();
 
     let err = load_image_asset_with_global_assets_dir(
         None,
         None,
         symlinked_image.to_string_lossy().into_owned(),
-        &mdx_home.join("assets"),
+        &loam_home.join("assets"),
     )
     .unwrap_err();
 

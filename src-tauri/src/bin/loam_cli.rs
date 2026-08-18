@@ -171,6 +171,12 @@ enum MemoryCommand {
     },
     /// Re-embed the whole library, which is what a model change costs.
     Reindex,
+    /// Remove entries `delete` only hid, and give their disk space back. Final.
+    Purge {
+        /// Only entries deleted before this ISO timestamp.
+        #[arg(long)]
+        before: Option<String>,
+    },
     /// Store material: a decision, a finding, a piece of a conversation.
     Add {
         #[arg(long)]
@@ -345,9 +351,9 @@ enum MemoryAgentCommand {
         #[arg(long)]
         dry_run: bool,
         #[arg(long)]
-        mdx_cli: Option<String>,
+        loam_cli: Option<String>,
         #[arg(long)]
-        mdx_mcp: Option<String>,
+        loam_mcp: Option<String>,
     },
 }
 
@@ -508,6 +514,9 @@ fn request_from_memory_command(command: &MemoryCommand) -> io::Result<CliRequest
             download: *download,
         },
         MemoryCommand::Reindex => CliRequest::MemoryReindex,
+        MemoryCommand::Purge { before } => CliRequest::MemoryPurge {
+            before: before.clone(),
+        },
         MemoryCommand::Add {
             body,
             file,
@@ -739,8 +748,8 @@ fn execute_memory_agent_headless(
         hooks,
         no_hooks,
         dry_run,
-        mdx_cli,
-        mdx_mcp,
+        loam_cli,
+        loam_mcp,
     } = command;
 
     if *hooks && *no_hooks {
@@ -757,8 +766,8 @@ fn execute_memory_agent_headless(
         cursor: configure_all || *cursor,
         hooks: !*no_hooks,
         dry_run: *dry_run,
-        mdx_cli: mdx_cli.clone(),
-        mdx_mcp: mdx_mcp.clone(),
+        loam_cli: loam_cli.clone(),
+        loam_mcp: loam_mcp.clone(),
     };
 
     match loam_lib::memory_agent_setup::memory_agent_setup(root_path.clone(), request) {
@@ -2151,8 +2160,8 @@ mod tests {
         let root = TempDir::new().unwrap();
         let paths = loam_lib::memory_agent_setup::AgentSetupPaths {
             home: home.path().to_path_buf(),
-            mdx_cli: "/tmp/loam-cli".to_string(),
-            mdx_mcp: "/tmp/loam-mcp".to_string(),
+            loam_cli: "/tmp/loam-cli".to_string(),
+            loam_mcp: "/tmp/loam-mcp".to_string(),
             hook_script: home.path().join(".mdx-memory-precompact-hook.mjs"),
         };
         let targets = loam_lib::memory_agent_setup::AgentSetupTargets {
@@ -2297,8 +2306,8 @@ mod tests {
         let root = TempDir::new().unwrap();
         let paths = loam_lib::memory_agent_setup::AgentSetupPaths {
             home: home.path().to_path_buf(),
-            mdx_cli: "/tmp/loam-cli".to_string(),
-            mdx_mcp: "/tmp/loam-mcp".to_string(),
+            loam_cli: "/tmp/loam-cli".to_string(),
+            loam_mcp: "/tmp/loam-mcp".to_string(),
             hook_script: home.path().join(".mdx-memory-precompact-hook.mjs"),
         };
         let targets = loam_lib::memory_agent_setup::AgentSetupTargets {

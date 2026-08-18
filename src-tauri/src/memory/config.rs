@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::assets::mdx_home_dir;
+use crate::assets::loam_home_dir;
 use crate::models::WorkspaceError;
 
 pub const DEFAULT_EMBEDDING_MODEL: &str = "minishlab/potion-multilingual-128M";
@@ -129,7 +129,7 @@ pub(crate) fn set_home_override(path: Option<PathBuf>) {
     *guard = path;
 }
 
-fn mdx_home() -> Result<PathBuf, WorkspaceError> {
+fn loam_home() -> Result<PathBuf, WorkspaceError> {
     #[cfg(test)]
     if let Some(path) = HOME_OVERRIDE
         .lock()
@@ -139,19 +139,19 @@ fn mdx_home() -> Result<PathBuf, WorkspaceError> {
         return Ok(path);
     }
 
-    mdx_home_dir()
+    loam_home_dir()
 }
 
 pub fn memory_home_dir() -> Result<PathBuf, WorkspaceError> {
-    Ok(mdx_home()?.join("memory"))
+    Ok(loam_home()?.join("memory"))
 }
 
 pub fn models_home_dir() -> Result<PathBuf, WorkspaceError> {
-    Ok(mdx_home()?.join("models"))
+    Ok(loam_home()?.join("models"))
 }
 
 pub fn hf_cache_dir() -> Result<PathBuf, WorkspaceError> {
-    Ok(mdx_home()?.join("hf-cache"))
+    Ok(loam_home()?.join("hf-cache"))
 }
 
 pub fn global_config_path() -> Result<PathBuf, WorkspaceError> {

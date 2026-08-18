@@ -99,10 +99,15 @@ hooks, and an MCP server pointing at the bundled `loam-mcp`.
 
 Full guide: [docs/memory-usage.md](docs/memory-usage.md).
 
-**Status, honestly:** the library, its schema and the whole material/conclusion path
-are implemented and tested, but have never been exercised against a real embedding
-model end to end. The first thing to do with it is download the model and store one
-piece of material.
+**Status, honestly:** storing material and semantic search are proven against the
+real model on a real library — 1020 pieces of material, written and retrieved by
+rank, with the new entry coming back first. The conclusion half —
+`distill` → `gate` → `adopt` — is implemented and unit-tested but has not been run
+against the model end to end, so nothing has reached an agent's context that way
+yet.
+
+`delete` hides an entry; `purge` removes it and gives the file's pages back, which
+is the one irreversible operation here.
 
 ## Appearance
 
@@ -154,7 +159,8 @@ Memory also runs headlessly, against a workspace rather than a window:
 
 ```bash
 loam-cli memory --root <workspace> init | status | doctor | model | reindex
-loam-cli memory --root <workspace> add --title "..." --body "..." | show | list | delete
+loam-cli memory --root <workspace> add --body "..." | --file <path> | --stdin
+loam-cli memory --root <workspace> show | list | delete | purge [--before <iso>]
 loam-cli memory --root <workspace> search | context | brief | recall <query...>
 loam-cli memory --root <workspace> distill | gate | adopt | demote | promote
 loam-cli memory --root <workspace> capture | legacy-import | export | import

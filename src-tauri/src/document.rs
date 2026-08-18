@@ -112,7 +112,7 @@ fn write_document_content(path: &Path, content: &str) -> Result<(), WorkspaceErr
         .and_then(|name| name.to_str())
         .unwrap_or("document");
     let mut temp_file = TempFileBuilder::new()
-        .prefix(&format!(".{file_name}.mdx-tmp-"))
+        .prefix(&format!(".{file_name}.loam-tmp-"))
         .tempfile_in(parent)
         .map_err(|error| {
             WorkspaceError::from_io(

@@ -283,7 +283,7 @@ fn llm_config_save_rejects_symlinked_parent_without_touching_target() {
 fn llm_config_save_rejects_symlinked_ancestor_without_touching_target() {
     let dir = tempdir().unwrap();
     let outside = tempdir().unwrap();
-    let symlink_ancestor = dir.path().join("mdx-home");
+    let symlink_ancestor = dir.path().join("loam-home");
     std::os::unix::fs::symlink(outside.path(), &symlink_ancestor).unwrap();
     let path = symlink_ancestor.join(".loam").join("llm-config.json");
     let config = LlmProviderConfig {

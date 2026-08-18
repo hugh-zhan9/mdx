@@ -44,17 +44,17 @@ struct DraftIdentity {
 
 #[tauri::command]
 pub fn draft_save(request: DraftSaveRequest) -> Result<DraftSaveResult, WorkspaceError> {
-    draft_save_in_dir(mdx_home_dir()?, request)
+    draft_save_in_dir(loam_home_dir()?, request)
 }
 
 #[tauri::command]
 pub fn draft_get(real_path: String) -> Result<DraftGetResult, WorkspaceError> {
-    draft_get_in_dir(mdx_home_dir()?, real_path)
+    draft_get_in_dir(loam_home_dir()?, real_path)
 }
 
 #[tauri::command]
 pub fn draft_list_for_workspace(root_path: String) -> Result<DraftListResult, WorkspaceError> {
-    draft_list_for_workspace_in_dir(mdx_home_dir()?, root_path)
+    draft_list_for_workspace_in_dir(loam_home_dir()?, root_path)
 }
 
 #[tauri::command]
@@ -62,12 +62,12 @@ pub fn draft_delete(
     draft_id: Option<String>,
     real_path: Option<String>,
 ) -> Result<DraftDeleteResult, WorkspaceError> {
-    draft_delete_in_dir(mdx_home_dir()?, draft_id, real_path)
+    draft_delete_in_dir(loam_home_dir()?, draft_id, real_path)
 }
 
 #[tauri::command]
 pub fn draft_cleanup_expired(retention_days: u64) -> Result<DraftCleanupResult, WorkspaceError> {
-    cleanup_expired_drafts_in_dir(mdx_home_dir()?, retention_days, SystemTime::now())
+    cleanup_expired_drafts_in_dir(loam_home_dir()?, retention_days, SystemTime::now())
 }
 
 pub fn draft_save_in_dir(
@@ -554,7 +554,7 @@ fn drafts_dir_for_home(home_dir: &Path) -> PathBuf {
     home_dir.join("drafts")
 }
 
-fn mdx_home_dir() -> Result<PathBuf, WorkspaceError> {
+fn loam_home_dir() -> Result<PathBuf, WorkspaceError> {
     let home = std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .ok_or_else(|| WorkspaceError::new("draft_path_failed", "home directory is not set"))?;

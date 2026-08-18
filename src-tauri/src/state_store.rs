@@ -293,10 +293,10 @@ fn backup_corrupt_state_file(path: &Path) -> Result<(), WorkspaceError> {
 }
 
 fn default_state_path() -> Result<PathBuf, WorkspaceError> {
-    Ok(mdx_home_dir()?.join("state.json"))
+    Ok(loam_home_dir()?.join("state.json"))
 }
 
-fn mdx_home_dir() -> Result<PathBuf, WorkspaceError> {
+fn loam_home_dir() -> Result<PathBuf, WorkspaceError> {
     let home = std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .ok_or_else(|| WorkspaceError::new("state_path_failed", "home directory is not set"))?;

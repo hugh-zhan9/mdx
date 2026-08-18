@@ -304,20 +304,20 @@ fn ensure_global_assets_dir(
 ) -> Result<PathBuf, WorkspaceError> {
     let assets_dir = match global_assets_dir {
         Some(path) => path.to_path_buf(),
-        None => mdx_home_dir()?.join("assets"),
+        None => loam_home_dir()?.join("assets"),
     };
-    let mdx_home = assets_dir.parent().ok_or_else(|| {
+    let loam_home = assets_dir.parent().ok_or_else(|| {
         WorkspaceError::new("asset_path_failed", "global assets directory has no parent")
     })?;
 
-    fs::create_dir_all(mdx_home).map_err(|error| {
+    fs::create_dir_all(loam_home).map_err(|error| {
         WorkspaceError::from_io(
             "asset_write_failed",
             "failed to create global assets parent directory",
             &error,
         )
     })?;
-    let mdx_home = fs::canonicalize(mdx_home).map_err(|error| {
+    let loam_home = fs::canonicalize(loam_home).map_err(|error| {
         WorkspaceError::from_io(
             "asset_path_failed",
             "failed to resolve global assets parent directory",
@@ -372,7 +372,7 @@ fn ensure_global_assets_dir(
             &error,
         )
     })?;
-    if !assets_dir.starts_with(&mdx_home) {
+    if !assets_dir.starts_with(&loam_home) {
         return Err(WorkspaceError::new(
             "outside_workspace",
             "global assets directory escapes the .mdx directory",
@@ -613,7 +613,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 ///
 /// Shared rather than copied: assets, drafts, themes and memory all have to
 /// agree on it, and a second definition is how two of them end up disagreeing.
-pub(crate) fn mdx_home_dir() -> Result<PathBuf, WorkspaceError> {
+pub(crate) fn loam_home_dir() -> Result<PathBuf, WorkspaceError> {
     let home = std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .ok_or_else(|| WorkspaceError::new("asset_path_failed", "home directory is not set"))?;

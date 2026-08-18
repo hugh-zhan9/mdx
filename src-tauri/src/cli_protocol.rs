@@ -85,6 +85,9 @@ pub enum CliRequest {
         download: bool,
     },
     MemoryReindex,
+    MemoryPurge {
+        before: Option<String>,
+    },
     MemoryAdd {
         body: String,
         #[serde(default)]
@@ -324,6 +327,7 @@ pub fn run_memory_request(root: &Path, request: CliRequest) -> CliResponse {
             api::model_status()
         }),
         CliRequest::MemoryReindex => memory_payload(api::rebuild_index()),
+        CliRequest::MemoryPurge { before } => memory_payload(api::purge(before.clone())),
         CliRequest::MemoryAdd { body, source } => {
             memory_payload(api::add_material(root, api::AddMaterialRequest { body, source }))
         }

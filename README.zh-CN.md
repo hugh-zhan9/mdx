@@ -66,7 +66,9 @@ Loam 是壤土：腐殖质与矿物分层混成，上面那层养着从里面长
 
 完整说明见 [docs/memory-usage.md](docs/memory-usage.md)。
 
-**如实说明当前状态**：记忆库、schema 和整条素材/结论路径都已实现并有测试覆盖，但**从未在真实嵌入模型下端到端跑过**。要用它，第一步就是下载模型并存一条素材。
+**如实说明当前状态**：存素材与语义检索**已在真实模型、真实库上验证**——1020 条素材，写入后按相关度检索，新写的那条排第一。结论那一半（`distill` → `gate` → `adopt`）实现了、有单元测试，但**还没在真实模型下端到端跑过**，所以目前还没有任何东西是通过这条路进到 agent 上下文里的。
+
+`delete` 只是隐藏一条；`purge` 才是真删并把文件的页还给磁盘——**这里唯一不可逆的操作**。
 
 ## 外观
 
@@ -107,7 +109,8 @@ loam-cli serve --workspace <工作区> --port 14243
 
 ```bash
 loam-cli memory --root <工作区> init | status | doctor | model | reindex
-loam-cli memory --root <工作区> add --title "..." --body "..." | show | list | delete
+loam-cli memory --root <工作区> add --body "..." | --file <路径> | --stdin
+loam-cli memory --root <工作区> show | list | delete | purge [--before <ISO时间>]
 loam-cli memory --root <工作区> search | context | brief | recall <查询...>
 loam-cli memory --root <工作区> distill | gate | adopt | demote | promote
 loam-cli memory --root <工作区> capture | legacy-import | export | import

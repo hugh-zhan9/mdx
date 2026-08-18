@@ -100,7 +100,7 @@ fn overwrite_document_file_does_not_follow_predictable_temp_symlink() {
     let symlink_target = root.path().join("outside.md");
     let old_temp_path = root
         .path()
-        .join(format!(".note.md.mdx-tmp-{}", std::process::id()));
+        .join(format!(".note.md.loam-tmp-{}", std::process::id()));
     std::fs::write(&path, "document").unwrap();
     std::fs::write(&symlink_target, "outside").unwrap();
     symlink(&symlink_target, &old_temp_path).unwrap();

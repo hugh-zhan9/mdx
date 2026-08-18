@@ -383,6 +383,7 @@ fn dispatch(app: &AppHandle, request: CliRequest) -> CliResponse {
         | CliRequest::MemoryInit
         | CliRequest::MemoryModel { .. }
         | CliRequest::MemoryReindex
+        | CliRequest::MemoryPurge { .. }
         | CliRequest::MemoryAdd { .. }
         | CliRequest::MemoryShow { .. }
         | CliRequest::MemoryList { .. }

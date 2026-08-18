@@ -247,3 +247,74 @@ fn diagnostics_do_not_mention_the_upstream_command_line_tool() {
         );
     });
 }
+
+/// Purging is the half of a delete that cannot be undone, and the half that gives
+/// the disk space back.
+///
+/// The material goes in through the same writer production uses, with a fixed
+/// embedder standing in for the model — a scoped home has none, and purging has
+/// nothing to do with embeddings either way.
+#[test]
+fn purging_removes_what_a_delete_only_hid() {
+    use mempal_runtime::core::types::SourceType;
+    use mempal_runtime::embed::Embedder;
+
+    use super::evidence::{write_text, TextEvidence};
+
+    struct FixedEmbedder;
+
+    #[async_trait::async_trait]
+    impl Embedder for FixedEmbedder {
+        async fn embed(&self, texts: &[&str]) -> mempal_runtime::embed::Result<Vec<Vec<f32>>> {
+            Ok(texts.iter().map(|_| vec![0.1, 0.2, 0.3, 0.4]).collect())
+        }
+
+        fn dimensions(&self) -> usize {
+            4
+        }
+
+        fn name(&self) -> &str {
+            "fixed-test-embedder"
+        }
+    }
+
+    with_scoped_home(|_home| {
+        let root = tempfile::tempdir().expect("workspace");
+        let wing = wing_for(root.path()).expect("bind");
+
+        let write = |content: &str| {
+            super::engine::with_library(|database| {
+                write_text(
+                    database,
+                    &FixedEmbedder,
+                    TextEvidence {
+                        workspace_root: root.path(),
+                        wing: &wing,
+                        room: "note",
+                        content: content.to_string(),
+                        source_type: SourceType::Manual,
+                        source_file: Some(super::evidence::synthetic_source("note", content)),
+                        importance: 1,
+                    },
+                )
+                .map(|written| written.drawer_id)
+            })
+            .expect("write material")
+        };
+
+        let keep = write("a decision worth keeping");
+        let drop = write("a note about to be deleted");
+
+        assert!(super::api::delete(&drop).expect("soft delete"));
+        // Still in the file, only hidden — which is what makes a delete
+        // recoverable right up until a purge.
+        assert_eq!(library_status().drawer_count, Some(1));
+
+        let purged = super::api::purge(None).expect("purge");
+
+        assert_eq!(purged, 1);
+        assert!(super::api::show(&drop).is_err(), "the purged drawer is gone");
+        assert!(super::api::show(&keep).is_ok(), "the other one is untouched");
+        assert_eq!(library_status().drawer_count, Some(1));
+    });
+}
