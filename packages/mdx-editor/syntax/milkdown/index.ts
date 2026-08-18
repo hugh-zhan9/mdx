@@ -55,6 +55,7 @@ export {
     type WikilinkActivation,
     type WikilinkClickHandler,
 } from "./wikilink";
+import { codeSelectionProsePlugin } from "./code-selection";
 import {
     linkClickHandlerPlugin,
     linkEditorLabelsPlugin,
@@ -131,6 +132,9 @@ export function createMdxMilkdownPlugins(
 ): MilkdownPlugin[] {
     const { onWikilinkActivate, onLinkActivate, linkEditorLabels } = options;
     return [
+        // Before everything, because a keymap is answered in composition order
+        // and the presets' own `Mod-a` selects the whole document.
+        codeSelectionProsePlugin,
         // The inline-link transformer goes out here rather than in the base
         // composition, because it is `sourcePreservationPlugins()` below that
         // supplies the three node types it was covering for.
