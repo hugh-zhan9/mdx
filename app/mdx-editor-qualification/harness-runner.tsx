@@ -1108,6 +1108,7 @@ export default function HarnessRunner() {
                         diagnosticsRef.current.push(diagnostic);
                     }}
                     onOpenWikilink={() => {}}
+                    onOpenLink={() => undefined}
                     onReady={onReady}
                 />
             </div>

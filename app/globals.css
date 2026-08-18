@@ -309,6 +309,33 @@ html[data-mdx-appearance="dark"] {
 }
 
 /*
+ * The Markdown source, on the same page the rendered document gets.
+ *
+ * The measure and padding above belong to the visual surface's own element, and
+ * the source surface is a different element entirely — so reading a document as
+ * Markdown put the text against the left edge of the window with nothing around
+ * it. The editor says which surface is mounted, so this only has to say what a
+ * page looks like.
+ *
+ * No heights or overflow here: the source surface scrolls itself, and a second
+ * opinion about that is how a document ends up clipped.
+ */
+[data-mdx-surface-mode="source"] .cm-editor {
+    background: transparent;
+}
+
+[data-mdx-surface-mode="source"] .cm-content {
+    margin-inline: auto;
+    max-width: var(--mdx-editor-max-width);
+    padding: 1.5rem 1.75rem 45vh;
+    font-family: var(--mdx-mono-font);
+}
+
+[data-mdx-surface-mode="source"] .cm-line {
+    padding-inline: 0;
+}
+
+/*
  * The column a full-window view is read in — memory, LLM Wiki.
  *
  * Written as a rule against a marker rather than as utilities on each page: the
@@ -514,9 +541,108 @@ html[data-mdx-appearance="dark"] {
     text-underline-offset: 0.14em;
 }
 
+/*
+ * A wikilink opens on a plain click, so it says so. An ordinary link does not —
+ * a click there belongs to the caret, because a link's label is text someone is
+ * going to want to edit — so it keeps the caret cursor until the key that would
+ * open it is held.
+ */
+[data-mdx-markdown-editor] a.mdx-wikilink,
+[data-hybrid-editor-host] a.mdx-wikilink {
+    cursor: pointer;
+}
+
+/*
+ * The invitation appears exactly while the click would act on it. The editor
+ * writes the attribute while ⌘ is held; nothing here can ask about a modifier
+ * on its own.
+ */
+[data-mdx-link-open-modifier] a[href] {
+    cursor: pointer;
+    text-decoration-thickness: 0.09em;
+}
+
 [data-mdx-markdown-editor] [data-mdx-editing-link="true"],
 [data-hybrid-editor-host] [data-mdx-editing-link="true"] {
     color: var(--color-info);
+}
+
+/*
+ * The address of the link the caret is inside.
+ *
+ * A rendered link shows its label and hides its address, so this is the only
+ * place the second half of `[label](address)` can be edited without leaving the
+ * visual surface. The editor builds it with no appearance of its own — the app
+ * owns how its interface looks — so it is dressed here, in the same surface,
+ * radius and shadow as the context menu: to the eye both are one small panel
+ * floating over the document.
+ *
+ * The editor places it, which is why the offsets are left alone here.
+ */
+[data-mdx-link-editor] {
+    position: fixed;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: 0.125rem;
+    max-width: calc(100vw - 2rem);
+    padding: 0.25rem;
+    border-radius: 0.5rem;
+    background: var(--color-base-100);
+    box-shadow:
+        0 0 0 0.5px color-mix(in srgb, var(--color-base-content) 14%, transparent),
+        0 12px 32px -8px color-mix(in srgb, var(--color-base-content) 40%, transparent);
+}
+
+[data-mdx-link-editor][hidden] {
+    display: none;
+}
+
+/*
+ * Monospace, because this is an address rather than prose: it is read character
+ * by character, and a wrong one is the whole difference between a link that
+ * works and one that does not.
+ */
+[data-mdx-link-editor-address] {
+    flex: 1 1 auto;
+    width: 20rem;
+    min-width: 0;
+    padding: 0.2rem 0.4rem;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--color-base-content);
+    font-family: var(--mdx-mono-font);
+    font-size: 0.78rem;
+}
+
+/*
+ * The two acts that are not edits to the address. Interface rather than
+ * document, so they take the interface font, and they sit behind a hairline
+ * that says the field ends here.
+ */
+[data-mdx-link-editor] button {
+    flex: 0 0 auto;
+    padding: 0.2rem 0.45rem;
+    border: 0;
+    border-radius: 0.35rem;
+    background: transparent;
+    color: var(--color-base-content);
+    cursor: pointer;
+    font-family: var(--mdx-ui-font);
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+
+[data-mdx-link-editor] button:first-of-type {
+    margin-left: 0.25rem;
+    border-left: 1px solid var(--mdx-separator);
+    border-radius: 0 0.35rem 0.35rem 0;
+    padding-left: 0.5rem;
+}
+
+[data-mdx-link-editor] button:hover {
+    background: color-mix(in srgb, var(--color-base-content) 8%, transparent);
 }
 
 [data-mdx-markdown-editor] :is(h1,h2,h3,h4,h5,h6) {
@@ -1258,6 +1384,7 @@ html[data-mdx-appearance="dark"] {
     [data-mdx-document-shell] aside,
     [data-mdx-document-status-bar],
     [data-mdx-context-menu],
+    [data-mdx-link-editor],
     [data-mdx-note-list],
     [role="separator"] {
         display: none !important;

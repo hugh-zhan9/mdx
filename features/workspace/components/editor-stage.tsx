@@ -46,6 +46,8 @@ interface EditorStageProps {
   editorSurfaceRef?: RefObject<MarkdownEditorSurfaceHandle | null>;
   pendingCliCommand: PendingCliEditorCommand | null;
   onOpenWikilink?: (target: string, sourcePath: string) => void;
+  /** Called with a link's href exactly as the Markdown wrote it. */
+  onOpenLink?: (href: string, sourcePath: string) => void;
   onCreateMarkdownFile?: () => Promise<void> | void;
   onInitialMarkdownLoadSettled?: () => void;
   onPendingCliCommandHandled: (commandId: string) => void;
@@ -65,6 +67,7 @@ export function EditorStage({
   editorSurfaceRef,
   pendingCliCommand,
   onOpenWikilink,
+  onOpenLink,
   onCreateMarkdownFile,
   onInitialMarkdownLoadSettled,
   onPendingCliCommandHandled,
@@ -220,6 +223,9 @@ export function EditorStage({
             onMarkdownChange={handleMarkdownChange}
             onOpenWikilink={(activation) =>
               onOpenWikilink?.(activation.target, activeTab.path)
+            }
+            onOpenLink={(activation) =>
+              onOpenLink?.(activation.href, activeTab.path)
             }
             storeImage={(file) =>
               storeImageForWorkspace(file, {

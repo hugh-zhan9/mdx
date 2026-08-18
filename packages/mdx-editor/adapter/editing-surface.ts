@@ -16,6 +16,8 @@ import type {
     EditorImageInsertion,
     EditorSurfaceMode,
     EditorSurfaceServiceReader,
+    EditorLinkActivation,
+    EditorLinkLabels,
     EditorWikilinkActivation,
 } from "./types";
 
@@ -101,6 +103,16 @@ export interface EditingSurfaceOptions {
      * them; in source mode a wikilink is text the user is editing.
      */
     onOpenWikilink?(activation: EditorWikilinkActivation): void;
+    /**
+     * Fires when the user activates an ordinary link. Only the visual surface
+     * renders one; in source mode a link is text the user is editing.
+     */
+    onOpenLink?(activation: EditorLinkActivation): void;
+    /**
+     * What the link editor the visual surface offers while the caret is inside a
+     * link calls its parts, in the product's language.
+     */
+    linkEditorLabels?: EditorLinkLabels;
     /**
      * Reads the product capabilities the visual surface renders with. The
      * source surface is Markdown text and needs none of them.
@@ -189,7 +201,8 @@ export async function createEditingSurface(
         const analyzer = await getSharedMarkdownAnalyzer();
         return wrapSource(createSourceEditorHost({ ...options, analyzer }));
     }
-    const { onOpenWikilink, readServices } = options;
+    const { onOpenWikilink, onOpenLink, linkEditorLabels, readServices } =
+        options;
     const host = await createMilkdownEditorHost({
         ...options,
         plugins: [
@@ -204,6 +217,19 @@ export async function createEditingSurface(
                               target: activation.target,
                               alias: activation.alias,
                           })
+                    : undefined,
+                onLinkActivate: onOpenLink
+                    ? (activation) => onOpenLink({ href: activation.href })
+                    : undefined,
+                // Rebuilt rather than forwarded, for the same reason the
+                // activations above are: the syntax layer's own shape stays
+                // inside the package even where the two coincide.
+                linkEditorLabels: linkEditorLabels
+                    ? {
+                          address: linkEditorLabels.address,
+                          open: linkEditorLabels.open,
+                          remove: linkEditorLabels.remove,
+                      }
                     : undefined,
             }),
             // Last, so the capabilities are in place for every view the syntax

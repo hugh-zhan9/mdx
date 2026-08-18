@@ -31,6 +31,8 @@ export type {
     EditorSurfaceMode,
     EditorSurfaceServiceReader,
     EditorSurfaceServices,
+    EditorLinkActivation,
+    EditorLinkLabels,
     EditorWikilinkActivation,
     LastStableVisual,
     MarkdownEditorAdapterHandle,

@@ -2125,6 +2125,37 @@ export function WorkspaceShell({
     },
     [openWorkspacePathTab],
   );
+  /**
+   * A link the reader activated in the rendered document.
+   *
+   * A web address goes to the browser, through a command that opens `http` and
+   * `https` and refuses everything else — a document is text from somewhere, and
+   * the operating system would launch an application for any scheme it was
+   * handed. Anything else is treated as pointing at something in this workspace,
+   * which is the same question a wikilink asks, so it is answered in the same
+   * place rather than twice.
+   */
+  const openLink = useCallback(
+    (href: string, sourcePath: string) => {
+      if (!/^https?:\/\//i.test(href.trim())) {
+        openWikilink(href, sourcePath);
+        return;
+      }
+
+      void (async () => {
+        try {
+          const { invoke } = await tauriCore();
+          await invoke("open_external_url", { url: href.trim() });
+        } catch (error) {
+          void dialogs.alert({
+            title: "打开链接",
+            message: formatError(error, "无法打开这个链接。"),
+          });
+        }
+      })();
+    },
+    [dialogs, openWikilink],
+  );
 
   useEffect(() => {
     if (!isTauriRuntime()) {
@@ -2713,6 +2744,7 @@ export function WorkspaceShell({
             editorSurfaceRef={editorSurfaceRef}
             pendingCliCommand={pendingCliCommand}
             onOpenWikilink={openWikilink}
+            onOpenLink={openLink}
             onCreateMarkdownFile={fileTreeActions?.createMarkdownFile}
             onInitialMarkdownLoadSettled={() =>
               setInitialEditorLoadSettled(true)

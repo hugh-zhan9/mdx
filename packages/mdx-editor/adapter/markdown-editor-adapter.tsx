@@ -92,6 +92,7 @@ type AdapterCallbacks = Pick<
     | "onModeChange"
     | "onDiagnostic"
     | "onOpenWikilink"
+    | "onOpenLink"
     | "onReady"
 >;
 
@@ -99,7 +100,7 @@ export const MarkdownEditorAdapter = forwardRef<
     MarkdownEditorAdapterHandle,
     MarkdownEditorAdapterProps
 >(function MarkdownEditorAdapter(props, ref) {
-    const { snapshot, mode, editable } = props;
+    const { snapshot, mode, editable, linkEditorLabels } = props;
 
     const rootRef = useRef<HTMLDivElement | null>(null);
     const hostRef = useRef<EditingSurface | null>(null);
@@ -380,6 +381,14 @@ export const MarkdownEditorAdapter = forwardRef<
                 if (guard.state().documentId !== documentId) return;
                 callbacksRef.current.onOpenWikilink(activation);
             },
+            onOpenLink: (activation) => {
+                if (!isMounted()) return;
+                // A click that arrives after the surface was handed another
+                // document is about a link that is no longer on screen.
+                if (guard.state().documentId !== documentId) return;
+                callbacksRef.current.onOpenLink(activation);
+            },
+            linkEditorLabels,
         })
             .then((host) => {
                 if (cancelled) {
@@ -479,7 +488,16 @@ export const MarkdownEditorAdapter = forwardRef<
                 });
                 return;
         }
-    }, [snapshot, hostGeneration, emitDiagnostic, guard, recordStableVisual]);
+    }, [
+        snapshot,
+        hostGeneration,
+        emitDiagnostic,
+        guard,
+        recordStableVisual,
+        // A rebuild rather than a live update, because the names are read once
+        // when the field is built. Products pass a constant, so this never fires.
+        linkEditorLabels,
+    ]);
 
     useEffect(() => {
         hostRef.current?.setEditable(editable);

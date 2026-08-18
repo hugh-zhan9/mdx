@@ -108,11 +108,15 @@ fn saves_and_reloads_workspace_state() {
             ],
             active_tab_id: Some("tab-2".to_string()),
             panels: PersistedPanelState {
-                left_collapsed: true,
-                left_width: 320,
-                right_collapsed: false,
-                right_width: 360,
+                navigator_collapsed: Some(true),
+                list_width: Some(320),
+                rail_width: Some(240),
+                right_collapsed: Some(false),
+                right_width: Some(360),
+                left_collapsed: None,
+                left_width: None,
             },
+            tree_focus_path: Some("/tmp/ws/raw".to_string()),
         }],
         window_size: PersistedWindowSize {
             width: 1480.0,
@@ -132,7 +136,20 @@ fn saves_and_reloads_workspace_state() {
     assert_eq!(raw_json["preferences"]["searchMaxResults"], 100);
     assert_eq!(raw_json["preferences"]["searchMaxMatchesPerFile"], 10);
     assert_eq!(raw_json["workspaces"][0]["activeTabId"], "tab-2");
-    assert_eq!(raw_json["workspaces"][0]["panels"]["leftCollapsed"], true);
+    assert_eq!(
+        raw_json["workspaces"][0]["panels"]["navigatorCollapsed"],
+        true
+    );
+    // The names the file uses are the names the frontend sends. They stopped
+    // agreeing once, and the whole save failed rather than one field.
+    assert_eq!(raw_json["workspaces"][0]["panels"]["listWidth"], 320);
+    assert_eq!(raw_json["workspaces"][0]["panels"]["railWidth"], 240);
+    assert_eq!(
+        raw_json["workspaces"][0]["treeFocusPath"],
+        "/tmp/ws/raw"
+    );
+    // Nothing writes the old names back once they are gone.
+    assert!(raw_json["workspaces"][0]["panels"]["leftWidth"].is_null());
     assert_eq!(raw_json["windowSize"]["width"], 1480.0);
 
     let reloaded = load_state_from_path(&path).unwrap();
@@ -156,10 +173,17 @@ fn saves_and_reloads_workspace_state() {
     assert_eq!(workspace.tabs[1].title, "two.md");
     assert!(workspace.tabs[1].dirty);
     assert!(workspace.tabs[1].needs_rename_on_first_save);
-    assert!(workspace.panels.left_collapsed);
-    assert_eq!(workspace.panels.left_width, 320);
-    assert!(!workspace.panels.right_collapsed);
-    assert_eq!(workspace.panels.right_width, 360);
+    assert_eq!(workspace.panels.navigator_collapsed, Some(true));
+    assert_eq!(workspace.panels.list_width, Some(320));
+    assert_eq!(workspace.panels.rail_width, Some(240));
+    // The folder the tree was left showing survives the round trip. It did not
+    // before: this struct had no field for it, so it was dropped on save.
+    assert_eq!(
+        workspace.tree_focus_path.as_deref(),
+        Some("/tmp/ws/raw")
+    );
+    assert_eq!(workspace.panels.right_collapsed, Some(false));
+    assert_eq!(workspace.panels.right_width, Some(360));
     assert_eq!(reloaded.window_size.width, 1480.0);
     assert_eq!(reloaded.window_size.height, 860.0);
 }
@@ -188,6 +212,7 @@ fn save_normalizes_invalid_app_state_values() {
                 tabs: Vec::new(),
                 active_tab_id: None,
                 panels: PersistedPanelState::default(),
+                tree_focus_path: None,
             },
             PersistedWorkspaceState {
                 root_path: "/tmp/ws".to_string(),
@@ -209,11 +234,16 @@ fn save_normalizes_invalid_app_state_values() {
                 ],
                 active_tab_id: Some("tab-1".to_string()),
                 panels: PersistedPanelState {
-                    left_collapsed: false,
-                    left_width: 10,
-                    right_collapsed: false,
-                    right_width: 900,
+                    navigator_collapsed: Some(false),
+                    list_width: Some(10),
+                    rail_width: Some(9_000),
+                    right_collapsed: Some(false),
+                    right_width: Some(900),
+                    left_collapsed: None,
+                    left_width: None,
                 },
+                // Whitespace is not a folder.
+                tree_focus_path: Some("   ".to_string()),
             },
         ],
         window_size: PersistedWindowSize {
@@ -234,8 +264,53 @@ fn save_normalizes_invalid_app_state_values() {
     assert_eq!(saved.workspaces[0].tabs.len(), 1);
     assert_eq!(saved.workspaces[0].tabs[0].tab_id, "tab-1");
     assert_eq!(saved.workspaces[0].tabs[0].title, "Untitled");
-    assert_eq!(saved.workspaces[0].panels.left_width, 160);
-    assert_eq!(saved.workspaces[0].panels.right_width, 640);
+    // Widths are carried, not corrected: what a column may be is decided by the
+    // window that draws it, and a second opinion here would be a second set of
+    // numbers to keep in step.
+    assert_eq!(saved.workspaces[0].panels.list_width, Some(10));
+    assert_eq!(saved.workspaces[0].panels.rail_width, Some(9_000));
+    assert_eq!(saved.workspaces[0].tree_focus_path, None);
     assert_eq!(saved.window_size.width, 1480.0);
     assert_eq!(saved.window_size.height, 640.0);
+}
+
+#[test]
+fn loads_a_state_file_that_still_names_the_left_panel() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("state.json");
+    // Written by a version where the navigator was one column called "left".
+    // It has to load, and it has to keep those numbers: the frontend is what
+    // turns a total into a width per column, and it only gets one chance.
+    std::fs::write(
+        &path,
+        r#"{
+            "stateVersion": 1,
+            "recentWorkspaceRoot": "/tmp/ws",
+            "workspaces": [
+                {
+                    "rootPath": "/tmp/ws",
+                    "tabs": [],
+                    "activeTabId": null,
+                    "panels": {
+                        "leftCollapsed": true,
+                        "leftWidth": 518,
+                        "rightCollapsed": false,
+                        "rightWidth": 604
+                    }
+                }
+            ]
+        }"#,
+    )
+    .unwrap();
+
+    let loaded = load_state_from_path(&path).unwrap();
+    let panels = &loaded.workspaces[0].panels;
+
+    assert_eq!(panels.left_collapsed, Some(true));
+    assert_eq!(panels.left_width, Some(518));
+    // Absent, not defaulted: that is the frontend's cue to work the list's
+    // width out from the single width the old state held.
+    assert_eq!(panels.rail_width, None);
+    assert_eq!(panels.list_width, None);
+    assert_eq!(loaded.workspaces[0].tree_focus_path, None);
 }

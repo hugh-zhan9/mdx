@@ -74,6 +74,12 @@ pub struct PersistedWorkspaceState {
     pub active_tab_id: Option<String>,
     #[serde(default)]
     pub panels: PersistedPanelState,
+    /// The folder the file tree was left showing, or none for the whole tree.
+    ///
+    /// Absent in anything saved before the tree could be pointed at a folder,
+    /// and absent again once it is pointed back at the whole workspace.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tree_focus_path: Option<String>,
 }
 
 impl Default for PersistedWorkspaceState {
@@ -83,6 +89,7 @@ impl Default for PersistedWorkspaceState {
             tabs: Vec::new(),
             active_tab_id: None,
             panels: PersistedPanelState::default(),
+            tree_focus_path: None,
         }
     }
 }
@@ -99,22 +106,57 @@ pub struct PersistedWorkspaceTab {
     pub needs_rename_on_first_save: bool,
 }
 
+/// The window's columns, as the frontend saves them.
+///
+/// Every field defaults, and the two the navigator used to be described by are
+/// carried rather than named: this struct is a courier, and a courier that
+/// refuses a parcel because one label changed loses the whole delivery. It did —
+/// after the frontend renamed its panel fields, `save_app_state` failed to
+/// deserialize and nothing was persisted at all, tabs included.
+///
+/// The widths are not clamped here. `features/workspace/lib/panel-layout.ts`
+/// owns what each column may be, and a second opinion in another language is a
+/// second set of numbers to keep in step.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PersistedPanelState {
-    pub left_collapsed: bool,
-    pub left_width: u32,
-    pub right_collapsed: bool,
-    pub right_width: u32,
+    /// Absent means "nobody has said" — never "use this number".
+    ///
+    /// Every width here is optional for the same reason none of them is
+    /// clamped: a default filled in on this side is a default the window has to
+    /// agree with, and it silently disabled the frontend's own migration —
+    /// which reads a missing width as its cue to work one out from what the old
+    /// single-column state held.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub navigator_collapsed: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub list_width: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rail_width: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub right_collapsed: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub right_width: Option<u32>,
+    /// What a state saved before the navigator was two columns called them.
+    ///
+    /// Kept only until the frontend saves again: it reads them, works out the
+    /// list's width from the total, and stops sending them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub left_collapsed: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub left_width: Option<u32>,
 }
 
 impl Default for PersistedPanelState {
     fn default() -> Self {
         Self {
-            left_collapsed: false,
-            left_width: 280,
-            right_collapsed: false,
-            right_width: 240,
+            navigator_collapsed: None,
+            list_width: None,
+            rail_width: None,
+            right_collapsed: None,
+            right_width: None,
+            left_collapsed: None,
+            left_width: None,
         }
     }
 }
@@ -339,6 +381,13 @@ fn normalize_workspace_state(
             .collect(),
         active_tab_id: workspace.active_tab_id.clone(),
         panels: normalize_panel_state(&workspace.panels),
+        // Carried, not judged: whether that folder still exists is a question
+        // for the window that is about to list it.
+        tree_focus_path: workspace
+            .tree_focus_path
+            .as_ref()
+            .map(|path| path.trim().to_string())
+            .filter(|path| !path.is_empty()),
     })
 }
 
@@ -365,12 +414,7 @@ fn normalize_workspace_tab(
 }
 
 fn normalize_panel_state(panel: &PersistedPanelState) -> PersistedPanelState {
-    PersistedPanelState {
-        left_collapsed: panel.left_collapsed,
-        left_width: panel.left_width.clamp(160, 640),
-        right_collapsed: panel.right_collapsed,
-        right_width: panel.right_width.clamp(160, 640),
-    }
+    panel.clone()
 }
 
 fn normalize_window_size(window_size: &PersistedWindowSize) -> PersistedWindowSize {

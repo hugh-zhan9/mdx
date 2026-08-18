@@ -25,6 +25,7 @@ import type {
     EditorCommandFailureCode,
     EditorCommandResult,
     EditorDocumentSnapshot,
+    EditorLinkActivation,
     EditorSourceSelection,
     EditorSurfaceMode,
     EditorSurfaceServices,
@@ -53,6 +54,19 @@ import {
 import { useAdapterFindReplace } from "../hooks/use-adapter-find-replace";
 import type { AdapterFindHost } from "../hooks/use-adapter-find-replace";
 import { EditorFindBar } from "./editor-find-bar";
+
+/**
+ * What the visual surface's link editor calls its parts.
+ *
+ * The editor package holds no human-language text of its own, so the product
+ * names everything it puts on screen — including, for anyone hearing the
+ * interface rather than seeing it, the address field itself.
+ */
+const LINK_EDITOR_LABELS = {
+    address: "链接地址",
+    open: "打开",
+    remove: "移除链接",
+};
 
 /** Why a pinned command did not run. */
 export interface EditorCommandRefusal {
@@ -109,6 +123,13 @@ export interface MarkdownEditorSurfaceProps {
     onDiagnostic?: (diagnostic: EditorAdapterDiagnostic) => void;
     onOpenWikilink?: (activation: EditorWikilinkActivation) => void;
     /**
+     * Fires when an ordinary link is activated in the rendered document.
+     *
+     * The href arrives as the Markdown wrote it, so deciding between a browser,
+     * a note in this workspace and a refusal is the caller's.
+     */
+    onOpenLink?: (activation: EditorLinkActivation) => void;
+    /**
      * Stores an asset and returns the Markdown target to insert. File access
      * stays with the caller; this surface only decides where the result lands.
      */
@@ -164,6 +185,7 @@ export const MarkdownEditorSurface = forwardRef<
         onRejectedChange,
         onDiagnostic,
         onOpenWikilink,
+        onOpenLink,
         storeImage,
         services,
         pendingCliCommand = null,
@@ -180,6 +202,7 @@ export const MarkdownEditorSurface = forwardRef<
     const onRejectedChangeRef = useRef(onRejectedChange);
     const onDiagnosticRef = useRef(onDiagnostic);
     const onOpenWikilinkRef = useRef(onOpenWikilink);
+    const onOpenLinkRef = useRef(onOpenLink);
     const onSelectionChangeRef = useRef(onSelectionChange);
     const onCommandRefusedRef = useRef(onCommandRefused);
     const storeImageRef = useRef(storeImage);
@@ -245,6 +268,7 @@ export const MarkdownEditorSurface = forwardRef<
         onRejectedChangeRef.current = onRejectedChange;
         onDiagnosticRef.current = onDiagnostic;
         onOpenWikilinkRef.current = onOpenWikilink;
+        onOpenLinkRef.current = onOpenLink;
         onSelectionChangeRef.current = onSelectionChange;
         onCommandRefusedRef.current = onCommandRefused;
         storeImageRef.current = storeImage;
@@ -308,6 +332,10 @@ export const MarkdownEditorSurface = forwardRef<
         },
         [],
     );
+
+    const handleOpenLink = useCallback((activation: EditorLinkActivation) => {
+        onOpenLinkRef.current?.(activation);
+    }, []);
 
     /**
      * Bumped by every surface that finishes building.
@@ -800,6 +828,8 @@ export const MarkdownEditorSurface = forwardRef<
                     onModeChange={handleAdapterModeChange}
                     onDiagnostic={handleDiagnostic}
                     onOpenWikilink={handleOpenWikilink}
+                    onOpenLink={handleOpenLink}
+                    linkEditorLabels={LINK_EDITOR_LABELS}
                     onReady={handleReady}
                 />
             </div>

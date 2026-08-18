@@ -18,6 +18,7 @@ pub mod cli_protocol;
 mod cli_server;
 mod document;
 mod draft_store;
+mod external_url;
 mod file_watch;
 mod layout_fonts;
 mod layout_pdf;
@@ -1133,6 +1134,7 @@ pub fn run() {
             workspace_fs::read_preview_text_file,
             workspace_fs::read_preview_binary_file,
             workspace_fs::open_path_with_default_application,
+            external_url::open_external_url,
             workspace_fs::reveal_path_in_file_manager,
             workspace_fs::write_markdown_file,
             workspace_fs::create_markdown_file,

@@ -2,7 +2,7 @@
 
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createWorkspaceState, workspaceReducer } from "../lib/workspace-reducer";
 import type { AppPreferences } from "../lib/types";
@@ -150,10 +150,6 @@ vi.mock("./tab-strip", () => ({
 }));
 
 const MARKDOWN = "# Workspace note\n\nA paragraph the exporter must lay out.\n";
-
-function exportCall() {
-  return invoke.mock.calls.find(([command]) => command === "layout_export_pdf");
-}
 
 function workspaceWithMarkdownTab() {
   return workspaceReducer(createWorkspaceState("/tmp/ws"), {

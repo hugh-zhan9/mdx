@@ -805,7 +805,9 @@ interface LegacyPanelState {
 }
 
 function normalizePanelState(
-    panel: (WorkspacePanelState & LegacyPanelState) | undefined,
+    // Partial on purpose: the store omits a width nobody has set, which is what
+    // lets the legacy branch below tell "unset" from "set to the default".
+    panel: (Partial<WorkspacePanelState> & LegacyPanelState) | undefined,
 ): WorkspacePanelState {
     const railWidth = clampRailWidth(
         panel?.railWidth ?? DEFAULT_PANEL_STATE.railWidth,

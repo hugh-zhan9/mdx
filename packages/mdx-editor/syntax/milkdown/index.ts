@@ -55,6 +55,13 @@ export {
     type WikilinkActivation,
     type WikilinkClickHandler,
 } from "./wikilink";
+import {
+    linkClickHandlerPlugin,
+    linkEditorLabelsPlugin,
+    linkPlugins,
+    type LinkClickHandler,
+    type LinkEditorLabels,
+} from "./link";
 
 /**
  * Product callbacks the syntax layer fires.
@@ -65,6 +72,16 @@ export {
  */
 export interface MdxMilkdownPluginOptions {
     onWikilinkActivate?: WikilinkClickHandler;
+    onLinkActivate?: LinkClickHandler;
+    /**
+     * What the link editor's parts are called, in the product's language.
+     *
+     * This layer holds no human-language text of its own, so anything it puts
+     * into words is named by whoever composed it. Left out means the address
+     * field goes unnamed and its two actions are not offered at all, rather than
+     * offered in a language the product does not speak.
+     */
+    linkEditorLabels?: LinkEditorLabels;
 }
 
 /**
@@ -112,7 +129,7 @@ export interface MdxMilkdownPluginOptions {
 export function createMdxMilkdownPlugins(
     options: MdxMilkdownPluginOptions = {},
 ): MilkdownPlugin[] {
-    const { onWikilinkActivate } = options;
+    const { onWikilinkActivate, onLinkActivate, linkEditorLabels } = options;
     return [
         // The inline-link transformer goes out here rather than in the base
         // composition, because it is `sourcePreservationPlugins()` below that
@@ -126,6 +143,7 @@ export function createMdxMilkdownPlugins(
         ...mathPlugins(),
         ...footnotePlugins(),
         ...wikilinkPlugins(),
+        ...linkPlugins(),
         ...sourcePreservationPlugins(),
         // Escapes last: its writer wrapping has to sit over the final `text`
         // handler, and its reading pass registers itself both before every
@@ -135,6 +153,10 @@ export function createMdxMilkdownPlugins(
         // it has already contributed.
         ...(onWikilinkActivate
             ? [wikilinkClickHandlerPlugin(onWikilinkActivate)]
+            : []),
+        ...(onLinkActivate ? [linkClickHandlerPlugin(onLinkActivate)] : []),
+        ...(linkEditorLabels
+            ? [linkEditorLabelsPlugin(linkEditorLabels)]
             : []),
     ];
 }

@@ -123,6 +123,18 @@ export interface EditorWikilinkActivation {
     alias: string | null;
 }
 
+/** A link the user activated in the rendered document. */
+export interface EditorLinkActivation {
+    /**
+     * The target exactly as the Markdown spells it.
+     *
+     * Not resolved and not judged: whether this is a web address, a note beside
+     * this one or something to refuse is the product's question, and the editor
+     * has no way to answer it.
+     */
+    href: string;
+}
+
 export interface EditorFindRequest {
     query: string;
     caseSensitive: boolean;
@@ -239,6 +251,16 @@ export interface MarkdownEditorAdapterHandle {
     ): void;
 }
 
+/** What the visual surface's link editor calls its parts. */
+export interface EditorLinkLabels {
+    /** The accessible name for the address field. */
+    address: string;
+    /** Opens the link. */
+    open: string;
+    /** Takes the link off its label, leaving the words. */
+    remove: string;
+}
+
 export interface MarkdownEditorAdapterProps {
     snapshot: EditorDocumentSnapshot;
     mode: EditorSurfaceMode;
@@ -250,6 +272,13 @@ export interface MarkdownEditorAdapterProps {
     onModeChange(mode: EditorSurfaceMode): void;
     onDiagnostic(diagnostic: EditorAdapterDiagnostic): void;
     onOpenWikilink(activation: EditorWikilinkActivation): void;
+    onOpenLink(activation: EditorLinkActivation): void;
+    /**
+     * What the link editor the visual surface offers is called. The editor holds
+     * no human-language text of its own, so the product names everything it puts
+     * into words; left out, the actions are not offered.
+     */
+    linkEditorLabels?: EditorLinkLabels;
     onReady(): void;
 }
 
