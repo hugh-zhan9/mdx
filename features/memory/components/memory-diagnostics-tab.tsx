@@ -1,137 +1,109 @@
-import {
-  Card,
-  TextControlButton,
-} from "../../../common/components/ui-controls";
-import type {
-  MemoryBackendStatus,
-  MemoryDoctorReport,
-  MemoryIndexStatus,
-  MemoryRepairResult,
-} from "../lib/types";
+"use client";
+
+import { TextControlButton } from "@/common/components/ui-controls";
+import type { MemoryDiagnostics } from "../lib/types";
 
 interface MemoryDiagnosticsTabProps {
-  backendStatus: MemoryBackendStatus | null;
-  diagnostics: MemoryDoctorReport | null;
-  indexStatus: MemoryIndexStatus | null;
-  repairResult: MemoryRepairResult | null;
-  loading: boolean;
-  actionLoading: boolean;
-  onRefresh: () => Promise<void>;
-  onRepairWorkspace: () => Promise<void>;
-  onRebuildIndex: () => Promise<void>;
+  diagnostics: MemoryDiagnostics | null;
+  busy: string | null;
+  onRefresh: () => void;
+  onPurge: () => void;
+  onExport: () => void;
+  onLegacyImport: () => void;
+  message: string | null;
 }
 
+/**
+ * What is wrong, and the three ways out of it.
+ *
+ * The warnings come from the backend verbatim. Export is here rather than
+ * buried in a menu because the library is a single file with no automatic
+ * backup: a bundle is the only copy a user can keep.
+ */
 export function MemoryDiagnosticsTab({
-  backendStatus,
   diagnostics,
-  indexStatus,
-  repairResult,
-  loading,
-  actionLoading,
+  busy,
   onRefresh,
-  onRepairWorkspace,
-  onRebuildIndex,
+  onPurge,
+  onExport,
+  onLegacyImport,
+  message,
 }: MemoryDiagnosticsTabProps) {
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap justify-end gap-1">
-        <TextControlButton onClick={() => void onRefresh()} disabled={loading}>
+    <div className="flex min-w-0 flex-col gap-4 p-4 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <TextControlButton disabled={busy !== null} onClick={onRefresh}>
           刷新
         </TextControlButton>
-        <TextControlButton
-          disabled={actionLoading}
-          onClick={() => void onRepairWorkspace()}
-        >
-          {actionLoading ? "处理中" : "修复工作区"}
+        <TextControlButton disabled={busy !== null} onClick={onExport}>
+          导出备份
+        </TextControlButton>
+        <TextControlButton disabled={busy !== null} onClick={onLegacyImport}>
+          导入旧记忆
         </TextControlButton>
         <TextControlButton
-          disabled={actionLoading}
-          onClick={() => void onRebuildIndex()}
+          className="hover:bg-error/10 hover:text-error"
+          disabled={busy !== null}
+          onClick={onPurge}
         >
-          重建索引
+          彻底清除已删除
         </TextControlButton>
       </div>
 
-      <Card className="space-y-1 text-base-content/75">
-        <StatusLine
-          label="后端"
-          value={backendStatus ? backendStatus.daemon.status : "加载中"}
-        />
-        <StatusLine
-          label="存储"
-          value={
-            backendStatus
-              ? `${backendStatus.storage.backend} · ${backendStatus.storage.status}`
-              : "加载中"
-          }
-        />
-        <StatusLine
-          label="队列"
-          value={backendStatus ? `${backendStatus.queue.depth} 个任务` : "加载中"}
-        />
-        <StatusLine
-          label="投影"
-          value={
-            backendStatus
-              ? `${backendStatus.projection.status} · ${backendStatus.projection.dirty_count}`
-              : "加载中"
-          }
-        />
-        {indexStatus ? (
-          <>
-            <StatusLine label="索引" value={indexStatus.index_status} />
-            <StatusLine
-              label="索引文档"
-              value={String(indexStatus.document_count)}
-            />
-          </>
-        ) : null}
-      </Card>
-
-      {diagnostics ? (
-        <Card className="space-y-2">
-          <div className="font-medium text-base-content">
-            集成诊断：{diagnostics.ok ? "通过" : "需要处理"}
-          </div>
-          {diagnostics.statuses.map((status) => (
-            <StatusLine
-              key={status.agent_source}
-              label={status.agent_source}
-              value={status.doctor_status}
-            />
-          ))}
-          {diagnostics.errors.map((error) => (
-            <div key={error} className="break-words text-error">
-              {error}
-            </div>
-          ))}
-          {diagnostics.warnings.map((warning) => (
-            <div key={warning} className="break-words text-warning">
-              {warning}
-            </div>
-          ))}
-        </Card>
+      {message ? (
+        <p className="min-w-0 break-words rounded-[var(--mdx-control-radius)] bg-base-200/70 px-3 py-2 text-xs">
+          {message}
+        </p>
       ) : null}
 
-      {repairResult ? (
-        <Card className="space-y-1 text-base-content/70">
-          <div>已修复路径：{repairResult.repaired_paths.length}</div>
-          {repairResult.warnings.map((warning) => (
-            <div key={warning} className="break-words">
-              {warning}
-            </div>
-          ))}
-        </Card>
-      ) : null}
-    </div>
-  );
-}
+      {diagnostics === null ? (
+        <p className="text-xs text-base-content/55">加载中。</p>
+      ) : (
+        <>
+          {diagnostics.warnings.length > 0 ? (
+            <section className="min-w-0">
+              <h3 className="text-xs font-medium text-base-content/70">
+                需要注意
+              </h3>
+              <ul className="mt-1 flex flex-col gap-1">
+                {diagnostics.warnings.map((warning) => (
+                  <li
+                    key={warning}
+                    className="min-w-0 break-words text-xs leading-relaxed text-base-content/70"
+                  >
+                    {warning}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : (
+            <p className="text-xs text-base-content/60">没有发现问题。</p>
+          )}
 
-function StatusLine({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex min-w-0 items-center justify-between gap-2">
-      <span className="shrink-0 text-base-content/60">{label}</span>
-      <span className="min-w-0 truncate text-base-content">{value}</span>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+            <dt className="text-base-content/60">库文件</dt>
+            <dd className="min-w-0 truncate" title={diagnostics.library.path}>
+              {diagnostics.library.path}
+            </dd>
+            <dt className="text-base-content/60">schema</dt>
+            <dd>
+              {diagnostics.library.schemaVersion ?? "未知"} / 支持{" "}
+              {diagnostics.library.supportedSchemaVersion}
+            </dd>
+            <dt className="text-base-content/60">可写</dt>
+            <dd>{diagnostics.library.writable ? "是" : "否"}</dd>
+            <dt className="text-base-content/60">条目</dt>
+            <dd>{diagnostics.library.drawerCount ?? "未知"}</dd>
+            <dt className="text-base-content/60">模型</dt>
+            <dd className="min-w-0 truncate">
+              {diagnostics.model.model}
+              {diagnostics.model.ready ? "" : "（未下载）"}
+            </dd>
+            <dt className="text-base-content/60">项目数</dt>
+            <dd>{diagnostics.projects}</dd>
+          </dl>
+        </>
+      )}
     </div>
   );
 }

@@ -2,61 +2,45 @@
 
 ## Positioning
 
-MDX Memory is a local-first external memory backend for Codex, Claude, and Cursor. Agents use hooks, CLI, MCP, and local daemon APIs to recall, capture, and distill memory automatically.
+MDX Memory is a local-first memory backend for Codex, Claude, and Cursor. Agents reach it through hooks, the CLI, and MCP; the desktop panel is for review, correction, setup, and diagnostics.
 
-The primary caller is the agent. The desktop UI is for inspection, review, correction, setup, and diagnostics; it is not the primary write path.
+The panel is not a secondary write path — it is where the one decision the agent cannot make gets made. An agent can store material and propose conclusions; only a person adopts one.
+
+## Two layers
+
+Material is what happened, stored verbatim with its source. Conclusions are what someone takes material to mean; they reference the material they rest on, start as candidates, and reach an agent's runtime context only after a human adopts them.
+
+There is no holding area in front of the library. Material an agent stores is stored; the review that used to happen before a write now happens before a promotion, and it leaves an audit record of its own.
 
 ## Storage
 
-SQLite is the default local runtime database. PostgreSQL is available for advanced service-style deployments. Markdown under `memory/**` is a readable projection and can be rebuilt from the database.
+One SQLite library at `~/.mdx/memory/palace.db` serves every workspace, keyed by project. There is no second backend and no Markdown projection. A library newer than the running application is refused rather than migrated, and an unwritable one disables memory without touching the editor.
 
-The runtime database is the source of truth in agent-backend mode. Markdown remains useful for human inspection, compatibility, import, and export, but DB records win when projection content disagrees.
+## Embedding model
 
-## Hard Shutdown
+Every write embeds. Without the model at `~/.mdx/models/<slug>/`, writes and semantic search fail with `embedding_model_missing` — deliberately, rather than silently degrading to keyword-only ranking and filling the vector table with noise. Downloading is an explicit, user-confirmed action.
 
-Turning off a Memory feature stops new writes for that feature. It does not delete historical data.
+## Turning things off
 
-Hard shutdown applies at the feature boundary:
+Disabling a feature stops new writes for it. It never deletes what is already stored.
 
-- `memory.enabled=false` stops capture, queue writes, spool writes, recall injection, distill, and projection writes.
-- Capture shutdown stops new event/session writes and fallback spool writes.
-- Recall-injection shutdown still allows capture, but returns empty injected context.
-- Projection shutdown stops new Markdown projection writes while preserving existing files.
-- Per-agent shutdown stops that agent integration without removing historical records.
+- Memory disabled: nothing is captured, queued, or spooled.
+- Capture disabled, or an agent not listed in `capture.sources`: hooks return successfully and write nothing at all.
+- Per-agent integration removed: that agent stops writing; its history stays.
 
-## Agent Integrations
+Because capture cannot be undone after the fact, it is off by default and accepts only explicitly listed sources.
 
-Use `mdx-cli memory --root <workspace> install --agent codex`, `claude`, `cursor`, or omit `--agent` to configure all supported agents.
-
-Useful checks:
+## Agent integrations
 
 ```bash
-mdx-cli memory --root <workspace> install --agent codex --dry-run
+mdx-cli memory --root <workspace> install --agent codex   # or claude, cursor, or all
 mdx-cli memory --root <workspace> doctor --agent codex --json
-mdx-cli memory --root <workspace> daemon --port 14243
 ```
 
-Hooks are intentionally lightweight. They call the local daemon, capture raw hook payloads, optionally request recall context, and return successfully even when the backend is degraded.
+Hooks stay lightweight: they capture, optionally ask for context, and succeed even when the backend is degraded.
 
-## Migration
+**Upgrading from the previous model requires reinstalling the skills.** The text installed on a machine before this change still instructs agents to call tools that no longer exist (`memory_working_get`, `memory_inbox_add`, `memory_thread_save`). Calling them now returns an unknown-tool error. The panel detects stale skill text and offers the repair.
 
-Run a dry run before switching runtime storage:
+## Tools an agent has
 
-```bash
-mdx-cli memory --root <workspace> migrate storage \
-  --to postgresql \
-  --target <url> \
-  --dry-run
-```
-
-SQLite and PostgreSQL are selectable runtime backends. Migration copies the runtime records and validates counts before the storage config is switched.
-
-## Diagnostics
-
-Use diagnostics to check daemon health, agent install status, queue pressure, spool backlog, projection state, and recent integration errors:
-
-```bash
-mdx-cli memory --root <workspace> doctor --json
-```
-
-The daemon also exposes `/health`, `/diagnostics`, `/hook/events`, recall, memory, inbox, capture, migration, and config routes for local automation.
+`memory_recall` for task context, `memory_search` / `memory_context` / `memory_brief` for narrower reads, `memory_add` to store material, `memory_distill` to propose a conclusion from stored material, `memory_gate` to see whether one could be adopted, `memory_adopt` to adopt it (ask the user first), `memory_show`, `memory_promote`, `memory_status`, `memory_hook_status`, `memory_diagnostics`.

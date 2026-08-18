@@ -1,173 +1,138 @@
+"use client";
+
+import { useState } from "react";
 import {
-  Card,
   PrimaryTextControlButton,
-} from "../../../common/components/ui-controls";
-import type { MemoryBackendStatus } from "../lib/types";
+  TextControlButton,
+} from "@/common/components/ui-controls";
+import type { MemoryStatus, ProjectSummary } from "../lib/types";
 
 interface MemoryOverviewTabProps {
-  status: MemoryBackendStatus | null;
-  hasMemory: boolean;
-  canInitialize: boolean;
-  initializing: boolean;
-  onInitialize: () => Promise<void>;
+  status: MemoryStatus;
+  projects: ProjectSummary[];
+  busy: string | null;
+  onToggleEnabled: (enabled: boolean) => void;
+  onDownloadModel: () => void;
+  onRebuildIndex: () => void;
 }
 
+/**
+ * Whether memory works here, and the two things that usually stop it.
+ *
+ * A workspace has to opt in, and the embedding model has to be on disk. Both
+ * are stated plainly rather than hidden behind a failure later: writing without
+ * a model is refused, so a user who has not downloaded it needs to hear that
+ * before they type a note, not after.
+ */
 export function MemoryOverviewTab({
   status,
-  hasMemory,
-  canInitialize,
-  initializing,
-  onInitialize,
+  projects,
+  busy,
+  onToggleEnabled,
+  onDownloadModel,
+  onRebuildIndex,
 }: MemoryOverviewTabProps) {
+  const project = projects.find((candidate) => candidate.wing === status.wing);
+
   return (
-    <div className="space-y-4">
-      {!hasMemory ? (
-        <Card className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0 space-y-1">
-            <div className="font-medium text-base-content">
-              记忆后端未初始化
-            </div>
-            <div className="text-base-content/70">
-              初始化后会创建本地记忆工作区，并作为 Codex、Claude、Cursor
-              的外挂记忆后端使用。
-            </div>
+    <div className="flex min-w-0 flex-col gap-4 p-4 text-sm">
+      <section className="flex min-w-0 items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="font-medium">
+            {status.enabled ? "记忆已启用" : "记忆未启用"}
           </div>
-          <PrimaryTextControlButton
-            className="shrink-0"
-            disabled={!canInitialize || initializing}
-            onClick={() => void onInitialize()}
-          >
-            {initializing ? "初始化中" : "初始化记忆后端"}
-          </PrimaryTextControlButton>
-        </Card>
+          <p className="mt-1 text-xs text-base-content/65">
+            {status.enabled
+              ? "这个工作区的素材与结论存在本机的记忆库里。"
+              : "启用后，这个工作区的素材与结论会存进本机的记忆库。"}
+          </p>
+        </div>
+        <PrimaryTextControlButton
+          disabled={busy !== null}
+          onClick={() => onToggleEnabled(!status.enabled)}
+        >
+          {status.enabled ? "停用" : "启用"}
+        </PrimaryTextControlButton>
+      </section>
+
+      {!status.modelReady ? (
+        <section className="rounded-[var(--mdx-control-radius)] border border-warning/40 bg-warning/10 p-3">
+          <div className="text-xs font-medium">还缺一个嵌入模型</div>
+          <p className="mt-1 text-xs leading-relaxed text-base-content/70">
+            写入与语义检索都要用它，没有它记忆不会退化成关键词模式，而是直接拒绝写入。下载是一次性的，之后完全离线可用。
+          </p>
+          <div className="mt-2">
+            <TextControlButton
+              disabled={busy !== null}
+              onClick={onDownloadModel}
+            >
+              {busy === "model" ? "下载中" : `下载 ${status.model}`}
+            </TextControlButton>
+          </div>
+        </section>
       ) : null}
 
-      {/*
-       * Six facts, so six equal tiles that reflow with the window rather than a
-       * fixed pair of columns. At full width the old two-column grid gave each
-       * tile a thousand pixels to hold three short lines; these stop growing
-       * once they are wide enough to read.
-       */}
-      <div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(13rem,1fr))]">
-        <StatusCard
-          label="后端进程"
-          value={formatBackendHealth(status?.daemon.status)}
-          detail={status?.daemon.last_error ?? "本地后端状态"}
-        />
-        <StatusCard
-          label="存储"
-          value={
-            status ? `${status.storage.backend} · ${status.storage.status}` : "—"
-          }
-          detail="运行时数据库"
-        />
-        <StatusCard
-          label="队列"
-          value={status ? String(status.queue.depth) : "—"}
-          unit={status ? "个任务" : undefined}
-          detail="待处理后台任务"
-        />
-        <StatusCard
-          label="投影"
-          value={status ? formatProjectionStatus(status.projection.status) : "—"}
-          detail={
-            status
-              ? `${status.projection.dirty_count} 个待更新`
-              : "Markdown 可读投影"
-          }
-        />
-        <StatusCard
-          label="今日捕获"
-          value={String(status?.today.captured_events ?? 0)}
-          unit="个事件"
-          detail="来自 agent hook 的原始事件"
-        />
-        <StatusCard
-          label="待确认"
-          value={String(status?.today.pending_candidates ?? 0)}
-          unit="个候选"
-          detail="等待人工确认的记忆候选"
-        />
-      </div>
+      {status.library.error ? (
+        <section className="rounded-[var(--mdx-control-radius)] border border-error/40 bg-error/10 p-3">
+          <div className="text-xs font-medium">记忆库打不开</div>
+          <p className="mt-1 break-words text-xs leading-relaxed text-base-content/70">
+            {status.library.error}
+          </p>
+        </section>
+      ) : null}
+
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+        <dt className="text-base-content/60">本项目</dt>
+        <dd className="min-w-0 truncate" title={status.wing ?? ""}>
+          {status.wing ?? "尚未绑定"}
+        </dd>
+        <dt className="text-base-content/60">条目</dt>
+        <dd>
+          {project
+            ? `${project.total}（素材 ${project.evidence} · 结论 ${project.knowledge}）`
+            : (status.library.drawerCount ?? 0)}
+        </dd>
+        <dt className="text-base-content/60">库文件</dt>
+        <dd className="min-w-0 truncate" title={status.library.path}>
+          {status.library.path}
+        </dd>
+        <dt className="text-base-content/60">模型</dt>
+        <dd className="min-w-0 truncate">{status.model}</dd>
+      </dl>
+
+      {projects.length > 1 ? (
+        <section className="min-w-0">
+          <div className="text-xs font-medium">这台机器上的其它项目</div>
+          <ul className="mt-1 flex flex-col gap-1">
+            {projects
+              .filter((candidate) => candidate.wing !== status.wing)
+              .map((candidate) => (
+                <li
+                  key={candidate.wing}
+                  className="min-w-0 truncate text-xs text-base-content/60"
+                  title={candidate.path ?? candidate.wing}
+                >
+                  {candidate.path ?? candidate.wing} · {candidate.total}
+                </li>
+              ))}
+          </ul>
+        </section>
+      ) : null}
+
+      <section className="flex items-center gap-2">
+        <TextControlButton disabled={busy !== null} onClick={onRebuildIndex}>
+          {busy === "reindex" ? "重建中" : "重建索引"}
+        </TextControlButton>
+        <span className="text-xs text-base-content/55">
+          换过嵌入模型后需要重建一次。
+        </span>
+      </section>
     </div>
   );
 }
 
-/**
- * One fact, with the fact itself as the largest thing in the tile.
- *
- * The label and the explanation were previously the same size and weight as the
- * value, so a tile had no centre and the eye had to read all three lines to
- * find the number it came for.
- */
-function StatusCard({
-  label,
-  value,
-  unit,
-  detail,
-}: {
-  label: string;
-  value: string;
-  /** Follows the value in smaller type, so "0" does not read as unitless. */
-  unit?: string;
-  detail: string;
-}) {
-  return (
-    <Card className="min-w-0">
-      <div className="truncate text-[11px] text-base-content/50" title={label}>
-        {label}
-      </div>
-      <div className="mt-1.5 flex min-w-0 items-baseline gap-1">
-        <span
-          className="truncate text-lg font-medium leading-none text-base-content"
-          title={value}
-        >
-          {value}
-        </span>
-        {unit ? (
-          <span className="shrink-0 text-[11px] text-base-content/50">
-            {unit}
-          </span>
-        ) : null}
-      </div>
-      <div
-        className="mt-2 truncate text-[11px] text-base-content/50"
-        title={detail}
-      >
-        {detail}
-      </div>
-    </Card>
-  );
-}
-
-function formatBackendHealth(status: string | undefined) {
-  if (status === "running") {
-    return "运行中";
-  }
-  if (status === "degraded") {
-    return "降级";
-  }
-  if (status === "disabled") {
-    return "已关闭";
-  }
-  if (status === "stopped") {
-    return "未启动";
-  }
-  return status ?? "加载中";
-}
-
-function formatProjectionStatus(status: string) {
-  if (status === "ready") {
-    return "就绪";
-  }
-  if (status === "dirty") {
-    return "待更新";
-  }
-  if (status === "disabled") {
-    return "已关闭";
-  }
-  if (status === "stopped") {
-    return "未启动";
-  }
-  return status;
+/** Small helper so a tab can show a one-line result without a toast system. */
+export function useTransientMessage() {
+  const [message, setMessage] = useState<string | null>(null);
+  return { message, setMessage };
 }

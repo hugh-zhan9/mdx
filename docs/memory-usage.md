@@ -1,586 +1,97 @@
 # MDX Memory 使用说明
 
-本文面向使用者说明 MDX Memory 的日常操作。底层契约见 [memory.md](./memory.md)。
+本文面向使用者。底层契约见 [loopx/specs/memory.md](./loopx/specs/memory.md)。
 
-## 入口方式
+## 记忆是两层的
 
-Memory 有三种入口：
+**素材**是发生过的事：一段对话、一条决定、一次测量。原样存着，带出处，不代表任何判断。
 
-1. 桌面应用右侧 `Memory` 面板：适合日常查看、Recall、Working Memory、Inbox、Threads 和索引修复。
-2. CLI：
+**结论**是你从素材里读出的意思。它引用具体的素材，先以候选状态存在，**只有被采纳之后**，agent 下次开工才会读到它。
+
+这个区分是整个功能的骨架。素材多不要紧，它只在检索时出现；进入 agent 上下文的只有被采纳的结论。
+
+## 开始用
+
+1. 打开右侧「记忆」面板 →「概览」→ 启用。
+2. 面板会提示下载嵌入模型。**这一步必须联网一次**：写入和语义检索都要用它，没有它记忆不会退化成关键词模式，而是直接拒绝写入。下载完之后可以完全离线。
+3. 之后「素材」「结论」「本次上下文」三个 tab 才可用。
+
+## 日常操作
+
+**记一条素材**：「素材」tab → 展开「手动记一条素材」→ 写下发生了什么。原样记录就好，不用总结。
+
+**导入现有文件**：把工作区里的笔记或文档导入为素材。文件会按它所在的第一层目录分组。
+
+**得出一条结论**：在「素材」里勾选几条 → 「由此得出结论」。生成的是**候选**，还没人读得到。
+
+**采纳**：「结论」tab → 「采纳」。这一下会做两件事：写一条记录（谁、什么时候、复核了哪些素材），然后拿这条记录当验证证据去过门禁。通过之后它才进 agent 的上下文。
+
+**门禁没过怎么办**：面板会把原因原样贴出来。通常是缺支持证据或者挂了反例。
+
+**记一条反例**：结论下面的「记一条反例」。挂上之后这条结论提不上去；已经采纳的会提示可以退役。
+
+**退役**：要给理由类型（被推翻 / 过时 / 被取代 / 超出适用范围 / 不安全）和依据。
+
+**看看 agent 会拿到什么**：「本次上下文」tab 输入当前任务，它会现算一份——这就是 agent 这一轮实际读到的东西。空的说明还没有被采纳的结论，不是查询写得不好。
+
+## 捕获 agent 会话
+
+设置 → 记忆 → 「自动捕获 agent 会话」。默认关闭，而且只捕获你在下面勾选的来源。
+
+关着是有原因的：**进库的东西只能事后删除，不能撤回**。密钥、凭据、没确认过的东西都不要让它进去。
+
+## 数据在哪
+
+- 记忆库：`~/.mdx/memory/palace.db`，**一个库服务所有工作区**，按项目区分。
+- 嵌入模型：`~/.mdx/models/`。
+- 项目绑定：`~/.mdx/memory/wings.json`。
+
+这意味着记忆**跟着你走，不跟着仓库走**。换台机器 clone 仓库不会把记忆带过去——要带只能导出备份。
+
+工作区改名或移动之后，它看起来会像一个新项目。诊断页会提示，需要你手动重新绑定，因为改名和「另起一个项目」在系统看来一模一样。
+
+## 备份
+
+诊断 tab →「导出备份」。导出的是一个 Markdown 包（带 frontmatter 的素材与结论 + manifest），可以读、可以进版本库、可以导回一个空库。
+
+全局单库**没有自动备份**，这是唯一的手段。
+
+## 从旧版本升级
+
+旧版本的记忆是工作区里的 Markdown（`<workspace>/memory/**`）。诊断 tab →「导入旧记忆」：
+
+- 会导入 `memory/memories/**` 和 `memory/threads/**`，作为**素材**。
+- **不会**导入 `memory/inbox/**` 和 `memory/working.md`——待确认和工作上下文这两个概念已经没有了。
+- 旧目录原地不动，只读保留。想回退就换回旧版本应用。
+- 重复导入是安全的，不会产生重复条目。
+
+要注意的一点：导进来的旧「长期记忆」现在是**素材**，不是结论。要让它重新出现在 agent 的上下文里，得挑出值得的那些走一次「得出结论 → 采纳」。这是这次换模型最直接的代价。
+
+## Agent 集成
+
+「Agent 集成」tab 可以给 Claude Code / Codex / Cursor 装技能与 hook。
+
+**从旧版本升级过来的用户必须重装一次**：装在你机器上的技能文本还在教 agent 调用已经删除的工具（`memory_working_get`、`memory_inbox_add` 之类）。面板检测到旧文本会提示。
+
+agent 能用的工具：`memory_recall`（拿上下文）、`memory_search`、`memory_context`、`memory_brief`、`memory_add`（存素材）、`memory_show`、`memory_distill`（得出候选结论）、`memory_gate`、`memory_adopt`、`memory_promote`、`memory_status`、`memory_hook_status`、`memory_diagnostics`。
+
+## 命令行
 
 ```bash
-/Applications/MDX.app/Contents/MacOS/mdx-cli memory ...
+/Applications/MDX.app/Contents/MacOS/mdx-cli memory --root /path/to/workspace <子命令>
 ```
 
-如果在源码目录，也可以使用构建产物：
-
-```bash
-src-tauri/target/release/mdx-cli memory ...
-```
-
-3. MCP：
+MCP：
 
 ```bash
 /Applications/MDX.app/Contents/MacOS/mdx-mcp --workspace /path/to/workspace
 ```
 
-CLI 默认连接正在运行的 MDX 桌面应用。要脱离桌面应用直接操作某个工作区，使用 `--root`：
+## 出问题时
 
-```bash
-mdx-cli memory --root /path/to/workspace status
-```
+诊断 tab 会列出库状态、schema 版本、模型状态、项目绑定，以及任何异常。常见的几种：
 
-Agent backend 常用命令：
-
-```bash
-mdx-cli memory --root "$PWD" daemon --port 14243
-mdx-cli memory --root "$PWD" install --agent codex --dry-run
-mdx-cli memory --root "$PWD" doctor --agent codex --json
-mdx-cli memory --root "$PWD" hook codex UserPromptSubmit < codex-hook.json
-mdx-cli memory --root "$PWD" migrate storage --to postgresql --target "$MDX_MEMORY_POSTGRES_URL" --dry-run
-```
-
-## 初始化
-
-首次在工作区使用 Memory：
-
-```bash
-mdx-cli memory --root /path/to/workspace init
-```
-
-初始化会创建：
-
-```text
-memory/
-  MEMORY.md
-  working.md
-  memories/
-  threads/
-  inbox/
-.mdx/
-  memory-config.json
-  search.sqlite
-```
-
-查看状态：
-
-```bash
-mdx-cli memory --root /path/to/workspace status --json
-```
-
-## 添加长期记忆
-
-添加一条长期记忆：
-
-```bash
-mdx-cli memory --root /path/to/workspace add \
-  --title "项目约定" \
-  --body "Memory 层和 LLM Wiki 层平级，recall 默认不读取 wiki 全文。" \
-  --tag architecture \
-  --importance 0.8 \
-  --confidence 0.9
-```
-
-从文件添加：
-
-```bash
-mdx-cli memory --root /path/to/workspace add \
-  --title "长期约定" \
-  --file ./note.md \
-  --tag convention
-```
-
-从 stdin 添加：
-
-```bash
-cat ./note.md | mdx-cli memory --root /path/to/workspace add \
-  --title "长期约定" \
-  --stdin
-```
-
-列出记忆：
-
-```bash
-mdx-cli memory --root /path/to/workspace list
-mdx-cli memory --root /path/to/workspace list --tag architecture
-```
-
-查看单条记忆：
-
-```bash
-mdx-cli memory --root /path/to/workspace show <memory_id或path>
-```
-
-归档记忆：
-
-```bash
-mdx-cli memory --root /path/to/workspace archive <memory_id或path>
-```
-
-## Recall 检索
-
-Recall 是给 Agent 或用户查上下文的主入口：
-
-```bash
-mdx-cli memory --root /path/to/workspace recall "memory 模块的设计约定"
-```
-
-输出 JSON：
-
-```bash
-mdx-cli memory --root /path/to/workspace recall --json "memory 模块的设计约定"
-```
-
-常用参数：
-
-```bash
-mdx-cli memory --root /path/to/workspace recall \
-  --limit 10 \
-  --byte-budget 65536 \
-  --tag architecture \
-  --include-threads \
-  "索引降级怎么处理"
-```
-
-Recall 行为：
-
-- 默认包含 `memory/working.md`。
-- 默认不注入 thread 全文。
-- `--include-threads` 返回 thread 摘要，不默认返回完整对话。
-- SQLite 索引只是投影；索引不可用时会 fallback 到 Markdown，并标记 degraded。
-
-不包含 working memory：
-
-```bash
-mdx-cli memory --root /path/to/workspace recall --no-working "查询内容"
-```
-
-## Working Memory
-
-Working Memory 存放当前关注点，适合记录本轮或近期工作状态。
-
-读取：
-
-```bash
-mdx-cli memory --root /path/to/workspace working get
-```
-
-覆盖：
-
-```bash
-mdx-cli memory --root /path/to/workspace working set \
-  --body "当前正在完成 Memory 完整能力实现。"
-```
-
-追加到 section：
-
-```bash
-mdx-cli memory --root /path/to/workspace working append \
-  --section "Current Focus" \
-  --text "下一步检查 MCP 调用面。"
-```
-
-## 保存对话 Thread
-
-Thread 用于保存完整 AI 对话原文，后续可以蒸馏成记忆。Thread 是原文归档，不等同于压缩前自动写入 memory。
-
-```bash
-mdx-cli memory --root /path/to/workspace thread save \
-  --source codex \
-  --thread-id "codex:memory-design-001" \
-  --title "Memory 完整能力设计" \
-  --file ./thread.md
-```
-
-支持的 source：
-
-```text
-codex
-cursor
-claude-code
-import
-manual
-```
-
-列出 thread：
-
-```bash
-mdx-cli memory --root /path/to/workspace thread list
-mdx-cli memory --root /path/to/workspace thread list --source codex
-```
-
-查看 thread：
-
-```bash
-mdx-cli memory --root /path/to/workspace thread show codex:memory-design-001
-```
-
-Codex 本地会话可以从 Codex session JSONL 自动发现并归档：
-
-```bash
-mdx-cli memory --root /path/to/workspace capture scan --source codex
-mdx-cli memory --root /path/to/workspace capture scan --source codex --import
-```
-
-默认扫描目录：
-
-```text
-~/.codex/sessions
-~/.codex/archived_sessions
-```
-
-需要覆盖或追加扫描目录时，设置 `MDX_CODEX_SESSION_DIRS`。该变量使用系统 path-list 分隔符，例如 macOS/Linux 上用 `:`：
-
-```bash
-MDX_CODEX_SESSION_DIRS="/path/to/sessions:/path/to/archived" \
-  mdx-cli memory --root /path/to/workspace capture scan --source codex --import
-```
-
-`capture scan --source codex --import` 会把发现的 `rollout-*.jsonl` 保存到 `memory/threads/codex/`。保存的 thread 按原始会话展示，包含 `## Conversation` 和 `## Raw Codex JSONL` 两部分，因此可以保留完整 Codex 会话原文。加 `--distill` 时会在导入后尝试蒸馏；如果蒸馏失败，命令会返回失败，不会把 distill failure 静默当作成功。
-
-## Agent 集成配置
-
-Memory 可以为 Codex/Claude/Cursor 配置 MCP、skill/rule，以及 Claude/Cursor 的 pre-compact hook：
-
-```bash
-mdx-cli memory --root /path/to/workspace install --agent codex
-mdx-cli memory --root /path/to/workspace install --agent claude
-mdx-cli memory --root /path/to/workspace install --agent cursor
-```
-
-省略 `--agent` 会配置所有支持的 agent：
-
-```bash
-mdx-cli memory --root /path/to/workspace install
-```
-
-预览将写入哪些文件：
-
-```bash
-mdx-cli memory --root /path/to/workspace install --agent codex --dry-run
-```
-
-旧的聚合设置命令仍可用于一次性配置多项 agent 集成：
-
-```bash
-mdx-cli memory --root /path/to/workspace agent setup --all
-```
-
-MDX 桌面应用也提供入口：打开 Memory 面板的 Settings tab，在 Agent Integration 区域选择 Codex、Claude、Cursor 和 PreCompact hooks，然后点击 Configure Agents。安装包会随 app bundle 带上 `mdx-cli` 和 `mdx-mcp`；外部 agent 配置不会静默写入，必须由用户在 UI 或 CLI 中主动触发。
-
-选择性配置：
-
-```bash
-mdx-cli memory --root /path/to/workspace agent setup --codex
-mdx-cli memory --root /path/to/workspace agent setup --claude --cursor
-mdx-cli memory --root /path/to/workspace agent setup --all --no-hooks
-```
-
-预览将写入哪些文件：
-
-```bash
-mdx-cli memory --root /path/to/workspace agent setup --all --dry-run
-```
-
-需要指定二进制路径时：
-
-```bash
-mdx-cli memory --root /path/to/workspace agent setup --all \
-  --mdx-cli /Applications/MDX.app/Contents/MacOS/mdx-cli \
-  --mdx-mcp /Applications/MDX.app/Contents/MacOS/mdx-mcp
-```
-
-配置内容：
-
-- Codex/Codey：写入 `~/.codey/config.toml` 的 `mdx-memory` MCP，并安装 `mdx-memory` skill。
-- Claude：安装 `mdx-memory` skill，追加 `~/.claude/CLAUDE.md` 提示，配置 `PreCompact` hook。
-- Cursor：写入 `~/.cursor/mcp.json`、`~/.cursor/rules/mdx-memory.mdc`、`mdx-memory` skill，并配置 `preCompact` hook。
-
-Pre-compact hook 的语义是“压缩前自动沉淀 memory”：当 hook 输入包含 `transcript_path` 时，会先 `capture import --distill`，再对同一 thread 执行 `distill --accept`，让结果进入 active memory。实现上会保存 source thread 作为溯源材料，但这不是“自动 thread 归档”入口。显式保存完整原文使用 `memory thread save`，Codex 本地 session 使用 `capture scan --source codex --import`。
-
-Codex 当前没有已验证的 pre-compact transcript hook，因此 `agent setup --codex` 只配置 MCP 和 skill；Codex 的压缩前 capture 仍需通过 MCP/CLI 显式触发，直到 Codex 暴露可靠的 transcript hook。Codex thread 原文归档不依赖 pre-compact hook，它通过扫描本地 Codex session JSONL 完成。
-
-## Agent Backend Daemon 和 Hook
-
-启动本地 daemon：
-
-```bash
-mdx-cli memory --root /path/to/workspace daemon --port 14243
-```
-
-手动模拟 hook 输入：
-
-```bash
-printf '{"session_id":"s1","turn_id":"t1","cwd":"%s","prompt":"remember Memory positioning"}' "/path/to/workspace" \
-  | mdx-cli memory --root /path/to/workspace hook codex UserPromptSubmit
-```
-
-查看 agent 集成状态：
-
-```bash
-mdx-cli memory --root /path/to/workspace doctor --json
-mdx-cli memory --root /path/to/workspace doctor --agent codex --json
-```
-
-Hook 失败不能阻塞 agent。daemon 不可用或存储退化时，hook 应返回成功并尽量写入 fallback spool；硬关闭时不写 DB、不写 spool、不入队。
-
-## Distill 蒸馏
-
-把保存过的 thread 蒸馏成 inbox 候选记忆：
-
-```bash
-mdx-cli memory --root /path/to/workspace distill \
-  --thread codex:memory-design-001
-```
-
-直接接受为 active memory：
-
-```bash
-mdx-cli memory --root /path/to/workspace distill \
-  --thread codex:memory-design-001 \
-  --accept
-```
-
-强制重新蒸馏：
-
-```bash
-mdx-cli memory --root /path/to/workspace distill \
-  --thread codex:memory-design-001 \
-  --force
-```
-
-注意：
-
-- 不带 `--force` 时，同一 thread 内容重复蒸馏是幂等的，不会重复生成候选。
-- 当前 distill 需要配置本地 LLM provider；未配置时会报 `distill_unavailable`。
-
-## Inbox 审核
-
-查看待确认候选：
-
-```bash
-mdx-cli memory --root /path/to/workspace inbox list
-```
-
-包含已处理候选：
-
-```bash
-mdx-cli memory --root /path/to/workspace inbox list --include-reviewed
-```
-
-接受候选：
-
-```bash
-mdx-cli memory --root /path/to/workspace inbox accept <inbox_id>
-```
-
-接受时覆盖标题或正文：
-
-```bash
-mdx-cli memory --root /path/to/workspace inbox accept <inbox_id> \
-  --title "新的标题" \
-  --body "修订后的记忆正文"
-```
-
-拒绝候选：
-
-```bash
-mdx-cli memory --root /path/to/workspace inbox reject <inbox_id>
-```
-
-## Capture 导入外部对话
-
-导入 Codex/Cursor/Claude Code 对话文件：
-
-```bash
-mdx-cli memory --root /path/to/workspace capture import \
-  --source codex \
-  --file ./codex-thread.jsonl \
-  --thread-id "codex:abc123" \
-  --title "一次 Codex 会话"
-```
-
-导入并尝试蒸馏：
-
-```bash
-mdx-cli memory --root /path/to/workspace capture import \
-  --source codex \
-  --file ./codex-thread.jsonl \
-  --distill
-```
-
-`capture import --distill` 默认写入 `memory/inbox` 候选；需要直接进入 active memory 时，对保存出来的 thread 再执行：
-
-```bash
-mdx-cli memory --root /path/to/workspace distill \
-  --thread <source:thread-id> \
-  --accept
-```
-
-扫描来源：
-
-```bash
-mdx-cli memory --root /path/to/workspace capture scan --source codex
-mdx-cli memory --root /path/to/workspace capture scan --source codex --import
-```
-
-## Promote 到 LLM Wiki
-
-把 thread 或 memory 推到 `raw/promoted/`：
-
-```bash
-mdx-cli memory --root /path/to/workspace promote <thread_id或memory_id或path>
-```
-
-指定标题：
-
-```bash
-mdx-cli memory --root /path/to/workspace promote <target> \
-  --title "Memory 模块设计材料"
-```
-
-推送后立即 ingest 到 LLM Wiki：
-
-```bash
-mdx-cli memory --root /path/to/workspace promote <target> --ingest
-```
-
-注意：
-
-- Memory 和 LLM Wiki 是平级能力。
-- Thread 进入 Wiki 只能通过 `memory promote`。
-- `--ingest` 要求 LLM Wiki 已初始化。
-
-## 索引维护
-
-查看索引状态：
-
-```bash
-mdx-cli memory --root /path/to/workspace index status
-```
-
-重建索引：
-
-```bash
-mdx-cli memory --root /path/to/workspace index rebuild
-```
-
-修复工作区并重建索引：
-
-```bash
-mdx-cli memory --root /path/to/workspace repair --rebuild-index
-```
-
-## 导出和导入
-
-导出 Memory bundle：
-
-```bash
-mdx-cli memory --root /path/to/workspace export \
-  --output /tmp/mdx-memory-bundle \
-  --include-log
-```
-
-导入前 dry run：
-
-```bash
-mdx-cli memory --root /path/to/other-workspace import \
-  --input /tmp/mdx-memory-bundle \
-  --dry-run
-```
-
-正式导入：
-
-```bash
-mdx-cli memory --root /path/to/other-workspace import \
-  --input /tmp/mdx-memory-bundle
-```
-
-默认策略是 `skip`，已有文件会跳过。
-
-## SQLite 和 PostgreSQL 迁移
-
-SQLite 是默认本地运行库；PostgreSQL 适合服务化或跨进程部署。切换前先做 dry run：
-
-```bash
-mdx-cli memory --root /path/to/workspace migrate storage \
-  --to postgresql \
-  --target "$MDX_MEMORY_POSTGRES_URL" \
-  --dry-run
-```
-
-确认后再执行实际迁移：
-
-```bash
-mdx-cli memory --root /path/to/workspace migrate storage \
-  --to postgresql \
-  --target "$MDX_MEMORY_POSTGRES_URL"
-```
-
-Markdown under `memory/**` 是可读投影和导入/导出兼容层；agent-backend 模式下，运行时数据库是事实来源。
-
-## Agent-time Memory extraction
-
-Memory 提取发生在 Agent 正常对话 turn 中：Agent 通过 hook、MCP 工具、CLI 和已安装的 skill/rule 判断何时 recall、search、add 或送审候选。daemon/hook 是推荐的自动化路径；MCP 和 CLI 是同一后端能力的显式入口。
-
-安全使用原则：
-
-- 先用 `memory_recall`。当既有决策、用户偏好、项目约定或历史上下文可能影响当前回答时，应在 turn 早期检索。
-- 避免重复写入。准备调用 `memory_add` 前，如果标题、主题或事实可能已经存在，先用 `memory_search` 查重。
-- 主动保存低风险事实。对用户明确表达、长期有用、非敏感且置信度高的偏好、约定和项目事实，可以在当前 turn 直接写入 durable memory。
-- 谨慎处理敏感或不确定内容。涉及隐私、凭证、医疗财务等敏感信息，或只是推测、临时状态、低置信度总结时，应使用 `memory_inbox_add` 创建 inbox review candidate；需要用户判断时先询问。
-
-## MCP 可用工具
-
-`mdx-mcp --workspace /path/to/workspace` 暴露这些工具：
-
-```text
-memory_status
-memory_recall
-memory_working_get
-memory_add
-memory_inbox_add
-memory_thread_save
-memory_thread_show
-memory_inbox_list
-memory_inbox_accept
-memory_distill
-memory_search
-memory_promote
-memory_hook_status
-memory_diagnostics
-```
-
-给 Agent 使用时，推荐流程：
-
-1. session 开始先 `memory_recall`。
-2. 需要长期保存时调用 `memory_add`。
-3. 完整对话需要保留时调用 `memory_thread_save`。
-4. 从 thread 提炼长期记忆时调用 `memory_distill`。
-5. 敏感或不确定候选先用 `memory_inbox_add` 创建 review candidate，再用 `memory_inbox_list` 查看并用 `memory_inbox_accept` 接受。
-
-## 推荐日常流程
-
-```bash
-# 1. 初始化
-mdx-cli memory --root . init
-
-# 2. 写当前关注
-mdx-cli memory --root . working set --body "当前在实现 MDX Memory 完整能力。"
-
-# 3. 添加长期记忆
-mdx-cli memory --root . add \
-  --title "Memory 边界" \
-  --body "Memory recall 默认不读取 wiki 全文。" \
-  --tag memory
-
-# 4. 查询相关上下文
-mdx-cli memory --root . recall --json "Memory recall 的边界规则"
-
-# 5. 定期重建索引
-mdx-cli memory --root . index rebuild
-
-# 6. 导出备份
-mdx-cli memory --root . export --output ./memory-bundle --include-log
-```
+- **提示模型缺失**：没下载或被删了，重新下载即可。
+- **提示 schema 比本版新**：你用过更新版本的应用打开过这个库。升级应用；在那之前记忆是只读的，数据不会被动。
+- **提示项目绑定失效**：工作区被移动或删除了，重新绑定或忽略。
+- **库不可写**：检查 `~/.mdx/memory/` 的权限。这种情况下编辑器本身不受影响。

@@ -5,11 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsButton } from "./settings-button";
 import type { AppPreferences } from "../lib/types";
-import {
-  dryRunMemoryStorageMigration,
-  runMemoryStorageMigration,
-  updateMemoryConfig,
-} from "@/features/memory/lib/memory-client";
+import { setWorkspaceConfig } from "@/features/memory/lib/memory-client";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
@@ -28,55 +24,20 @@ vi.mock("@/features/llm-wiki/lib/llm-wiki-client", () => ({
   updateLlmWikiConfig: vi.fn(),
 }));
 
+const defaultMemoryConfig = {
+  version: 3,
+  enabled: true,
+  capture: { enabled: false, sources: [] as string[] },
+  agents: {
+    claude: { enabled: false },
+    codex: { enabled: false },
+    cursor: { enabled: false },
+  },
+};
+
 vi.mock("@/features/memory/lib/memory-client", () => ({
-  dryRunMemoryStorageMigration: vi.fn(async () => ({
-    migration_id: "migration:1:postgresql",
-    from: "sqlite",
-    to: "postgresql",
-    dry_run: true,
-    records_seen: { memories: 2, threads: 1 },
-    records_copied: {},
-    records_skipped: {},
-    validation_errors: [],
-    backup_path: null,
-    config_switched: false,
-  })),
-  runMemoryStorageMigration: vi.fn(async () => ({
-    migration_id: "migration:1:postgresql",
-    from: "sqlite",
-    to: "postgresql",
-    dry_run: false,
-    records_seen: { memories: 2, threads: 1 },
-    records_copied: { memories: 2, threads: 1 },
-    records_skipped: {},
-    validation_errors: [],
-    backup_path: null,
-    config_switched: true,
-  })),
-  setMemoryConfig: vi.fn(async () => defaultMemoryConfig),
-  updateMemoryConfig: vi.fn(async (_rootPath: string, request: unknown) => ({
-    ...defaultMemoryConfig,
-    provider:
-      typeof request === "object" &&
-      request &&
-      "provider" in request &&
-      request.provider
-        ? {
-            ...defaultMemoryConfig.provider,
-            ...(request.provider as object),
-          }
-        : defaultMemoryConfig.provider,
-    storage:
-      typeof request === "object" &&
-      request &&
-      "storage" in request &&
-      request.storage
-        ? {
-            ...defaultMemoryConfig.storage,
-            ...(request.storage as object),
-          }
-        : defaultMemoryConfig.storage,
-  })),
+  getWorkspaceConfig: vi.fn(async () => defaultMemoryConfig),
+  setWorkspaceConfig: vi.fn(async (_rootPath: string, config: unknown) => config),
 }));
 
 vi.mock("../lib/theme-preference", async (importOriginal) => ({
@@ -178,108 +139,47 @@ describe("SettingsButton", () => {
     expect(dialog?.className).not.toContain("max-h-[calc(100vh-7rem)]");
   });
 
-  it("renders memory feature hard shutdown controls", async () => {
-    await renderSettings(root);
-
-    expect(host.textContent).toContain("Memory");
-    expect(host.textContent).toContain("总开关");
-    expect(host.textContent).toContain("自动捕获");
-    expect(host.textContent).toContain("Recall 注入");
-    expect(host.textContent).toContain("自动提取");
-    expect(host.textContent).toContain("Markdown 投影");
-    expect(host.textContent).toContain("SQLite");
-    expect(host.textContent).toContain("PostgreSQL");
-  });
-
-  it("saves memory provider changes", async () => {
+  it("offers capture as an opt-in with no source chosen", async () => {
     await renderSettings(root, { workspaceRoot: "/tmp/ws" });
 
-    await act(async () => {
-      getButton("OpenAI").click();
-      await flushPromises();
-    });
-
-    expect(updateMemoryConfig).toHaveBeenCalledWith("/tmp/ws", {
-      scope: "workspace",
-      provider: { mode: "provider", provider: "openai" },
-    });
+    expect(host.textContent).toContain("自动捕获 agent 会话");
+    // The warning is the point: capture cannot be undone after the fact.
+    expect(host.textContent).toContain("不能撤回");
+    const claude = Array.from(host.querySelectorAll("input[type='checkbox']"))
+      .map((input) => input as HTMLInputElement)
+      .find((input) => input.parentElement?.textContent?.includes("Claude Code"));
+    expect(claude?.checked).toBe(false);
+    expect(claude?.disabled).toBe(true);
   });
 
-  it("runs memory postgres migration dry-run with the configured target", async () => {
+  it("writes the capture switch back to the workspace configuration", async () => {
     await renderSettings(root, { workspaceRoot: "/tmp/ws" });
 
+    const toggle = Array.from(host.querySelectorAll("input[type='checkbox']"))
+      .map((input) => input as HTMLInputElement)
+      .find((input) =>
+        input.parentElement?.textContent?.includes("自动捕获 agent 会话"),
+      );
+
     await act(async () => {
-      getButton("PostgreSQL").click();
-      await flushPromises();
+      toggle?.click();
+      await Promise.resolve();
     });
 
-    const input = host.querySelector<HTMLInputElement>(
-      'input[placeholder="postgresql://user:password@localhost:5432/mdx"]',
+    expect(setWorkspaceConfig).toHaveBeenCalledWith(
+      "/tmp/ws",
+      expect.objectContaining({
+        capture: expect.objectContaining({ enabled: true }),
+      }),
     );
-    if (!input) {
-      throw new Error("Expected PostgreSQL URL input.");
-    }
-
-    await act(async () => {
-      setInputValue(input, "postgresql://localhost/mdx");
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      await flushPromises();
-    });
-
-    await act(async () => {
-      getButton("迁移预检").click();
-      await flushPromises();
-    });
-
-    expect(dryRunMemoryStorageMigration).toHaveBeenCalledWith("/tmp/ws", {
-      from: "sqlite",
-      to: "postgresql",
-      target: "postgresql://localhost/mdx",
-      dry_run: true,
-      resume: false,
-    });
-    expect(host.textContent).toContain("预检：通过");
   });
 
-  it("runs memory postgres migration after a successful dry-run", async () => {
+  it("no longer offers a storage backend to migrate between", async () => {
     await renderSettings(root, { workspaceRoot: "/tmp/ws" });
 
-    await act(async () => {
-      getButton("PostgreSQL").click();
-      await flushPromises();
-    });
-
-    const input = host.querySelector<HTMLInputElement>(
-      'input[placeholder="postgresql://user:password@localhost:5432/mdx"]',
-    );
-    if (!input) {
-      throw new Error("Expected PostgreSQL URL input.");
+    for (const gone of ["迁移预检", "开始迁移", "PostgreSQL"]) {
+      expect(host.textContent).not.toContain(gone);
     }
-
-    await act(async () => {
-      setInputValue(input, "postgresql://localhost/mdx");
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      await flushPromises();
-    });
-
-    await act(async () => {
-      getButton("迁移预检").click();
-      await flushPromises();
-    });
-
-    await act(async () => {
-      getButton("开始迁移").click();
-      await flushPromises();
-    });
-
-    expect(runMemoryStorageMigration).toHaveBeenCalledWith("/tmp/ws", {
-      from: "sqlite",
-      to: "postgresql",
-      target: "postgresql://localhost/mdx",
-      dry_run: false,
-      resume: false,
-    });
-    expect(host.textContent).toContain("Memory 迁移已完成。");
   });
 });
 
@@ -319,14 +219,6 @@ async function flushPromises() {
   await Promise.resolve();
 }
 
-function setInputValue(input: HTMLInputElement, value: string) {
-  const setter = Object.getOwnPropertyDescriptor(
-    HTMLInputElement.prototype,
-    "value",
-  )?.set;
-  setter?.call(input, value);
-}
-
 const preferences: AppPreferences = {
   fileTreeExcludeDirs: [],
   fileWatchEnabled: true,
@@ -335,31 +227,3 @@ const preferences: AppPreferences = {
   searchMaxMatchesPerFile: 20,
 };
 
-const defaultMemoryConfig = {
-  version: 2,
-  memory: { enabled: true },
-  agent_backend: {
-    enabled: true,
-    capture_enabled: false,
-    recall_injection_enabled: true,
-    distill_enabled: true,
-    auto_accept: false,
-    context_byte_budget: 4096,
-  },
-  projection: { enabled: true },
-  agents: {
-    codex: { enabled: false, paused: false },
-    claude: { enabled: false, paused: false },
-    cursor: { enabled: false, paused: false },
-  },
-  storage: {
-    backend: "sqlite",
-    sqlite_path: null,
-    postgres_url_ref: null,
-  },
-  provider: {
-    mode: "reuse_llm",
-    provider: null,
-    model: null,
-  },
-};

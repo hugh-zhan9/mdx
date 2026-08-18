@@ -10,8 +10,6 @@ use std::time::{Duration, Instant};
 
 use clap::{Parser, Subcommand};
 use mdx_lib::cli_protocol::{CliRequest, CliResponse};
-use mdx_lib::memory;
-use mdx_lib::memory_daemon;
 
 #[derive(Parser)]
 #[command(
@@ -164,116 +162,120 @@ enum MemoryCommand {
         #[arg(long)]
         dry_run: bool,
     },
-    Migrate {
-        #[command(subcommand)]
-        command: MemoryMigrateCommand,
-    },
+    /// Turn memory on for this workspace and bind it to a project.
     Init,
-    Repair {
+    /// Report on the embedding model, or download it.
+    Model {
         #[arg(long)]
-        rebuild_index: bool,
+        download: bool,
     },
-    Export {
-        #[arg(long)]
-        output: String,
-        #[arg(long)]
-        include_log: bool,
-    },
-    Import {
-        #[arg(long)]
-        input: String,
-        #[arg(long, default_value = "skip")]
-        strategy: String,
-        #[arg(long)]
-        dry_run: bool,
-    },
-    Index {
-        #[command(subcommand)]
-        command: MemoryIndexCommand,
-    },
-    Thread {
-        #[command(subcommand)]
-        command: MemoryThreadCommand,
-    },
+    /// Re-embed the whole library, which is what a model change costs.
+    Reindex,
+    /// Store material: a decision, a finding, a piece of a conversation.
     Add {
-        #[arg(long)]
-        title: String,
         #[arg(long)]
         body: Option<String>,
         #[arg(long)]
         file: Option<String>,
         #[arg(long)]
         stdin: bool,
-        #[arg(long = "tag")]
-        tags: Vec<String>,
         #[arg(long)]
-        source_thread: Option<String>,
-        #[arg(long)]
-        importance: Option<f64>,
-        #[arg(long)]
-        confidence: Option<f64>,
+        source: Option<String>,
     },
+    /// Read one stored entry in full.
     Show {
-        target: String,
+        drawer_id: String,
     },
     List {
+        /// `material` or `conclusion`; both when unset.
         #[arg(long)]
-        tag: Option<String>,
+        kind: Option<String>,
         #[arg(long)]
-        since: Option<String>,
+        status: Option<String>,
+        #[arg(long)]
+        limit: Option<usize>,
+    },
+    /// Hide one entry from every read path.
+    Delete {
+        drawer_id: String,
     },
     Search {
         #[arg(long)]
         limit: Option<usize>,
         #[arg(long)]
-        tag: Option<String>,
+        wing: Option<String>,
         #[arg(long)]
-        since: Option<String>,
+        room: Option<String>,
         #[arg(required = true, num_args = 1..)]
         query: Vec<String>,
     },
-    Archive {
-        target: String,
-    },
-    Inbox {
-        #[command(subcommand)]
-        command: MemoryInboxCommand,
-    },
-    Working {
-        #[command(subcommand)]
-        command: MemoryWorkingCommand,
-    },
-    Recall {
+    /// Assemble the conclusions that apply to a task.
+    Context {
         #[arg(long)]
-        json: bool,
+        max_items: Option<usize>,
+        #[arg(long)]
+        dao_tian_limit: Option<usize>,
+        #[arg(required = true, num_args = 1..)]
+        query: Vec<String>,
+    },
+    /// A deterministic brief for a task. No model is called to write it.
+    Brief {
+        #[arg(required = true, num_args = 1..)]
+        query: Vec<String>,
+    },
+    /// Context, brief and matching material together.
+    Recall {
         #[arg(long)]
         limit: Option<usize>,
         #[arg(long)]
-        byte_budget: Option<usize>,
-        #[arg(long)]
-        no_working: bool,
-        #[arg(long)]
-        include_threads: bool,
-        #[arg(long)]
-        tag: Option<String>,
-        #[arg(long)]
-        since: Option<String>,
+        max_items: Option<usize>,
         #[arg(required = true, num_args = 1..)]
         query: Vec<String>,
     },
+    /// Draw a candidate conclusion from material already stored.
     Distill {
-        #[arg(long = "thread")]
-        target: String,
         #[arg(long)]
-        accept: bool,
+        statement: String,
         #[arg(long)]
-        force: bool,
+        body: Option<String>,
         #[arg(long)]
-        json: bool,
+        file: Option<String>,
+        #[arg(long)]
+        stdin: bool,
+        /// `concrete` (default) or `pattern`.
+        #[arg(long)]
+        tier: Option<String>,
+        #[arg(long = "ref", required = true, num_args = 1..)]
+        supporting_refs: Vec<String>,
     },
+    /// Report whether a candidate can be adopted yet. Read-only.
+    Gate {
+        drawer_id: String,
+    },
+    /// Adopt a candidate conclusion so later sessions see it.
+    Adopt {
+        drawer_id: String,
+        #[arg(long)]
+        note: Option<String>,
+    },
+    /// Take an adopted conclusion back out of everyone's context.
+    Demote {
+        drawer_id: String,
+        /// `contradicted` | `obsolete` | `superseded` | `out_of_scope` | `unsafe`
+        #[arg(long)]
+        reason_type: String,
+        #[arg(long)]
+        reason: String,
+        #[arg(long = "evidence-ref", required = true, num_args = 1..)]
+        evidence_refs: Vec<String>,
+        /// Retire it outright instead of only demoting it.
+        #[arg(long)]
+        retire: bool,
+    },
+    /// Copy a conclusion into wiki raw material.
     Promote {
         target: Option<String>,
-        #[arg(long = "target", alias = "thread")]
+        #[arg(long = "target")]
         target_flag: Option<String>,
         #[arg(long)]
         ingest: bool,
@@ -284,125 +286,44 @@ enum MemoryCommand {
         #[command(subcommand)]
         command: MemoryCaptureCommand,
     },
+    /// Read an old `memory/` directory in as material. The old files are left alone.
+    #[command(name = "legacy-import")]
+    LegacyImport {
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Write this project's memory out as a readable Markdown bundle.
+    Export {
+        #[arg(long)]
+        output: String,
+    },
+    /// Read a Markdown bundle back into the library.
+    Import {
+        #[arg(long)]
+        input: String,
+    },
     Agent {
         #[command(subcommand)]
         command: MemoryAgentCommand,
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
-enum MemoryIndexCommand {
-    Status,
-    Rebuild,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
-enum MemoryMigrateCommand {
-    Storage {
-        #[arg(long = "to")]
-        to: String,
-        #[arg(long)]
-        target: Option<String>,
-        #[arg(long)]
-        dry_run: bool,
-        #[arg(long)]
-        resume: bool,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
-enum MemoryThreadCommand {
-    Save {
-        #[arg(long)]
-        source: String,
-        #[arg(long)]
-        thread_id: Option<String>,
-        #[arg(long)]
-        title: String,
-        #[arg(long)]
-        body: Option<String>,
-        #[arg(long)]
-        file: Option<String>,
-        #[arg(long)]
-        stdin: bool,
-    },
-    Show {
-        target: String,
-    },
-    List {
-        #[arg(long)]
-        source: Option<String>,
-        #[arg(long)]
-        since: Option<String>,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
-enum MemoryInboxCommand {
-    List {
-        #[arg(long)]
-        include_reviewed: bool,
-        #[arg(long)]
-        json: bool,
-    },
-    Accept {
-        inbox_id: String,
-        #[arg(long)]
-        title: Option<String>,
-        #[arg(long)]
-        file: Option<String>,
-        #[arg(long)]
-        body: Option<String>,
-    },
-    Reject {
-        inbox_id: String,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
-enum MemoryWorkingCommand {
-    Get,
-    Set {
-        #[arg(long)]
-        body: Option<String>,
-        #[arg(long)]
-        file: Option<String>,
-        #[arg(long)]
-        stdin: bool,
-    },
-    Append {
-        #[arg(long)]
-        section: String,
-        #[arg(long)]
-        text: Option<String>,
-        #[arg(long)]
-        file: Option<String>,
-        #[arg(long)]
-        stdin: bool,
-    },
-}
-
+/// Getting outside text into the library.
+///
+/// The pair the old thread capture left behind: ask where something would be
+/// filed, then file it. Both halves land in material — nothing here draws a
+/// conclusion, and nothing here can be undone except by deleting afterwards.
 #[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
 enum MemoryCaptureCommand {
-    Import {
-        #[arg(long)]
-        source: String,
-        #[arg(long = "file")]
-        file: String,
-        #[arg(long)]
-        thread_id: Option<String>,
-        #[arg(long)]
-        title: Option<String>,
-        #[arg(long)]
-        distill: bool,
-    },
+    /// Report where a file or directory would be filed, without storing it.
     Scan {
         #[arg(long)]
-        source: String,
-        #[arg(long = "import")]
-        import_threads: bool,
+        path: String,
+    },
+    /// Read a file or directory into the library as material.
+    Import {
         #[arg(long)]
-        distill: bool,
+        path: String,
     },
 }
 
@@ -583,155 +504,104 @@ fn request_from_memory_command(command: &MemoryCommand) -> io::Result<CliRequest
         }
         MemoryCommand::Status { .. } => CliRequest::MemoryStatus,
         MemoryCommand::Init => CliRequest::MemoryInit,
-        MemoryCommand::Repair { rebuild_index } => CliRequest::MemoryRepair {
-            rebuild_index: *rebuild_index,
+        MemoryCommand::Model { download } => CliRequest::MemoryModel {
+            download: *download,
         },
-        MemoryCommand::Export {
-            output,
-            include_log,
-        } => CliRequest::MemoryExport {
-            output_path: normalize_cli_path(output)?,
-            include_log: *include_log,
-        },
-        MemoryCommand::Import {
-            input,
-            strategy,
-            dry_run,
-        } => CliRequest::MemoryImport {
-            input_path: normalize_cli_path(input)?,
-            strategy: trim_required_value(strategy, "strategy")?,
-            dry_run: *dry_run,
-        },
-        MemoryCommand::Index { command } => match command {
-            MemoryIndexCommand::Status => CliRequest::MemoryIndexStatus,
-            MemoryIndexCommand::Rebuild => CliRequest::MemoryIndexRebuild,
-        },
-        MemoryCommand::Thread { command } => match command {
-            MemoryThreadCommand::Save {
-                source,
-                thread_id,
-                title,
-                body,
-                file,
-                stdin,
-            } => CliRequest::MemoryThreadSave {
-                source: trim_required_value(source, "source")?,
-                thread_id: thread_id.clone(),
-                title: trim_required_value(title, "title")?,
-                body: read_input_from_file_or_stdin(file.as_deref(), body.as_deref(), *stdin)?,
-            },
-            MemoryThreadCommand::Show { target } => CliRequest::MemoryThreadShow {
-                target: trim_required_value(target, "target")?,
-            },
-            MemoryThreadCommand::List { source, since } => CliRequest::MemoryThreadList {
-                source: source.clone(),
-                since: parse_since_arg(since)?,
-            },
-        },
+        MemoryCommand::Reindex => CliRequest::MemoryReindex,
         MemoryCommand::Add {
-            title,
             body,
             file,
             stdin,
-            tags,
-            source_thread,
-            importance,
-            confidence,
+            source,
         } => CliRequest::MemoryAdd {
-            title: trim_required_value(title, "title")?,
             body: read_input_from_file_or_stdin(file.as_deref(), body.as_deref(), *stdin)?,
-            tags: tags.clone(),
-            source_thread: source_thread.clone(),
-            importance: *importance,
-            confidence: *confidence,
+            source: source
+                .as_deref()
+                .map(|value| trim_required_value(value, "source"))
+                .transpose()?,
         },
-        MemoryCommand::Show { target } => CliRequest::MemoryShow {
-            target: trim_required_value(target, "target")?,
+        MemoryCommand::Show { drawer_id } => CliRequest::MemoryShow {
+            drawer_id: trim_required_value(drawer_id, "drawer_id")?,
         },
-        MemoryCommand::List { tag, since } => CliRequest::MemoryList {
-            tag: tag.clone(),
-            since: parse_since_arg(since)?,
+        MemoryCommand::List {
+            kind,
+            status,
+            limit,
+        } => CliRequest::MemoryList {
+            kind: kind.clone(),
+            status: status.clone(),
+            limit: *limit,
+        },
+        MemoryCommand::Delete { drawer_id } => CliRequest::MemoryDelete {
+            drawer_id: trim_required_value(drawer_id, "drawer_id")?,
         },
         MemoryCommand::Search {
             query,
             limit,
-            tag,
-            since,
+            wing,
+            room,
         } => CliRequest::MemorySearch {
             query: join_required_words(query, "query")?,
             limit: *limit,
-            tag: tag.clone(),
-            since: parse_since_arg(since)?,
+            wing: wing.clone(),
+            room: room.clone(),
         },
-        MemoryCommand::Archive { target } => CliRequest::MemoryArchive {
-            target: trim_required_value(target, "target")?,
+        MemoryCommand::Context {
+            query,
+            max_items,
+            dao_tian_limit,
+        } => CliRequest::MemoryContext {
+            query: join_required_words(query, "query")?,
+            max_items: *max_items,
+            dao_tian_limit: *dao_tian_limit,
         },
-        MemoryCommand::Inbox { command } => match command {
-            MemoryInboxCommand::List {
-                include_reviewed, ..
-            } => CliRequest::MemoryInboxList {
-                include_reviewed: *include_reviewed,
-            },
-            MemoryInboxCommand::Accept {
-                inbox_id,
-                title,
-                file,
-                body,
-            } => CliRequest::MemoryInboxAccept {
-                inbox_id: trim_required_value(inbox_id, "inbox_id")?,
-                title: title
-                    .as_deref()
-                    .map(|value| trim_required_value(value, "title"))
-                    .transpose()?,
-                body: read_optional_input_from_file_or_inline(file.as_deref(), body.as_deref())?,
-                tags: None,
-            },
-            MemoryInboxCommand::Reject { inbox_id } => CliRequest::MemoryInboxReject {
-                inbox_id: trim_required_value(inbox_id, "inbox_id")?,
-            },
-        },
-        MemoryCommand::Working { command } => match command {
-            MemoryWorkingCommand::Get => CliRequest::MemoryWorkingGet,
-            MemoryWorkingCommand::Set { body, file, stdin } => CliRequest::MemoryWorkingSet {
-                content: read_input_from_file_or_stdin(file.as_deref(), body.as_deref(), *stdin)?,
-            },
-            MemoryWorkingCommand::Append {
-                section,
-                text,
-                file,
-                stdin,
-            } => CliRequest::MemoryWorkingAppend {
-                section: trim_required_value(section, "section")?,
-                text: read_input_from_file_or_stdin(file.as_deref(), text.as_deref(), *stdin)?,
-            },
+        MemoryCommand::Brief { query } => CliRequest::MemoryBrief {
+            query: join_required_words(query, "query")?,
         },
         MemoryCommand::Recall {
             query,
             limit,
-            byte_budget,
-            no_working,
-            include_threads,
-            tag,
-            since,
-            ..
+            max_items,
         } => CliRequest::MemoryRecall {
             query: join_required_words(query, "query")?,
             limit: *limit,
-            byte_budget: *byte_budget,
-            include_working: if *no_working { Some(false) } else { None },
-            include_threads: Some(*include_threads),
-            tag: tag.clone(),
-            since: parse_since_arg(since)?,
+            max_items: *max_items,
         },
         MemoryCommand::Distill {
-            target,
-            accept,
-            force,
-            ..
+            statement,
+            body,
+            file,
+            stdin,
+            tier,
+            supporting_refs,
         } => CliRequest::MemoryDistill {
-            target: trim_required_value(target, "thread")?,
-            accept: Some(*accept),
-            force: Some(*force),
+            statement: trim_required_value(statement, "statement")?,
+            body: read_input_from_file_or_stdin(file.as_deref(), body.as_deref(), *stdin)?,
+            tier: tier.clone(),
+            supporting_refs: supporting_refs.clone(),
+        },
+        MemoryCommand::Gate { drawer_id } => CliRequest::MemoryGate {
+            drawer_id: trim_required_value(drawer_id, "drawer_id")?,
+        },
+        MemoryCommand::Adopt { drawer_id, note } => CliRequest::MemoryAdopt {
+            drawer_id: trim_required_value(drawer_id, "drawer_id")?,
+            note: note
+                .as_deref()
+                .map(|value| trim_required_value(value, "note"))
+                .transpose()?,
+        },
+        MemoryCommand::Demote {
+            drawer_id,
+            reason_type,
+            reason,
+            evidence_refs,
+            retire,
+        } => CliRequest::MemoryDemote {
+            drawer_id: trim_required_value(drawer_id, "drawer_id")?,
+            reason_type: trim_required_value(reason_type, "reason_type")?,
+            reason: trim_required_value(reason, "reason")?,
+            evidence_refs: evidence_refs.clone(),
+            retire: *retire,
         },
         MemoryCommand::Promote {
             target,
@@ -746,35 +616,25 @@ fn request_from_memory_command(command: &MemoryCommand) -> io::Result<CliRequest
                     .unwrap_or_default(),
                 "target",
             )?,
-            ingest: Some(*ingest),
+            ingest: *ingest,
             title: title.clone(),
         },
         MemoryCommand::Capture { command } => match command {
-            MemoryCaptureCommand::Import {
-                source,
-                file,
-                thread_id,
-                title,
-                distill,
-            } => CliRequest::MemoryCaptureImport {
-                source: trim_required_value(source, "source")?,
-                path: normalize_cli_path(file)?,
-                title: title
-                    .as_deref()
-                    .map(|value| trim_required_value(value, "title"))
-                    .transpose()?,
-                thread_id: thread_id.clone(),
-                distill: *distill,
+            MemoryCaptureCommand::Scan { path } => CliRequest::MemoryCaptureScan {
+                path: normalize_cli_path(path)?,
             },
-            MemoryCaptureCommand::Scan {
-                source,
-                import_threads,
-                distill,
-            } => CliRequest::MemoryCaptureScan {
-                source: trim_required_value(source, "source")?,
-                import_threads: *import_threads,
-                distill: *distill,
+            MemoryCaptureCommand::Import { path } => CliRequest::MemoryCaptureImport {
+                path: normalize_cli_path(path)?,
             },
+        },
+        MemoryCommand::LegacyImport { dry_run } => CliRequest::MemoryLegacyImport {
+            dry_run: *dry_run,
+        },
+        MemoryCommand::Export { output } => CliRequest::MemoryExport {
+            output_path: normalize_cli_path(output)?,
+        },
+        MemoryCommand::Import { input } => CliRequest::MemoryImport {
+            input_path: normalize_cli_path(input)?,
         },
         MemoryCommand::Daemon { .. }
         | MemoryCommand::Hook { .. }
@@ -782,7 +642,6 @@ fn request_from_memory_command(command: &MemoryCommand) -> io::Result<CliRequest
         | MemoryCommand::Doctor { .. }
         | MemoryCommand::RepairAgent { .. }
         | MemoryCommand::Uninstall { .. }
-        | MemoryCommand::Migrate { .. }
         | MemoryCommand::Agent { .. } => {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -809,33 +668,25 @@ fn execute_memory_headless(command: &CommandLine, root_path: String) -> io::Resu
         ));
     };
 
-    if let MemoryCommand::Daemon { port, api_key } = command {
-        serve_memory_daemon(&root_path, *port, api_key.as_deref())?;
-        return Ok(CliResponse {
-            ok: true,
-            root_path: Some(root_path),
-            ..CliResponse::default()
-        });
-    }
-
-    if let MemoryCommand::Hook {
-        agent,
-        event,
-        deadline_ms,
-    } = command
-    {
-        return execute_memory_hook_headless(root_path, agent, event, *deadline_ms);
-    }
-
-    if let MemoryCommand::Index { command } = command {
-        return Ok(execute_memory_index_headless(command, root_path));
-    }
-
-    if let MemoryCommand::Agent { command } = command {
-        return execute_memory_agent_headless(command, root_path);
-    }
-
+    // Agent integration and the hook daemon are not memory protocol commands:
+    // they configure the editors that call it, so they answer before the
+    // library is ever opened.
     match command {
+        MemoryCommand::Daemon { port, api_key } => {
+            serve_memory_daemon(&root_path, *port, api_key.as_deref())?;
+            return Ok(CliResponse {
+                ok: true,
+                root_path: Some(root_path),
+                ..CliResponse::default()
+            });
+        }
+        MemoryCommand::Hook {
+            agent,
+            event,
+            deadline_ms,
+        } => {
+            return execute_memory_hook_headless(root_path, agent, event, *deadline_ms);
+        }
         MemoryCommand::Install { agent, dry_run } => {
             return execute_memory_agent_install_headless(root_path, agent.clone(), *dry_run);
         }
@@ -862,453 +713,18 @@ fn execute_memory_headless(command: &CommandLine, root_path: String) -> io::Resu
                 *dry_run,
             );
         }
-        MemoryCommand::Migrate { command } => {
-            return execute_memory_migrate_headless(command, root_path);
+        MemoryCommand::Agent { command } => {
+            return execute_memory_agent_headless(command, root_path);
         }
         _ => {}
     }
 
-    if let MemoryCommand::Export {
-        output,
-        include_log,
-    } = command
-    {
-        let request = memory::MemoryExportRequest {
-            output_path: normalize_cli_path(output)?,
-            include_log: *include_log,
-        };
-        let response = match memory::memory_export_bundle(root_path.clone(), request) {
-            Ok(result) => CliResponse {
-                ok: true,
-                root_path: Some(root_path),
-                memory_export: Some(result),
-                ..CliResponse::default()
-            },
-            Err(error) => workspace_error_response(error),
-        };
-        return Ok(response);
-    }
+    let request = request_from_memory_command(command)?;
 
-    if let MemoryCommand::Import {
-        input,
-        strategy,
-        dry_run,
-    } = command
-    {
-        let request = memory::MemoryImportRequest {
-            input_path: normalize_cli_path(input)?,
-            strategy: strategy.clone(),
-            dry_run: *dry_run,
-        };
-        let response = match memory::memory_import_bundle(root_path.clone(), request) {
-            Ok(result) => CliResponse {
-                ok: true,
-                root_path: Some(root_path),
-                memory_import: Some(result),
-                ..CliResponse::default()
-            },
-            Err(error) => workspace_error_response(error),
-        };
-        return Ok(response);
-    }
-
-    let response = match request_from_memory_command(command)? {
-        CliRequest::MemoryExport { .. } | CliRequest::MemoryImport { .. } => {
-            unreachable!("bundle commands are handled before request dispatch")
-        }
-        CliRequest::MemoryStatus => match memory::memory_detect_workspace(root_path.clone()) {
-            Ok(status) => CliResponse {
-                ok: true,
-                root_path: Some(root_path),
-                memory_status: Some(status),
-                ..CliResponse::default()
-            },
-            Err(error) => workspace_error_response(error),
-        },
-        CliRequest::MemoryInit => match memory::memory_initialize_workspace(root_path.clone()) {
-            Ok(result) => CliResponse {
-                ok: true,
-                root_path: Some(root_path),
-                memory_init: Some(result),
-                ..CliResponse::default()
-            },
-            Err(error) => workspace_error_response(error),
-        },
-        CliRequest::MemoryRepair { rebuild_index } => {
-            let request = memory::MemoryRepairRequest { rebuild_index };
-            match memory::memory_repair_workspace(root_path.clone(), request) {
-                Ok(result) => CliResponse {
-                    ok: true,
-                    root_path: Some(root_path),
-                    memory_repair: Some(result),
-                    ..CliResponse::default()
-                },
-                Err(error) => workspace_error_response(error),
-            }
-        }
-        CliRequest::MemoryIndexStatus => match memory::memory_index_status(root_path.clone()) {
-            Ok(status) => CliResponse {
-                ok: true,
-                root_path: Some(root_path),
-                memory_index_status: Some(status),
-                ..CliResponse::default()
-            },
-            Err(error) => workspace_error_response(error),
-        },
-        CliRequest::MemoryIndexRebuild => match memory::memory_index_rebuild(root_path.clone()) {
-            Ok(status) => CliResponse {
-                ok: true,
-                root_path: Some(root_path),
-                memory_index_status: Some(status),
-                ..CliResponse::default()
-            },
-            Err(error) => workspace_error_response(error),
-        },
-        CliRequest::MemoryThreadSave {
-            source,
-            thread_id,
-            title,
-            body,
-        } => {
-            let request = memory::ThreadSaveRequest {
-                source,
-                thread_id,
-                title,
-                body,
-                started_at: None,
-                ended_at: None,
-                model: None,
-                workspace_root: None,
-                tags: Vec::new(),
-            };
-            match memory::memory_thread_save(root_path.clone(), request)
-                .and_then(|result| memory::memory_thread_get(root_path, result.thread_id))
-            {
-                Ok(record) => CliResponse {
-                    ok: true,
-                    memory_thread: Some(record),
-                    ..CliResponse::default()
-                },
-                Err(error) => workspace_error_response(error),
-            }
-        }
-        CliRequest::MemoryThreadShow { target } => {
-            match memory::memory_thread_get(root_path.clone(), target) {
-                Ok(record) => {
-                    record_response_with_content(root_path, record.path.clone(), |response| {
-                        CliResponse {
-                            memory_thread: Some(record),
-                            ..response
-                        }
-                    })
-                }
-                Err(error) => workspace_error_response(error),
-            }
-        }
-        CliRequest::MemoryThreadList { source, since } => {
-            match memory::memory_thread_list(root_path, memory::ThreadListFilter { source, since })
-            {
-                Ok(threads) => CliResponse {
-                    ok: true,
-                    memory_threads: Some(threads),
-                    ..CliResponse::default()
-                },
-                Err(error) => workspace_error_response(error),
-            }
-        }
-        CliRequest::MemoryAdd {
-            title,
-            body,
-            tags,
-            source_thread,
-            importance,
-            confidence,
-        } => {
-            let request = memory::MemoryAddRequest {
-                title,
-                body,
-                tags,
-                source_thread,
-                source_message_refs: Vec::new(),
-                importance,
-                confidence,
-            };
-            match memory::memory_add(root_path, request) {
-                Ok(record) => CliResponse {
-                    ok: true,
-                    memory_entry: Some(record),
-                    ..CliResponse::default()
-                },
-                Err(error) => workspace_error_response(error),
-            }
-        }
-        CliRequest::MemoryShow { target } => match memory::memory_get(root_path.clone(), target) {
-            Ok(record) => {
-                record_response_with_content(root_path, record.path.clone(), |response| {
-                    CliResponse {
-                        memory_entry: Some(record),
-                        ..response
-                    }
-                })
-            }
-            Err(error) => workspace_error_response(error),
-        },
-        CliRequest::MemoryList { tag, since } => match memory::memory_list(
-            root_path,
-            memory::MemoryListFilter {
-                tag,
-                since,
-                include_archived: false,
-            },
-        ) {
-            Ok(entries) => CliResponse {
-                ok: true,
-                memory_entries: Some(entries),
-                ..CliResponse::default()
-            },
-            Err(error) => workspace_error_response(error),
-        },
-        CliRequest::MemorySearch {
-            query,
-            limit,
-            tag,
-            since,
-        } => match memory::memory_search(root_path, query, limit, tag, since) {
-            Ok(entries) => CliResponse {
-                ok: true,
-                memory_entries: Some(entries),
-                ..CliResponse::default()
-            },
-            Err(error) => workspace_error_response(error),
-        },
-        CliRequest::MemoryArchive { target } => match memory::memory_archive(root_path, target) {
-            Ok(record) => CliResponse {
-                ok: true,
-                memory_entry: Some(record),
-                ..CliResponse::default()
-            },
-            Err(error) => workspace_error_response(error),
-        },
-        CliRequest::MemoryInboxList { include_reviewed } => {
-            match memory::memory_inbox_list(root_path, include_reviewed) {
-                Ok(entries) => CliResponse {
-                    ok: true,
-                    memory_inbox_entries: Some(entries),
-                    ..CliResponse::default()
-                },
-                Err(error) => workspace_error_response(error),
-            }
-        }
-        CliRequest::MemoryInboxAccept {
-            inbox_id,
-            title,
-            body,
-            tags,
-        } => {
-            let request = memory::InboxReviewRequest {
-                inbox_id,
-                title,
-                body,
-                tags,
-            };
-            match memory::memory_inbox_accept(root_path, request) {
-                Ok(result) => CliResponse {
-                    ok: true,
-                    memory_inbox_review: Some(result),
-                    ..CliResponse::default()
-                },
-                Err(error) => workspace_error_response(error),
-            }
-        }
-        CliRequest::MemoryInboxReject { inbox_id } => {
-            match memory::memory_inbox_reject(root_path, inbox_id) {
-                Ok(result) => CliResponse {
-                    ok: true,
-                    memory_inbox_review: Some(result),
-                    ..CliResponse::default()
-                },
-                Err(error) => workspace_error_response(error),
-            }
-        }
-        CliRequest::MemoryWorkingGet => match memory::memory_working_get(root_path) {
-            Ok(content) => CliResponse {
-                ok: true,
-                content: Some(content),
-                ..CliResponse::default()
-            },
-            Err(error) => workspace_error_response(error),
-        },
-        CliRequest::MemoryWorkingSet { content } => {
-            match memory::memory_working_set(root_path, content) {
-                Ok(content) => CliResponse {
-                    ok: true,
-                    content: Some(content),
-                    ..CliResponse::default()
-                },
-                Err(error) => workspace_error_response(error),
-            }
-        }
-        CliRequest::MemoryWorkingAppend { section, text } => {
-            match memory::memory_working_append(root_path, section, text) {
-                Ok(content) => CliResponse {
-                    ok: true,
-                    content: Some(content),
-                    ..CliResponse::default()
-                },
-                Err(error) => workspace_error_response(error),
-            }
-        }
-        CliRequest::MemoryRecall {
-            query,
-            limit,
-            byte_budget,
-            include_working,
-            include_threads,
-            tag,
-            since,
-        } => {
-            let request = memory::RecallRequest {
-                query,
-                limit,
-                byte_budget,
-                include_working: include_working.unwrap_or(true),
-                include_threads: include_threads.unwrap_or(false),
-                thread_ids: Vec::new(),
-                include_wiki_refs: false,
-                include_wiki_snippets: false,
-                tag,
-                since,
-            };
-            match memory::memory_recall(root_path, request) {
-                Ok(result) => CliResponse {
-                    ok: true,
-                    memory_recall: Some(result),
-                    ..CliResponse::default()
-                },
-                Err(error) => workspace_error_response(error),
-            }
-        }
-        CliRequest::MemoryDistill {
-            target,
-            accept,
-            force,
-        } => {
-            let request = memory::MemoryDistillRequest {
-                target,
-                accept: accept.unwrap_or(false),
-                force: force.unwrap_or(false),
-            };
-            match memory::memory_distill(root_path, request) {
-                Ok(result) => CliResponse {
-                    ok: true,
-                    memory_distill: Some(result),
-                    ..CliResponse::default()
-                },
-                Err(error) => workspace_error_response(error),
-            }
-        }
-        CliRequest::MemoryPromote {
-            target,
-            ingest,
-            title,
-        } => {
-            let request = memory::MemoryPromoteRequest {
-                target,
-                ingest: ingest.unwrap_or(false),
-                title,
-            };
-            match memory::memory_promote(root_path, request) {
-                Ok(result) => CliResponse {
-                    ok: true,
-                    memory_promote: Some(result),
-                    ..CliResponse::default()
-                },
-                Err(error) => workspace_error_response(error),
-            }
-        }
-        CliRequest::MemoryCaptureImport {
-            source,
-            path,
-            title,
-            thread_id,
-            distill,
-        } => {
-            let request = memory::MemoryCaptureImportRequest {
-                source,
-                path,
-                title,
-                thread_id,
-                distill,
-            };
-            match memory::memory_capture_import(root_path, request) {
-                Ok(result) => CliResponse {
-                    ok: true,
-                    memory_capture_import: Some(result),
-                    ..CliResponse::default()
-                },
-                Err(error) => workspace_error_response(error),
-            }
-        }
-        CliRequest::MemoryCaptureScan {
-            source,
-            import_threads,
-            distill,
-        } => memory_capture_scan_response_for_root(root_path, source, import_threads, distill),
-        _ => unreachable!("request_from_memory_command only returns memory requests"),
-    };
-
-    Ok(response)
-}
-
-fn memory_capture_scan_response_for_root(
-    root_path: String,
-    source: String,
-    import_threads: bool,
-    distill: bool,
-) -> CliResponse {
-    let scan_request = memory::MemoryCaptureScanRequest {
-        source: source.clone(),
-    };
-    let scan_result = match memory::memory_capture_scan(root_path.clone(), scan_request) {
-        Ok(result) => result,
-        Err(error) => return workspace_error_response(error),
-    };
-
-    if import_threads {
-        for path in &scan_result.paths {
-            let import_request = memory::MemoryCaptureImportRequest {
-                source: source.clone(),
-                path: path.clone(),
-                title: None,
-                thread_id: None,
-                distill,
-            };
-            let import_result =
-                match memory::memory_capture_import(root_path.clone(), import_request) {
-                    Ok(result) => result,
-                    Err(error) => return workspace_error_response(error),
-                };
-            if import_result.distill_status == "failed" {
-                return CliResponse::error(
-                    import_result
-                        .distill_error_code
-                        .unwrap_or_else(|| "distill_failed".to_string()),
-                    import_result.distill_error_message.unwrap_or_else(|| {
-                        format!(
-                            "distill failed while importing captured thread {}",
-                            import_result.thread_id
-                        )
-                    }),
-                );
-            }
-        }
-    }
-
-    CliResponse {
-        ok: true,
-        memory_capture_scan: Some(scan_result),
-        ..CliResponse::default()
-    }
+    Ok(mdx_lib::cli_protocol::run_memory_request(
+        std::path::Path::new(&root_path),
+        request,
+    ))
 }
 
 fn execute_memory_agent_headless(
@@ -1360,7 +776,12 @@ fn execute_memory_hook_headless(
     root_path: String,
     agent: &str,
     event_name: &str,
-    deadline_ms: Option<u64>,
+    // Still accepted because it is baked into hook command lines already
+    // installed on user machines, and rejecting it would break every one of
+    // them. Not enforced: the new path's slow step is embedding, and cutting
+    // that off midway would leave the transcript half-stored. Tracked as a gap
+    // rather than pretended away.
+    _deadline_ms: Option<u64>,
 ) -> io::Result<CliResponse> {
     let mut input = String::new();
     io::stdin().read_to_string(&mut input)?;
@@ -1370,42 +791,47 @@ fn execute_memory_hook_headless(
             format!("invalid hook JSON: {error}"),
         )
     })?;
-    let event = mdx_lib::memory_hooks::normalize_hook_payload(
-        agent,
-        event_name,
-        &root_path,
-        &payload,
-        deadline_ms,
-    )
-    .map_err(workspace_error_to_io)?;
-    let request = memory::MemoryHookEventRequest {
-        agent_source: event.agent_source,
-        event_name: event.event_name,
-        workspace_root: event.workspace_root,
-        cwd: event.cwd,
-        session_id: event.session_id,
-        turn_id: event.turn_id,
-        event_seq: event.event_seq,
-        idempotency_key: event.idempotency_key,
-        raw_payload: event.raw_payload,
-        deadline_ms: event.deadline_ms,
+    // The hook speaks the daemon's shape directly. Everything a hook can
+    // usefully say is in the payload it was handed: which agent, which event,
+    // the transcript to keep, and the prompt that is starting.
+    let request = mdx_lib::memory::daemon::HookEventRequest {
+        agent_source: agent.to_string(),
+        event_name: event_name.to_string(),
+        workspace_root: Some(root_path.clone()),
+        session_id: hook_payload_string(&payload, &["session_id", "sessionId"]),
+        transcript_path: hook_payload_string(
+            &payload,
+            &["transcript_path", "transcriptPath", "conversation_path"],
+        ),
+        prompt: hook_payload_string(&payload, &["prompt", "user_prompt", "userPrompt"]),
     };
-    let body = serde_json::to_string(&request).map_err(|error| {
+    let body = serde_json::to_string(&serde_json::json!({
+        "agent_source": request.agent_source,
+        "event_name": request.event_name,
+        "workspace_root": request.workspace_root,
+        "session_id": request.session_id,
+        "transcript_path": request.transcript_path,
+        "prompt": request.prompt,
+    }))
+    .map_err(|error| {
         io::Error::new(
             io::ErrorKind::InvalidInput,
             format!("failed to encode hook event: {error}"),
         )
     })?;
-    let daemon_response = memory_daemon::dispatch(root_path.clone(), "POST", "/hook/events", &body)
-        .map_err(workspace_error_to_io)?;
+    let daemon_response =
+        mdx_lib::memory::daemon::dispatch(root_path.clone(), "POST", "/hook/events", &body)
+            .map_err(workspace_error_to_io)?;
     if !(200..300).contains(&daemon_response.status) {
         return Err(io::Error::new(io::ErrorKind::Other, daemon_response.body));
     }
-    let response = serde_json::from_str::<memory::MemoryHookEventResponse>(&daemon_response.body)
-        .map_err(|error| {
+    let response = serde_json::from_str::<mdx_lib::memory::daemon::HookEventResponse>(
+        &daemon_response.body,
+    )
+    .map_err(|error| {
         io::Error::new(
             io::ErrorKind::InvalidData,
-            format!("invalid hook daemon response: {error}"),
+            format!("invalid hook response: {error}"),
         )
     })?;
     let output = mdx_lib::memory_hooks::format_hook_output(
@@ -1513,49 +939,23 @@ fn execute_memory_agent_doctor_headless(
     })
 }
 
-fn execute_memory_migrate_headless(
-    command: &MemoryMigrateCommand,
-    root_path: String,
-) -> io::Result<CliResponse> {
-    match command {
-        MemoryMigrateCommand::Storage {
-            to,
-            target,
-            dry_run,
-            resume,
-        } => Ok(CliResponse {
-            ok: true,
-            root_path: Some(root_path),
-            content: Some(format!(
-                "memory storage migration planned: to={to} target={} dry_run={dry_run} resume={resume}",
-                target.as_deref().unwrap_or("default")
-            )),
-            ..CliResponse::default()
-        }),
-    }
-}
 
-fn execute_memory_index_headless(command: &MemoryIndexCommand, root_path: String) -> CliResponse {
-    match command {
-        MemoryIndexCommand::Status => match memory::memory_index_status(root_path.clone()) {
-            Ok(status) => CliResponse {
-                ok: true,
-                root_path: Some(root_path),
-                memory_index_status: Some(status),
-                ..CliResponse::default()
-            },
-            Err(error) => workspace_error_response(error),
-        },
-        MemoryIndexCommand::Rebuild => match memory::memory_index_rebuild(root_path.clone()) {
-            Ok(status) => CliResponse {
-                ok: true,
-                root_path: Some(root_path),
-                memory_index_status: Some(status),
-                ..CliResponse::default()
-            },
-            Err(error) => workspace_error_response(error),
-        },
+/// Reads the first of several possible field names out of a hook payload.
+///
+/// Each agent spells these differently, and a hook that silently drops the
+/// transcript because the key was `transcriptPath` would look like memory not
+/// working at all.
+fn hook_payload_string(payload: &serde_json::Value, keys: &[&str]) -> Option<String> {
+    for key in keys {
+        if let Some(value) = payload.get(*key).and_then(serde_json::Value::as_str) {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
     }
+
+    None
 }
 
 fn serve_memory_daemon(workspace: &str, port: u16, api_key: Option<&str>) -> io::Result<()> {
@@ -1592,7 +992,7 @@ fn handle_http_connection(
     if !is_authorized(api_key, request.authorization.as_deref()) {
         return write_http_response(
             stream,
-            memory_daemon::DaemonResponse {
+            mdx_lib::memory::daemon::DaemonResponse {
                 status: 401,
                 body: serde_json::json!({
                     "ok": false,
@@ -1604,9 +1004,9 @@ fn handle_http_connection(
         );
     }
     let response =
-        match memory_daemon::dispatch(root_path, &request.method, &request.path, &request.body) {
+        match mdx_lib::memory::daemon::dispatch(root_path, &request.method, &request.path, &request.body) {
             Ok(response) => response,
-            Err(error) => memory_daemon::DaemonResponse {
+            Err(error) => mdx_lib::memory::daemon::DaemonResponse {
                 status: 500,
                 body: serde_json::json!({
                     "ok": false,
@@ -1705,7 +1105,7 @@ fn is_authorized(api_key: Option<&str>, authorization: Option<&str>) -> bool {
 
 fn write_http_response(
     stream: &mut TcpStream,
-    response: memory_daemon::DaemonResponse,
+    response: mdx_lib::memory::daemon::DaemonResponse,
 ) -> io::Result<()> {
     let status_text = match response.status {
         200 => "OK",
@@ -1726,26 +1126,6 @@ fn write_http_response(
     )?;
     stream.write_all(bytes)?;
     stream.flush()
-}
-
-fn workspace_error_response(error: mdx_lib::WorkspaceError) -> CliResponse {
-    CliResponse::error(error.error_code(), error.to_string())
-}
-
-fn record_response_with_content<T>(
-    root_path: String,
-    relative_path: String,
-    build: impl FnOnce(CliResponse) -> T,
-) -> T {
-    let response = match fs::read_to_string(PathBuf::from(root_path).join(relative_path)) {
-        Ok(content) => CliResponse {
-            ok: true,
-            content: Some(content),
-            ..CliResponse::default()
-        },
-        Err(error) => CliResponse::error("read_failed", error.to_string()),
-    };
-    build(response)
 }
 
 fn read_input_from_file_or_stdin(
@@ -1773,36 +1153,6 @@ fn read_input_from_file_or_stdin(
     };
 
     trim_required_value(&value, "content")
-}
-
-fn read_optional_input_from_file_or_inline(
-    file: Option<&str>,
-    inline: Option<&str>,
-) -> io::Result<Option<String>> {
-    if file.is_some() && inline.is_some() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "provide at most one of --body or --file",
-        ));
-    }
-
-    let value = if let Some(path) = file {
-        Some(fs::read_to_string(path)?)
-    } else {
-        inline.map(ToString::to_string)
-    };
-
-    value
-        .as_deref()
-        .map(|content| trim_required_value(content, "content"))
-        .transpose()
-}
-
-fn parse_since_arg(since: &Option<String>) -> io::Result<Option<String>> {
-    since
-        .as_deref()
-        .map(|value| trim_required_value(value, "since"))
-        .transpose()
 }
 
 fn join_required_words(words: &[String], noun: &str) -> io::Result<String> {
@@ -1860,13 +1210,7 @@ fn print_response(command: CommandLine, response: CliResponse) -> ExitCode {
         command,
         CommandLine::Content { .. }
             | CommandLine::Memory {
-                command: MemoryCommand::Working {
-                    command: MemoryWorkingCommand::Get,
-                } | MemoryCommand::Show { .. }
-                    | MemoryCommand::Thread {
-                        command: MemoryThreadCommand::Show { .. },
-                    }
-                    | MemoryCommand::Hook { .. },
+                command: MemoryCommand::Hook { .. },
                 ..
             }
             | CommandLine::LlmWiki {
@@ -1879,6 +1223,12 @@ fn print_response(command: CommandLine, response: CliResponse) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// What a successful command prints.
+///
+/// Memory commands print the response document, because their payload is
+/// whatever the memory layer returned and this CLI is read by agents and
+/// scripts before it is read by people. The exceptions are the commands whose
+/// whole answer is one piece of text.
 fn success_output(command: &CommandLine, response: &CliResponse) -> String {
     match command {
         CommandLine::Content { .. } => response.content.clone().unwrap_or_default(),
@@ -1892,77 +1242,11 @@ fn success_output(command: &CommandLine, response: &CliResponse) -> String {
             command: LlmWikiCommand::Lint { json: false },
         } => response.lint_report.clone().unwrap_or_default(),
         CommandLine::Memory {
-            command:
-                MemoryCommand::Working {
-                    command: MemoryWorkingCommand::Get,
-                }
-                | MemoryCommand::Show { .. }
-                | MemoryCommand::Thread {
-                    command: MemoryThreadCommand::Show { .. },
-                },
-            ..
-        } => response.content.clone().unwrap_or_default(),
-        CommandLine::Memory {
-            command: MemoryCommand::Recall { json: false, .. },
-            ..
-        } => response
-            .memory_recall
-            .as_ref()
-            .map(render_memory_recall)
-            .unwrap_or_default(),
-        CommandLine::Memory {
-            command: MemoryCommand::Distill { json: false, .. },
-            ..
-        } => response
-            .memory_distill
-            .as_ref()
-            .map(render_memory_distill)
-            .unwrap_or_default(),
-        CommandLine::Memory {
             command: MemoryCommand::Hook { .. },
             ..
         } => response.content.clone().unwrap_or_default(),
         _ => serde_json::to_string(response).unwrap_or_else(|_| "{\"ok\":true}".into()),
     }
-}
-
-fn render_memory_distill(result: &memory::MemoryDistillResult) -> String {
-    if result.accepted {
-        format!(
-            "distilled {} candidate(s) from {} into {} active memory record(s)",
-            result.candidate_count, result.source_thread, result.memory_count
-        )
-    } else {
-        format!(
-            "distilled {} candidate(s) from {} into {} inbox record(s)",
-            result.candidate_count, result.source_thread, result.inbox_count
-        )
-    }
-}
-
-fn render_memory_recall(result: &memory::RecallResult) -> String {
-    let mut output = String::new();
-    if let Some(working) = result.working.as_ref() {
-        output.push_str(working);
-        if !output.ends_with('\n') {
-            output.push('\n');
-        }
-    }
-    for item in &result.memories {
-        output.push_str("\n## ");
-        output.push_str(&item.title);
-        output.push('\n');
-        output.push_str(&item.snippet);
-        output.push('\n');
-    }
-    for item in &result.threads {
-        output.push_str("\n## ");
-        output.push_str(&item.title);
-        output.push('\n');
-        output.push_str(&item.path);
-        output.push('\n');
-    }
-    output
 }
 
 struct Connection {
@@ -2143,12 +1427,6 @@ mod tests {
                 std::env::remove_var("MDX_CODEX_SESSION_DIRS");
             }
         }
-    }
-
-    fn memory_fixture_path(name: &str) -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("fixtures/memory")
-            .join(name)
     }
 
     #[test]
@@ -2384,76 +1662,216 @@ mod tests {
         let command = CommandLine::Memory {
             root: None,
             command: MemoryCommand::Recall {
-                json: false,
                 limit: Some(3),
-                byte_budget: None,
-                no_working: false,
-                include_threads: true,
-                tag: None,
-                since: None,
+                max_items: Some(5),
                 query: vec!["phase".to_string(), "one".to_string()],
             },
         };
 
-        assert!(matches!(
-            request_from_command(&command).unwrap(),
-            CliRequest::MemoryRecall {
-                query,
-                limit: Some(3),
-                include_working: None,
-                include_threads: Some(true),
-                ..
-            } if query == "phase one"
-        ));
-    }
-
-    #[test]
-    fn memory_recall_no_working_passes_false_to_protocol() {
-        let command = CommandLine::Memory {
-            root: None,
-            command: MemoryCommand::Recall {
-                json: false,
-                limit: None,
-                byte_budget: None,
-                no_working: true,
-                include_threads: false,
-                tag: None,
-                since: None,
-                query: vec!["phase".to_string()],
-            },
-        };
-
-        assert!(matches!(
-            request_from_command(&command).unwrap(),
-            CliRequest::MemoryRecall {
-                include_working: Some(false),
-                ..
-            }
-        ));
-    }
-
-    #[test]
-    fn memory_index_requests_use_socket_protocol_without_root() {
-        let status = CommandLine::Memory {
-            root: None,
-            command: MemoryCommand::Index {
-                command: MemoryIndexCommand::Status,
-            },
-        };
         assert_eq!(
-            request_from_command(&status).unwrap(),
-            CliRequest::MemoryIndexStatus
+            request_from_command(&command).unwrap(),
+            CliRequest::MemoryRecall {
+                query: "phase one".to_string(),
+                limit: Some(3),
+                max_items: Some(5),
+            }
+        );
+    }
+
+    #[test]
+    fn memory_reading_requests_use_socket_protocol_without_root() {
+        let context = Cli::try_parse_from([
+            "mdx-cli",
+            "memory",
+            "context",
+            "--max-items",
+            "4",
+            "auth",
+            "flow",
+        ])
+        .unwrap();
+        assert_eq!(
+            request_from_command(&context.command).unwrap(),
+            CliRequest::MemoryContext {
+                query: "auth flow".to_string(),
+                max_items: Some(4),
+                dao_tian_limit: None,
+            }
         );
 
-        let rebuild = CommandLine::Memory {
-            root: None,
-            command: MemoryCommand::Index {
-                command: MemoryIndexCommand::Rebuild,
-            },
-        };
+        let brief = Cli::try_parse_from(["mdx-cli", "memory", "brief", "auth", "flow"]).unwrap();
         assert_eq!(
-            request_from_command(&rebuild).unwrap(),
-            CliRequest::MemoryIndexRebuild
+            request_from_command(&brief.command).unwrap(),
+            CliRequest::MemoryBrief {
+                query: "auth flow".to_string(),
+            }
+        );
+
+        let search =
+            Cli::try_parse_from(["mdx-cli", "memory", "search", "--limit", "5", "auth"]).unwrap();
+        assert_eq!(
+            request_from_command(&search.command).unwrap(),
+            CliRequest::MemorySearch {
+                query: "auth".to_string(),
+                limit: Some(5),
+                wing: None,
+                room: None,
+            }
+        );
+    }
+
+    #[test]
+    fn memory_conclusion_requests_use_socket_protocol_without_root() {
+        let distill = Cli::try_parse_from([
+            "mdx-cli",
+            "memory",
+            "distill",
+            "--statement",
+            " We use JWT ",
+            "--body",
+            "Access tokens are JWTs.",
+            "--tier",
+            "pattern",
+            "--ref",
+            "drawer-1",
+            "--ref",
+            "drawer-2",
+        ])
+        .unwrap();
+        assert_eq!(
+            request_from_command(&distill.command).unwrap(),
+            CliRequest::MemoryDistill {
+                statement: "We use JWT".to_string(),
+                body: "Access tokens are JWTs.".to_string(),
+                tier: Some("pattern".to_string()),
+                supporting_refs: vec!["drawer-1".to_string(), "drawer-2".to_string()],
+            }
+        );
+
+        let gate = Cli::try_parse_from(["mdx-cli", "memory", "gate", "drawer-1"]).unwrap();
+        assert_eq!(
+            request_from_command(&gate.command).unwrap(),
+            CliRequest::MemoryGate {
+                drawer_id: "drawer-1".to_string(),
+            }
+        );
+
+        let adopt =
+            Cli::try_parse_from(["mdx-cli", "memory", "adopt", "drawer-1", "--note", "checked"])
+                .unwrap();
+        assert_eq!(
+            request_from_command(&adopt.command).unwrap(),
+            CliRequest::MemoryAdopt {
+                drawer_id: "drawer-1".to_string(),
+                note: Some("checked".to_string()),
+            }
+        );
+
+        let demote = Cli::try_parse_from([
+            "mdx-cli",
+            "memory",
+            "demote",
+            "drawer-1",
+            "--reason-type",
+            "contradicted",
+            "--reason",
+            "the flow changed",
+            "--evidence-ref",
+            "drawer-2",
+            "--retire",
+        ])
+        .unwrap();
+        assert_eq!(
+            request_from_command(&demote.command).unwrap(),
+            CliRequest::MemoryDemote {
+                drawer_id: "drawer-1".to_string(),
+                reason_type: "contradicted".to_string(),
+                reason: "the flow changed".to_string(),
+                evidence_refs: vec!["drawer-2".to_string()],
+                retire: true,
+            }
+        );
+    }
+
+    /// Demoting a conclusion without saying what contradicts it is refused by
+    /// the parser: the evidence is the point of the record.
+    #[test]
+    fn memory_demote_requires_evidence() {
+        let error = Cli::try_parse_from([
+            "mdx-cli",
+            "memory",
+            "demote",
+            "drawer-1",
+            "--reason-type",
+            "contradicted",
+            "--reason",
+            "the flow changed",
+        ])
+        .err()
+        .expect("demoting without evidence must be refused");
+
+        assert!(error.to_string().contains("--evidence-ref"), "{error}");
+    }
+
+    /// A conclusion has to rest on material that is already stored, so the
+    /// parser will not build the request without at least one reference.
+    #[test]
+    fn memory_distill_requires_supporting_material() {
+        let error = Cli::try_parse_from([
+            "mdx-cli",
+            "memory",
+            "distill",
+            "--statement",
+            "We use JWT",
+            "--body",
+            "Access tokens are JWTs.",
+        ])
+        .err()
+        .expect("a conclusion without supporting material must be refused");
+
+        assert!(error.to_string().contains("--ref"), "{error}");
+    }
+
+    #[test]
+    fn memory_lifecycle_requests_use_socket_protocol_without_root() {
+        let model = Cli::try_parse_from(["mdx-cli", "memory", "model", "--download"]).unwrap();
+        assert_eq!(
+            request_from_command(&model.command).unwrap(),
+            CliRequest::MemoryModel { download: true }
+        );
+
+        let reindex = Cli::try_parse_from(["mdx-cli", "memory", "reindex"]).unwrap();
+        assert_eq!(
+            request_from_command(&reindex.command).unwrap(),
+            CliRequest::MemoryReindex
+        );
+
+        let list = Cli::try_parse_from([
+            "mdx-cli", "memory", "list", "--kind", "conclusion", "--status", "candidate",
+        ])
+        .unwrap();
+        assert_eq!(
+            request_from_command(&list.command).unwrap(),
+            CliRequest::MemoryList {
+                kind: Some("conclusion".to_string()),
+                status: Some("candidate".to_string()),
+                limit: None,
+            }
+        );
+
+        let delete = Cli::try_parse_from(["mdx-cli", "memory", "delete", "drawer-1"]).unwrap();
+        assert_eq!(
+            request_from_command(&delete.command).unwrap(),
+            CliRequest::MemoryDelete {
+                drawer_id: "drawer-1".to_string(),
+            }
+        );
+
+        let legacy =
+            Cli::try_parse_from(["mdx-cli", "memory", "legacy-import", "--dry-run"]).unwrap();
+        assert_eq!(
+            request_from_command(&legacy.command).unwrap(),
+            CliRequest::MemoryLegacyImport { dry_run: true }
         );
     }
 
@@ -2463,272 +1881,135 @@ mod tests {
             root: None,
             command: MemoryCommand::Export {
                 output: "memory-bundle".to_string(),
-                include_log: true,
             },
         };
         assert!(matches!(
             request_from_command(&export).unwrap(),
-            CliRequest::MemoryExport {
-                output_path,
-                include_log: true,
-            } if output_path.ends_with("memory-bundle")
+            CliRequest::MemoryExport { output_path } if output_path.ends_with("memory-bundle")
         ));
 
         let import = CommandLine::Memory {
             root: None,
             command: MemoryCommand::Import {
                 input: "memory-bundle".to_string(),
-                strategy: "skip".to_string(),
-                dry_run: true,
             },
         };
         assert!(matches!(
             request_from_command(&import).unwrap(),
-            CliRequest::MemoryImport {
-                input_path,
-                strategy,
-                dry_run: true,
-            } if input_path.ends_with("memory-bundle") && strategy == "skip"
+            CliRequest::MemoryImport { input_path } if input_path.ends_with("memory-bundle")
         ));
     }
 
     #[test]
-    fn memory_inbox_requests_use_socket_protocol_without_root() {
-        let list = CommandLine::Memory {
-            root: None,
-            command: MemoryCommand::Inbox {
-                command: MemoryInboxCommand::List {
-                    include_reviewed: true,
-                    json: true,
-                },
-            },
-        };
+    fn memory_promote_request_accepts_a_positional_or_flagged_target() {
+        let positional = Cli::try_parse_from(["mdx-cli", "memory", "promote", "drawer-1"]).unwrap();
         assert_eq!(
-            request_from_command(&list).unwrap(),
-            CliRequest::MemoryInboxList {
-                include_reviewed: true
-            }
-        );
-
-        let accept = CommandLine::Memory {
-            root: None,
-            command: MemoryCommand::Inbox {
-                command: MemoryInboxCommand::Accept {
-                    inbox_id: "inbox_1".to_string(),
-                    title: Some("Reviewed".to_string()),
-                    file: None,
-                    body: Some("Accepted body".to_string()),
-                },
-            },
-        };
-        assert_eq!(
-            request_from_command(&accept).unwrap(),
-            CliRequest::MemoryInboxAccept {
-                inbox_id: "inbox_1".to_string(),
-                title: Some("Reviewed".to_string()),
-                body: Some("Accepted body".to_string()),
-                tags: None,
-            }
-        );
-
-        let reject = CommandLine::Memory {
-            root: None,
-            command: MemoryCommand::Inbox {
-                command: MemoryInboxCommand::Reject {
-                    inbox_id: "inbox_1".to_string(),
-                },
-            },
-        };
-        assert_eq!(
-            request_from_command(&reject).unwrap(),
-            CliRequest::MemoryInboxReject {
-                inbox_id: "inbox_1".to_string(),
-            }
-        );
-    }
-
-    #[test]
-    fn memory_distill_request_uses_socket_protocol_without_root() {
-        let command = CommandLine::Memory {
-            root: None,
-            command: MemoryCommand::Distill {
-                target: "codex:abc123".to_string(),
-                accept: true,
-                force: true,
-                json: true,
-            },
-        };
-
-        assert_eq!(
-            request_from_command(&command).unwrap(),
-            CliRequest::MemoryDistill {
-                target: "codex:abc123".to_string(),
-                accept: Some(true),
-                force: Some(true),
-            }
-        );
-    }
-
-    #[test]
-    fn memory_promote_request_accepts_target_or_legacy_thread_flag() {
-        let parsed = Cli::try_parse_from(["mdx-cli", "memory", "promote", "mem_1"]).unwrap();
-        assert_eq!(
-            request_from_command(&parsed.command).unwrap(),
+            request_from_command(&positional.command).unwrap(),
             CliRequest::MemoryPromote {
-                target: "mem_1".to_string(),
-                ingest: Some(false),
-                title: None,
-            }
-        );
-
-        let legacy_parsed =
-            Cli::try_parse_from(["mdx-cli", "memory", "promote", "--thread", "cursor:abc123"])
-                .unwrap();
-        assert_eq!(
-            request_from_command(&legacy_parsed.command).unwrap(),
-            CliRequest::MemoryPromote {
-                target: "cursor:abc123".to_string(),
-                ingest: Some(false),
-                title: None,
-            }
-        );
-
-        let positional = CommandLine::Memory {
-            root: None,
-            command: MemoryCommand::Promote {
-                target: Some("mem_1".to_string()),
-                target_flag: None,
-                ingest: true,
-                title: Some("Promoted".to_string()),
-            },
-        };
-        assert_eq!(
-            request_from_command(&positional).unwrap(),
-            CliRequest::MemoryPromote {
-                target: "mem_1".to_string(),
-                ingest: Some(true),
-                title: Some("Promoted".to_string()),
-            }
-        );
-
-        let legacy = CommandLine::Memory {
-            root: None,
-            command: MemoryCommand::Promote {
-                target: None,
-                target_flag: Some("cursor:abc123".to_string()),
+                target: "drawer-1".to_string(),
                 ingest: false,
                 title: None,
-            },
-        };
+            }
+        );
+
+        let flagged = Cli::try_parse_from([
+            "mdx-cli",
+            "memory",
+            "promote",
+            "--target",
+            "drawer-1",
+            "--ingest",
+            "--title",
+            "Promoted",
+        ])
+        .unwrap();
         assert_eq!(
-            request_from_command(&legacy).unwrap(),
+            request_from_command(&flagged.command).unwrap(),
             CliRequest::MemoryPromote {
-                target: "cursor:abc123".to_string(),
-                ingest: Some(false),
-                title: None,
+                target: "drawer-1".to_string(),
+                ingest: true,
+                title: Some("Promoted".to_string()),
             }
         );
     }
 
     #[test]
     fn memory_capture_requests_use_socket_protocol_without_root() {
-        let import = CommandLine::Memory {
-            root: None,
-            command: MemoryCommand::Capture {
-                command: MemoryCaptureCommand::Import {
-                    source: " codex ".to_string(),
-                    file: "/tmp/codex-session.jsonl".to_string(),
-                    thread_id: Some("codex:fixture-1".to_string()),
-                    title: Some(" Codex fixture ".to_string()),
-                    distill: true,
-                },
-            },
-        };
+        let scan = Cli::try_parse_from([
+            "mdx-cli",
+            "memory",
+            "capture",
+            "scan",
+            "--path",
+            "/tmp/ws/notes",
+        ])
+        .unwrap();
         assert_eq!(
-            request_from_command(&import).unwrap(),
+            request_from_command(&scan.command).unwrap(),
+            CliRequest::MemoryCaptureScan {
+                path: "/tmp/ws/notes".to_string(),
+            }
+        );
+
+        let import = Cli::try_parse_from([
+            "mdx-cli",
+            "memory",
+            "capture",
+            "import",
+            "--path",
+            "/tmp/ws/notes/session.md",
+        ])
+        .unwrap();
+        assert_eq!(
+            request_from_command(&import.command).unwrap(),
             CliRequest::MemoryCaptureImport {
-                source: "codex".to_string(),
-                path: "/tmp/codex-session.jsonl".to_string(),
-                title: Some("Codex fixture".to_string()),
-                thread_id: Some("codex:fixture-1".to_string()),
-                distill: true,
-            }
-        );
-
-        let scan = CommandLine::Memory {
-            root: None,
-            command: MemoryCommand::Capture {
-                command: MemoryCaptureCommand::Scan {
-                    source: "codex".to_string(),
-                    import_threads: false,
-                    distill: false,
-                },
-            },
-        };
-        assert_eq!(
-            request_from_command(&scan).unwrap(),
-            CliRequest::MemoryCaptureScan {
-                source: "codex".to_string(),
-                import_threads: false,
-                distill: false,
+                path: "/tmp/ws/notes/session.md".to_string(),
             }
         );
     }
 
     #[test]
-    fn memory_capture_scan_accepts_import_and_distill_flags() {
-        let scan = CommandLine::Memory {
-            root: None,
-            command: MemoryCommand::Capture {
-                command: MemoryCaptureCommand::Scan {
-                    source: " codex ".to_string(),
-                    import_threads: true,
-                    distill: true,
-                },
-            },
-        };
-
-        assert_eq!(
-            request_from_command(&scan).unwrap(),
-            CliRequest::MemoryCaptureScan {
-                source: "codex".to_string(),
-                import_threads: true,
-                distill: true,
-            }
-        );
-    }
-
-    #[test]
-    fn memory_thread_save_request_reads_file_body() {
+    fn memory_add_request_reads_the_body_from_a_file() {
         let root = TempDir::new().unwrap();
-        let body_path = root.path().join("thread.md");
-        fs::write(&body_path, "Thread transcript").unwrap();
+        let body_path = root.path().join("decision.md");
+        fs::write(&body_path, "We chose SQLite.").unwrap();
         let command = CommandLine::Memory {
             root: None,
-            command: MemoryCommand::Thread {
-                command: MemoryThreadCommand::Save {
-                    source: "manual".to_string(),
-                    thread_id: Some("thread-1".to_string()),
-                    title: "Decision".to_string(),
-                    body: None,
-                    file: Some(body_path.to_string_lossy().into_owned()),
-                    stdin: false,
-                },
+            command: MemoryCommand::Add {
+                body: None,
+                file: Some(body_path.to_string_lossy().into_owned()),
+                stdin: false,
+                source: Some(" meeting-notes ".to_string()),
             },
         };
 
-        assert!(matches!(
+        assert_eq!(
             request_from_command(&command).unwrap(),
-            CliRequest::MemoryThreadSave {
-                source,
-                thread_id,
-                title,
-                body,
-            } if source == "manual"
-                && thread_id == Some("thread-1".to_string())
-                && title == "Decision"
-                && body == "Thread transcript"
-        ));
+            CliRequest::MemoryAdd {
+                body: "We chose SQLite.".to_string(),
+                source: Some("meeting-notes".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn memory_add_rejects_two_sources_of_the_same_body() {
+        let command = CommandLine::Memory {
+            root: None,
+            command: MemoryCommand::Add {
+                body: Some("inline".to_string()),
+                file: Some("/tmp/body.md".to_string()),
+                stdin: false,
+                source: None,
+            },
+        };
+
+        let error = request_from_command(&command).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(
+            error.to_string(),
+            "provide exactly one of --body, --file, or --stdin"
+        );
     }
 
     #[test]
@@ -2760,46 +2041,32 @@ mod tests {
             .contains("memory status --agent requires --root <workspace>"));
     }
 
+    /// A memory command prints the response document, payload and all: its
+    /// readers are agents and scripts, and the payload is the memory layer's
+    /// own, not a shape this CLI restates.
     #[test]
-    fn memory_working_get_default_output_is_markdown_only() {
+    fn memory_output_is_the_response_document() {
         let command = CommandLine::Memory {
             root: None,
-            command: MemoryCommand::Working {
-                command: MemoryWorkingCommand::Get,
+            command: MemoryCommand::Show {
+                drawer_id: "drawer-1".to_string(),
             },
         };
         let response = CliResponse {
             ok: true,
-            content: Some("# Working Memory\n".to_string()),
-            ..CliResponse::default()
-        };
-
-        assert_eq!(success_output(&command, &response), "# Working Memory\n");
-    }
-
-    #[test]
-    fn memory_index_status_output_uses_structured_response_json() {
-        let command = CommandLine::Memory {
-            root: None,
-            command: MemoryCommand::Index {
-                command: MemoryIndexCommand::Status,
-            },
-        };
-        let response = CliResponse {
-            ok: true,
-            memory_index_status: Some(memory::MemoryIndexStatus {
-                index_status: "clean".to_string(),
-                document_count: 1,
-                dirty: false,
-            }),
+            memory: Some(serde_json::json!({
+                "drawerId": "drawer-1",
+                "kind": "material",
+            })),
             ..CliResponse::default()
         };
 
         assert_eq!(
             success_output(&command, &response),
-            r#"{"ok":true,"memory_index_status":{"index_status":"clean","document_count":1,"dirty":false}}"#
+            r#"{"ok":true,"memory":{"drawerId":"drawer-1","kind":"material"}}"#
         );
     }
+
 
     #[test]
     fn serve_authorization_requires_matching_bearer_token_when_configured() {
@@ -2831,7 +2098,6 @@ mod tests {
         }
 
         let root = TempDir::new().unwrap();
-        memory::memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
         let root_path = root.path().to_string_lossy().into_owned();
 
         let unauthorized = request(
@@ -2841,68 +2107,32 @@ mod tests {
         );
         assert!(unauthorized.starts_with("HTTP/1.1 401 Unauthorized"));
 
+        // An unknown path proves the key was accepted without opening the
+        // library: a bin test has no scratch memory home, and a request that
+        // reached the engine would touch the developer's own `~/.mdx`.
         let authorized = request(
             root_path,
             Some("secret"),
-            "GET /memory/status HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer secret\r\n\r\n",
+            "GET /not-a-route HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer secret\r\n\r\n",
         );
-        assert!(authorized.starts_with("HTTP/1.1 200 OK"));
-        assert!(authorized.contains("\"ok\":true"));
+        assert!(authorized.starts_with("HTTP/1.1 404"), "{authorized}");
+        assert!(authorized.contains("not_found"), "{authorized}");
     }
 
+    /// The commands that carry a workspace root still reach the memory
+    /// executor; the executor itself is covered where a scratch memory home
+    /// can be arranged, since running one of these for real would open the
+    /// library in the developer's own home.
     #[test]
-    fn memory_headless_preserves_workspace_error_code() {
-        let root = TempDir::new().unwrap();
-        memory::memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
-        memory::memory_thread_save(
-            root.path().to_string_lossy().into_owned(),
-            memory::ThreadSaveRequest {
-                source: "manual".to_string(),
-                thread_id: Some("thread-1".to_string()),
-                title: "Thread".to_string(),
-                body: "Thread body".to_string(),
-                started_at: None,
-                ended_at: None,
-                model: None,
-                workspace_root: None,
-                tags: Vec::new(),
-            },
-        )
-        .unwrap();
-        let command = CommandLine::Memory {
-            root: Some(root.path().to_string_lossy().into_owned()),
-            command: MemoryCommand::Promote {
-                target: Some("thread-1".to_string()),
-                target_flag: None,
-                ingest: true,
-                title: None,
-            },
-        };
-
-        let response =
-            execute_memory_headless(&command, root.path().to_string_lossy().into_owned()).unwrap();
-
-        assert!(!response.ok);
-        assert_eq!(response.error_code.as_deref(), Some("llm_wiki_not_ready"));
-    }
-
-    #[test]
-    fn memory_capture_scan_headless_returns_not_configured() {
+    fn memory_headless_execution_routes_agent_commands_before_the_library() {
         let root = TempDir::new().unwrap();
         let home = TempDir::new().unwrap();
-        let _env = CodexCaptureEnvGuard::use_home_and_session_dirs(
-            home.path(),
-            home.path().join("missing-sessions").as_os_str(),
-        );
-        memory::memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
+        let _env = CodexCaptureEnvGuard::use_home_and_session_dirs(home.path(), "");
         let command = CommandLine::Memory {
             root: Some(root.path().to_string_lossy().into_owned()),
-            command: MemoryCommand::Capture {
-                command: MemoryCaptureCommand::Scan {
-                    source: "codex".to_string(),
-                    import_threads: false,
-                    distill: false,
-                },
+            command: MemoryCommand::Status {
+                json: false,
+                agent: Some("codex".to_string()),
             },
         };
 
@@ -2910,105 +2140,9 @@ mod tests {
             execute_memory_headless(&command, root.path().to_string_lossy().into_owned()).unwrap();
 
         assert!(response.ok);
-        assert_eq!(
-            response.memory_capture_scan.unwrap().status,
-            "capture_scan_not_configured"
-        );
-    }
-
-    #[test]
-    fn memory_capture_scan_headless_imports_codex_threads() {
-        let root = TempDir::new().unwrap();
-        let home = TempDir::new().unwrap();
-        let sessions = TempDir::new().unwrap();
-        memory::memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
-        let rollout_path = sessions.path().join("rollout-real-session.jsonl");
-        fs::copy(
-            memory_fixture_path("codex-real-session.jsonl"),
-            &rollout_path,
-        )
-        .unwrap();
-        let _env = CodexCaptureEnvGuard::use_home_and_session_dirs(
-            home.path(),
-            sessions.path().as_os_str(),
-        );
-        let command = CommandLine::Memory {
-            root: Some(root.path().to_string_lossy().into_owned()),
-            command: MemoryCommand::Capture {
-                command: MemoryCaptureCommand::Scan {
-                    source: "codex".to_string(),
-                    import_threads: true,
-                    distill: false,
-                },
-            },
-        };
-
-        let response =
-            execute_memory_headless(&command, root.path().to_string_lossy().into_owned()).unwrap();
-
-        assert!(response.ok);
-        let scan = response.memory_capture_scan.unwrap();
-        assert_eq!(scan.status, "configured");
-        assert_eq!(
-            scan.paths,
-            vec![std::fs::canonicalize(&rollout_path)
-                .unwrap()
-                .to_string_lossy()
-                .into_owned()]
-        );
-        let threads = memory::memory_thread_list(
-            root.path().to_string_lossy().into_owned(),
-            memory::ThreadListFilter {
-                source: Some("codex".to_string()),
-                since: None,
-            },
-        )
-        .unwrap();
-        assert_eq!(threads.len(), 1);
-        let thread = memory::memory_thread_get(
-            root.path().to_string_lossy().into_owned(),
-            threads[0].thread_id.clone(),
-        )
-        .unwrap();
-        assert!(thread.body.contains("## Raw Codex JSONL"));
-        assert!(thread
-            .body
-            .contains("Please preserve this real Codex user text."));
-    }
-
-    #[test]
-    fn memory_capture_scan_headless_reports_distill_failure() {
-        let root = TempDir::new().unwrap();
-        let home = TempDir::new().unwrap();
-        let sessions = TempDir::new().unwrap();
-        memory::memory_initialize_workspace(root.path().to_string_lossy().into_owned()).unwrap();
-        let rollout_path = sessions.path().join("rollout-real-session.jsonl");
-        fs::copy(
-            memory_fixture_path("codex-real-session.jsonl"),
-            &rollout_path,
-        )
-        .unwrap();
-        let _env = CodexCaptureEnvGuard::use_home_and_session_dirs(
-            home.path(),
-            sessions.path().as_os_str(),
-        );
-        let command = CommandLine::Memory {
-            root: Some(root.path().to_string_lossy().into_owned()),
-            command: MemoryCommand::Capture {
-                command: MemoryCaptureCommand::Scan {
-                    source: "codex".to_string(),
-                    import_threads: true,
-                    distill: true,
-                },
-            },
-        };
-
-        let response =
-            execute_memory_headless(&command, root.path().to_string_lossy().into_owned()).unwrap();
-
-        assert!(!response.ok);
-        assert!(response.error_code.is_some());
-        assert!(response.memory_capture_scan.is_none());
+        let statuses = response.memory_integrations.expect("agent statuses");
+        assert_eq!(statuses.len(), 1);
+        assert!(response.memory.is_none());
     }
 
     #[test]
@@ -3039,57 +2173,68 @@ mod tests {
             .find(|change| change.path.ends_with(".codey/skills/mdx-memory/SKILL.md"))
             .expect("codex skill change");
         assert!(skill.contents.contains("## Agent-Time Memory Extraction"));
+        // The skill has to teach the two layers, because an agent that thinks
+        // storing material is the same as asserting a conclusion will fill the
+        // library with claims nobody made.
         assert!(skill
             .contents
-            .contains("Extract and write durable memories during active conversation turns"));
-        assert!(skill.contents.contains(
-            "Proactively save clear, durable, low-risk facts, preferences, decisions, project constraints, and reusable lessons with `memory_add` during the active turn."
-        ));
+            .contains("Material is a record, not a claim"));
         assert!(skill
             .contents
-            .contains("Ask before saving sensitive or uncertain information."));
-        assert!(skill.contents.contains(
-            "When the `memory_inbox_add` MCP tool is available, use it to create inbox review candidates for sensitive or uncertain information"
-        ));
+            .contains("reaches nobody's context until a person adopts it"));
         assert!(skill
             .contents
-            .contains("Do not wait for background capture, thread archival, or pre-compact hooks"));
-        assert!(skill.contents.contains("## Conversation"));
-        assert!(skill.contents.contains("## Raw Codex JSONL"));
-        assert!(!skill.contents.contains("readable `## Message N` sections"));
+            .contains("Do not adopt on the user's behalf without asking."));
+        assert!(skill
+            .contents
+            .contains("deleted afterwards but never unremembered"));
+        assert!(skill
+            .contents
+            .contains("Do not wait for background capture"));
+        // Nothing may keep teaching the abandoned model.
+        for gone in ["memory_working_get", "memory_inbox_add", "inbox review candidates"] {
+            assert!(
+                !skill.contents.contains(gone),
+                "the installed skill still teaches {gone}"
+            );
+        }
+        assert!(skill.contents.contains("## Keeping A Whole Conversation"));
+        assert!(
+            skill.contents.contains("stored verbatim with its source"),
+            "a transcript is material, and the skill has to say so"
+        );
+        for gone in ["## Full Thread Archival", "thread save", "Raw Codex JSONL"] {
+            assert!(
+                !skill.contents.contains(gone),
+                "the installed skill still describes the thread layer: {gone}"
+            );
+        }
         let claude = changes
             .iter()
             .find(|change| change.path.ends_with(".claude/CLAUDE.md"))
             .expect("claude memory block change");
-        assert!(claude.contents.contains("during active conversation turns"));
-        assert!(claude.contents.contains("clear, durable, low-risk facts"));
-        assert!(claude
-            .contents
-            .contains("Ask before saving sensitive or uncertain information"));
-        assert!(claude
-            .contents
-            .contains("use the `memory_inbox_add` MCP tool to create inbox review candidates for sensitive or uncertain information"));
-        assert!(claude
-            .contents
-            .contains("Do not wait for background capture, thread archival, or pre-compact hooks"));
+        assert!(claude.contents.contains("cite what you use"));
+        assert!(claude.contents.contains("only a person can adopt"));
+        assert!(claude.contents.contains("capture is one-way"));
+        for gone in ["memory_working_get", "memory_inbox_add"] {
+            assert!(
+                !claude.contents.contains(gone),
+                "the installed Claude block still teaches {gone}"
+            );
+        }
         let cursor = changes
             .iter()
             .find(|change| change.path.ends_with(".cursor/rules/mdx-memory.mdc"))
             .expect("cursor memory rule change");
-        assert!(cursor.contents.contains("during active conversation turns"));
-        assert!(cursor.contents.contains("clear, durable, low-risk facts"));
-        assert!(cursor
-            .contents
-            .contains("Ask before saving sensitive or uncertain information"));
-        assert!(cursor
-            .contents
-            .contains("use the `memory_inbox_add` MCP tool to create inbox review candidates for sensitive or uncertain information"));
-        assert!(cursor.contents.contains(
-            "When practical, call `memory_search` before `memory_add` to avoid duplicate memories."
-        ));
-        assert!(cursor
-            .contents
-            .contains("Do not wait for background capture, thread archival, or pre-compact hooks"));
+        assert!(cursor.contents.contains("cite what you use"));
+        assert!(cursor.contents.contains("only a person can adopt"));
+        assert!(cursor.contents.contains("capture is one-way"));
+        for gone in ["memory_working_get", "memory_inbox_add"] {
+            assert!(
+                !cursor.contents.contains(gone),
+                "the installed Cursor rule still teaches {gone}"
+            );
+        }
         assert!(summary.contains("would_write"));
         assert!(summary.contains(".codey/config.toml"));
         assert!(summary.contains(".claude/hooks/hooks.json"));
@@ -3173,7 +2318,11 @@ mod tests {
         assert!(mcp.contains("\"mdx-memory\""));
         assert!(mcp.contains("/tmp/mdx-mcp"));
         let hook = fs::read_to_string(home.path().join(".mdx-memory-precompact-hook.mjs")).unwrap();
-        assert!(hook.contains("\"distill\""));
-        assert!(hook.contains("\"--accept\""));
+        assert!(hook.contains("\"capture\""));
+        assert!(hook.contains("\"import\""));
+        assert!(hook.contains("\"--path\""));
+        // The hook must not decide what a compressed conversation meant.
+        assert!(!hook.contains("\"distill\""));
+        assert!(!hook.contains("\"--accept\""));
     }
 }

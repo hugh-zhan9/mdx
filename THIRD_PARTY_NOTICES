@@ -326,7 +326,17 @@ other strong-copyleft licence appears anywhere in the tree.
 Not covered here, and outstanding before release:
 
   - Rust crate dependencies under src-tauri/, which have their own licences and
-    require a separate inventory.
+    require a separate inventory. Two of them were added deliberately for the
+    memory engine and are recorded here ahead of that inventory:
+
+      mempal-runtime 0.9.0 — MIT — https://github.com/ZhangHanDong/mempal
+        Depended on as a published library crate. No upstream source is copied
+        or vendored into this repository; ref/mempal is a local read-only
+        checkout used for reading, excluded from the build by .gitignore.
+
+      hf-hub 0.4.3 — Apache-2.0 — https://github.com/huggingface/hf-hub
+        Used only to download the embedding model into ~/.mdx/models/ when the
+        user asks for it.
   - Development-only dependencies, which are not distributed.
 
 The listing errs toward over-inclusion: it names packages reachable in the

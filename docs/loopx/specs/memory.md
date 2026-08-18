@@ -1,372 +1,142 @@
-# Memory Layer Workflow Contracts
+# Memory Layer Contracts
 
-> Memory 层与 LLM Wiki 层 **并列**。本文档只描述 Memory 层契约；Wiki 契约见 [llm-wiki.md](./llm-wiki.md)。
+> Memory 层与 LLM Wiki 层**并列**。本文档只描述 Memory 层契约；Wiki 契约见 [llm-wiki.md](./llm-wiki.md)。
 >
-> 使用说明见 [memory-usage.md](../../memory-usage.md)。
+> 使用说明见 [memory-usage.md](../../memory-usage.md)。设计与裁决见
+> [2026-08-17-memory-engine-adoption](../design/2026-08-17-memory-engine-adoption/)。
 
-## Layers
+## 模型
 
-| 层 | 路径 | 职责 |
+记忆有两层，界面上叫「素材」和「结论」：
+
+| 层 | 是什么 | 谁会读到 |
 |---|---|---|
-| **Memory — Threads** | `memory/threads/` | 完整 AI 对话原文；按全量快照替换；Agent recall 默认 **不** 注入全文 |
-| **Memory — Memories** | `memory/memories/` | 原子记忆；Agent recall 的主检索对象 |
-| **Memory — Working** | `memory/working.md` | 当前关注；session 启动优先读取 |
-| **Memory — Inbox** | `memory/inbox/` | 待确认记忆（自动蒸馏时使用） |
-| **Memory — Rules** | `memory/MEMORY.md` | Memory 层 schema 与 Agent 规则 |
-| **LLM Wiki — Raw** | `raw/` | 一手素材；ingest 时读取；**query 时不读** |
-| **LLM Wiki — Wiki** | `wiki/` | 长期知识页；`llm-wiki query` 读取 |
+| 素材（evidence） | 发生过的事，原文入库，带出处 | 检索命中时 |
+| 结论（knowledge） | 从素材得出的判断，有状态 | **被采纳之后**才进 agent 的运行时上下文 |
 
-## Boundary Rules
+素材进库不需要谁批准；结论要经人采纳才生效。被抛弃的三个旧概念——inbox（待确认）、working context、Markdown 投影——不存在，也没有等价物。
 
-1. `mdx-cli memory *` 与 `mdx-cli llm-wiki *` 命令 **平级**，无包含关系。
-2. `llm-wiki query` **不得** 默认读取 `memory/threads/` 全文。
-3. `memory recall` **不得** 默认读取 `wiki/` 全文；需要深度/wiki 知识时调用方显式调用 `llm-wiki query`。
-4. Thread → Wiki 只能通过 `memory promote`（复制到 `raw/promoted/` 后可选 ingest）。
-5. In agent-backend mode, the runtime database is the source of truth; Markdown under `memory/**` is an async readable projection and import/export compatibility layer.
-6. MDX Memory is an external agent backend for Codex, Claude, and Cursor. Manual UI editing is a fallback and review surface, not the primary product workflow.
-7. Hard shutdown must stop new writes for the disabled feature without deleting historical DB records or Markdown projection files.
+## 存储
 
-## Thread Contract
+- 全局单库 `~/.mdx/memory/palace.db`，由 mempal 的 SQLite 存储层管理，schema 版本由上游决定。
+- 工作区绝对路径 → 项目（wing）的绑定记在 `~/.mdx/memory/wings.json`；项目名是「目录名 + 路径哈希前 6 位」，同名目录不会合并成一个项目。
+- 工作区改名或移动后不自动认亲，需要显式重绑。
+- 库比本版新（schema 不兼容）时整体只读并明确报错，**不自动迁移**。
+- 库不可写时记忆整体停用，编辑器不受影响。
+- 进程内一个库句柄，读写排队通过；跨进程只有 SQLite 写锁与上游 per-source 咨询锁。
+- 只有 SQLite 一个后端。
 
-### Path
+## 嵌入模型
 
-```
-memory/threads/{source}/{yyyy-mm-dd}-{thread_id}.md
-```
+- 模型文件在 `~/.mdx/models/<slug>/`，需要 `tokenizer.json`、`model.safetensors`、`config.json` 三件齐全。
+- 齐全 → 零网络加载；不齐全 → `embedding_model_missing`，**写入与语义检索都不可用**，不降级成关键词模式。
+- 下载是用户显式确认后的动作：下到临时目录，三件齐全再原子移入。
+- 换模型或维度不符要走一次全量重嵌（`memory_reindex`）。
 
-`source`: `codex` | `cursor` | `claude-code` | `import` | `manual`
+## 素材写入
 
-### Required Frontmatter
+三个入口，字段口径一致：
 
-```yaml
-schema_version: 1
-kind: thread
-thread_id: string        # stable id, e.g. "cursor:abc123"
-source: string
-title: string
-content_hash: string     # sha256 of normalized body
-```
+| 入口 | source_type | room | importance |
+|---|---|---|---|
+| 文件 / 目录 | 上游按格式判定 | 相对工作区根的首段目录，根目录下的文件用 `root` | 0 |
+| 会话转录 | Conversation | `session` | 1 |
+| 人工记录（含采纳确认、反例） | Manual | `note` / `review` | 1 |
 
-### Optional Frontmatter
+- 身份是内容寻址的：同内容同来源写两次只有一条，并发写也只有一条。
+- 我们自己拼装的条目显式带 `worktree://<工作区绝对路径>` 锚点；经上游 `ingest_file` 写入的文件素材带 `repo://legacy`，这不影响检索（上下文锚点链有 legacy 兜底），但项目路径的可发现性依赖前者。
+- 素材进库后只能 soft-delete，`memory_purge` 才彻底清除。**没有入库前的等待区**。
 
-```yaml
-started_at, ended_at, message_count, model, workspace_root, tags
-distilled: bool
-promoted_to_wiki: bool
-archived: bool
-continues_from: string   # previous thread file path
-```
+## 捕获
 
-### Body
+- 默认关闭，且只接受工作区配置里显式列出的 agent。
+- 关闭或来源未列入时，捕获路径不写库、不写 spool、不排队，返回「未捕获」而不是失败。
 
-- Messages as `## Message N — role — timestamp` sections.
-- Full conversation content must be preserved (product requirement).
-
-### Write Semantics
-
-- New `thread_id` -> create file.
-- Existing `thread_id` + new `content_hash` -> overwrite the indexed snapshot file in place.
-- Same `thread_id` + same `content_hash` -> skip (idempotent).
-- Updates must append to `log.md` with event `thread_save`.
-- Unknown sources must fail with `invalid_thread_source`.
-
-## Memory Contract
-
-### Path
+## 结论生命周期
 
 ```
-memory/memories/{yyyy-mm-dd}-{slug}[-n].md
+素材 → memory_distill（引用素材 id）→ 候选结论
+     → memory_adopt（写人工确认证据 + 过门禁）→ 已采纳
+     → memory_retire（带证据与理由类型）→ 已降级 / 已退役
 ```
 
-When a same-day slug collision exists, writers must allocate the next numeric suffix using atomic create-new semantics. Existing memory records must not be overwritten by `memory add`.
+- 可创建的层级只有两档：`concrete`（上游 `qi`）与 `pattern`（上游 `dao_ren`，门槛 ≥2 条支持证据）。上游的 `shu` / `dao_tian` 在 distill 阶段被拒绝，本产品不产生。
+- 采纳会先写一条人工确认素材（含时间、确认人、结论 id、被复核的证据、可选备注），再作为验证证据提升。`enforce_gate` 恒为 true，`allow_counterexamples` 恒为 false。
+- **不做批量采纳。**
+- 门禁失败时把上游 `GateReport.reasons` 原样返回，不改写、不吞掉。
+- 退役必须给证据引用与理由类型，理由类型只能是 `contradicted` / `obsolete` / `superseded` / `out_of_scope` / `unsafe`。
+- 反例通过独立入口写入并挂到结论上；挂上之后该结论提不上去。
 
-### Required Frontmatter
+## 读取
 
-```yaml
-schema_version: 1
-kind: memory
-memory_id: string
-title: string
-status: active | inbox | archived
-created_at: ISO8601
-```
-
-### Recommended Frontmatter
-
-```yaml
-source_thread: string    # path to thread file when one exists; manual memories may omit it
-importance: float        # 0.0–1.0
-tags: [string]
-evolves_from: string     # prior memory_id
-confidence: float
-```
-
-### Body
-
-- Short, prompt-injectable prose.
-- May include wikilinks to wiki pages; must not auto-create wiki files.
-
-## Working Memory Contract
-
-- Single file: `memory/working.md`
-- Updated via `memory working get|set|append`
-- Included in `memory recall` when `include_working: true` (default)
-
-## Recall Contract
-
-### Input
-
-```json
-{
-  "query": "string",
-  "limit": 10,
-  "byte_budget": 65536,
-  "include_working": true,
-  "include_threads": false,
-  "tag": "optional string",
-  "since": "optional ISO8601"
-}
-```
-
-### Output
-
-```json
-{
-  "working": "string or null",
-  "memories": [
-    {
-      "memory_id": "string",
-      "title": "string",
-      "path": "string",
-      "snippet": "string",
-      "score": 0.0,
-      "importance": 0.0
-    }
-  ],
-  "threads": [
-    {
-      "path": "string",
-      "memory_id": "thread_id",
-      "title": "string",
-      "status": "active | archived",
-      "created_at": "string",
-      "tags": []
-    }
-  ],
-  "truncated": false,
-  "byte_count": 0
-}
-```
-
-### Retrieval
-
-- Scan `memory/memories/` with substring match + tag filter.
-- When `limit` or `byte_budget` is omitted, read defaults from `.mdx/memory-config.json`.
-- Sort by score (importance × recency decay).
-- Do **not** scan thread bodies.
-- Use `.mdx/search.sqlite` as a rebuildable projection when available; fallback scan must return a degraded warning instead of failing recall.
-- When `include_threads: true`, return matching thread summaries by title, thread id, or path. Thread body text is not injected into recall output by default.
-- Optional vector rerank may be enabled by config, using the configured runtime source of truth.
-
-## Agent-Time Extraction Contract
-
-- Agent integrations must treat Memory extraction as part of the active conversation turn, not only as a background distill or thread-archival workflow.
-- At the start of a conversation or task, agents should call `memory_recall` when prior context may affect the answer or implementation.
-- During the turn, agents may call `memory_add` for clear, durable, low-risk user preferences, facts, decisions, project constraints, or reusable lessons.
-- Agents should call `memory_search` before `memory_add` when duplicate risk exists.
-- Sensitive, private, uncertain, speculative, or low-confidence candidates must not be written directly as durable memories. Agents should ask the user first or call `memory_inbox_add` to create a review candidate.
-- Inbox review is explicit: `memory_inbox_add` creates a candidate, `memory_inbox_list` reviews candidates, and `memory_inbox_accept` promotes a reviewed candidate to durable memory.
-- `memory_distill` remains a thread/background workflow and fallback safety net. It is not the only valid Memory extraction path.
-
-## Agent Backend Contract
-
-- Supported agent ids are `codex`, `claude`, and `cursor`.
-- Agent integrations may use hooks, MCP tools, CLI commands, or the local daemon. All surfaces must route through the Memory facade and preserve workspace path guards and locks.
-- Hook capture persists raw hook payloads as agent events. Distilled memories are derived records; they must not replace full thread/event archival.
-- Hook execution must stay lightweight. Provider calls and distill work happen outside the hook path through queued/background work.
-- If capture is disabled, hook handling must not write DB records, spool files, queue jobs, or projection files.
-- If recall injection is disabled, hook handling may still capture events but must return empty additional context.
-- If a per-agent integration is disabled, that agent must not create new capture/distill writes through automatic hooks.
-
-## Inbox Contract
-
-- Path: `memory/inbox/{yyyy-mm-dd}-{slug}[-n].md`
-- Distill and capture write candidates to inbox by default.
-- `memory inbox list` excludes reviewed records unless requested.
-- `memory inbox accept <inbox_id>` creates an active memory, marks the inbox record accepted, and is idempotent for an already accepted record.
-- `memory inbox reject <inbox_id>` marks the inbox record rejected without creating active memory.
-
-## Index Contract
-
-- Rebuild command: `mdx-cli memory index rebuild`.
-- Status command: `mdx-cli memory index status`.
-- SQLite path: `.mdx/search.sqlite`.
-- In agent-backend mode, the runtime database is the source of truth; Markdown under `memory/**` is an async readable projection and import/export compatibility layer.
-- Existing Markdown-first workspaces must be imported into the runtime database before DB-first writes begin.
-- If DB records and Markdown projection disagree, repair/rebuild uses DB records as canonical and reports projection conflicts.
-- Rebuild scans canonical sources and can restore a missing or dirty projection.
-- If a Markdown source write succeeds but SQLite projection sync fails, persist an out-of-band dirty marker outside SQLite.
-- Recall/search/status must treat a dirty marker or non-clean index status as degraded even when `.mdx/search.sqlite` is readable, and recall must fallback to Markdown with `index_degraded=true`.
-- A successful index rebuild clears the dirty marker.
-
-## Distill Contract
-
-- Command: `mdx-cli memory distill --thread <thread_id|path> [--accept] [--force]`.
-- Default output is inbox candidates.
-- If `auto_accept=true` and confidence meets `distill.confidence_threshold`, candidates may be written directly to active memory.
-- Distill preserves source thread and message refs when available.
-- Re-running distill without `--force` must be idempotent for the same source thread content and candidate set; it should return existing inbox/active results instead of duplicating candidates.
-- `--force` intentionally creates a new distill run.
-
-## Capture Contract
-
-- Commands: `memory capture scan --source <source> [--import] [--distill]` and `memory capture import --source <source> --file <path> [--distill]`.
-- Supported capture sources are `codex`, `cursor`, `claude-code`, and `manual`.
-- Import writes a thread snapshot first. If optional distill fails, the saved thread remains visible and the result reports partial distill failure.
-- Codex scan discovers local `rollout-*.jsonl` transcripts under `MDX_CODEX_SESSION_DIRS`, `~/.codex/sessions`, and `~/.codex/archived_sessions`.
-- Codex scan returns both legacy `paths` and structured `candidates`. Candidate paths are importable external file paths, not workspace-relative paths.
-- `memory capture scan --source codex --import` imports every discovered transcript as a thread snapshot. With `--distill`, distill failure must make the scan/import command fail instead of silently returning scan success.
-- Codex thread imports must preserve readable `## Message N` sections and the complete original source under `## Raw Codex JSONL`.
-- Codex scan/import is explicit thread archival over local transcript files. It is not a Codex pre-compact hook and must not be documented as automatic compression-time capture.
-
-## HTTP And MCP Contract
-
-- HTTP daemon: `mdx-cli serve --workspace <workspace> --port 14243`.
-- Health endpoint reports top-level `ok`, `has_memory`, `can_initialize`, `mode`, `missing_paths`, and `workspace`.
-- Memory daemon command: `mdx-cli memory --root <workspace> daemon --port 14243`.
-- Memory daemon endpoints include `/health`, `/diagnostics`, `/hook/events`, `/memory/recall`, `/memory/add`, `/memory/search`, inbox review routes, capture routes, storage migration dry-run, and `/config/set`.
-- MCP stdio server: `mdx-mcp --workspace <workspace>`.
-- CLI, HTTP, MCP, and Tauri/UI call the same Memory facade and must not bypass locks or path guards.
-- The Tauri/UI command surface must expose the same complete Memory capability set as the daemon facade, not only the subset currently used by the visible panel.
-
-## Bundle Contract
-
-- Export: `mdx-cli memory export --output <dir> [--include-log]`.
-- Import: `mdx-cli memory import --input <dir> [--dry-run] [--strategy skip]`.
-- Bundles include manifest, `memory/**`, required metadata, and optional `log.md`.
-- Bundles do not include `.mdx/search.sqlite`; import/rebuild recreates the projection.
-- Export/import must reject path traversal and unsafe symlink writes.
-- Export and import must acquire the workspace memory lock. Export is a read snapshot, but it copies multiple source directories and must not run concurrently with multi-file memory mutations.
-
-## Promote Contract
-
-```bash
-mdx-cli memory promote <thread_id|memory_id|path> [--ingest] [--title "..."]
-```
-
-1. Copy a thread or memory record to `raw/promoted/{date}-{slug}[-n].md` with provenance frontmatter.
-2. Allocate promoted raw files with atomic create-new semantics; existing promoted files must not be overwritten by `memory promote`.
-3. If `--ingest`, require an initialized LLM Wiki workspace before invoking ingest; otherwise fail with `llm_wiki_not_ready`.
-4. Set thread `promoted_to_wiki: true` only after a thread copy succeeds and, when `--ingest` is set, ingest succeeds. Promoting a memory record does not mutate LLM Wiki state unless ingest succeeds.
-5. Append `log.md` event `memory_promote` after successful promotion.
-6. `MemoryPromoteResult.thread_path` is retained for wire compatibility and contains the promoted source path, which can be a thread path or memory record path.
-
-## Config
-
-Path: `.mdx/memory-config.json`
-
-```json
-{
-  "version": 2,
-  "memory": { "enabled": true },
-  "storage": { "backend": "sqlite" },
-  "projection": { "enabled": true },
-  "agent_backend": {
-    "enabled": true,
-    "capture_enabled": false,
-    "recall_injection_enabled": true,
-    "distill_enabled": true,
-    "auto_accept": false,
-    "context_byte_budget": 4096
-  },
-  "agents": {
-    "codex": { "enabled": false, "paused": false },
-    "claude": { "enabled": false, "paused": false },
-    "cursor": { "enabled": false, "paused": false }
-  },
-  "provider": { "mode": "reuse_llm" },
-  "recall": {
-    "default_limit": 10,
-    "context_byte_budget": 65536,
-    "half_life_days": 30,
-    "embeddings": { "enabled": false }
-  },
-  "distill": {
-    "enabled": false,
-    "min_messages": 4,
-    "skip_patterns": ["^Running terminal command"],
-    "auto_accept": false,
-    "confidence_threshold": 85
-  },
-  "capture": { "enabled": false, "sources": [] }
-}
-```
-
-`memory recall` reads `.mdx/memory-config.json` for omitted `limit`, omitted `byte_budget`, and recency `half_life_days`.
-
-Config fields use snake_case in JSON. Missing nested V2 fields use defaults. `confidence_threshold` is serialized as an integer percentage (`85` means 0.85).
-
-## CLI Commands
-
-| Command | Writes log.md | Notes |
-|---|---|---|
-| `memory init` | yes, `memory_init` | creates structure |
-| `memory thread save` | yes, `thread_save` | idempotent by hash |
-| `memory add` | yes | |
-| `memory archive` | yes | soft delete |
-| `memory working set/append` | yes | |
-| `memory recall` | no | read-only |
-| `memory search` | no | read-only |
-| `memory inbox accept/reject` | yes | review candidate |
-| `memory distill` | yes | may write inbox or active memory |
-| `memory capture import` | yes | saves thread first |
-| `memory index rebuild` | no | rebuildable projection |
-| `memory promote` | yes | may trigger ingest |
-| `memory export/import` | import only | portable bundle |
-| `memory daemon` | no | local agent backend API |
-| `memory hook` | yes, when capture writes | hook adapter entry point |
-| `memory install/doctor/repair-agent/uninstall` | no | agent integration management |
-| `memory migrate storage` | no for dry run | runtime DB migration |
-
-## CLI Runtime
-
-- `mdx-cli memory *` supports two runtimes:
-  - Workspace Mode socket runtime against the current active root.
-  - Explicit headless runtime via `mdx-cli memory --root <workspace> ...`.
-- `--root` wins when both `--root` and a running GUI are present.
-- `llm-wiki *` remains socket-only and targets the active Workspace Mode root.
-
-## MCP Tools
-
-| Tool | Maps to |
+| 面 | 返回 |
 |---|---|
-| `memory_status` | `memory status` |
-| `memory_recall` | `memory recall` |
-| `memory_add` | `memory add` |
-| `memory_working_get` | `memory working get` |
-| `memory_thread_save` | `memory thread save` |
-| `memory_thread_show` | `memory thread show` |
-| `memory_inbox_add` | Memory facade inbox candidate create; MCP-only in current CLI |
-| `memory_inbox_list` | `memory inbox list` |
-| `memory_inbox_accept` | `memory inbox accept` |
-| `memory_distill` | `memory distill` |
-| `memory_search` | `memory search` |
-| `memory_promote` | `memory promote` |
-| `memory_hook_status` | `memory doctor` |
-| `memory_diagnostics` | `memory doctor --json` |
+| `memory_search` | 混合检索（BM25 + 向量 + RRF）命中，每条带 `drawerId` 与 `sourceFile` |
+| `memory_context` | 按 `dao_tian → dao_ren → shu → qi` 组装的结论包，`dao_tian` 默认最多 1 条，卡片默认不含 |
+| `memory_brief` | 确定性摘要：事实、证据、不确定项、下一步，不调 LLM |
+| `memory_recall` | 上面三者的组合，agent 的单一入口 |
 
-## Agent Session Startup (Recommended)
+`memory_recall` 的返回体是 `{ brief, context, hits, truncated }`。**不存在** `working` 与 `threads` 字段。
 
-1. `memory_working_get`
-2. `memory_recall` with task-related query
-3. On completion: `memory_thread_save` (if full transcript available) + `memory_add` for durable takeaways
+## 配置
 
-## Relationship to LLM Wiki
+**全局** `~/.mdx/memory/config.json`：嵌入模型、检索默认值（`topK`、`contextMaxItems`、`daoTianLimit`、`includeCards`）。
 
-| User intent | Use |
+**每工作区** `<workspace>/.mdx/memory-config.json`（v3）：`enabled`、`capture.{enabled,sources}`、`agents.{claude,codex,cursor}.enabled`。
+
+读到 v2 配置时按新默认重建并留 `.v2.bak`——配置不是用户数据，不写迁移器。
+
+## 错误码
+
+| 码 | 含义 |
 |---|---|
-| Quick context for coding agent | `memory recall` |
-| Deep question over curated wiki | `llm-wiki query` |
-| Preserve full chat | `memory thread save` |
-| Turn chat into long-term knowledge pages | `memory promote [--ingest]` |
-| Bulk document digestion | place in `raw/` + LLM Wiki ingest |
+| `memory_unavailable` | 库不可读写 |
+| `schema_incompatible` | 库 schema 版本超出本版支持 |
+| `embedding_model_missing` | 模型三件文件不齐 |
+| `embedding_dim_mismatch` | 模型维度与库不一致，需先重嵌 |
+| `memory_busy` | 写入锁等待超时 |
+| `gate_failed` | 门禁未通过，`reasons` 原样透出 |
+| `invalid_evidence_ref` | 引用的素材或结论不存在 |
+| `invalid_evidence` | 空素材 |
+| `invalid_conclusion` | 层级或退役理由类型不合法 |
+| `wing_unbound` | 当前路径没有项目绑定 |
+| `legacy_import_failed` | 旧数据导入整体失败 |
+| `bundle_export_failed` / `bundle_import_failed` | 备份包读写失败 |
+
+## Tauri 命令
+
+`memory_status`、`memory_enable`、`memory_config_get`、`memory_config_set`、`memory_global_config_get`、`memory_global_config_set`、`memory_diagnostics`、`memory_projects`、`memory_rebind_project`、`memory_model_status`、`memory_model_download`、`memory_reindex`、`memory_search`、`memory_context`、`memory_brief`、`memory_recall`、`memory_add`、`memory_import_path`、`memory_list`、`memory_show`、`memory_delete`、`memory_purge`、`memory_distill`、`memory_gate`、`memory_adopt`、`memory_retire`、`memory_counterexample_add`、`memory_legacy_preflight`、`memory_legacy_import`、`memory_export_bundle`、`memory_import_bundle`、`memory_integration_status`、`memory_integration_repair`、`memory_agent_setup`。
+
+`src-tauri/src/lib.rs` 的 `memory_tauri_command_tests` 同时钉住两件事：这份清单存在，以及被抛弃的命令没有以别名形式回来。
+
+## MCP 工具
+
+`memory_status`、`memory_recall`、`memory_search`、`memory_context`、`memory_brief`、`memory_add`、`memory_show`、`memory_distill`、`memory_gate`、`memory_adopt`、`memory_promote`、`memory_hook_status`、`memory_diagnostics`。
+
+调用已删除的工具返回 unknown-tool 错误，不返回兼容结果。
+
+## 旧数据导入
+
+- 两步：预检报告将导入多少素材与会话、跳过多少 inbox 条目、`working.md` 是否存在；执行逐文件导入为**素材**，room 为 `legacy/<子目录>`。
+- 旧 `<workspace>/memory/**` 原地只读保留，任何路径都不修改它。
+- inbox 与 `working.md` 不导入。
+- 重跑幂等，单文件失败不影响其余并进报告，报告落 `~/.mdx/memory/import-reports/`。
+- 导入结果是素材不是结论：要重新进入 agent 的上下文，得走一次 distill + adopt。
+
+## 备份包
+
+- 导出从库渲染成 Markdown 包（`manifest.json` + `evidence/*.md` + `knowledge/*.md`，YAML frontmatter + 正文）。
+- 导入按同一格式解析回库，往返无损（逐字段）。
+- 不含向量（导入时按当前模型重算）与上游卡片相关表。
+- 全局单库没有自动备份，导出包是用户唯一的备份手段。
+
+## 与 LLM Wiki 的关系
+
+| 意图 | 用 |
+|---|---|
+| 给 agent 当前任务的上下文 | `memory_recall` |
+| 在整理过的 wiki 上深问 | `llm-wiki query` |
+| 把结论或素材变成 wiki 素材 | `memory_promote`（复制到 `raw/promoted/` 后可选 ingest） |
+| 批量消化文档 | 放进 `raw/` 后走 LLM Wiki ingest |
+
+`memory_promote`（转为 Wiki 素材）与 `memory_adopt`（采纳结论）是两件事，名字不要混。

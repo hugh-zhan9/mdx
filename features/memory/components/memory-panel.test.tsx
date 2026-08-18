@@ -1,486 +1,263 @@
 // @vitest-environment jsdom
 
 import { act } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryPanel } from "./memory-panel";
-import type { MemoryWorkspaceHook } from "../hooks/use-memory-workspace";
+import type { GateReport, MemoryStatus, StoredItem } from "../lib/types";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
-  .IS_REACT_ACT_ENVIRONMENT = true;
+(
+  globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
-vi.mock("../hooks/use-memory-workspace", () => ({
-  useMemoryWorkspace: vi.fn(() => createMemoryWorkspaceHook()),
-}));
-
-const memoryClientMocks = vi.hoisted(() => ({
-  acceptMemoryInbox: vi.fn(),
-  addMemory: vi.fn(),
-  appendWorkingMemory: vi.fn(),
-  archiveMemory: vi.fn(),
-  getMemoryBackendStatus: vi.fn(),
+const memoryClient = vi.hoisted(() => ({
+  getMemoryStatus: vi.fn(),
+  setMemoryEnabled: vi.fn(),
+  listProjects: vi.fn(),
+  listStored: vi.fn(),
+  checkGate: vi.fn(),
+  adoptConclusion: vi.fn(),
+  addMaterial: vi.fn(),
+  deleteStored: vi.fn(),
+  distillConclusion: vi.fn(),
+  searchMemory: vi.fn(),
+  recall: vi.fn(),
+  retireConclusion: vi.fn(),
+  addCounterexample: vi.fn(),
+  downloadModel: vi.fn(),
+  rebuildIndex: vi.fn(),
+  getDiagnostics: vi.fn(),
+  purgeDeleted: vi.fn(),
+  exportBundle: vi.fn(),
+  legacyImport: vi.fn(),
   getMemoryIntegrationStatus: vi.fn(),
-  getMemory: vi.fn(),
-  getMemoryThread: vi.fn(),
-  getWorkingMemory: vi.fn(),
-  listMemories: vi.fn(),
-  listMemoryInbox: vi.fn(),
-  listMemoryThreads: vi.fn(),
-  promoteMemory: vi.fn(),
-  rebuildMemoryIndex: vi.fn(),
-  rejectMemoryInbox: vi.fn(),
   repairMemoryIntegration: vi.fn(),
-  repairMemoryWorkspace: vi.fn(),
-  setWorkingMemory: vi.fn(),
   setupMemoryAgents: vi.fn(),
 }));
 
-vi.mock("../lib/memory-client", () => memoryClientMocks);
+vi.mock("../lib/memory-client", () => memoryClient);
 
-function createMemoryWorkspaceHook(
-  overrides: Partial<MemoryWorkspaceHook> = {},
-): MemoryWorkspaceHook {
+function status(overrides: Partial<MemoryStatus> = {}): MemoryStatus {
   return {
-    status: {
-      mode: "memory",
-      has_memory: true,
-      can_initialize: false,
-      missing_paths: [],
+    enabled: true,
+    wing: "notes-9f3c1a",
+    library: {
+      path: "/home/u/.mdx/memory/palace.db",
+      exists: true,
+      schemaVersion: 9,
+      supportedSchemaVersion: 9,
+      writable: true,
+      drawerCount: 2,
+      embeddingDim: 256,
+      error: null,
     },
-    viewState: {
-      mode: "memory",
-      hasMemory: true,
-      canInitialize: false,
-      missingPaths: [],
-    },
-    hasMemory: true,
-    tabs: [
-      { id: "overview", label: "概览", disabled: false },
-      { id: "integrations", label: "Agent 集成", disabled: false },
-      { id: "sessions", label: "会话", disabled: false },
-      { id: "longTerm", label: "长期记忆", disabled: false },
-      { id: "pending", label: "待确认", disabled: false },
-      { id: "working", label: "工作上下文", disabled: false },
-      { id: "diagnostics", label: "诊断", disabled: false },
-    ],
-    loading: false,
-    error: null,
-    refresh: vi.fn(),
-    initialize: vi.fn(),
+    modelReady: true,
+    model: "minishlab/potion-multilingual-128M",
     ...overrides,
   };
 }
 
-describe("MemoryPanel", () => {
-  let host: HTMLDivElement;
-  let root: ReturnType<typeof createRoot>;
+function conclusion(overrides: Partial<StoredItem> = {}): StoredItem {
+  return {
+    drawerId: "kn_1",
+    kind: "conclusion",
+    room: "review",
+    sourceFile: "knowledge://shu/general",
+    addedAt: "1786968549",
+    importance: 2,
+    statement: "PDF export embeds a font subset",
+    status: "candidate",
+    excerpt: "Exports carry a subset of a system CJK face.",
+    ...overrides,
+  };
+}
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    memoryClientMocks.getMemoryBackendStatus.mockResolvedValue({
-      ok: true,
-      daemon: { status: "running", last_error: null },
-      storage: { backend: "sqlite", status: "ready" },
-      queue: { depth: 0, oldest_job_age_seconds: null },
-      projection: { status: "ready", dirty_count: 0 },
-      today: { captured_events: 0, pending_candidates: 0 },
-    });
-    memoryClientMocks.getMemoryIntegrationStatus.mockResolvedValue([
-      {
-        agent_source: "codex",
-        installed: true,
-        enabled: true,
-        authorized: true,
-        hook_version: "1",
-        last_event_at: null,
-        last_error: null,
-        doctor_status: "ok",
-      },
-      {
-        agent_source: "claude",
-        installed: false,
-        enabled: false,
-        authorized: false,
-        hook_version: null,
-        last_event_at: null,
-        last_error: null,
-        doctor_status: "not_installed_or_configured",
-      },
-      {
-        agent_source: "cursor",
-        installed: false,
-        enabled: false,
-        authorized: false,
-        hook_version: null,
-        last_event_at: null,
-        last_error: null,
-        doctor_status: "not_installed_or_configured",
-      },
-    ]);
-    memoryClientMocks.listMemoryThreads.mockResolvedValue([]);
-    memoryClientMocks.listMemories.mockResolvedValue([]);
-    memoryClientMocks.getMemory.mockResolvedValue({
-      path: "memory/memories/default.md",
-      frontmatter: {
-        schema_version: 1,
-        kind: "memory",
-        memory_id: "mem_default",
-        title: "Default memory",
-        status: "active",
-        created_at: "2026-06-14T10:00:00Z",
-        source_thread: null,
-        source_message_refs: [],
-        importance: null,
-        confidence: null,
-        tags: [],
-        evolves_from: null,
-      },
-      body: "Default memory body",
-    });
-    memoryClientMocks.listMemoryInbox.mockResolvedValue([]);
-    memoryClientMocks.getWorkingMemory.mockResolvedValue("# Working Memory\n");
-    host = document.createElement("div");
-    document.body.appendChild(host);
-    root = createRoot(host);
+function gate(overrides: Partial<GateReport> = {}): GateReport {
+  return {
+    drawerId: "kn_1",
+    tier: "qi",
+    status: "candidate",
+    targetStatus: "promoted",
+    allowed: false,
+    reasons: [],
+    requirements: {
+      minSupportingRefs: 1,
+      minVerificationRefs: 1,
+      minTeachingRefs: 0,
+      reviewerRequired: false,
+      counterexamplesBlock: true,
+    },
+    evidenceCounts: {
+      supporting: 1,
+      counterexample: 0,
+      teaching: 0,
+      verification: 0,
+    },
+    ...overrides,
+  };
+}
+
+let host: HTMLDivElement;
+let root: Root;
+
+async function flush() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
   });
+}
 
-  afterEach(() => {
-    act(() => {
-      root.unmount();
-    });
-    host.remove();
+async function mountPanel() {
+  await act(async () => {
+    root.render(<MemoryPanel rootPath="/tmp/ws" />);
   });
+  await flush();
+}
 
-  it("renders the memory panel tabs", async () => {
-    await act(async () => {
-      root.render(<MemoryPanel rootPath="/tmp/ws" />);
-      await flushPromises();
-    });
-
-    const buttons = Array.from(host.querySelectorAll("button")).map((button) =>
-      button.textContent?.trim(),
-    );
-
-    expect(buttons).toEqual(
-      expect.arrayContaining([
-        "概览",
-        "Agent 集成",
-        "会话",
-        "长期记忆",
-        "待确认",
-        "工作上下文",
-        "诊断",
-      ]),
-    );
-  });
-
-  it("renders agent integration controls in the integration tab", async () => {
-    await act(async () => {
-      root.render(<MemoryPanel rootPath="/tmp/ws" />);
-      await flushPromises();
-    });
-
-    await act(async () => {
-      getButton("Agent 集成").click();
-      await flushPromises();
-    });
-
-    expect(host.textContent).toContain("配置 Agent 集成");
-    expect(host.textContent).toContain("Codex");
-    expect(host.textContent).toContain("Claude");
-    expect(host.textContent).toContain("Cursor");
-    expect(host.textContent).toContain("Hook");
-    expect(host.textContent).toContain("配置智能体");
-  });
-
-  it("does not show zero messages when the thread count is unknown", async () => {
-    memoryClientMocks.listMemoryThreads.mockResolvedValueOnce([
-      {
-        path: "memory/threads/codex/legacy.md",
-        thread_id: "codex:legacy",
-        source: "codex",
-        title: "Legacy thread",
-        started_at: null,
-        ended_at: null,
-        message_count: null,
-        archived: false,
-      },
-    ]);
-    memoryClientMocks.getMemoryThread.mockResolvedValueOnce({
-      path: "memory/threads/codex/legacy.md",
-      frontmatter: {
-        schema_version: 1,
-        kind: "memory_thread",
-        thread_id: "codex:legacy",
-        source: "codex",
-        title: "Legacy thread",
-        content_hash: "hash",
-        started_at: null,
-        ended_at: null,
-        message_count: null,
-        model: null,
-        workspace_root: null,
-        tags: [],
-        distilled: false,
-        promoted_to_wiki: false,
-        archived: false,
-      },
-      body: "",
-    });
-
-    await act(async () => {
-      root.render(<MemoryPanel rootPath="/tmp/ws" />);
-      await flushPromises();
-    });
-
-    await act(async () => {
-      getButton("会话").click();
-      await flushPromises();
-    });
-
-    expect(host.textContent).toContain("codex · 消息数未知");
-    expect(host.textContent).not.toContain("codex · 0 条消息");
-  });
-
-  it("does not automatically load the first session body when opening sessions", async () => {
-    memoryClientMocks.listMemoryThreads.mockResolvedValueOnce([
-      {
-        path: "memory/threads/codex/heavy.md",
-        thread_id: "codex:heavy",
-        source: "codex",
-        title: "Large captured session",
-        started_at: null,
-        ended_at: null,
-        message_count: 2000,
-        archived: false,
-      },
-    ]);
-    memoryClientMocks.getMemoryThread.mockResolvedValueOnce({
-      path: "memory/threads/codex/heavy.md",
-      frontmatter: {
-        schema_version: 1,
-        kind: "memory_thread",
-        thread_id: "codex:heavy",
-        source: "codex",
-        title: "Large captured session",
-        content_hash: "hash",
-        started_at: null,
-        ended_at: null,
-        message_count: 2000,
-        model: null,
-        workspace_root: null,
-        tags: [],
-        distilled: false,
-        promoted_to_wiki: false,
-        archived: false,
-      },
-      body: "Very large session body",
-    });
-
-    await act(async () => {
-      root.render(<MemoryPanel rootPath="/tmp/ws" />);
-      await flushPromises();
-    });
-
-    await act(async () => {
-      getButton("会话").click();
-      await flushPromises();
-    });
-
-    expect(host.textContent).toContain("Large captured session");
-    expect(memoryClientMocks.getMemoryThread).not.toHaveBeenCalled();
-  });
-
-  it("loads and previews a durable memory body after selecting it", async () => {
-    memoryClientMocks.listMemories.mockResolvedValueOnce([
-      {
-        path: "memory/memories/auth.md",
-        memory_id: "mem_auth",
-        title: "Auth decision",
-        status: "active",
-        created_at: "2026-06-14T10:00:00Z",
-        tags: ["auth"],
-      },
-    ]);
-    memoryClientMocks.getMemory.mockResolvedValueOnce({
-      path: "memory/memories/auth.md",
-      frontmatter: {
-        schema_version: 1,
-        kind: "memory",
-        memory_id: "mem_auth",
-        title: "Auth decision",
-        status: "active",
-        created_at: "2026-06-14T10:00:00Z",
-        source_thread: null,
-        source_message_refs: [],
-        importance: 0.8,
-        confidence: 0.9,
-        tags: ["auth"],
-        evolves_from: null,
-      },
-      body: "Use signed access tokens for API requests.",
-    });
-
-    await act(async () => {
-      root.render(<MemoryPanel rootPath="/tmp/ws" />);
-      await flushPromises();
-    });
-
-    await act(async () => {
-      getButton("长期记忆").click();
-      await flushPromises();
-    });
-
-    await act(async () => {
-      getButton("Auth decision").click();
-      await flushPromises();
-    });
-
-    expect(memoryClientMocks.getMemory).toHaveBeenCalledWith(
-      "/tmp/ws",
-      "mem_auth",
-    );
-    expect(host.textContent).toContain(
-      "Use signed access tokens for API requests.",
-    );
-  });
-
-  it("appends quick working notes into the selected section", async () => {
-    memoryClientMocks.getWorkingMemory.mockResolvedValueOnce(
-      "# Working Memory\n\n## Updated\n",
-    );
-    memoryClientMocks.appendWorkingMemory.mockResolvedValueOnce(
-      "# Working Memory\n\n## Updated\n- 当前在排查 memory\n",
-    );
-
-    await act(async () => {
-      root.render(<MemoryPanel rootPath="/tmp/ws" />);
-      await flushPromises();
-    });
-
-    await act(async () => {
-      getButton("工作上下文").click();
-      await flushPromises();
-    });
-
-    const input = host.querySelector(
-      'input[placeholder="记录一句当前上下文"]',
-    ) as HTMLInputElement | null;
-
-    if (!input) {
-      throw new Error("Expected quick note input");
-    }
-
-    await act(async () => {
-      setInputValue(input, "当前在排查 memory");
-      await flushPromises();
-    });
-
-    await act(async () => {
-      getButton("记到工作记忆").click();
-      await flushPromises();
-    });
-
-    expect(memoryClientMocks.appendWorkingMemory).toHaveBeenCalledWith(
-      "/tmp/ws",
-      "Updated",
-      "当前在排查 memory",
-    );
-    expect(host.textContent).toContain("当前在排查 memory");
-  });
-
-  it("promotes a quick note into durable memory", async () => {
-    memoryClientMocks.getWorkingMemory.mockResolvedValueOnce(
-      "# Working Memory\n\n## Recent Decisions\n",
-    );
-    memoryClientMocks.addMemory.mockResolvedValueOnce({
-      path: "memory/memories/decision.md",
-      frontmatter: {
-        schema_version: 1,
-        kind: "memory",
-        memory_id: "mem_decision",
-        title: "决定：工作记忆需要快捷沉淀",
-        status: "active",
-        created_at: "2026-06-14T10:00:00Z",
-        source_thread: null,
-        source_message_refs: [],
-        importance: null,
-        confidence: null,
-        tags: ["working-memory"],
-        evolves_from: null,
-      },
-      body: "工作记忆需要快捷沉淀。",
-    });
-
-    await act(async () => {
-      root.render(<MemoryPanel rootPath="/tmp/ws" />);
-      await flushPromises();
-    });
-
-    await act(async () => {
-      getButton("工作上下文").click();
-      await flushPromises();
-    });
-
-    await act(async () => {
-      getButton("最近决定").click();
-      await flushPromises();
-    });
-
-    const input = host.querySelector(
-      'input[placeholder="记录一句当前上下文"]',
-    ) as HTMLInputElement | null;
-
-    if (!input) {
-      throw new Error("Expected quick note input");
-    }
-
-    await act(async () => {
-      setInputValue(input, "工作记忆需要快捷沉淀");
-      await flushPromises();
-    });
-
-    await act(async () => {
-      getButton("记到长期记忆").click();
-      await flushPromises();
-    });
-
-    expect(memoryClientMocks.addMemory).toHaveBeenCalledWith("/tmp/ws", {
-      title: "决定：工作记忆需要快捷沉淀",
-      body: "工作记忆需要快捷沉淀",
-      tags: ["working-memory"],
-    });
-  });
-
-  function getButton(label: string) {
-    const button = Array.from(host.querySelectorAll("button")).find(
-      (candidate) => candidate.textContent === label,
-    );
-
-    if (!button) {
-      throw new Error(`Expected button "${label}"`);
-    }
-
-    return button;
+function getButton(label: string) {
+  const button = Array.from(host.querySelectorAll("button")).find((candidate) =>
+    candidate.textContent?.includes(label),
+  );
+  if (!button) {
+    throw new Error(`no button labelled ${label}`);
   }
+  return button;
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  memoryClient.getMemoryStatus.mockResolvedValue(status());
+  memoryClient.listProjects.mockResolvedValue([]);
+  memoryClient.listStored.mockResolvedValue([]);
+  memoryClient.checkGate.mockResolvedValue(gate());
+  host = document.createElement("div");
+  document.body.append(host);
+  root = createRoot(host);
 });
 
-async function flushPromises() {
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
-}
+afterEach(() => {
+  act(() => root.unmount());
+  host.remove();
+});
 
-function setInputValue(input: HTMLInputElement, value: string) {
-  const descriptor = Object.getOwnPropertyDescriptor(
-    HTMLInputElement.prototype,
-    "value",
-  );
+describe("MemoryPanel", () => {
+  it("offers the six tabs of the two-layer model", async () => {
+    await mountPanel();
 
-  if (!descriptor?.set) {
-    throw new Error("Expected HTMLInputElement value setter");
-  }
+    const tabs = Array.from(host.querySelectorAll("[role='tab']")).map(
+      (tab) => tab.textContent,
+    );
 
-  descriptor.set.call(input, value);
-  input.dispatchEvent(new Event("input", { bubbles: true }));
-}
+    expect(tabs).toEqual([
+      "概览",
+      "素材",
+      "结论",
+      "本次上下文",
+      "Agent 集成",
+      "诊断",
+    ]);
+  });
+
+  it("says the model is missing before anything can be written", async () => {
+    memoryClient.getMemoryStatus.mockResolvedValue(
+      status({ modelReady: false }),
+    );
+
+    await mountPanel();
+
+    expect(host.textContent).toContain("还缺一个嵌入模型");
+    expect(host.textContent).toContain("直接拒绝写入");
+  });
+
+  it("shows the gate's own reasons when adoption is refused", async () => {
+    memoryClient.listStored.mockImplementation(async (_root, filter) =>
+      filter.kind === "conclusion" ? [conclusion()] : [],
+    );
+    memoryClient.adoptConclusion.mockRejectedValue({
+      error_code: "gate_failed",
+      message: "promotion gate failed",
+    });
+    memoryClient.checkGate.mockResolvedValue(
+      gate({
+        reasons: ["verification_refs 0 < 1", "counterexample refs block promotion"],
+      }),
+    );
+
+    await mountPanel();
+    await act(async () => {
+      getButton("结论").click();
+    });
+    await flush();
+    await act(async () => {
+      getButton("采纳").click();
+    });
+    await flush();
+
+    // The backend's wording reaches the screen unchanged; a summary would leave
+    // the user unable to tell what to attach.
+    expect(host.textContent).toContain("verification_refs 0 < 1");
+    expect(host.textContent).toContain("counterexample refs block promotion");
+  });
+
+  it("leaves a refused conclusion exactly where it was", async () => {
+    memoryClient.listStored.mockImplementation(async (_root, filter) =>
+      filter.kind === "conclusion" ? [conclusion()] : [],
+    );
+    memoryClient.adoptConclusion.mockRejectedValue({
+      error_code: "gate_failed",
+      message: "promotion gate failed",
+    });
+
+    await mountPanel();
+    await act(async () => {
+      getButton("结论").click();
+    });
+    await flush();
+    const before = memoryClient.listStored.mock.calls.length;
+    await act(async () => {
+      getButton("采纳").click();
+    });
+    await flush();
+
+    // No optimistic move to "adopted": the row still offers adoption.
+    expect(host.textContent).toContain("候选");
+    expect(getButton("采纳")).toBeDefined();
+    expect(memoryClient.listStored.mock.calls.length).toBe(before);
+  });
+
+  it("reports where an adoption was recorded when it succeeds", async () => {
+    memoryClient.listStored.mockImplementation(async (_root, filter) =>
+      filter.kind === "conclusion" ? [conclusion()] : [],
+    );
+    memoryClient.adoptConclusion.mockResolvedValue({
+      drawerId: "kn_1",
+      status: "promoted",
+      confirmationDrawerId: "ev_review_1",
+    });
+
+    await mountPanel();
+    await act(async () => {
+      getButton("结论").click();
+    });
+    await flush();
+    await act(async () => {
+      getButton("采纳").click();
+    });
+    await flush();
+
+    expect(host.textContent).toContain("ev_review_1");
+  });
+
+  it("keeps the storage vocabulary out of the panel", async () => {
+    memoryClient.listStored.mockImplementation(async (_root, filter) =>
+      filter.kind === "conclusion" ? [conclusion()] : [],
+    );
+
+    await mountPanel();
+
+    const text = host.textContent ?? "";
+    for (const upstreamWord of ["wing", "drawer", "dao_tian", "dao_ren", "qi", "shu"]) {
+      expect(text.toLowerCase()).not.toContain(upstreamWord);
+    }
+  });
+});

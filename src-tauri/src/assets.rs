@@ -609,7 +609,11 @@ fn sha256_hex(bytes: &[u8]) -> String {
     hex
 }
 
-fn mdx_home_dir() -> Result<PathBuf, WorkspaceError> {
+/// Where everything this application owns outside a workspace lives.
+///
+/// Shared rather than copied: assets, drafts, themes and memory all have to
+/// agree on it, and a second definition is how two of them end up disagreeing.
+pub(crate) fn mdx_home_dir() -> Result<PathBuf, WorkspaceError> {
     let home = std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .ok_or_else(|| WorkspaceError::new("asset_path_failed", "home directory is not set"))?;

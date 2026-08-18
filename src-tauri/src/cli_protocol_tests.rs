@@ -1,8 +1,7 @@
 use crate::cli_protocol::{
-    list_response_from_snapshot, resolve_cli_path, CliRequest, CliWikiSearchResult, TabSnapshot,
-    WorkspaceSnapshot,
+    list_response_from_snapshot, resolve_cli_path, run_memory_request, CliRequest,
+    CliWikiSearchResult, TabSnapshot, WorkspaceSnapshot,
 };
-use crate::memory::MemoryWorkspaceStatus;
 
 mod mdx_cli_for_tests {
     #![allow(dead_code)]
@@ -96,26 +95,93 @@ fn parses_memory_hook_command_without_desktop_socket() {
     assert!(debug.contains("UserPromptSubmit"));
 }
 
+/// The commands that went with the abandoned model are not merely unhandled —
+/// they do not parse. An agent or a script written against the old CLI gets a
+/// usage error, not a command that quietly does something else.
 #[test]
-fn parses_memory_migrate_storage_dry_run() {
-    let command = mdx_cli_for_tests::parse_command_for_test([
-        "mdx-cli",
-        "memory",
-        "--root",
-        "/tmp/ws",
-        "migrate",
-        "storage",
-        "--to",
-        "postgres",
-        "--dry-run",
-    ])
-    .unwrap();
+fn the_commands_of_the_abandoned_model_no_longer_parse() {
+    for arguments in [
+        vec!["mdx-cli", "memory", "--root", "/tmp/ws", "inbox", "list"],
+        vec!["mdx-cli", "memory", "--root", "/tmp/ws", "working", "get"],
+        vec![
+            "mdx-cli", "memory", "--root", "/tmp/ws", "thread", "show", "thread-1",
+        ],
+        vec!["mdx-cli", "memory", "--root", "/tmp/ws", "index", "rebuild"],
+        vec![
+            "mdx-cli", "memory", "--root", "/tmp/ws", "migrate", "storage", "--to", "postgres",
+        ],
+        vec!["mdx-cli", "memory", "--root", "/tmp/ws", "repair"],
+        vec!["mdx-cli", "memory", "--root", "/tmp/ws", "archive", "mem_1"],
+    ] {
+        let command = arguments[4];
+        assert!(
+            mdx_cli_for_tests::parse_command_for_test(arguments.clone()).is_err(),
+            "`memory {command}` belongs to a model this product no longer has"
+        );
+    }
+}
 
-    let debug = format!("{command:?}");
-    assert!(debug.contains("Migrate"));
-    assert!(debug.contains("Storage"));
-    assert!(debug.contains("postgres"));
-    assert!(debug.contains("dry_run: true"));
+/// The other half of the same contract: the replacements do parse.
+#[test]
+fn the_memory_command_surface_is_the_new_one() {
+    for arguments in [
+        vec!["mdx-cli", "memory", "status"],
+        vec!["mdx-cli", "memory", "init"],
+        vec!["mdx-cli", "memory", "model", "--download"],
+        vec!["mdx-cli", "memory", "reindex"],
+        vec!["mdx-cli", "memory", "add", "--body", "we chose X"],
+        vec!["mdx-cli", "memory", "show", "drawer-1"],
+        vec!["mdx-cli", "memory", "list", "--kind", "conclusion"],
+        vec!["mdx-cli", "memory", "delete", "drawer-1"],
+        vec!["mdx-cli", "memory", "search", "auth"],
+        vec!["mdx-cli", "memory", "context", "auth"],
+        vec!["mdx-cli", "memory", "brief", "auth"],
+        vec!["mdx-cli", "memory", "recall", "auth"],
+        vec![
+            "mdx-cli",
+            "memory",
+            "distill",
+            "--statement",
+            "We use JWT",
+            "--body",
+            "Access tokens are JWTs.",
+            "--ref",
+            "drawer-1",
+        ],
+        vec!["mdx-cli", "memory", "gate", "drawer-1"],
+        vec!["mdx-cli", "memory", "adopt", "drawer-1"],
+        vec![
+            "mdx-cli",
+            "memory",
+            "demote",
+            "drawer-1",
+            "--reason-type",
+            "obsolete",
+            "--reason",
+            "superseded by the new flow",
+            "--evidence-ref",
+            "drawer-2",
+        ],
+        vec!["mdx-cli", "memory", "promote", "drawer-1"],
+        vec!["mdx-cli", "memory", "capture", "scan", "--path", "/tmp/ws/notes"],
+        vec![
+            "mdx-cli",
+            "memory",
+            "capture",
+            "import",
+            "--path",
+            "/tmp/ws/notes",
+        ],
+        vec!["mdx-cli", "memory", "legacy-import", "--dry-run"],
+        vec!["mdx-cli", "memory", "export", "--output", "/tmp/bundle"],
+        vec!["mdx-cli", "memory", "import", "--input", "/tmp/bundle"],
+    ] {
+        let command = arguments[2];
+        assert!(
+            mdx_cli_for_tests::parse_command_for_test(arguments.clone()).is_ok(),
+            "`memory {command}` is part of the memory protocol and must parse"
+        );
+    }
 }
 
 #[test]
@@ -127,10 +193,13 @@ fn mcp_lists_memory_backend_tools() {
     for name in [
         "memory_recall",
         "memory_search",
+        "memory_context",
+        "memory_brief",
         "memory_add",
-        "memory_inbox_add",
-        "memory_inbox_list",
-        "memory_inbox_accept",
+        "memory_show",
+        "memory_distill",
+        "memory_gate",
+        "memory_adopt",
         "memory_hook_status",
         "memory_diagnostics",
     ] {
@@ -245,297 +314,237 @@ fn serializes_empty_llm_wiki_search_results() {
 }
 
 #[test]
-fn parses_memory_status_and_thread_save_requests() {
+fn parses_the_memory_protocol_requests() {
     let status: CliRequest = serde_json::from_str(r#"{"cmd":"memory-status"}"#).unwrap();
     assert_eq!(status, CliRequest::MemoryStatus);
 
-    let save: CliRequest = serde_json::from_str(
-        r#"{"cmd":"memory-thread-save","source":"manual","thread_id":"thread-1","title":"Decision","body":"Use Markdown memory."}"#,
+    let add: CliRequest =
+        serde_json::from_str(r#"{"cmd":"memory-add","body":"we chose SQLite"}"#).unwrap();
+    assert_eq!(
+        add,
+        CliRequest::MemoryAdd {
+            body: "we chose SQLite".to_string(),
+            source: None,
+        }
+    );
+
+    let distill: CliRequest = serde_json::from_str(
+        r#"{"cmd":"memory-distill","statement":"We use JWT","body":"Access tokens are JWTs.","supporting_refs":["drawer-1"]}"#,
     )
     .unwrap();
-    assert!(matches!(
-        save,
-        CliRequest::MemoryThreadSave {
-            source,
-            thread_id,
-            title,
-            body,
-        } if source == "manual"
-            && thread_id == Some("thread-1".to_string())
-            && title == "Decision"
-            && body == "Use Markdown memory."
-    ));
+    assert_eq!(
+        distill,
+        CliRequest::MemoryDistill {
+            statement: "We use JWT".to_string(),
+            body: "Access tokens are JWTs.".to_string(),
+            tier: None,
+            supporting_refs: vec!["drawer-1".to_string()],
+        }
+    );
+
+    let demote: CliRequest = serde_json::from_str(
+        r#"{"cmd":"memory-demote","drawer_id":"drawer-1","reason_type":"contradicted","reason":"the flow changed","evidence_refs":["drawer-2"],"retire":true}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        demote,
+        CliRequest::MemoryDemote {
+            drawer_id: "drawer-1".to_string(),
+            reason_type: "contradicted".to_string(),
+            reason: "the flow changed".to_string(),
+            evidence_refs: vec!["drawer-2".to_string()],
+            retire: true,
+        }
+    );
+
+    let model: CliRequest = serde_json::from_str(r#"{"cmd":"memory-model"}"#).unwrap();
+    assert_eq!(model, CliRequest::MemoryModel { download: false });
+
+    let legacy: CliRequest =
+        serde_json::from_str(r#"{"cmd":"memory-legacy-import","dry_run":true}"#).unwrap();
+    assert_eq!(legacy, CliRequest::MemoryLegacyImport { dry_run: true });
 }
 
 #[test]
 fn parses_memory_bundle_requests() {
-    let export: CliRequest = serde_json::from_str(
-        r#"{"cmd":"memory-export","output_path":"/tmp/memory-bundle","include_log":true}"#,
-    )
-    .unwrap();
+    let export: CliRequest =
+        serde_json::from_str(r#"{"cmd":"memory-export","output_path":"/tmp/memory-bundle"}"#)
+            .unwrap();
     assert_eq!(
         export,
         CliRequest::MemoryExport {
             output_path: "/tmp/memory-bundle".to_string(),
-            include_log: true,
         }
     );
 
-    let import: CliRequest = serde_json::from_str(
-        r#"{"cmd":"memory-import","input_path":"/tmp/memory-bundle","dry_run":true}"#,
-    )
-    .unwrap();
+    let import: CliRequest =
+        serde_json::from_str(r#"{"cmd":"memory-import","input_path":"/tmp/memory-bundle"}"#)
+            .unwrap();
     assert_eq!(
         import,
         CliRequest::MemoryImport {
             input_path: "/tmp/memory-bundle".to_string(),
-            strategy: "skip".to_string(),
-            dry_run: true,
         }
     );
 }
 
+/// The wire is a contract too: the old commands are not accepted as JSON
+/// either, so a script that kept sending them fails loudly.
 #[test]
-fn parses_memory_inbox_requests() {
-    let list: CliRequest =
-        serde_json::from_str(r#"{"cmd":"memory-inbox-list","include_reviewed":true}"#).unwrap();
-    assert_eq!(
-        list,
-        CliRequest::MemoryInboxList {
-            include_reviewed: true
-        }
-    );
+fn the_wire_commands_of_the_abandoned_model_no_longer_deserialize() {
+    for line in [
+        r#"{"cmd":"memory-inbox-list","include_reviewed":true}"#,
+        r#"{"cmd":"memory-inbox-accept","inbox_id":"inbox_1"}"#,
+        r#"{"cmd":"memory-inbox-reject","inbox_id":"inbox_1"}"#,
+        r#"{"cmd":"memory-working-get"}"#,
+        r##"{"cmd":"memory-working-set","content":"# Working"}"##,
+        r#"{"cmd":"memory-thread-save","source":"manual","title":"T","body":"B"}"#,
+        r#"{"cmd":"memory-thread-list"}"#,
+        r#"{"cmd":"memory-index-status"}"#,
+        r#"{"cmd":"memory-index-rebuild"}"#,
+        r#"{"cmd":"memory-repair"}"#,
+        r#"{"cmd":"memory-archive","target":"mem_1"}"#,
+    ] {
+        assert!(
+            serde_json::from_str::<CliRequest>(line).is_err(),
+            "{line} names a concept this product no longer has"
+        );
+    }
+}
 
-    let accept: CliRequest = serde_json::from_str(
-        r#"{"cmd":"memory-inbox-accept","inbox_id":"inbox_1","title":"Reviewed","body":"Accepted"}"#,
-    )
-    .unwrap();
-    assert_eq!(
-        accept,
-        CliRequest::MemoryInboxAccept {
-            inbox_id: "inbox_1".to_string(),
-            title: Some("Reviewed".to_string()),
-            body: Some("Accepted".to_string()),
-            tags: None,
-        }
-    );
+/// The payload a memory command answers with is whatever the memory layer
+/// returned, verbatim. The CLI does not restate those shapes, so the three
+/// protocol surfaces cannot drift into describing the same answer differently.
+#[test]
+fn a_memory_response_carries_the_memory_layer_payload_unchanged() {
+    crate::memory::config::testing::with_scoped_home(|_home| {
+        let workspace = tempfile::tempdir().unwrap();
 
-    let reject: CliRequest =
-        serde_json::from_str(r#"{"cmd":"memory-inbox-reject","inbox_id":"inbox_1"}"#).unwrap();
-    assert_eq!(
-        reject,
-        CliRequest::MemoryInboxReject {
-            inbox_id: "inbox_1".to_string()
-        }
-    );
+        let response = run_memory_request(workspace.path(), CliRequest::MemoryStatus);
+
+        assert!(response.ok, "{:?}", response.error);
+        let payload = response.memory.expect("a status payload");
+        assert_eq!(payload["enabled"], false);
+        assert!(payload["model"].as_str().is_some());
+        let json = serde_json::to_string(&crate::cli_protocol::CliResponse {
+            ok: true,
+            memory: Some(payload),
+            ..crate::cli_protocol::CliResponse::default()
+        })
+        .unwrap();
+        assert!(json.starts_with(r#"{"ok":true,"memory":{"#));
+    });
+}
+
+/// Turning memory on binds the workspace to a project and writes nothing else:
+/// there is no `memory/` tree to create any more.
+#[test]
+fn initializing_memory_enables_it_and_binds_the_workspace() {
+    crate::memory::config::testing::with_scoped_home(|_home| {
+        let workspace = tempfile::tempdir().unwrap();
+
+        let response = run_memory_request(workspace.path(), CliRequest::MemoryInit);
+
+        assert!(response.ok, "{:?}", response.error);
+        let payload = response.memory.expect("a status payload");
+        assert_eq!(payload["enabled"], true);
+        assert!(payload["wing"].as_str().is_some(), "{payload}");
+        assert!(!workspace.path().join("memory").exists());
+    });
+}
+
+/// Without the embedding model nothing may be written, and the reason has to
+/// survive the trip to the caller unchanged.
+#[test]
+fn writing_material_without_the_model_fails_with_the_upstream_error_code() {
+    crate::memory::config::testing::with_scoped_home(|_home| {
+        let workspace = tempfile::tempdir().unwrap();
+
+        let response = run_memory_request(
+            workspace.path(),
+            CliRequest::MemoryAdd {
+                body: "we chose SQLite".to_string(),
+                source: None,
+            },
+        );
+
+        assert!(!response.ok);
+        assert_eq!(
+            response.error_code.as_deref(),
+            Some("embedding_model_missing")
+        );
+        assert!(response.memory.is_none());
+    });
 }
 
 #[test]
-fn parses_memory_distill_request() {
-    let request: CliRequest = serde_json::from_str(
-        r#"{"cmd":"memory-distill","target":"codex:abc123","accept":true,"force":true}"#,
-    )
-    .unwrap();
-    assert_eq!(
-        request,
-        CliRequest::MemoryDistill {
-            target: "codex:abc123".to_string(),
-            accept: Some(true),
-            force: Some(true),
-        }
+fn an_empty_query_is_rejected_before_the_library_is_opened() {
+    let response = run_memory_request(
+        std::path::Path::new("/tmp/ws"),
+        CliRequest::MemorySearch {
+            query: "   ".to_string(),
+            limit: None,
+            wing: None,
+            room: None,
+        },
     );
+
+    assert!(!response.ok);
+    assert_eq!(response.error_code.as_deref(), Some("invalid_query"));
+}
+
+/// The capture pair previews before it stores, because material cannot be
+/// un-remembered once it is in the library.
+#[test]
+fn capture_scan_reports_where_a_path_would_be_filed_without_storing_it() {
+    crate::memory::config::testing::with_scoped_home(|_home| {
+        let workspace = tempfile::tempdir().unwrap();
+        let transcript = workspace.path().join("notes").join("session.md");
+        std::fs::create_dir_all(transcript.parent().unwrap()).unwrap();
+        std::fs::write(&transcript, "a whole conversation").unwrap();
+
+        let response = run_memory_request(
+            workspace.path(),
+            CliRequest::MemoryCaptureScan {
+                path: transcript.to_string_lossy().into_owned(),
+            },
+        );
+
+        assert!(response.ok, "{:?}", response.error);
+        let payload = response.memory.expect("a capture target");
+        assert_eq!(payload["room"], "notes");
+        assert_eq!(payload["path"], transcript.to_string_lossy().as_ref());
+    });
 }
 
 #[test]
-fn parses_memory_capture_requests() {
-    let import: CliRequest = serde_json::from_str(
-        r#"{"cmd":"memory-capture-import","source":"codex","file":"/tmp/codex.jsonl","thread_id":"codex:1","title":"Codex","distill":true}"#,
-    )
-    .unwrap();
-    assert_eq!(
-        import,
-        CliRequest::MemoryCaptureImport {
-            source: "codex".to_string(),
-            path: "/tmp/codex.jsonl".to_string(),
-            title: Some("Codex".to_string()),
-            thread_id: Some("codex:1".to_string()),
-            distill: true,
-        }
-    );
-}
+fn capture_scan_refuses_a_path_that_is_not_there() {
+    let workspace = tempfile::tempdir().unwrap();
 
-#[test]
-fn parses_memory_capture_scan_request() {
-    let scan: CliRequest =
-        serde_json::from_str(r#"{"cmd":"memory-capture-scan","source":"codex"}"#).unwrap();
-    assert_eq!(
-        scan,
+    let response = run_memory_request(
+        workspace.path(),
         CliRequest::MemoryCaptureScan {
-            source: "codex".to_string(),
-            import_threads: false,
-            distill: false,
-        }
+            path: workspace
+                .path()
+                .join("nothing-here.md")
+                .to_string_lossy()
+                .into_owned(),
+        },
     );
 
-    let scan_with_import: CliRequest = serde_json::from_str(
-        r#"{"cmd":"memory-capture-scan","source":"codex","import":true,"distill":true}"#,
-    )
-    .unwrap();
-    assert_eq!(
-        scan_with_import,
-        CliRequest::MemoryCaptureScan {
-            source: "codex".to_string(),
-            import_threads: true,
-            distill: true,
-        }
+    assert!(!response.ok);
+    assert_eq!(response.error_code.as_deref(), Some("invalid_path"));
+}
+
+#[test]
+fn the_memory_executor_refuses_a_command_that_is_not_a_memory_command() {
+    let response = run_memory_request(
+        std::path::Path::new("/tmp/ws"),
+        CliRequest::Open {
+            path: "/tmp/ws/a.md".to_string(),
+        },
     );
-}
 
-#[test]
-fn serializes_memory_status_response_as_snake_case_json() {
-    let response = crate::cli_protocol::CliResponse {
-        ok: true,
-        memory_status: Some(MemoryWorkspaceStatus {
-            mode: "ordinary".to_string(),
-            has_memory: false,
-            can_initialize: true,
-            missing_paths: vec!["memory".to_string()],
-        }),
-        ..crate::cli_protocol::CliResponse::default()
-    };
-
-    assert_eq!(
-        serde_json::to_string(&response).unwrap(),
-        r#"{"ok":true,"memory_status":{"mode":"ordinary","has_memory":false,"can_initialize":true,"missing_paths":["memory"]}}"#
-    );
-}
-
-#[test]
-fn serializes_memory_bundle_response_as_snake_case_json() {
-    let response = crate::cli_protocol::CliResponse {
-        ok: true,
-        memory_export: Some(crate::memory::MemoryExportResult {
-            manifest_path: "/tmp/memory-bundle/manifest.json".to_string(),
-            output_path: "/tmp/memory-bundle".to_string(),
-            version: 1,
-            records_exported: 1,
-            files_exported: 1,
-            memory_count: 1,
-            inbox_count: 0,
-            thread_count: 0,
-            log_included: false,
-            copied_paths: vec!["memory/memories/2026-06-13-bundle.md".to_string()],
-        }),
-        ..crate::cli_protocol::CliResponse::default()
-    };
-
-    let json = serde_json::to_string(&response).unwrap();
-    assert!(json.contains(r#""memory_export":{"manifest_path":"/tmp/memory-bundle/manifest.json""#));
-    assert!(json.contains(r#""records_exported":1"#));
-    assert!(!json.contains("manifestPath"));
-}
-
-#[test]
-fn serializes_memory_distill_response_as_snake_case_json() {
-    let response = crate::cli_protocol::CliResponse {
-        ok: true,
-        memory_distill: Some(crate::memory::MemoryDistillResult {
-            target: "codex:abc123".to_string(),
-            source_thread: "codex:abc123".to_string(),
-            accepted: false,
-            candidate_count: 1,
-            inbox_count: 1,
-            memory_count: 0,
-            candidates: vec![crate::memory::DistillCandidate {
-                title: "Use JWT".to_string(),
-                body: "The project uses JWT access tokens.".to_string(),
-                tags: vec!["auth".to_string()],
-                importance: 0.8,
-                confidence: 0.9,
-                source_message_refs: vec![1],
-            }],
-            inbox: Vec::new(),
-            memories: Vec::new(),
-        }),
-        ..crate::cli_protocol::CliResponse::default()
-    };
-
-    let json = serde_json::to_string(&response).unwrap();
-    assert!(json.contains(r#""memory_distill":{"target":"codex:abc123""#));
-    assert!(json.contains(r#""candidate_count":1"#));
-    assert!(json.contains(r#""source_message_refs":[1]"#));
-    assert!(!json.contains("candidateCount"));
-}
-
-#[test]
-fn serializes_memory_capture_responses_as_snake_case_json() {
-    let capture_path = "/Users/example/.codex/sessions/2026/06/14/rollout-a.jsonl";
-    let response = crate::cli_protocol::CliResponse {
-        ok: true,
-        memory_capture_import: Some(crate::memory::MemoryCaptureImportResult {
-            source: "codex".to_string(),
-            thread_id: "codex:abc123".to_string(),
-            path: "memory/threads/codex/thread.md".to_string(),
-            title: "Codex".to_string(),
-            message_count: 2,
-            distilled: false,
-            distill_status: "failed".to_string(),
-            distill_error_code: Some("distill_unavailable".to_string()),
-            distill_error_message: Some("distill_unavailable: unavailable".to_string()),
-            distill_result: None,
-        }),
-        memory_capture_scan: Some(crate::memory::MemoryCaptureScanResult {
-            source: "codex".to_string(),
-            status: "configured".to_string(),
-            paths: vec![capture_path.to_string()],
-            candidates: vec![crate::memory::MemoryCaptureCandidate {
-                path: capture_path.to_string(),
-                source: "codex".to_string(),
-                thread_id: Some("codex:abc123".to_string()),
-                title: Some("Codex".to_string()),
-                started_at: Some("2026-06-14T00:00:00Z".to_string()),
-                modified_at: Some("2026-06-14T01:00:00Z".to_string()),
-                bytes: 1234,
-            }],
-        }),
-        ..crate::cli_protocol::CliResponse::default()
-    };
-
-    let json = serde_json::to_string(&response).unwrap();
-    assert!(json.contains(r#""memory_capture_import":{"source":"codex""#));
-    assert!(json.contains(r#""message_count":2"#));
-    assert!(json.contains(r#""distill_status":"failed""#));
-    assert!(json.contains(r#""distill_error_code":"distill_unavailable""#));
-    let value: serde_json::Value = serde_json::from_str(&json).unwrap();
-    let scan = &value["memory_capture_scan"];
-    assert_eq!(scan["source"], "codex");
-    assert_eq!(scan["status"], "configured");
-    assert_eq!(scan["paths"][0], capture_path);
-    assert_eq!(scan["candidates"][0]["path"], capture_path);
-    assert_eq!(scan["candidates"][0]["thread_id"], "codex:abc123");
-    assert_eq!(scan["candidates"][0]["modified_at"], "2026-06-14T01:00:00Z");
-    assert!(!json.contains("messageCount"));
-    assert!(!json.contains("distillStatus"));
-    assert!(!json.contains("threadId"));
-    assert!(!json.contains("modifiedAt"));
-}
-
-#[test]
-fn serializes_memory_inbox_review_response_as_snake_case_json() {
-    let response = crate::cli_protocol::CliResponse {
-        ok: true,
-        memory_inbox_review: Some(crate::memory::InboxReviewResult {
-            inbox_id: "inbox_1".to_string(),
-            path: "memory/inbox/2026-06-13-decision.md".to_string(),
-            status: "rejected".to_string(),
-            accepted_memory_id: None,
-            memory: None,
-        }),
-        ..crate::cli_protocol::CliResponse::default()
-    };
-
-    assert_eq!(
-        serde_json::to_string(&response).unwrap(),
-        r#"{"ok":true,"memory_inbox_review":{"inbox_id":"inbox_1","path":"memory/inbox/2026-06-13-decision.md","status":"rejected","accepted_memory_id":null,"memory":null}}"#
-    );
+    assert!(!response.ok);
+    assert_eq!(response.error_code.as_deref(), Some("not_a_memory_command"));
 }

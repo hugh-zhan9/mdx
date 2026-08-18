@@ -1,75 +1,292 @@
-export type MemoryMode = "ordinary" | "memory";
+/**
+ * The shapes the memory commands speak.
+ *
+ * These mirror the Rust DTOs one for one. The product words are "material" and
+ * "conclusion"; the storage layer's own vocabulary — wings, drawers, tiers —
+ * stops at this boundary, except where an identifier has to travel back to the
+ * backend unchanged.
+ */
 
-export interface MemoryWorkspaceStatus {
-  mode: MemoryMode;
-  has_memory: boolean;
-  can_initialize: boolean;
-  missing_paths: string[];
+export interface LibraryStatus {
+  path: string;
+  exists: boolean;
+  schemaVersion: number | null;
+  supportedSchemaVersion: number;
+  writable: boolean;
+  drawerCount: number | null;
+  embeddingDim: number | null;
+  error: string | null;
 }
 
-export interface InitializeMemoryResult {
-  created_paths: string[];
-  preserved_paths: string[];
-  status: MemoryWorkspaceStatus;
+export interface MemoryStatus {
+  enabled: boolean;
+  /** The project this workspace is bound to, or null when it has none yet. */
+  wing: string | null;
+  library: LibraryStatus;
+  modelReady: boolean;
+  model: string;
 }
 
-export interface MemoryRepairRequest {
-  rebuild_index: boolean;
+export interface ModelStatus {
+  model: string;
+  ready: boolean;
+  dir: string;
+  missing: string[];
 }
 
-export interface MemoryRepairResult {
-  repaired_paths: string[];
+export interface ModelDiagnostics {
+  model: string;
+  ready: boolean;
+  dir: string;
+  missing: string[];
+}
+
+export interface MemoryDiagnostics {
+  library: LibraryStatus;
+  model: ModelDiagnostics;
+  projects: number;
   warnings: string[];
 }
 
-export interface MemoryAgentSetupRequest {
-  codex: boolean;
-  claude: boolean;
-  cursor: boolean;
-  hooks: boolean;
-  dry_run?: boolean;
-  mdx_cli?: string | null;
-  mdx_mcp?: string | null;
+export interface ProjectSummary {
+  wing: string;
+  path: string | null;
+  lastActivity: string;
+  total: number;
+  evidence: number;
+  knowledge: number;
 }
 
-export interface MemoryAgentSetupResult {
-  dry_run: boolean;
-  changed_paths: string[];
+/** `material` or `conclusion`. */
+export type StoredItemKind = "material" | "conclusion";
+
+export type ConclusionStatus =
+  | "candidate"
+  | "promoted"
+  | "canonical"
+  | "demoted"
+  | "retired";
+
+export interface StoredItem {
+  drawerId: string;
+  kind: StoredItemKind;
+  room: string;
+  sourceFile: string | null;
+  addedAt: string;
+  importance: number;
+  /** Conclusions only: the claim itself. */
+  statement: string | null;
+  status: ConclusionStatus | null;
+  /** An excerpt in lists; the whole text when fetched on its own. */
+  excerpt: string;
+}
+
+export interface ListFilter {
+  kind?: StoredItemKind;
+  status?: ConclusionStatus;
+  limit?: number;
+}
+
+export interface WrittenEvidence {
+  drawerId: string;
+  created: boolean;
+  lockWaitMs: number;
+}
+
+export interface IngestOutcome {
+  files: number;
+  chunks: number;
+  skipped: number;
+  room: string;
+}
+
+export interface SearchHit {
+  drawerId: string;
+  sourceFile: string;
+  snippet: string;
+  score: number;
+  wing: string;
+  room: string | null;
+  /** `evidence` or `knowledge`. */
+  kind: string;
+  tier: string | null;
+}
+
+export interface EvidenceRef {
+  drawerId: string;
+  /** `supporting`, `verification`, `counterexample`, or `teaching`. */
+  role: string;
+  sourceFile: string;
+}
+
+export interface ContextItem {
+  /** Assembly group, not a label to show: the panel has its own words. */
+  section: string;
+  drawerId: string;
+  sourceFile: string;
+  text: string;
+  tier: string | null;
+  status: string | null;
+  anchorKind: string;
+  anchorId: string;
+  evidenceRefs: EvidenceRef[];
+}
+
+export interface ContextAnchor {
+  anchorKind: string;
+  anchorId: string;
+}
+
+export interface ContextPack {
+  query: string;
+  anchors: ContextAnchor[];
+  items: ContextItem[];
+}
+
+export interface BriefFact {
+  text: string;
+  drawerId: string;
+  sourceFile: string;
+}
+
+export interface Uncertainty {
+  kind: string;
+  message: string;
+}
+
+export interface Brief {
+  query: string;
   summary: string;
+  keyFacts: BriefFact[];
+  evidence: BriefFact[];
+  uncertainties: Uncertainty[];
+  nextActions: string[];
 }
 
-export type MemoryBackendHealth =
-  | "running"
-  | "degraded"
-  | "disabled"
-  | "stopped";
+export interface RecallResult {
+  brief: Brief;
+  context: ContextPack;
+  hits: SearchHit[];
+  truncated: boolean;
+}
 
-export interface MemoryBackendStatus {
-  ok: boolean;
-  daemon: {
-    status: MemoryBackendHealth;
-    last_error: string | null;
-  };
-  storage: {
-    backend: "sqlite" | "postgresql" | string;
-    status: string;
-  };
-  queue: {
-    depth: number;
-    oldest_job_age_seconds: number | null;
-  };
-  projection: {
-    status: string;
-    dirty_count: number;
-  };
-  today: {
-    captured_events: number;
-    pending_candidates: number;
+/** What the promotion gate requires, and what this conclusion has. */
+export interface GateRequirements {
+  minSupportingRefs: number;
+  minVerificationRefs: number;
+  minTeachingRefs: number;
+  reviewerRequired: boolean;
+  counterexamplesBlock: boolean;
+}
+
+export interface GateEvidenceCounts {
+  supporting: number;
+  counterexample: number;
+  teaching: number;
+  verification: number;
+}
+
+export interface GateReport {
+  drawerId: string;
+  tier: string;
+  status: string;
+  targetStatus: string;
+  allowed: boolean;
+  /** Why not, in the backend's own words. Shown verbatim. */
+  reasons: string[];
+  requirements: GateRequirements;
+  evidenceCounts: GateEvidenceCounts;
+}
+
+export interface DistilledConclusion {
+  drawerId: string;
+  created: boolean;
+}
+
+export interface AdoptedConclusion {
+  drawerId: string;
+  status: string;
+  confirmationDrawerId: string;
+}
+
+export interface RetiredConclusion {
+  drawerId: string;
+  status: string;
+}
+
+export type ConclusionTier = "concrete" | "pattern";
+
+export type RetireReasonType =
+  | "contradicted"
+  | "obsolete"
+  | "superseded"
+  | "out_of_scope"
+  | "unsafe";
+
+export interface WorkspaceMemoryConfig {
+  version: number;
+  enabled: boolean;
+  capture: { enabled: boolean; sources: string[] };
+  agents: {
+    claude: { enabled: boolean };
+    codex: { enabled: boolean };
+    cursor: { enabled: boolean };
   };
 }
 
+export interface GlobalMemoryConfig {
+  version: number;
+  embedding: { model: string; localDir: string | null };
+  retrieval: {
+    topK: number;
+    contextMaxItems: number;
+    daoTianLimit: number;
+    includeCards: boolean;
+  };
+}
+
+export interface ReindexReport {
+  reembedded: number;
+  dimensions: number;
+}
+
+export interface LegacyImportPreflight {
+  memories: number;
+  threads: number;
+  notImported: { inbox: number; working: boolean; reason: string };
+  estimatedBytes: number;
+  note: string;
+}
+
+export interface LegacyImportReport {
+  filesScanned: number;
+  filesImported: number;
+  filesUnchanged: number;
+  entriesCreated: number;
+  entriesAlreadyPresent: number;
+  failures: Array<{ path: string; message: string }>;
+  reportPath: string;
+  note: string;
+}
+
+export interface BundleExport {
+  outputPath: string;
+  evidence: number;
+  knowledge: number;
+  files: number;
+}
+
+export interface BundleImport {
+  sourcePath: string;
+  evidence: number;
+  knowledge: number;
+  skipped: number;
+}
+
+/** Snake_case because the agent integration commands were not part of this
+ *  migration and still speak the older serialization. */
 export interface MemoryIntegrationStatus {
-  agent_source: "codex" | "claude" | "cursor";
+  agent_source: string;
   installed: boolean;
   enabled: boolean;
   authorized: boolean;
@@ -81,246 +298,14 @@ export interface MemoryIntegrationStatus {
 
 export interface MemoryDoctorReport {
   ok: boolean;
-  statuses: MemoryIntegrationStatus[];
-  errors: string[];
-  warnings: string[];
+  [key: string]: unknown;
 }
 
-export interface MemoryConfigSetRequest {
-  scope: "workspace";
-  key: string;
-  enabled: boolean;
+export interface MemoryAgentSetupRequest {
+  agents?: string[];
+  dryRun?: boolean;
 }
 
-export interface MemoryConfigUpdateRequest {
-  scope: "workspace";
-  provider?: {
-    mode?: string;
-    provider?: string | null;
-    model?: string | null;
-  };
-  storage?: {
-    backend?: string;
-    postgres_url_ref?: string | null;
-  };
-}
-
-export interface MemoryConfig {
-  version: number;
-  memory: { enabled: boolean };
-  agent_backend: {
-    enabled: boolean;
-    capture_enabled: boolean;
-    recall_injection_enabled: boolean;
-    distill_enabled: boolean;
-    auto_accept: boolean;
-    context_byte_budget: number;
-  };
-  projection: { enabled: boolean };
-  agents: {
-    codex: { enabled: boolean; paused: boolean };
-    claude: { enabled: boolean; paused: boolean };
-    cursor: { enabled: boolean; paused: boolean };
-  };
-  storage: {
-    backend: string;
-    sqlite_path: string | null;
-    postgres_url_ref: string | null;
-  };
-  provider: {
-    mode: string;
-    provider: string | null;
-    model: string | null;
-  };
-}
-
-export interface MemoryStorageMigrateRequest {
-  from: string;
-  to: string;
-  target: string | null;
-  dry_run: boolean;
-  resume: boolean;
-}
-
-export interface MemoryStorageMigrationReport {
-  migration_id: string;
-  from: string;
-  to: string;
-  dry_run: boolean;
-  records_seen: Record<string, number>;
-  records_copied: Record<string, number>;
-  records_skipped: Record<string, number>;
-  validation_errors: string[];
-  backup_path: string | null;
-  config_switched: boolean;
-}
-
-export interface MemoryIndexStatus {
-  index_status: string;
-  document_count: number;
-  dirty: boolean;
-}
-
-export interface RecallRequest {
-  query: string;
-  limit?: number | null;
-  byte_budget?: number | null;
-  include_working?: boolean;
-  include_threads?: boolean;
-  thread_ids?: string[];
-  include_wiki_refs?: boolean;
-  include_wiki_snippets?: boolean;
-  tag?: string | null;
-  since?: string | null;
-}
-
-export interface RecallMemoryItem {
-  memory_id: string;
-  title: string;
-  path: string;
-  snippet: string;
-  score: number;
-  importance: number;
-}
-
-export interface RecallResult {
-  working: string | null;
-  memories: RecallMemoryItem[];
-  threads: MemorySummary[];
-  wiki_refs: MemorySummary[];
-  truncated: boolean;
-  byte_count: number;
-  index_degraded: boolean;
-  warnings: string[];
-}
-
-export interface MemoryListFilter {
-  tag?: string | null;
-  since?: string | null;
-  include_archived?: boolean;
-}
-
-export interface MemorySummary {
-  path: string;
-  memory_id: string;
-  title: string;
-  status: string;
-  created_at: string;
-  tags: string[];
-}
-
-export interface ThreadListFilter {
-  source?: string | null;
-  since?: string | null;
-}
-
-export interface ThreadListItem {
-  path: string;
-  thread_id: string;
-  source: string;
-  title: string;
-  started_at: string | null;
-  ended_at: string | null;
-  message_count: number | null;
-  archived: boolean;
-}
-
-export interface MemoryThreadFrontmatter {
-  schema_version: number;
-  kind: string;
-  thread_id: string;
-  source: string;
-  title: string;
-  content_hash: string;
-  started_at: string | null;
-  ended_at: string | null;
-  message_count: number | null;
-  model: string | null;
-  workspace_root: string | null;
-  tags: string[];
-  distilled: boolean;
-  promoted_to_wiki: boolean;
-  archived: boolean;
-}
-
-export interface MemoryThreadRecord {
-  path: string;
-  frontmatter: MemoryThreadFrontmatter;
-  body: string;
-}
-
-export interface MemoryFrontmatter {
-  schema_version: number;
-  kind: string;
-  memory_id: string;
-  title: string;
-  status: string;
-  created_at: string;
-  source_thread: string | null;
-  source_message_refs: string[];
-  importance: number | null;
-  confidence: number | null;
-  tags: string[];
-  evolves_from: string | null;
-}
-
-export interface MemoryRecord {
-  path: string;
-  frontmatter: MemoryFrontmatter;
-  body: string;
-}
-
-export interface MemoryAddRequest {
-  title: string;
-  body: string;
-  tags?: string[] | null;
-}
-
-export interface InboxFrontmatter {
-  schema_version: number;
-  kind: string;
-  inbox_id: string;
-  title: string;
-  status: string;
-  created_at: string;
-  source_thread: string | null;
-  source_message_refs: string[];
-  importance: number | null;
-  confidence: number | null;
-  tags: string[];
-  distill_run_id: string | null;
-  accepted_memory_id: string | null;
-}
-
-export interface InboxRecord {
-  path: string;
-  frontmatter: InboxFrontmatter;
-  body: string;
-}
-
-export interface InboxReviewRequest {
-  inbox_id: string;
-  title?: string | null;
-  body?: string | null;
-  tags?: string[] | null;
-}
-
-export interface InboxReviewResult {
-  inbox_id: string;
-  path: string;
-  status: string;
-  accepted_memory_id: string | null;
-  memory: MemoryRecord | null;
-}
-
-export interface MemoryPromoteRequest {
-  target: string;
-  ingest: boolean;
-  title?: string | null;
-}
-
-export interface MemoryPromoteResult {
-  thread_path: string;
-  promoted_path: string;
-  ingested: boolean;
+export interface MemoryAgentSetupResult {
+  [key: string]: unknown;
 }

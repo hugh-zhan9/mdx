@@ -1093,29 +1093,6 @@ function valueAt(input, keys) {{
   return null;
 }}
 
-function stableThreadId(source, input, transcriptPath) {{
-  const explicit = valueAt(input, [
-    "thread_id",
-    "threadId",
-    "session_id",
-    "sessionId",
-    "conversation_id",
-    "conversationId",
-  ]);
-  if (explicit) {{
-    return `${{source}}:${{explicit.replace(/^.+:/, "")}}`;
-  }}
-  return `${{source}}:${{basename(transcriptPath).replace(/\.[^.]+$/, "")}}`;
-}}
-
-function captureTitle(source, input) {{
-  const explicit = valueAt(input, ["title", "session_name", "sessionName"]);
-  if (explicit) {{
-    return explicit;
-  }}
-  return `${{source}} pre-compact memory capture`;
-}}
-
 const sourceArg = process.argv[2] || "manual";
 const input = parseInput(await readStdin());
 const transcriptPath = valueAt(input, [
@@ -1129,7 +1106,6 @@ if (!transcriptPath || !existsSync(transcriptPath)) {{
   process.exit(0);
 }}
 
-const threadId = stableThreadId(sourceArg, input, transcriptPath);
 const captureResult = spawnSync(
   MDX_CLI,
   [
@@ -1138,53 +1114,20 @@ const captureResult = spawnSync(
     MEMORY_ROOT,
     "capture",
     "import",
-    "--source",
-    sourceArg,
-    "--thread-id",
-    threadId,
-    "--title",
-    captureTitle(sourceArg, input),
-    "--file",
+    "--path",
     transcriptPath,
-    "--distill",
   ],
   {{ encoding: "utf8", timeout: 60_000 }},
 );
 
 if (captureResult.error) {{
-  process.stderr.write(`[mdx-memory] pre-compact memory capture skipped: ${{captureResult.error.message}}\n`);
+  process.stderr.write(`[mdx-memory] pre-compact capture skipped: ${{captureResult.error.message}}\n`);
   process.exit(0);
 }}
 
 if (captureResult.status !== 0) {{
   process.stderr.write(
-    `[mdx-memory] pre-compact memory capture failed: ${{captureResult.stderr || captureResult.stdout || "unknown error"}}\n`,
-  );
-  process.exit(0);
-}}
-
-const acceptResult = spawnSync(
-  MDX_CLI,
-  [
-    "memory",
-    "--root",
-    MEMORY_ROOT,
-    "distill",
-    "--thread",
-    threadId,
-    "--accept",
-  ],
-  {{ encoding: "utf8", timeout: 60_000 }},
-);
-
-if (acceptResult.error) {{
-  process.stderr.write(`[mdx-memory] pre-compact memory accept skipped: ${{acceptResult.error.message}}\n`);
-  process.exit(0);
-}}
-
-if (acceptResult.status !== 0) {{
-  process.stderr.write(
-    `[mdx-memory] pre-compact memory accept failed: ${{acceptResult.stderr || acceptResult.stdout || "unknown error"}}\n`,
+    `[mdx-memory] pre-compact capture failed: ${{captureResult.stderr || captureResult.stdout || "unknown error"}}\n`,
   );
 }}
 
@@ -1226,67 +1169,66 @@ Do not write memory for trivial chatter, transient commands, secrets, API keys, 
 
 At the start of substantive work, or when prior context matters:
 
-1. Call `memory_working_get`.
-2. Call `memory_recall` with a task-specific `query`.
-3. Use `memory_search` or CLI `memory search` when the user asks to search/list exact stored memories rather than load task context.
+1. Call `memory_recall` with a task-specific `query`. It returns the conclusions that apply, a brief with citations, and matching material.
+2. Use `memory_search` when the user asks to find something specific rather than load task context.
+3. Cite what you use: every item carries the id and source file it came from.
 4. Keep recalled context scoped to the current task; explicit user instructions still win.
 
 CLI fallback:
 
 ```bash
-{mdx_cli} memory --root "{root_path}" working get
 {mdx_cli} memory --root "{root_path}" recall "<task query>"
 {mdx_cli} memory --root "{root_path}" search "<exact query>"
 ```
 
 ## Durable Memory Write Flow
 
-Use `memory_add` for durable atomic memories during active conversation turns. Proactively save clear, durable, low-risk facts, preferences, decisions, project constraints, and reusable lessons with `memory_add` during the active turn. Write concise snapshots with enough context to stand alone.
+Memory has two layers, and knowing which one you are writing to is the whole job.
 
-Good memory candidates:
+**Material** is what happened, stored verbatim: `memory_add`. A decision and the reasoning behind it, a measurement, a chunk of conversation worth keeping. Material is a record, not a claim — nothing is inferred from it, and storing it commits nobody to anything.
 
+**Conclusions** are what you take material to mean: `memory_distill`, referencing the material ids it rests on. A conclusion starts as a candidate and reaches nobody's context until a person adopts it. Do not adopt on the user's behalf without asking.
+
+Good material to keep:
+
+- decisions and the reasons behind them
 - durable user preferences
-- architecture decisions and reasons
 - project-specific conventions
-- resolved ambiguity or changed direction
-- repeated workflow lessons
+- resolved ambiguity or a changed direction
+- a lesson that cost something to learn
 
 CLI fallback:
 
 ```bash
-{mdx_cli} memory --root "{root_path}" add --title "<title>" --body "<body>" --tag "<tag>"
+{mdx_cli} memory --root "{root_path}" add --body "<what happened>"
+{mdx_cli} memory --root "{root_path}" distill --statement "<the claim>" --body "<why>" --ref <material-id>
 ```
+
+Capture is one-way. Anything written can be deleted afterwards but never unremembered, so do not store secrets, credentials, or anything the user has not confirmed.
 
 ## Agent-Time Memory Extraction
 
 Extract and write durable memories during active conversation turns when decisions, stable preferences, project constraints, or reusable lessons become clear. Do not wait for background capture, thread archival, or pre-compact hooks before preserving confirmed information that should survive future sessions.
 
-Use background capture and distillation as a fallback safety net, not as the primary memory workflow. If the user asks to remember something, or the conversation resolves a clear, durable, low-risk fact, call `memory_add` in that turn. Ask before saving sensitive or uncertain information. When the `memory_inbox_add` MCP tool is available, use it to create inbox review candidates for sensitive or uncertain information that may be useful but is not ready for durable memory.
+Use background capture as a fallback safety net, not as the primary workflow. If the user asks to remember something, or the conversation resolves something worth keeping, call `memory_add` in that turn. Ask before storing anything sensitive or uncertain: there is no holding area any more, so material goes straight into the library.
 
 ## Pre-Compact Memory Capture
 
 Pre-compact hooks are for memory capture before context compression. They are not the same as explicit thread archival.
 
-Claude and Cursor hooks call `~/.mdx-memory-precompact-hook.mjs` on pre-compact events. When the hook input includes a valid `transcript_path`, the hook runs `memory capture import --distill` and then accepts the distilled result into active memories. The implementation may store a source thread internally so distillation has provenance, but the purpose of this hook is to create reusable active memory before compression. If no transcript path is available, the hook silently skips.
+Claude and Cursor hooks call `~/.mdx-memory-precompact-hook.mjs` on pre-compact events. When the hook input includes a valid `transcript_path`, the hook reads that transcript in as material so the conversation survives compression. It stops there: it does not draw conclusions, because nothing about a compression event tells anyone what the conversation meant. If no transcript path is available, the hook silently skips.
 
 Codex currently relies on explicit MCP/CLI calls for pre-compact capture unless a verified Codex lifecycle hook exposes a transcript path.
 
-## Full Thread Archival
+## Keeping A Whole Conversation
 
-Use full thread archival only when preserving the original conversation matters. A thread is the raw/original conversation record, not the default memory summary.
-
-For Codex local sessions, prefer `memory capture scan --source codex --import`. It discovers `rollout-*.jsonl` transcripts from `MDX_CODEX_SESSION_DIRS`, `~/.codex/sessions`, and `~/.codex/archived_sessions`, then saves them under `memory/threads/codex/`. Imported Codex threads preserve the original conversation under `## Conversation` plus a complete `## Raw Codex JSONL` block.
-
-Use `memory_thread_save` when you already have a transcript file or manually assembled original conversation. Use `memory_thread_get` or `memory_thread_show` when the user asks to inspect the original thread. Use `memory_distill` after saving or importing a thread when the user wants reusable long-term memories extracted. Use `memory_promote` only when the user explicitly asks to promote memory into wiki/raw material.
+A transcript is material like anything else: read it in with `capture import --path <file>` and it is stored verbatim with its source. There is no separate thread layer, no archival step, and no automatic extraction — turning a conversation into a conclusion is a judgement, so it goes through `memory_distill` and a person's adoption like every other conclusion.
 
 CLI fallback:
 
 ```bash
-{mdx_cli} memory --root "{root_path}" capture scan --source codex
-{mdx_cli} memory --root "{root_path}" capture scan --source codex --import
-{mdx_cli} memory --root "{root_path}" thread save --source codex --title "<title>" --file <path>
-{mdx_cli} memory --root "{root_path}" thread show "<source:thread-id>"
-{mdx_cli} memory --root "{root_path}" distill --thread "<source:thread-id>" --accept
+{mdx_cli} memory --root "{root_path}" capture scan --path <file-or-dir>
+{mdx_cli} memory --root "{root_path}" capture import --path <file-or-dir>
 ```
 
 ## Safety
@@ -1301,7 +1243,7 @@ CLI fallback:
 
 fn claude_memory_block(root_path: &str, mdx_cli: &str) -> String {
     format!(
-        "## MDX Memory\nWhen the user asks to remember, save, recall, search, persist decisions, or load prior context, use the `mdx-memory` skill and the `mdx-memory` MCP server.\n\nUse `memory_working_get` and `memory_recall` for task context. Extract and write durable memories during active conversation turns when clear, durable, low-risk facts, preferences, decisions, project constraints, or reusable lessons become clear. Do not wait for background capture, thread archival, or pre-compact hooks before preserving confirmed information that should survive future sessions. Ask before saving sensitive or uncertain information. When available, use the `memory_inbox_add` MCP tool to create inbox review candidates for sensitive or uncertain information that may be useful but is not ready for durable memory. Pre-compact hooks capture and accept distilled memory before compression; the installed Claude hook command is `{mdx_cli} memory --root \"{root_path}\" hook claude PreCompact`. Full thread archival is separate and should only be used when preserving original conversation text matters. Do not store secrets or promote memory into wiki/raw material unless the user explicitly asks."
+        "## MDX Memory\nWhen the user asks to remember, save, recall, search, persist decisions, or load prior context, use the `mdx-memory` skill and the `mdx-memory` MCP server.\n\nUse `memory_recall` for task context and cite what you use. Store what happened with `memory_add` during the turn it happens; draw conclusions from stored material with `memory_distill`, which produces a candidate that only a person can adopt. Do not wait for background capture or pre-compact hooks before preserving something confirmed. Ask before storing anything sensitive or uncertain — capture is one-way. Pre-compact hooks capture and accept distilled memory before compression; the installed Claude hook command is `{mdx_cli} memory --root \"{root_path}\" hook claude PreCompact`. Full thread archival is separate and should only be used when preserving original conversation text matters. Do not store secrets or promote memory into wiki/raw material unless the user explicitly asks."
     )
 }
 
@@ -1314,7 +1256,7 @@ alwaysApply: true
 
 Use the `mdx-memory` skill and the `mdx-memory` MCP server for durable memory.
 
-Read task context with `memory_working_get` and `memory_recall`. Search exact stored memories with `memory_search`. Extract and write durable memories during active conversation turns when clear, durable, low-risk facts, preferences, decisions, project constraints, or reusable lessons become clear. When practical, call `memory_search` before `memory_add` to avoid duplicate memories. Do not wait for background capture, thread archival, or pre-compact hooks before preserving confirmed information that should survive future sessions. Ask before saving sensitive or uncertain information. When available, use the `memory_inbox_add` MCP tool to create inbox review candidates for sensitive or uncertain information that may be useful but is not ready for durable memory. Pre-compact hooks capture and accept distilled memory before compression; the installed Cursor hook command is `{mdx_cli} memory --root "{root_path}" hook cursor preCompact`. Full thread archival is separate and should only be used when preserving original conversation text matters. Do not store secrets.
+Read task context with `memory_recall` and cite what you use. Find specific items with `memory_search`. Store what happened with `memory_add` during the turn it happens; draw conclusions from stored material with `memory_distill`, which produces a candidate that only a person can adopt. Do not wait for background capture or pre-compact hooks before preserving something confirmed. Ask before storing anything sensitive or uncertain — capture is one-way. Pre-compact hooks capture and accept distilled memory before compression; the installed Cursor hook command is `{mdx_cli} memory --root "{root_path}" hook cursor preCompact`. Full thread archival is separate and should only be used when preserving original conversation text matters. Do not store secrets.
 "#
     )
 }

@@ -12,20 +12,11 @@ import {
   updateLlmWikiConfig,
 } from "@/features/llm-wiki/lib/llm-wiki-client";
 import { MemorySettingsSection } from "@/features/memory/components/memory-settings-section";
-import type {
-  MemoryProviderOption,
-  MemoryStorageBackend,
-} from "@/features/memory/components/memory-settings-section";
 import {
-  dryRunMemoryStorageMigration,
-  setMemoryConfig,
-  runMemoryStorageMigration as applyMemoryStorageMigrationCommand,
-  updateMemoryConfig,
+  getWorkspaceConfig,
+  setWorkspaceConfig,
 } from "@/features/memory/lib/memory-client";
-import type {
-  MemoryConfig,
-  MemoryStorageMigrationReport,
-} from "@/features/memory/lib/types";
+import type { WorkspaceMemoryConfig } from "@/features/memory/lib/types";
 import type { LlmWikiKnowledgeConfig } from "@/features/llm-wiki/lib/types";
 import type { LlmProviderApiMode } from "@/features/llm-wiki/lib/types";
 import {
@@ -121,14 +112,9 @@ function SettingsDialog({
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
   const [savingMemorySettings, setSavingMemorySettings] = useState(false);
-  const [memoryConfig, setMemoryConfigState] = useState<MemoryConfig | null>(
+  const [memoryConfig, setMemoryConfigState] = useState<WorkspaceMemoryConfig | null>(
     null,
   );
-  const [postgresTargetText, setPostgresTargetText] = useState("");
-  const [migrationReport, setMigrationReport] =
-    useState<MemoryStorageMigrationReport | null>(null);
-  const [migratingMemoryStorage, setMigratingMemoryStorage] = useState(false);
-  const [applyingMemoryMigration, setApplyingMemoryMigration] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [fileWatchEnabled, setFileWatchEnabled] = useState(
     preferences.fileWatchEnabled,
@@ -208,6 +194,33 @@ function SettingsDialog({
     );
     setExcludeDirsText(preferences.fileTreeExcludeDirs.join("\n"));
   }, [preferences]);
+
+  // The memory section only needs this workspace's capture settings; the
+  // library itself is global and has its own panel.
+  useEffect(() => {
+    if (!workspaceRoot) {
+      setMemoryConfigState(null);
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const config = await getWorkspaceConfig(workspaceRoot);
+        if (!cancelled) {
+          setMemoryConfigState(config);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setMessage(formatError(error, "加载记忆设置失败。"));
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceRoot]);
 
   useEffect(() => {
     if (!workspaceRoot) {
@@ -349,9 +362,18 @@ function SettingsDialog({
       setLoadingLlmWiki(false);
     }
   };
-  const toggleMemoryConfig = async (key: string, enabled: boolean) => {
+  /// Applies one change to this workspace's capture settings.
+  ///
+  /// Read, change, write: the configuration is small and the panel is the only
+  /// writer, so a merge that could lose a concurrent edit is not worth building.
+  const updateMemoryCapture = async (
+    change: (capture: { enabled: boolean; sources: string[] }) => {
+      enabled: boolean;
+      sources: string[];
+    },
+  ) => {
     if (!workspaceRoot) {
-      setMessage("打开工作区后可以修改 Memory 设置。");
+      setMessage("打开工作区后可以修改记忆设置。");
       return;
     }
 
@@ -359,169 +381,20 @@ function SettingsDialog({
     setMessage(null);
 
     try {
-      await setMemoryConfig(workspaceRoot, {
-        scope: "workspace",
-        key,
-        enabled,
+      const current = await getWorkspaceConfig(workspaceRoot);
+      const next = await setWorkspaceConfig(workspaceRoot, {
+        ...current,
+        capture: change(current.capture),
       });
-      const nextConfig = await setMemoryConfig(workspaceRoot, {
-        scope: "workspace",
-        key,
-        enabled,
-      });
-      setMemoryConfigState(nextConfig);
-      setMessage("Memory 设置已保存。");
+      setMemoryConfigState(next);
     } catch (error) {
-      setMessage(formatError(error, "保存 Memory 设置失败。"));
+      setMessage(formatError(error, "保存记忆设置失败。"));
     } finally {
       setSavingMemorySettings(false);
     }
   };
-  const updateMemoryProvider = async (provider: MemoryProviderOption) => {
-    if (!workspaceRoot) {
-      setMessage("打开工作区后可以修改 Memory 设置。");
-      return;
-    }
 
-    setSavingMemorySettings(true);
-    setMessage(null);
 
-    try {
-      const nextConfig = await updateMemoryConfig(workspaceRoot, {
-        scope: "workspace",
-        provider:
-          provider === "reuse_llm"
-            ? { mode: "reuse_llm", provider: null }
-            : { mode: "provider", provider },
-      });
-      setMemoryConfigState(nextConfig);
-      setMessage("Memory Provider 已保存。");
-    } catch (error) {
-      setMessage(formatError(error, "保存 Memory Provider 失败。"));
-    } finally {
-      setSavingMemorySettings(false);
-    }
-  };
-  const updateMemoryStorageBackend = async (backend: MemoryStorageBackend) => {
-    if (!workspaceRoot) {
-      setMessage("打开工作区后可以修改 Memory 设置。");
-      return;
-    }
-
-    setSavingMemorySettings(true);
-    setMessage(null);
-    setMigrationReport(null);
-
-    try {
-      const nextConfig = await updateMemoryConfig(workspaceRoot, {
-        scope: "workspace",
-        storage: { backend },
-      });
-      setMemoryConfigState(nextConfig);
-      setPostgresTargetText(nextConfig.storage.postgres_url_ref ?? "");
-      setMessage("Memory 存储设置已保存。");
-    } catch (error) {
-      setMessage(formatError(error, "保存 Memory 存储设置失败。"));
-    } finally {
-      setSavingMemorySettings(false);
-    }
-  };
-  const updatePostgresTarget = (target: string) => {
-    setPostgresTargetText(target);
-    setMigrationReport(null);
-  };
-  const persistPostgresTarget = async () => {
-    if (!workspaceRoot) {
-      setMessage("打开工作区后可以修改 Memory 设置。");
-      return;
-    }
-
-    try {
-      const nextConfig = await updateMemoryConfig(workspaceRoot, {
-        scope: "workspace",
-        storage: {
-          backend: "postgresql",
-          postgres_url_ref: postgresTargetText,
-        },
-      });
-      setMemoryConfigState(nextConfig);
-      setPostgresTargetText(nextConfig.storage.postgres_url_ref ?? "");
-      setMigrationReport(null);
-    } catch (error) {
-      setMessage(formatError(error, "保存 PostgreSQL URL 失败。"));
-    }
-  };
-  const runMemoryStorageMigrationDryRun = async () => {
-    if (!workspaceRoot) {
-      setMessage("打开工作区后可以修改 Memory 设置。");
-      return;
-    }
-
-    await persistPostgresTarget();
-    const target = postgresTargetText.trim();
-    if (!target) {
-      setMessage("请先填写 PostgreSQL URL。");
-      return;
-    }
-
-    setMigratingMemoryStorage(true);
-    setMessage(null);
-
-    try {
-      const report = await dryRunMemoryStorageMigration(workspaceRoot, {
-        from: "sqlite",
-        to: "postgresql",
-        target,
-        dry_run: true,
-        resume: false,
-      });
-      setMigrationReport(report);
-      setMessage(
-        report.validation_errors.length === 0
-          ? "Memory 迁移预检通过。"
-          : "Memory 迁移预检有问题。",
-      );
-    } catch (error) {
-      setMessage(formatError(error, "Memory 迁移预检失败。"));
-    } finally {
-      setMigratingMemoryStorage(false);
-    }
-  };
-  const applyMemoryStorageMigration = async () => {
-    if (!workspaceRoot) {
-      setMessage("打开工作区后可以修改 Memory 设置。");
-      return;
-    }
-
-    const target = postgresTargetText.trim();
-    if (!target) {
-      setMessage("请先填写 PostgreSQL URL。");
-      return;
-    }
-    if (!migrationReport || migrationReport.validation_errors.length > 0) {
-      setMessage("请先通过迁移预检。");
-      return;
-    }
-
-    setApplyingMemoryMigration(true);
-    setMessage(null);
-
-    try {
-      const report = await applyMemoryStorageMigrationCommand(workspaceRoot, {
-        from: "sqlite",
-        to: "postgresql",
-        target,
-        dry_run: false,
-        resume: false,
-      });
-      setMigrationReport(report);
-      setMessage("Memory 迁移已完成。");
-    } catch (error) {
-      setMessage(formatError(error, "Memory 迁移失败。"));
-    } finally {
-      setApplyingMemoryMigration(false);
-    }
-  };
   const selectSection = (section: SettingsSection) => {
     setActiveSection(section);
     const container = contentScrollRef.current;
@@ -764,30 +637,19 @@ function SettingsDialog({
               }}
               disabled={!workspaceRoot || savingMemorySettings}
               config={memoryConfig}
-              postgresTarget={postgresTargetText}
-              migrationReport={migrationReport}
-              checkingMigration={migratingMemoryStorage}
-              applyingMigration={applyingMemoryMigration}
-              onToggle={(key, enabled) => {
-                void toggleMemoryConfig(key, enabled);
+              onToggleCapture={(enabled) => {
+                void updateMemoryCapture((capture) => ({
+                  ...capture,
+                  enabled,
+                }));
               }}
-              onProviderChange={(provider) => {
-                void updateMemoryProvider(provider);
-              }}
-              onStorageBackendChange={(backend) => {
-                void updateMemoryStorageBackend(backend);
-              }}
-              onPostgresTargetChange={(target) => {
-                updatePostgresTarget(target);
-              }}
-              onPostgresTargetBlur={() => {
-                void persistPostgresTarget();
-              }}
-              onMigrationDryRun={() => {
-                void runMemoryStorageMigrationDryRun();
-              }}
-              onMigrationApply={() => {
-                void applyMemoryStorageMigration();
+              onToggleSource={(source, enabled) => {
+                void updateMemoryCapture((capture) => ({
+                  ...capture,
+                  sources: enabled
+                    ? [...capture.sources, source]
+                    : capture.sources.filter((current) => current !== source),
+                }));
               }}
             />
 

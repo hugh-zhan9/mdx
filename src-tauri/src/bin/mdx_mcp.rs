@@ -1,26 +1,29 @@
 use std::io::{self, BufRead, Write};
 
-use mdx_lib::memory::{
-    memory_add, memory_detect_workspace, memory_distill, memory_inbox_accept, memory_inbox_add,
-    memory_inbox_list, memory_promote, memory_recall, memory_search, memory_thread_get,
-    memory_thread_save, memory_working_get, InboxAddRequest, MemoryDoctorReport,
-};
+use mdx_lib::memory::api;
+use mdx_lib::memory::wiki_promote::{promote as promote_to_wiki, PromoteRequest};
+use mdx_lib::memory_models::MemoryDoctorReport;
 use mdx_lib::memory_agent_setup::{memory_agent_doctor, memory_agent_status};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+/// The tools an agent may call.
+///
+/// Material goes in, conclusions come out of it, and reading is `recall` unless
+/// something narrower is wanted. The tools this replaced — inbox review,
+/// working context, thread saving — are gone with the concepts behind them; an
+/// agent asking for them gets an unknown-tool error rather than a stub.
 const TOOLS: &[&str] = &[
     "memory_status",
     "memory_recall",
-    "memory_working_get",
-    "memory_add",
-    "memory_thread_save",
-    "memory_thread_show",
-    "memory_inbox_list",
-    "memory_inbox_add",
-    "memory_inbox_accept",
-    "memory_distill",
     "memory_search",
+    "memory_context",
+    "memory_brief",
+    "memory_add",
+    "memory_show",
+    "memory_distill",
+    "memory_gate",
+    "memory_adopt",
     "memory_promote",
     "memory_hook_status",
     "memory_diagnostics",
@@ -62,50 +65,8 @@ struct ToolCallParams {
 }
 
 #[derive(Debug, Deserialize)]
-struct ThreadShowArguments {
-    target: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct InboxListArguments {
-    #[serde(default)]
-    include_reviewed: bool,
-}
-
-#[derive(Debug, Deserialize)]
-struct InboxAddArguments {
-    title: String,
-    body: String,
-    source_thread: Option<String>,
-    #[serde(default)]
-    source_message_refs: Vec<String>,
-    importance: Option<f64>,
-    confidence: Option<f64>,
-    tags: Vec<String>,
-    distill_run_id: Option<String>,
-}
-
-impl From<InboxAddArguments> for InboxAddRequest {
-    fn from(arguments: InboxAddArguments) -> Self {
-        Self {
-            title: arguments.title,
-            body: arguments.body,
-            source_thread: arguments.source_thread,
-            source_message_refs: arguments.source_message_refs,
-            importance: arguments.importance,
-            confidence: arguments.confidence,
-            tags: arguments.tags,
-            distill_run_id: arguments.distill_run_id,
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct SearchArguments {
-    query: String,
-    limit: Option<usize>,
-    tag: Option<String>,
-    since: Option<String>,
+struct DrawerArguments {
+    drawer_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -277,114 +238,80 @@ pub fn tools_manifest_for_test() -> String {
 fn tool_descriptor(name: &str) -> Value {
     let (description, properties, required) = match name {
         "memory_status" => (
-            "Inspect whether the workspace has MDX Memory initialized.",
+            "Report whether memory is available for this workspace: whether it is enabled, which project it belongs to, and whether the embedding model is present.",
             json!({}),
             json!([]),
         ),
         "memory_recall" => (
-            "Recall relevant working memory, memories, and thread context. Consult this at the start of a conversation/task when prior context may matter.",
+            "Get the context for a task: assembled conclusions, a citation-first brief, and matching material. Call this at the start of a task when earlier context may matter. Every item carries the id and source file it came from; cite them.",
             json!({
                 "query": { "type": "string" },
-                "limit": { "type": "integer" },
-                "byte_budget": { "type": "integer" },
-                "include_working": { "type": "boolean" },
-                "include_threads": { "type": "boolean" },
-                "thread_ids": { "type": "array", "items": { "type": "string" } },
-                "include_wiki_refs": { "type": "boolean" },
-                "include_wiki_snippets": { "type": "boolean" },
-                "tag": { "type": "string" },
-                "since": { "type": "string" }
+                "top_k": { "type": "integer" },
+                "max_items": { "type": "integer" }
             }),
             json!(["query"]),
-        ),
-        "memory_working_get" => (
-            "Read the workspace working memory markdown.",
-            json!({}),
-            json!([]),
-        ),
-        "memory_add" => (
-            "Add a durable memory snapshot during active conversation turns for clear, durable, low-risk user preferences, facts, or decisions. Search first when duplicate risk exists to avoid duplicates. For sensitive or uncertain candidates, ask the user before saving or route them through the inbox.",
-            json!({
-                "title": { "type": "string" },
-                "body": { "type": "string" },
-                "tags": { "type": "array", "items": { "type": "string" } },
-                "source_thread": { "type": "string" },
-                "source_message_refs": { "type": "array", "items": { "type": "string" } },
-                "importance": { "type": "number" },
-                "confidence": { "type": "number" }
-            }),
-            json!(["title", "body", "tags"]),
-        ),
-        "memory_thread_save" => (
-            "Save a source agent thread into MDX Memory.",
-            json!({
-                "source": { "type": "string" },
-                "thread_id": { "type": "string" },
-                "title": { "type": "string" },
-                "body": { "type": "string" },
-                "started_at": { "type": "string" },
-                "ended_at": { "type": "string" },
-                "model": { "type": "string" },
-                "workspace_root": { "type": "string" },
-                "tags": { "type": "array", "items": { "type": "string" } }
-            }),
-            json!(["source", "title", "body", "tags"]),
-        ),
-        "memory_thread_show" => (
-            "Show a saved memory thread by id or path.",
-            json!({ "target": { "type": "string" } }),
-            json!(["target"]),
-        ),
-        "memory_inbox_list" => (
-            "List memory inbox candidates.",
-            json!({ "include_reviewed": { "type": "boolean" } }),
-            json!([]),
-        ),
-        "memory_inbox_add" => (
-            "Add a memory inbox candidate for sensitive, private, or uncertain memory candidates that should be reviewed before becoming durable memory.",
-            json!({
-                "title": { "type": "string" },
-                "body": { "type": "string" },
-                "source_thread": { "type": "string" },
-                "source_message_refs": { "type": "array", "items": { "type": "string" } },
-                "importance": { "type": "number" },
-                "confidence": { "type": "number" },
-                "tags": { "type": "array", "items": { "type": "string" } },
-                "distill_run_id": { "type": "string" }
-            }),
-            json!(["title", "body", "tags"]),
-        ),
-        "memory_inbox_accept" => (
-            "Accept a memory inbox candidate into durable memories.",
-            json!({
-                "inbox_id": { "type": "string" },
-                "title": { "type": "string" },
-                "body": { "type": "string" },
-                "tags": { "type": "array", "items": { "type": "string" } }
-            }),
-            json!(["inbox_id"]),
-        ),
-        "memory_distill" => (
-            "Distill a saved thread into inbox candidates or memories as a thread/background workflow. This is not the only path for memory extraction; use memory_add during active turns when a clear durable memory is ready.",
-            json!({
-                "target": { "type": "string" },
-                "accept": { "type": "boolean" },
-                "force": { "type": "boolean" }
-            }),
-            json!(["target", "accept", "force"]),
         ),
         "memory_search" => (
-            "Search durable memory summaries. Use before adding durable memories when duplicate risk exists.",
+            "Search stored material and conclusions. Hybrid keyword and semantic search; results carry ids and source files.",
             json!({
                 "query": { "type": "string" },
-                "limit": { "type": "integer" },
-                "tag": { "type": "string" },
-                "since": { "type": "string" }
+                "top_k": { "type": "integer" },
+                "wing": { "type": "string" },
+                "room": { "type": "string" }
             }),
             json!(["query"]),
         ),
+        "memory_context" => (
+            "Assemble only the conclusions that apply to a task, ordered from the most general to the most specific.",
+            json!({
+                "query": { "type": "string" },
+                "max_items": { "type": "integer" }
+            }),
+            json!(["query"]),
+        ),
+        "memory_brief" => (
+            "A deterministic brief for a task: key facts with citations, the evidence behind them, what is uncertain, and what to do next. No model is called to write it.",
+            json!({ "query": { "type": "string" } }),
+            json!(["query"]),
+        ),
+        "memory_add" => (
+            "Store material: the text of a decision, a finding, or a piece of a conversation worth keeping. Material is raw record, not a claim — it is stored as given, and nothing is inferred from it. Do not store secrets; stored material can only be deleted afterwards, never unremembered.",
+            json!({
+                "body": { "type": "string" },
+                "source": { "type": "string" }
+            }),
+            json!(["body"]),
+        ),
+        "memory_show" => (
+            "Read one stored item in full by its id.",
+            json!({ "drawer_id": { "type": "string" } }),
+            json!(["drawer_id"]),
+        ),
+        "memory_distill" => (
+            "Draw a conclusion from material already stored. Give the claim as one sentence and reference the material it rests on; those ids must exist. The result is a candidate: it does not reach anyone's context until a person adopts it.",
+            json!({
+                "statement": { "type": "string" },
+                "body": { "type": "string" },
+                "tier": { "type": "string", "enum": ["concrete", "pattern"] },
+                "supporting_refs": { "type": "array", "items": { "type": "string" } }
+            }),
+            json!(["statement", "body", "supporting_refs"]),
+        ),
+        "memory_gate" => (
+            "Report whether a candidate conclusion can be adopted yet, and what it is missing. Read-only.",
+            json!({ "drawer_id": { "type": "string" } }),
+            json!(["drawer_id"]),
+        ),
+        "memory_adopt" => (
+            "Adopt a candidate conclusion so later sessions see it. This records who adopted it and when, as evidence in its own right. Ask the user before adopting on their behalf.",
+            json!({
+                "drawer_id": { "type": "string" },
+                "note": { "type": "string" }
+            }),
+            json!(["drawer_id"]),
+        ),
         "memory_promote" => (
-            "Promote a memory or thread into wiki raw material.",
+            "Copy a conclusion or piece of material into wiki raw material, optionally ingesting it.",
             json!({
                 "target": { "type": "string" },
                 "ingest": { "type": "boolean" },
@@ -393,12 +320,12 @@ fn tool_descriptor(name: &str) -> Value {
             json!(["target", "ingest"]),
         ),
         "memory_hook_status" => (
-            "Inspect installed MDX Memory agent hook and MCP integration status for the active workspace.",
+            "Inspect the installed agent hook and MCP integration for this workspace.",
             json!({ "agent": { "type": "string" } }),
             json!([]),
         ),
         "memory_diagnostics" => (
-            "Run MDX Memory agent integration diagnostics for the active workspace.",
+            "Diagnose memory for this workspace: the library, the model, and the project bindings.",
             json!({ "include_logs": { "type": "boolean" } }),
             json!([]),
         ),
@@ -426,57 +353,49 @@ fn dispatch_tool_call(workspace: &str, params: Value) -> Result<Value, ProtocolE
         params.arguments
     };
 
+    let root = std::path::Path::new(workspace);
+
     match params.name.as_str() {
-        "memory_status" => memory_result(memory_detect_workspace(workspace.to_string())),
+        "memory_status" => memory_result(api::status(root)),
         "memory_recall" => {
-            let request = parse_arguments(arguments)?;
-            memory_result(memory_recall(workspace.to_string(), request))
+            let query = parse_arguments(arguments)?;
+            memory_result(api::recall(root, query))
         }
-        "memory_working_get" => memory_result(memory_working_get(workspace.to_string())),
+        "memory_search" => {
+            let request = parse_arguments(arguments)?;
+            memory_result(api::search(request))
+        }
+        "memory_context" => {
+            let query = parse_arguments(arguments)?;
+            memory_result(api::context(root, query))
+        }
+        "memory_brief" => {
+            let query = parse_arguments(arguments)?;
+            memory_result(api::brief(root, query))
+        }
         "memory_add" => {
             let request = parse_arguments(arguments)?;
-            memory_result(memory_add(workspace.to_string(), request))
+            memory_result(api::add_material(root, request))
         }
-        "memory_thread_save" => {
-            let request = parse_arguments(arguments)?;
-            memory_result(memory_thread_save(workspace.to_string(), request))
-        }
-        "memory_thread_show" => {
-            let arguments: ThreadShowArguments = parse_arguments(arguments)?;
-            memory_result(memory_thread_get(workspace.to_string(), arguments.target))
-        }
-        "memory_inbox_list" => {
-            let arguments: InboxListArguments = parse_arguments(arguments)?;
-            memory_result(memory_inbox_list(
-                workspace.to_string(),
-                arguments.include_reviewed,
-            ))
-        }
-        "memory_inbox_add" => {
-            let request: InboxAddArguments = parse_arguments(arguments)?;
-            memory_result(memory_inbox_add(workspace.to_string(), request.into()))
-        }
-        "memory_inbox_accept" => {
-            let request = parse_arguments(arguments)?;
-            memory_result(memory_inbox_accept(workspace.to_string(), request))
+        "memory_show" => {
+            let arguments: DrawerArguments = parse_arguments(arguments)?;
+            memory_result(api::show(&arguments.drawer_id))
         }
         "memory_distill" => {
             let request = parse_arguments(arguments)?;
-            memory_result(memory_distill(workspace.to_string(), request))
+            memory_result(api::distill_conclusion(root, request))
         }
-        "memory_search" => {
-            let arguments: SearchArguments = parse_arguments(arguments)?;
-            memory_result(memory_search(
-                workspace.to_string(),
-                arguments.query,
-                arguments.limit,
-                arguments.tag,
-                arguments.since,
-            ))
+        "memory_gate" => {
+            let arguments: DrawerArguments = parse_arguments(arguments)?;
+            memory_result(api::conclusion_gate(&arguments.drawer_id))
+        }
+        "memory_adopt" => {
+            let request = parse_arguments(arguments)?;
+            memory_result(api::adopt_conclusion(root, request))
         }
         "memory_promote" => {
-            let request = parse_arguments(arguments)?;
-            memory_result(memory_promote(workspace.to_string(), request))
+            let request: PromoteRequest = parse_arguments(arguments)?;
+            memory_result(promote_to_wiki(root, request))
         }
         "memory_hook_status" => {
             let arguments: AgentStatusArguments = parse_arguments(arguments)?;
@@ -671,29 +590,49 @@ mod tests {
     }
 
     #[test]
-    fn tools_list_response_contains_memory_inbox_add() {
+    fn the_tools_of_the_abandoned_model_are_not_advertised() {
         let response = handle_request(
             "/tmp",
             parse_request(r#"{"jsonrpc":"2.0","id":"tools","method":"tools/list"}"#).unwrap(),
         );
 
-        assert!(response.error.is_none());
-        let tools = response.result.unwrap()["tools"]
-            .as_array()
-            .unwrap()
-            .clone();
+        let tools = response.result.unwrap()["tools"].as_array().unwrap().clone();
+        let names: Vec<&str> = tools
+            .iter()
+            .map(|tool| tool["name"].as_str().unwrap())
+            .collect();
+
+        for gone in [
+            "memory_working_get",
+            "memory_inbox_add",
+            "memory_inbox_list",
+            "memory_inbox_accept",
+            "memory_thread_save",
+            "memory_thread_show",
+        ] {
+            assert!(
+                !names.contains(&gone),
+                "{gone} belongs to a model this product no longer has"
+            );
+        }
+    }
+
+    #[test]
+    fn distilling_a_conclusion_is_described_as_needing_material() {
+        let response = handle_request(
+            "/tmp",
+            parse_request(r#"{"jsonrpc":"2.0","id":"tools","method":"tools/list"}"#).unwrap(),
+        );
+
+        let tools = response.result.unwrap()["tools"].as_array().unwrap().clone();
         let descriptor = tools
             .iter()
-            .find(|tool| tool["name"].as_str() == Some("memory_inbox_add"))
-            .expect("missing memory_inbox_add descriptor");
+            .find(|tool| tool["name"].as_str() == Some("memory_distill"))
+            .expect("missing memory_distill descriptor");
 
-        assert!(descriptor["description"]
-            .as_str()
-            .unwrap()
-            .contains("Add a memory inbox candidate"));
         assert_eq!(
             descriptor["inputSchema"]["required"],
-            json!(["title", "body", "tags"])
+            json!(["statement", "body", "supporting_refs"])
         );
     }
 
@@ -719,26 +658,28 @@ mod tests {
         };
 
         let recall = description_for("memory_recall");
-        assert!(recall.contains("start of a conversation/task"));
-        assert!(recall.contains("prior context may matter"));
+        assert!(recall.contains("start of a task"));
+        assert!(recall.contains("cite"));
 
         let add = description_for("memory_add");
-        assert!(add.contains("during active conversation turns"));
-        assert!(add.contains("clear, durable, low-risk"));
-        assert!(add.contains("search"));
-        assert!(add.contains("avoid duplicates"));
-        assert!(add.contains("sensitive"));
-        assert!(add.contains("uncertain"));
-        assert!(add.contains("inbox"));
-
-        let search = description_for("memory_search");
-        assert!(search.contains("before adding durable memories"));
-        assert!(search.contains("duplicate risk"));
+        assert!(add.contains("raw record"), "material is not a claim: {add}");
+        assert!(add.contains("do not store secrets"));
+        assert!(
+            add.contains("only be deleted afterwards"),
+            "the agent has to know capture is irreversible: {add}"
+        );
 
         let distill = description_for("memory_distill");
-        assert!(distill.contains("thread/background"));
-        assert!(distill.contains("not the only path"));
-        assert!(distill.contains("memory extraction"));
+        assert!(distill.contains("material already stored"));
+        assert!(distill.contains("candidate"));
+        assert!(
+            distill.contains("until a person adopts it"),
+            "an agent must not think distilling is publishing: {distill}"
+        );
+
+        let adopt = description_for("memory_adopt");
+        assert!(adopt.contains("records who adopted it"));
+        assert!(adopt.contains("ask the user"));
     }
 
     #[test]
@@ -780,22 +721,17 @@ mod tests {
 
         let response = handle_request(root.path().to_str().unwrap(), request);
 
-        assert!(response.error.is_none());
+        assert!(response.error.is_none(), "{:?}", response.error);
         let result = response.result.unwrap();
-        assert_eq!(result["mode"], "ordinary");
-        assert_eq!(result["has_memory"], false);
+        // Memory is off until a workspace asks for it, and the model has to be
+        // downloaded before anything can be written.
+        assert_eq!(result["enabled"], false);
+        assert!(result["model"].as_str().is_some());
     }
 
     #[test]
-    fn dispatches_memory_working_get_tool_call() {
+    fn an_abandoned_tool_call_is_an_unknown_tool() {
         let root = tempfile::tempdir().unwrap();
-        mdx_lib::memory::memory_initialize_workspace(root.path().to_string_lossy().into_owned())
-            .unwrap();
-        mdx_lib::memory::memory_working_set(
-            root.path().to_string_lossy().into_owned(),
-            "# Working Memory\n\n## Focus\n- MCP startup\n".to_string(),
-        )
-        .unwrap();
         let request = parse_request(
             r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"memory_working_get","arguments":{}}}"#,
         )
@@ -803,35 +739,9 @@ mod tests {
 
         let response = handle_request(root.path().to_str().unwrap(), request);
 
-        assert!(response.error.is_none());
-        assert_eq!(
-            response.result.unwrap(),
-            "# Working Memory\n\n## Focus\n- MCP startup\n"
-        );
-    }
-
-    #[test]
-    fn dispatches_memory_inbox_add_tool_call() {
-        let root = tempfile::tempdir().unwrap();
-        mdx_lib::memory::memory_initialize_workspace(root.path().to_string_lossy().into_owned())
-            .unwrap();
-        let request = parse_request(
-            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"memory_inbox_add","arguments":{"title":"Review inbox capture","body":"Inbox candidates can be reviewed before becoming durable memory.","tags":["workflow"]}}}"#,
-        )
-        .unwrap();
-
-        let response = handle_request(root.path().to_str().unwrap(), request);
-
-        assert!(response.error.is_none());
-        let result = response.result.unwrap();
-        assert_eq!(result["frontmatter"]["title"], "Review inbox capture");
-        assert_eq!(result["frontmatter"]["status"], "pending");
-        assert_eq!(result["frontmatter"]["source_message_refs"], json!([]));
-        assert_eq!(result["frontmatter"]["tags"], json!(["workflow"]));
-        assert_eq!(
-            result["body"],
-            "Inbox candidates can be reviewed before becoming durable memory.\n"
-        );
+        let error = response.error.expect("calling a deleted tool must fail");
+        assert_eq!(error.code, -32602);
+        assert!(error.message.contains("Unknown tool"));
     }
 
     #[test]

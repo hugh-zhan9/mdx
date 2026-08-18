@@ -34,36 +34,12 @@ mod llm_wiki_raw;
 #[cfg(target_os = "macos")]
 mod macos_launch;
 pub mod memory;
-pub mod memory_agent_events;
 pub mod memory_agent_setup;
-mod memory_bundle;
-mod memory_capture;
 pub mod memory_config;
-pub mod memory_daemon;
-mod memory_distill;
-pub mod memory_distill_worker;
-mod memory_fs;
 pub mod memory_hooks;
-mod memory_inbox;
-mod memory_models;
-pub mod memory_projection;
-mod memory_promote;
-pub mod memory_provider;
-pub mod memory_queue;
-mod memory_recall;
-pub mod memory_recall_engine;
-pub mod memory_schema;
-pub mod memory_spool;
-pub mod memory_storage;
-pub mod memory_storage_migration;
-pub mod memory_storage_postgres;
-pub mod memory_storage_sqlite;
-mod memory_store;
-mod memory_thread;
-mod memory_working;
+pub mod memory_models;
 mod models;
 mod path_guard;
-mod search_index;
 mod state_store;
 mod user_themes;
 mod window_appearance;
@@ -73,160 +49,10 @@ mod workspace_search;
 
 pub use models::WorkspaceError;
 
-#[tauri::command]
-fn memory_detect_workspace(
-    root_path: String,
-) -> Result<memory::MemoryWorkspaceStatus, WorkspaceError> {
-    memory::memory_detect_workspace(root_path)
-}
-
-#[tauri::command]
-fn memory_initialize_workspace(
-    root_path: String,
-) -> Result<memory::InitializeMemoryResult, WorkspaceError> {
-    memory::memory_initialize_workspace(root_path)
-}
-
-#[tauri::command]
-fn memory_repair_workspace(
-    root_path: String,
-    request: memory::MemoryRepairRequest,
-) -> Result<memory::MemoryRepairResult, WorkspaceError> {
-    memory::memory_repair_workspace(root_path, request)
-}
-
-#[tauri::command]
-fn memory_config_set(
-    root_path: String,
-    request: memory::MemoryConfigSetRequest,
-) -> Result<memory::MemoryConfig, WorkspaceError> {
-    memory::memory_config_set(root_path, request)
-}
-
-#[tauri::command]
-fn memory_config_update(
-    root_path: String,
-    request: memory::MemoryConfigUpdateRequest,
-) -> Result<memory::MemoryConfig, WorkspaceError> {
-    memory::memory_config_update(root_path, request)
-}
-
-#[tauri::command]
-fn memory_storage_migrate_dry_run(
-    root_path: String,
-    request: memory::MemoryStorageMigrateRequest,
-) -> Result<memory::MemoryStorageMigrationReport, WorkspaceError> {
-    let root = path_guard::canonicalize_workspace_root(root_path)?;
-    memory_storage_migration::dry_run_storage_migration_request(root, request)
-}
-
-#[tauri::command]
-fn memory_storage_migrate(
-    root_path: String,
-    request: memory::MemoryStorageMigrateRequest,
-) -> Result<memory::MemoryStorageMigrationReport, WorkspaceError> {
-    let root = path_guard::canonicalize_workspace_root(root_path)?;
-    memory_storage_migration::run_storage_migration_request(root, request)
-}
-
-#[tauri::command]
-fn memory_backend_status(root_path: String) -> Result<memory::MemoryBackendStatus, WorkspaceError> {
-    memory::memory_backend_status(root_path)
-}
-
-#[tauri::command]
-fn memory_integration_status(
-    root_path: String,
-) -> Result<Vec<memory::MemoryIntegrationStatus>, WorkspaceError> {
-    memory_agent_setup::memory_agent_status(root_path, None).map_err(|error| {
-        WorkspaceError::from_io(
-            "memory_integration_status_failed",
-            "failed to inspect memory integrations",
-            &error,
-        )
-    })
-}
-
-#[tauri::command]
-fn memory_integration_repair(
-    root_path: String,
-    agent: String,
-) -> Result<memory::MemoryDoctorReport, WorkspaceError> {
-    memory_agent_setup::memory_agent_repair(
-        root_path.clone(),
-        memory_agent_setup::MemoryAgentCommandRequest {
-            agent: Some(agent.clone()),
-            dry_run: false,
-            keep_data: true,
-        },
-    )
-    .map_err(|error| {
-        WorkspaceError::from_io(
-            "memory_integration_repair_failed",
-            "failed to repair memory integration",
-            &error,
-        )
-    })?;
-    memory_agent_setup::memory_agent_doctor(root_path, Some(agent)).map_err(|error| {
-        WorkspaceError::from_io(
-            "memory_integration_repair_failed",
-            "failed to inspect repaired memory integration",
-            &error,
-        )
-    })
-}
-
-#[tauri::command]
-fn memory_agent_setup(
-    root_path: String,
-    request: memory_agent_setup::MemoryAgentSetupRequest,
-) -> Result<memory_agent_setup::MemoryAgentSetupResult, WorkspaceError> {
-    memory_agent_setup::memory_agent_setup(root_path, request).map_err(|error| {
-        WorkspaceError::from_io(
-            "memory_agent_setup_failed",
-            "failed to configure agents",
-            &error,
-        )
-    })
-}
-
-#[tauri::command]
-fn memory_index_rebuild(root_path: String) -> Result<memory::MemoryIndexStatus, WorkspaceError> {
-    memory::memory_index_rebuild(root_path)
-}
-
-#[tauri::command]
-fn memory_index_status(root_path: String) -> Result<memory::MemoryIndexStatus, WorkspaceError> {
-    memory::memory_index_status(root_path)
-}
-
-#[tauri::command]
-fn memory_index_search(
-    root_path: String,
-    request: memory::MemoryIndexSearchRequest,
-) -> Result<memory::MemoryIndexSearchResult, WorkspaceError> {
-    memory::memory_index_search(root_path, request)
-}
-
-#[tauri::command]
-fn memory_working_get(root_path: String) -> Result<String, WorkspaceError> {
-    memory::memory_working_get(root_path)
-}
-
-#[tauri::command]
-fn memory_working_set(root_path: String, markdown: String) -> Result<String, WorkspaceError> {
-    memory::memory_working_set(root_path, markdown)
-}
-
-#[tauri::command]
-fn memory_working_append(
-    root_path: String,
-    section: String,
-    text: String,
-) -> Result<String, WorkspaceError> {
-    memory::memory_working_append(root_path, section, text)
-}
-
+/// Runs one blocking memory operation off the UI thread.
+///
+/// Reading and writing the library is synchronous SQLite work plus embedding;
+/// none of it belongs on the thread that has to keep the window responsive.
 async fn run_blocking_memory_task<T>(
     task: impl FnOnce() -> Result<T, WorkspaceError> + Send + 'static,
 ) -> Result<T, WorkspaceError>
@@ -237,170 +63,308 @@ where
         .await
         .map_err(|error| {
             WorkspaceError::new(
-                "task_failed",
-                format!("background memory task failed: {error}"),
+                "memory_task_failed",
+                format!("the memory operation did not finish: {error}"),
             )
         })?
+}
+
+// The memory command surface.
+//
+// Every one of these is a thin shell over `memory::api`: parse the arguments,
+// hand them over, hand the answer back. The commands deleted in this migration
+// — inbox review, working context, the Markdown index, storage migration — are
+// gone rather than aliased, because the concepts behind them are gone.
+
+#[tauri::command]
+fn memory_status(root_path: String) -> Result<memory::api::MemoryStatus, WorkspaceError> {
+    memory::api::status(std::path::Path::new(&root_path))
+}
+
+#[tauri::command]
+fn memory_enable(root_path: String, enabled: bool) -> Result<memory::api::MemoryStatus, WorkspaceError> {
+    let root = std::path::Path::new(&root_path);
+    let mut config = memory::config::read_workspace_config(root)?;
+    config.enabled = enabled;
+    memory::config::write_workspace_config(root, &config)?;
+    if enabled {
+        memory::api::bind_project(root)?;
+    }
+    memory::api::status(root)
+}
+
+#[tauri::command]
+fn memory_config_get(root_path: String) -> Result<memory::config::WorkspaceMemoryConfig, WorkspaceError> {
+    memory::config::read_workspace_config(std::path::Path::new(&root_path))
+}
+
+#[tauri::command]
+fn memory_config_set(
+    root_path: String,
+    config: memory::config::WorkspaceMemoryConfig,
+) -> Result<memory::config::WorkspaceMemoryConfig, WorkspaceError> {
+    let root = std::path::Path::new(&root_path);
+    memory::config::write_workspace_config(root, &config)?;
+    memory::config::read_workspace_config(root)
+}
+
+#[tauri::command]
+fn memory_global_config_get() -> Result<memory::config::GlobalMemoryConfig, WorkspaceError> {
+    memory::config::read_global_config()
+}
+
+#[tauri::command]
+fn memory_global_config_set(
+    config: memory::config::GlobalMemoryConfig,
+) -> Result<memory::config::GlobalMemoryConfig, WorkspaceError> {
+    memory::config::write_global_config(&config)?;
+    memory::config::read_global_config()
+}
+
+#[tauri::command]
+fn memory_diagnostics() -> Result<memory::engine::MemoryDiagnostics, WorkspaceError> {
+    memory::api::diagnostics()
+}
+
+#[tauri::command]
+fn memory_projects() -> Result<Vec<mempal_runtime::projects::ProjectSummary>, WorkspaceError> {
+    memory::api::projects()
+}
+
+#[tauri::command]
+fn memory_rebind_project(wing: String, root_path: String) -> Result<(), WorkspaceError> {
+    memory::api::rebind_project(&wing, std::path::Path::new(&root_path))
+}
+
+#[tauri::command]
+fn memory_model_status() -> Result<memory::api::ModelStatus, WorkspaceError> {
+    memory::api::model_status()
+}
+
+#[tauri::command]
+async fn memory_model_download() -> Result<memory::api::ModelStatus, WorkspaceError> {
+    run_blocking_memory_task(memory::api::fetch_model).await
+}
+
+#[tauri::command]
+async fn memory_reindex() -> Result<memory::engine::ReindexReport, WorkspaceError> {
+    run_blocking_memory_task(memory::api::rebuild_index).await
+}
+
+#[tauri::command]
+async fn memory_search(
+    request: memory::models::retrieval::SearchRequest,
+) -> Result<Vec<memory::models::retrieval::SearchHit>, WorkspaceError> {
+    run_blocking_memory_task(move || memory::api::search(request)).await
+}
+
+#[tauri::command]
+async fn memory_context(
+    root_path: String,
+    query: memory::models::retrieval::ContextQuery,
+) -> Result<memory::models::retrieval::ContextPack, WorkspaceError> {
+    run_blocking_memory_task(move || memory::api::context(std::path::Path::new(&root_path), query))
+        .await
+}
+
+#[tauri::command]
+async fn memory_brief(
+    root_path: String,
+    query: memory::models::retrieval::ContextQuery,
+) -> Result<memory::models::retrieval::Brief, WorkspaceError> {
+    run_blocking_memory_task(move || memory::api::brief(std::path::Path::new(&root_path), query))
+        .await
 }
 
 #[tauri::command]
 async fn memory_recall(
     root_path: String,
-    request: memory::RecallRequest,
-) -> Result<memory::RecallResult, WorkspaceError> {
-    run_blocking_memory_task(move || memory::memory_recall(root_path, request)).await
+    query: memory::models::retrieval::RecallQuery,
+) -> Result<memory::models::retrieval::RecallResult, WorkspaceError> {
+    run_blocking_memory_task(move || memory::api::recall(std::path::Path::new(&root_path), query))
+        .await
 }
 
 #[tauri::command]
-fn memory_add(
+async fn memory_add(
     root_path: String,
-    request: memory::MemoryAddRequest,
-) -> Result<memory::MemoryRecord, WorkspaceError> {
-    memory::memory_add(root_path, request)
+    request: memory::api::AddMaterialRequest,
+) -> Result<memory::models::evidence::WrittenEvidence, WorkspaceError> {
+    run_blocking_memory_task(move || {
+        memory::api::add_material(std::path::Path::new(&root_path), request)
+    })
+    .await
 }
 
 #[tauri::command]
-fn memory_search(
+async fn memory_import_path(
     root_path: String,
-    query: String,
-    limit: Option<usize>,
-    tag: Option<String>,
-    since: Option<String>,
-) -> Result<Vec<memory::MemorySummary>, WorkspaceError> {
-    memory::memory_search(root_path, query, limit, tag, since)
+    path: String,
+) -> Result<memory::models::evidence::IngestOutcome, WorkspaceError> {
+    run_blocking_memory_task(move || {
+        memory::api::import_path(std::path::Path::new(&root_path), std::path::Path::new(&path))
+    })
+    .await
 }
 
 #[tauri::command]
-fn memory_list(
+async fn memory_list(
     root_path: String,
-    filter: memory::MemoryListFilter,
-) -> Result<Vec<memory::MemorySummary>, WorkspaceError> {
-    memory::memory_list(root_path, filter)
+    filter: memory::api::ListFilter,
+) -> Result<Vec<memory::api::StoredItem>, WorkspaceError> {
+    run_blocking_memory_task(move || memory::api::list(std::path::Path::new(&root_path), filter))
+        .await
 }
 
 #[tauri::command]
-fn memory_get(root_path: String, target: String) -> Result<memory::MemoryRecord, WorkspaceError> {
-    memory::memory_get(root_path, target)
+fn memory_show(drawer_id: String) -> Result<memory::api::StoredItem, WorkspaceError> {
+    memory::api::show(&drawer_id)
 }
 
 #[tauri::command]
-fn memory_archive(
+fn memory_delete(drawer_id: String) -> Result<bool, WorkspaceError> {
+    memory::api::delete(&drawer_id)
+}
+
+#[tauri::command]
+fn memory_purge(before: Option<String>) -> Result<u64, WorkspaceError> {
+    memory::api::purge(before)
+}
+
+#[tauri::command]
+async fn memory_distill(
     root_path: String,
-    target: String,
-) -> Result<memory::MemoryRecord, WorkspaceError> {
-    memory::memory_archive(root_path, target)
+    request: memory::api::DistillRequestDto,
+) -> Result<memory::models::knowledge::DistilledConclusion, WorkspaceError> {
+    run_blocking_memory_task(move || {
+        memory::api::distill_conclusion(std::path::Path::new(&root_path), request)
+    })
+    .await
 }
 
 #[tauri::command]
-fn memory_thread_save(
-    root_path: String,
-    request: memory::ThreadSaveRequest,
-) -> Result<memory::ThreadSaveResult, WorkspaceError> {
-    memory::memory_thread_save(root_path, request)
+fn memory_gate(
+    drawer_id: String,
+) -> Result<mempal_runtime::knowledge_gate::GateReport, WorkspaceError> {
+    memory::api::conclusion_gate(&drawer_id)
 }
 
 #[tauri::command]
-async fn memory_thread_list(
+async fn memory_adopt(
     root_path: String,
-    filter: memory::ThreadListFilter,
-) -> Result<Vec<memory::ThreadListItem>, WorkspaceError> {
-    run_blocking_memory_task(move || memory::memory_thread_list(root_path, filter)).await
+    request: memory::api::AdoptRequestDto,
+) -> Result<memory::models::knowledge::AdoptedConclusion, WorkspaceError> {
+    run_blocking_memory_task(move || {
+        memory::api::adopt_conclusion(std::path::Path::new(&root_path), request)
+    })
+    .await
 }
 
 #[tauri::command]
-async fn memory_thread_get(
-    root_path: String,
-    target: String,
-) -> Result<memory::MemoryThreadRecord, WorkspaceError> {
-    run_blocking_memory_task(move || memory::memory_thread_get(root_path, target)).await
+fn memory_demote(
+    request: memory::api::RetireRequestDto,
+) -> Result<memory::models::knowledge::RetiredConclusion, WorkspaceError> {
+    memory::api::retire_conclusion(request)
 }
 
 #[tauri::command]
-fn memory_inbox_add(
+async fn memory_counterexample_add(
     root_path: String,
-    request: memory::InboxAddRequest,
-) -> Result<memory::InboxRecord, WorkspaceError> {
-    memory::memory_inbox_add(root_path, request)
+    request: memory::api::CounterexampleRequestDto,
+) -> Result<mempal_runtime::knowledge_gate::GateReport, WorkspaceError> {
+    run_blocking_memory_task(move || {
+        memory::api::record_counterexample(std::path::Path::new(&root_path), request)
+    })
+    .await
 }
 
 #[tauri::command]
-fn memory_inbox_get(
+async fn memory_legacy_preflight(
     root_path: String,
-    target: String,
-) -> Result<memory::InboxRecord, WorkspaceError> {
-    memory::memory_inbox_get(root_path, target)
+) -> Result<memory::models::legacy_import::LegacyImportPreflight, WorkspaceError> {
+    run_blocking_memory_task(move || memory::api::legacy_preflight(std::path::Path::new(&root_path)))
+        .await
 }
 
 #[tauri::command]
-fn memory_inbox_list(
+async fn memory_legacy_import(
     root_path: String,
-    include_reviewed: bool,
-) -> Result<Vec<memory::InboxRecord>, WorkspaceError> {
-    memory::memory_inbox_list(root_path, include_reviewed)
+) -> Result<memory::models::legacy_import::LegacyImportReport, WorkspaceError> {
+    run_blocking_memory_task(move || memory::api::legacy_import(std::path::Path::new(&root_path)))
+        .await
 }
 
 #[tauri::command]
-fn memory_inbox_accept(
+async fn memory_export_bundle(
     root_path: String,
-    request: memory::InboxReviewRequest,
-) -> Result<memory::InboxReviewResult, WorkspaceError> {
-    memory::memory_inbox_accept(root_path, request)
+    output_path: String,
+) -> Result<memory::bundle::BundleExport, WorkspaceError> {
+    run_blocking_memory_task(move || {
+        memory::api::export_bundle(
+            std::path::Path::new(&root_path),
+            std::path::Path::new(&output_path),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-fn memory_inbox_reject(
-    root_path: String,
-    target: String,
-) -> Result<memory::InboxReviewResult, WorkspaceError> {
-    memory::memory_inbox_reject(root_path, target)
+async fn memory_import_bundle(
+    input_path: String,
+) -> Result<memory::bundle::BundleImport, WorkspaceError> {
+    run_blocking_memory_task(move || {
+        memory::api::import_bundle(std::path::Path::new(&input_path))
+    })
+    .await
 }
 
 #[tauri::command]
-fn memory_promote(
+fn memory_integration_status(
     root_path: String,
-    request: memory::MemoryPromoteRequest,
-) -> Result<memory::MemoryPromoteResult, WorkspaceError> {
-    memory::memory_promote(root_path, request)
+) -> Result<Vec<memory_models::MemoryIntegrationStatus>, WorkspaceError> {
+    memory_agent_setup::memory_agent_status(root_path, None).map_err(|error| {
+        WorkspaceError::new(
+            "memory_integration_status_failed",
+            error.to_string(),
+        )
+    })
 }
 
 #[tauri::command]
-fn memory_distill(
+fn memory_integration_repair(
     root_path: String,
-    request: memory::MemoryDistillRequest,
-) -> Result<memory::MemoryDistillResult, WorkspaceError> {
-    memory::memory_distill(root_path, request)
+    agent: String,
+) -> Result<memory_models::MemoryDoctorReport, WorkspaceError> {
+    memory_agent_setup::memory_agent_repair(
+        root_path.clone(),
+        memory_agent_setup::MemoryAgentCommandRequest {
+            agent: Some(agent.clone()),
+            dry_run: false,
+            keep_data: false,
+        },
+    )
+    .map_err(|error| {
+        WorkspaceError::new(
+            "memory_integration_repair_failed",
+            error.to_string(),
+        )
+    })?;
+    memory_agent_setup::memory_agent_doctor(root_path, Some(agent)).map_err(|error| {
+        WorkspaceError::new(
+            "memory_integration_repair_failed",
+            error.to_string(),
+        )
+    })
 }
 
 #[tauri::command]
-fn memory_capture_import(
+fn memory_agent_setup(
     root_path: String,
-    request: memory::MemoryCaptureImportRequest,
-) -> Result<memory::MemoryCaptureImportResult, WorkspaceError> {
-    memory::memory_capture_import(root_path, request)
-}
-
-#[tauri::command]
-fn memory_capture_scan(
-    root_path: String,
-    request: memory::MemoryCaptureScanRequest,
-) -> Result<memory::MemoryCaptureScanResult, WorkspaceError> {
-    memory::memory_capture_scan(root_path, request)
-}
-
-#[tauri::command]
-fn memory_export_bundle(
-    root_path: String,
-    request: memory::MemoryExportRequest,
-) -> Result<memory::MemoryExportResult, WorkspaceError> {
-    memory::memory_export_bundle(root_path, request)
-}
-
-#[tauri::command]
-fn memory_import_bundle(
-    root_path: String,
-    request: memory::MemoryImportRequest,
-) -> Result<memory::MemoryImportResult, WorkspaceError> {
-    memory::memory_import_bundle(root_path, request)
+    request: memory_agent_setup::MemoryAgentSetupRequest,
+) -> Result<memory_agent_setup::MemoryAgentSetupResult, WorkspaceError> {
+    memory_agent_setup::memory_agent_setup(root_path, request).map_err(|error| {
+        WorkspaceError::new("memory_agent_setup_failed", error.to_string())
+    })
 }
 
 #[cfg(test)]
@@ -420,8 +384,6 @@ mod layout_pdf_tests;
 #[cfg(test)]
 mod llm_wiki_tests;
 #[cfg(test)]
-mod memory_tests;
-#[cfg(test)]
 mod state_store_tests;
 #[cfg(test)]
 mod user_themes_tests;
@@ -434,51 +396,83 @@ mod workspace_search_tests;
 
 #[cfg(test)]
 mod memory_tauri_command_tests {
+    /// The command surface is a contract, and this is what keeps it one.
+    ///
+    /// The second list matters as much as the first: these commands were
+    /// removed with the concepts behind them, and an alias quietly reappearing
+    /// would give agents a way to keep asking for a product that no longer
+    /// exists.
     #[test]
-    fn registers_complete_memory_command_surface() {
+    fn registers_the_memory_command_surface() {
         let source = include_str!("lib.rs");
         for command in [
-            "memory_detect_workspace",
-            "memory_initialize_workspace",
-            "memory_repair_workspace",
+            "memory_status",
+            "memory_enable",
+            "memory_config_get",
             "memory_config_set",
-            "memory_config_update",
-            "memory_storage_migrate_dry_run",
-            "memory_storage_migrate",
-            "memory_backend_status",
+            "memory_global_config_get",
+            "memory_global_config_set",
+            "memory_diagnostics",
+            "memory_projects",
+            "memory_rebind_project",
+            "memory_model_status",
+            "memory_model_download",
+            "memory_reindex",
+            "memory_search",
+            "memory_context",
+            "memory_brief",
+            "memory_recall",
+            "memory_add",
+            "memory_import_path",
+            "memory_list",
+            "memory_show",
+            "memory_delete",
+            "memory_purge",
+            "memory_distill",
+            "memory_gate",
+            "memory_adopt",
+            "memory_demote",
+            "memory_counterexample_add",
+            "memory_legacy_preflight",
+            "memory_legacy_import",
+            "memory_export_bundle",
+            "memory_import_bundle",
             "memory_integration_status",
             "memory_integration_repair",
             "memory_agent_setup",
-            "memory_export_bundle",
-            "memory_import_bundle",
-            "memory_add",
-            "memory_search",
-            "memory_index_rebuild",
-            "memory_index_status",
-            "memory_index_search",
+        ] {
+            assert!(
+                source.contains(&format!("            {command},")),
+                "missing Tauri command registration for {command}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_abandoned_commands_are_gone_for_good() {
+        let source = include_str!("lib.rs");
+        for command in [
             "memory_working_get",
             "memory_working_set",
             "memory_working_append",
-            "memory_recall",
-            "memory_list",
-            "memory_get",
-            "memory_archive",
-            "memory_thread_save",
-            "memory_thread_list",
-            "memory_thread_get",
             "memory_inbox_add",
             "memory_inbox_get",
             "memory_inbox_list",
             "memory_inbox_accept",
             "memory_inbox_reject",
-            "memory_distill",
-            "memory_capture_import",
-            "memory_capture_scan",
-            "memory_promote",
+            "memory_index_rebuild",
+            "memory_index_status",
+            "memory_index_search",
+            "memory_storage_migrate",
+            "memory_storage_migrate_dry_run",
+            "memory_thread_save",
+            "memory_thread_list",
+            "memory_thread_get",
+            "memory_archive",
         ] {
             assert!(
-                source.contains(&format!("            {command},")),
-                "missing Tauri command registration for {command}"
+                !source.contains(&format!("            {command},")),
+                "{command} was deleted with the concept behind it; it must not come back as an alias"
             );
         }
     }
@@ -1097,43 +1091,40 @@ pub fn run() {
             layout_fonts::font_get_glyph_metrics,
             layout_fonts::font_get_math_constants,
             layout_pdf::layout_export_pdf,
-            memory_detect_workspace,
-            memory_initialize_workspace,
-            memory_repair_workspace,
+            memory_status,
+            memory_enable,
+            memory_config_get,
             memory_config_set,
-            memory_config_update,
-            memory_storage_migrate_dry_run,
-            memory_storage_migrate,
-            memory_backend_status,
+            memory_global_config_get,
+            memory_global_config_set,
+            memory_diagnostics,
+            memory_projects,
+            memory_rebind_project,
+            memory_model_status,
+            memory_model_download,
+            memory_reindex,
+            memory_search,
+            memory_context,
+            memory_brief,
+            memory_recall,
+            memory_add,
+            memory_import_path,
+            memory_list,
+            memory_show,
+            memory_delete,
+            memory_purge,
+            memory_distill,
+            memory_gate,
+            memory_adopt,
+            memory_demote,
+            memory_counterexample_add,
+            memory_legacy_preflight,
+            memory_legacy_import,
+            memory_export_bundle,
+            memory_import_bundle,
             memory_integration_status,
             memory_integration_repair,
             memory_agent_setup,
-            memory_export_bundle,
-            memory_import_bundle,
-            memory_add,
-            memory_search,
-            memory_index_rebuild,
-            memory_index_status,
-            memory_index_search,
-            memory_working_get,
-            memory_working_set,
-            memory_working_append,
-            memory_recall,
-            memory_list,
-            memory_get,
-            memory_archive,
-            memory_thread_save,
-            memory_thread_list,
-            memory_thread_get,
-            memory_inbox_add,
-            memory_inbox_get,
-            memory_inbox_list,
-            memory_inbox_accept,
-            memory_inbox_reject,
-            memory_distill,
-            memory_capture_import,
-            memory_capture_scan,
-            memory_promote,
             workspace_search::workspace_search,
             workspace_search::workspace_search_cancel,
             workspace_fs::scan_workspace,

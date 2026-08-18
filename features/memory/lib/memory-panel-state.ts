@@ -1,10 +1,9 @@
 export type MemoryPanelTabId =
   | "overview"
+  | "material"
+  | "conclusions"
+  | "context"
   | "integrations"
-  | "sessions"
-  | "longTerm"
-  | "pending"
-  | "working"
   | "diagnostics";
 
 export interface MemoryPanelTab {
@@ -13,16 +12,23 @@ export interface MemoryPanelTab {
   disabled: boolean;
 }
 
+/**
+ * The panel's tabs, in the order the work flows.
+ *
+ * Material comes in, conclusions are drawn from it, and the context tab shows
+ * what an agent would actually be handed. The old "待确认" tab is gone: nothing
+ * waits outside the library any more, and a conclusion nobody has adopted is
+ * simply a conclusion with that status.
+ */
 export function buildMemoryPanelTabs(status: {
-  hasMemory: boolean;
+  enabled: boolean;
 }): MemoryPanelTab[] {
   return [
     { id: "overview", label: "概览", disabled: false },
-    { id: "integrations", label: "Agent 集成", disabled: !status.hasMemory },
-    { id: "sessions", label: "会话", disabled: !status.hasMemory },
-    { id: "longTerm", label: "长期记忆", disabled: !status.hasMemory },
-    { id: "pending", label: "待确认", disabled: !status.hasMemory },
-    { id: "working", label: "工作上下文", disabled: !status.hasMemory },
+    { id: "material", label: "素材", disabled: !status.enabled },
+    { id: "conclusions", label: "结论", disabled: !status.enabled },
+    { id: "context", label: "本次上下文", disabled: !status.enabled },
+    { id: "integrations", label: "Agent 集成", disabled: !status.enabled },
     { id: "diagnostics", label: "诊断", disabled: false },
   ];
 }

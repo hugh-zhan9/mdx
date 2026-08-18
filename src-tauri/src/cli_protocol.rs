@@ -70,150 +70,116 @@ pub enum CliRequest {
         prompt: String,
     },
     LlmWikiLint,
+    // The memory protocol.
+    //
+    // Material goes in, conclusions are drawn from it, and reading is `recall`
+    // unless something narrower is wanted. The commands this replaced — inbox
+    // review, working context, saved threads, the Markdown index, storage
+    // migration — are gone with the concepts behind them: asking for one now
+    // fails to parse rather than reaching a stub.
     MemoryStatus,
     MemoryInit,
-    MemoryRepair {
+    MemoryModel {
+        /// Downloads the embedding model instead of only reporting on it.
         #[serde(default)]
-        rebuild_index: bool,
+        download: bool,
     },
-    MemoryExport {
-        output_path: String,
-        #[serde(default)]
-        include_log: bool,
-    },
-    MemoryImport {
-        input_path: String,
-        #[serde(default = "default_memory_import_strategy")]
-        strategy: String,
-        #[serde(default)]
-        dry_run: bool,
-    },
-    MemoryIndexStatus,
-    MemoryIndexRebuild,
-    MemoryThreadSave {
-        source: String,
-        #[serde(default)]
-        thread_id: Option<String>,
-        title: String,
+    MemoryReindex,
+    MemoryAdd {
         body: String,
-    },
-    MemoryThreadShow {
-        target: String,
-    },
-    MemoryThreadList {
         #[serde(default)]
         source: Option<String>,
-        #[serde(default)]
-        since: Option<String>,
-    },
-    MemoryAdd {
-        title: String,
-        body: String,
-        #[serde(default)]
-        tags: Vec<String>,
-        #[serde(default)]
-        source_thread: Option<String>,
-        #[serde(default)]
-        importance: Option<f64>,
-        #[serde(default)]
-        confidence: Option<f64>,
     },
     MemoryShow {
-        target: String,
+        drawer_id: String,
     },
     MemoryList {
+        /// `material`, `conclusion`, or unset for both.
         #[serde(default)]
-        tag: Option<String>,
+        kind: Option<String>,
         #[serde(default)]
-        since: Option<String>,
+        status: Option<String>,
+        #[serde(default)]
+        limit: Option<usize>,
+    },
+    MemoryDelete {
+        drawer_id: String,
     },
     MemorySearch {
         query: String,
         #[serde(default)]
         limit: Option<usize>,
         #[serde(default)]
-        tag: Option<String>,
+        wing: Option<String>,
         #[serde(default)]
-        since: Option<String>,
+        room: Option<String>,
     },
-    MemoryArchive {
-        target: String,
-    },
-    MemoryInboxList {
+    MemoryContext {
+        query: String,
         #[serde(default)]
-        include_reviewed: bool,
-    },
-    MemoryInboxAccept {
-        inbox_id: String,
+        max_items: Option<usize>,
         #[serde(default)]
-        title: Option<String>,
-        #[serde(default)]
-        body: Option<String>,
-        #[serde(default)]
-        tags: Option<Vec<String>>,
+        dao_tian_limit: Option<usize>,
     },
-    MemoryInboxReject {
-        inbox_id: String,
-    },
-    MemoryWorkingGet,
-    MemoryWorkingSet {
-        content: String,
-    },
-    MemoryWorkingAppend {
-        section: String,
-        text: String,
+    MemoryBrief {
+        query: String,
     },
     MemoryRecall {
         query: String,
         #[serde(default)]
         limit: Option<usize>,
         #[serde(default)]
-        byte_budget: Option<usize>,
-        #[serde(default)]
-        include_working: Option<bool>,
-        #[serde(default)]
-        include_threads: Option<bool>,
-        #[serde(default)]
-        tag: Option<String>,
-        #[serde(default)]
-        since: Option<String>,
+        max_items: Option<usize>,
     },
     MemoryDistill {
-        target: String,
+        statement: String,
+        body: String,
+        /// `concrete` (default) or `pattern`.
         #[serde(default)]
-        accept: Option<bool>,
+        tier: Option<String>,
+        supporting_refs: Vec<String>,
+    },
+    MemoryGate {
+        drawer_id: String,
+    },
+    MemoryAdopt {
+        drawer_id: String,
         #[serde(default)]
-        force: Option<bool>,
+        note: Option<String>,
+    },
+    MemoryDemote {
+        drawer_id: String,
+        /// `contradicted` | `obsolete` | `superseded` | `out_of_scope` | `unsafe`
+        reason_type: String,
+        reason: String,
+        evidence_refs: Vec<String>,
+        /// True retires the conclusion outright; false only demotes it.
+        #[serde(default)]
+        retire: bool,
     },
     MemoryPromote {
         target: String,
         #[serde(default)]
-        ingest: Option<bool>,
+        ingest: bool,
         #[serde(default)]
         title: Option<String>,
-    },
-    MemoryCaptureImport {
-        source: String,
-        #[serde(alias = "file")]
-        path: String,
-        #[serde(default)]
-        title: Option<String>,
-        #[serde(default)]
-        thread_id: Option<String>,
-        #[serde(default)]
-        distill: bool,
     },
     MemoryCaptureScan {
-        source: String,
-        #[serde(default, rename = "import")]
-        import_threads: bool,
-        #[serde(default)]
-        distill: bool,
+        path: String,
     },
-}
-
-fn default_memory_import_strategy() -> String {
-    "skip".to_string()
+    MemoryCaptureImport {
+        path: String,
+    },
+    MemoryLegacyImport {
+        #[serde(default)]
+        dry_run: bool,
+    },
+    MemoryExport {
+        output_path: String,
+    },
+    MemoryImport {
+        input_path: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -304,46 +270,18 @@ pub struct CliResponse {
     pub digest_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lint_report: Option<String>,
+    /// What the memory command returned, encoded exactly as the memory layer
+    /// hands it to the desktop app and to MCP.
+    ///
+    /// One field rather than one per command: the shape of each answer belongs
+    /// to the memory layer, and a CLI that re-declared those shapes would be a
+    /// second contract to keep in step with the first.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory_status: Option<crate::memory::MemoryWorkspaceStatus>,
+    pub memory: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory_init: Option<crate::memory::InitializeMemoryResult>,
+    pub memory_integrations: Option<Vec<crate::memory_models::MemoryIntegrationStatus>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory_repair: Option<crate::memory::MemoryRepairResult>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory_export: Option<crate::memory::MemoryExportResult>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory_import: Option<crate::memory::MemoryImportResult>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory_index_status: Option<crate::memory::MemoryIndexStatus>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory_thread: Option<crate::memory::MemoryThreadRecord>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory_threads: Option<Vec<crate::memory::ThreadListItem>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory_entry: Option<crate::memory::MemoryRecord>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory_entries: Option<Vec<crate::memory::MemorySummary>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory_inbox: Option<crate::memory::InboxRecord>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory_inbox_entries: Option<Vec<crate::memory::InboxRecord>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory_inbox_review: Option<crate::memory::InboxReviewResult>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory_recall: Option<crate::memory::RecallResult>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory_distill: Option<crate::memory::MemoryDistillResult>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory_promote: Option<crate::memory::MemoryPromoteResult>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory_capture_import: Option<crate::memory::MemoryCaptureImportResult>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory_capture_scan: Option<crate::memory::MemoryCaptureScanResult>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory_integrations: Option<Vec<crate::memory::MemoryIntegrationStatus>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memory_doctor: Option<crate::memory::MemoryDoctorReport>,
+    pub memory_doctor: Option<crate::memory_models::MemoryDoctorReport>,
 }
 
 impl CliResponse {
@@ -361,6 +299,259 @@ impl CliResponse {
             error: Some(message.into()),
             ..Self::default()
         }
+    }
+}
+
+/// Runs one memory command against a workspace.
+///
+/// Both ways into the CLI end up here: the socket the desktop app listens on,
+/// and the headless `--root` path used by agents and hooks. One implementation
+/// means a command cannot mean one thing over the socket and something else
+/// without a running app.
+///
+/// Everything goes through `memory::api`, the same door the Tauri commands and
+/// the MCP server use, so the three surfaces differ only in spelling.
+pub fn run_memory_request(root: &Path, request: CliRequest) -> CliResponse {
+    use crate::memory::api;
+    use crate::memory::models::retrieval::{ContextQuery, RecallQuery, SearchRequest};
+
+    match request {
+        CliRequest::MemoryStatus => memory_payload(api::status(root)),
+        CliRequest::MemoryInit => memory_payload(initialize_memory(root)),
+        CliRequest::MemoryModel { download } => memory_payload(if download {
+            api::fetch_model()
+        } else {
+            api::model_status()
+        }),
+        CliRequest::MemoryReindex => memory_payload(api::rebuild_index()),
+        CliRequest::MemoryAdd { body, source } => {
+            memory_payload(api::add_material(root, api::AddMaterialRequest { body, source }))
+        }
+        CliRequest::MemoryShow { drawer_id } => memory_payload(api::show(&drawer_id)),
+        CliRequest::MemoryList {
+            kind,
+            status,
+            limit,
+        } => memory_payload(api::list(
+            root,
+            api::ListFilter {
+                kind,
+                status,
+                limit,
+            },
+        )),
+        CliRequest::MemoryDelete { drawer_id } => memory_payload(api::delete(&drawer_id)),
+        CliRequest::MemorySearch {
+            query,
+            limit,
+            wing,
+            room,
+        } => match required_query(&query) {
+            Some(query) => memory_payload(api::search(SearchRequest {
+                query,
+                wing,
+                room,
+                top_k: limit,
+            })),
+            None => invalid_query(),
+        },
+        CliRequest::MemoryContext {
+            query,
+            max_items,
+            dao_tian_limit,
+        } => match required_query(&query) {
+            Some(query) => memory_payload(api::context(
+                root,
+                ContextQuery {
+                    query,
+                    max_items,
+                    dao_tian_limit,
+                },
+            )),
+            None => invalid_query(),
+        },
+        CliRequest::MemoryBrief { query } => match required_query(&query) {
+            Some(query) => memory_payload(api::brief(
+                root,
+                ContextQuery {
+                    query,
+                    ..ContextQuery::default()
+                },
+            )),
+            None => invalid_query(),
+        },
+        CliRequest::MemoryRecall {
+            query,
+            limit,
+            max_items,
+        } => match required_query(&query) {
+            Some(query) => memory_payload(api::recall(
+                root,
+                RecallQuery {
+                    query,
+                    top_k: limit,
+                    max_items,
+                    ..RecallQuery::default()
+                },
+            )),
+            None => invalid_query(),
+        },
+        CliRequest::MemoryDistill {
+            statement,
+            body,
+            tier,
+            supporting_refs,
+        } => memory_payload(api::distill_conclusion(
+            root,
+            api::DistillRequestDto {
+                statement,
+                body,
+                tier,
+                supporting_refs,
+            },
+        )),
+        CliRequest::MemoryGate { drawer_id } => memory_payload(api::conclusion_gate(&drawer_id)),
+        CliRequest::MemoryAdopt { drawer_id, note } => memory_payload(api::adopt_conclusion(
+            root,
+            api::AdoptRequestDto { drawer_id, note },
+        )),
+        CliRequest::MemoryDemote {
+            drawer_id,
+            reason_type,
+            reason,
+            evidence_refs,
+            retire,
+        } => memory_payload(api::retire_conclusion(api::RetireRequestDto {
+            drawer_id,
+            reason_type,
+            reason,
+            evidence_refs,
+            retire,
+        })),
+        CliRequest::MemoryPromote {
+            target,
+            ingest,
+            title,
+        } => memory_payload(crate::memory::wiki_promote::promote(
+            root,
+            crate::memory::wiki_promote::PromoteRequest {
+                drawer_id: target,
+                ingest,
+                title,
+            },
+        )),
+        CliRequest::MemoryCaptureScan { path } => {
+            let path = PathBuf::from(path);
+            if !path.exists() {
+                return CliResponse::error(
+                    "invalid_path",
+                    format!("there is nothing at {}", path.display()),
+                );
+            }
+
+            memory_payload(Ok::<_, crate::models::WorkspaceError>(CaptureTarget {
+                room: api::room_preview(root, &path),
+                path: path.to_string_lossy().into_owned(),
+            }))
+        }
+        CliRequest::MemoryCaptureImport { path } => {
+            memory_payload(api::import_path(root, Path::new(&path)))
+        }
+        CliRequest::MemoryLegacyImport { dry_run } => {
+            if dry_run {
+                memory_payload(api::legacy_preflight(root))
+            } else {
+                memory_payload(api::legacy_import(root))
+            }
+        }
+        CliRequest::MemoryExport { output_path } => {
+            memory_payload(api::export_bundle(root, Path::new(&output_path)))
+        }
+        CliRequest::MemoryImport { input_path } => {
+            memory_payload(api::import_bundle(Path::new(&input_path)))
+        }
+        CliRequest::New
+        | CliRequest::Open { .. }
+        | CliRequest::List
+        | CliRequest::Content { .. }
+        | CliRequest::Selection { .. }
+        | CliRequest::Insert { .. }
+        | CliRequest::Save { .. }
+        | CliRequest::Focus { .. }
+        | CliRequest::Close { .. }
+        | CliRequest::CreateFile { .. }
+        | CliRequest::CreateFolder { .. }
+        | CliRequest::Rename { .. }
+        | CliRequest::LlmWikiQuery { .. }
+        | CliRequest::LlmWikiSearch { .. }
+        | CliRequest::LlmWikiStatus
+        | CliRequest::LlmWikiIngest { .. }
+        | CliRequest::LlmWikiDigest { .. }
+        | CliRequest::LlmWikiLint => CliResponse::error(
+            "not_a_memory_command",
+            "this command does not belong to the memory protocol",
+        ),
+    }
+}
+
+/// Where a path would be filed if it were read into the library.
+///
+/// The preview half of the capture pair: the answer to "what happens if I
+/// import this" before anything is stored, since material cannot be
+/// un-remembered afterwards.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptureTarget {
+    pub path: String,
+    pub room: String,
+}
+
+/// Turns memory on for a workspace and binds it to a project in the library.
+///
+/// No directory tree is created: memory lives in one library under the user's
+/// home, and the only per-workspace state is the configuration file.
+fn initialize_memory(
+    root: &Path,
+) -> Result<crate::memory::api::MemoryStatus, crate::models::WorkspaceError> {
+    let mut config = crate::memory::config::read_workspace_config(root)?;
+    config.enabled = true;
+    crate::memory::config::write_workspace_config(root, &config)?;
+    crate::memory::api::bind_project(root)?;
+
+    crate::memory::api::status(root)
+}
+
+/// A query with something in it, or nothing.
+///
+/// An empty query is refused here rather than passed on: searching for nothing
+/// would open the library and embed an empty string to answer a question nobody
+/// asked.
+fn required_query(query: &str) -> Option<String> {
+    let trimmed = query.trim();
+
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
+fn invalid_query() -> CliResponse {
+    CliResponse::error("invalid_query", "query must not be empty")
+}
+
+fn memory_payload<T: Serialize>(
+    result: Result<T, crate::models::WorkspaceError>,
+) -> CliResponse {
+    match result {
+        Ok(value) => match serde_json::to_value(value) {
+            Ok(memory) => CliResponse {
+                ok: true,
+                memory: Some(memory),
+                ..CliResponse::default()
+            },
+            Err(error) => CliResponse::error(
+                "memory_encode_failed",
+                format!("failed to encode the memory result: {error}"),
+            ),
+        },
+        Err(error) => CliResponse::error(error.error_code(), error.to_string()),
     }
 }
 

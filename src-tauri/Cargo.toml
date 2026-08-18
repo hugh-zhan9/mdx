@@ -13,7 +13,7 @@ authors = ["Jayden Wang"]
 license = "MIT"
 repository = ""
 edition = "2021"
-rust-version = "1.77.2"
+rust-version = "1.85"
 default-run = "mdx"
 
 [[bin]]
@@ -40,9 +40,8 @@ notify = "6"
 font-core = { path = "crates/font-core" }
 pdf-core = { path = "crates/pdf-core" }
 pdf-extract = "0.10.0"
-postgres = { version = "0.19", features = ["with-serde_json-1", "with-time-0_3"] }
 reqwest = { version = "0.13.2", default-features = false, features = ["blocking", "json", "rustls"] }
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml_ng = "0.10.0"
@@ -53,6 +52,8 @@ tauri-plugin-log = "2"
 tempfile = "3"
 time = { version = "0.3", features = ["formatting", "parsing", "serde"] }
 trash = "5"
+mempal-runtime = "0.9"
+hf-hub = { version = "0.4", default-features = false, features = ["ureq"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6"
@@ -61,4 +62,5 @@ objc2-app-kit = { version = "0.3", features = ["NSApplication"] }
 objc2-foundation = { version = "0.3", features = ["NSDictionary", "NSNotification", "NSOperation", "NSValue", "NSString", "block2"] }
 
 [dev-dependencies]
+async-trait = "0.1"
 png = "0.17"
