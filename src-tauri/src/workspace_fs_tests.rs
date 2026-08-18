@@ -1,12 +1,13 @@
 use tempfile::tempdir;
 
 use crate::document::document_fingerprint;
-use crate::models::FileTreeNode;
+use crate::models::{FileTreeNode, NoteGroup};
 use crate::workspace_fs::{
     create_markdown_file, open_path_with_default_application_impl, read_markdown_file,
+    reveal_path_in_file_manager_impl,
     read_preview_binary_file, read_preview_text_file, scan_workspace_sync,
-    scan_workspace_with_limit, scan_workspace_with_options, trash_path, write_markdown_file,
-    ScanWorkspaceOptions,
+    scan_workspace_with_limit, scan_workspace_with_options, trash_path,
+    workspace_note_page_sync, write_markdown_file, ScanWorkspaceOptions,
 };
 
 fn collect_tree_names(nodes: &[FileTreeNode]) -> Vec<String> {
@@ -460,4 +461,309 @@ fn create_markdown_file_rejects_explicit_broken_symlink_entry() {
 
     assert_eq!(err.error_code(), "already_exists");
     assert!(!outside_target.exists());
+}
+
+/// Writes notes oldest first, pausing so the file system gives each its own
+/// modification time, and returns their names newest first.
+fn write_notes_in_order(root: &std::path::Path, names: &[&str]) {
+    for name in names {
+        let path = root.join(name);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, format!("# {name}\n\nBody of {name}.\n")).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
+fn page_names(result: &crate::models::NotePageResult) -> Vec<String> {
+    result
+        .notes
+        .iter()
+        .map(|note| {
+            std::path::Path::new(&note.path)
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect()
+}
+
+#[test]
+fn note_page_returns_the_newest_notes_and_reads_only_those() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    write_notes_in_order(root, &["old.md", "mid.md", "new.md"]);
+    // Not a note: the index describes the documents, not everything on disk.
+    std::fs::write(root.join("photo.png"), [0u8, 1, 2]).unwrap();
+
+    let result = workspace_note_page_sync(
+        root.to_string_lossy().into_owned(),
+        NoteGroup::All,
+        String::new(),
+        0,
+        2,
+        None,
+        None,
+    )
+    .unwrap();
+
+    assert_eq!(page_names(&result), vec!["new.md", "mid.md"]);
+    // The page is two notes; the count is what the workspace holds.
+    assert_eq!(result.matched, 3);
+    assert_eq!(result.counts.all, 3);
+    assert!(result.notes.iter().all(|note| !note.head.is_empty()));
+}
+
+#[test]
+fn note_page_continues_where_the_last_one_stopped() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    write_notes_in_order(root, &["old.md", "mid.md", "new.md"]);
+
+    let second = workspace_note_page_sync(
+        root.to_string_lossy().into_owned(),
+        NoteGroup::All,
+        String::new(),
+        2,
+        2,
+        None,
+        None,
+    )
+    .unwrap();
+
+    assert_eq!(page_names(&second), vec!["old.md"]);
+    assert_eq!(second.matched, 3);
+}
+
+#[test]
+fn note_page_counts_every_group_whichever_one_it_is_a_page_of() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    write_notes_in_order(root, &["filed/deep.md", "root-note.md"]);
+
+    let result = workspace_note_page_sync(
+        root.to_string_lossy().into_owned(),
+        NoteGroup::Unfiled,
+        String::new(),
+        0,
+        50,
+        None,
+        None,
+    )
+    .unwrap();
+
+    // The page holds the group it was asked for.
+    assert_eq!(page_names(&result), vec!["root-note.md"]);
+    assert_eq!(result.matched, 1);
+    // The counts describe the workspace, not the page.
+    assert_eq!(result.counts.all, 2);
+    assert_eq!(result.counts.unfiled, 1);
+    // Both were written just now, so both are recently edited.
+    assert_eq!(result.counts.recent, 2);
+}
+
+#[test]
+fn note_page_filters_by_name_and_still_counts_the_whole_group() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    write_notes_in_order(root, &["Meeting Notes.md", "grocery.md"]);
+
+    let result = workspace_note_page_sync(
+        root.to_string_lossy().into_owned(),
+        NoteGroup::All,
+        // Case-insensitive, and a fragment is enough.
+        "meeting".to_string(),
+        0,
+        50,
+        None,
+        None,
+    )
+    .unwrap();
+
+    assert_eq!(page_names(&result), vec!["Meeting Notes.md"]);
+    assert_eq!(result.matched, 1);
+    assert_eq!(result.counts.all, 2);
+}
+
+#[test]
+fn note_page_reads_only_the_beginning_of_a_long_note() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    let body = "x".repeat(4096);
+    std::fs::write(root.join("long.md"), &body).unwrap();
+
+    let result = workspace_note_page_sync(
+        root.to_string_lossy().into_owned(),
+        NoteGroup::All,
+        String::new(),
+        0,
+        10,
+        None,
+        None,
+    )
+    .unwrap();
+    let note = &result.notes[0];
+
+    assert_eq!(note.head.len(), 1024);
+    assert!(note.head_truncated);
+    assert!(note.head.len() < body.len());
+}
+
+#[test]
+fn note_page_cuts_a_head_on_a_character_boundary() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    // 1024 is not a multiple of 3, so a wall of three-byte characters
+    // guarantees the read lands inside one.
+    std::fs::write(root.join("cjk.md"), "写".repeat(600)).unwrap();
+
+    let result = workspace_note_page_sync(
+        root.to_string_lossy().into_owned(),
+        NoteGroup::All,
+        String::new(),
+        0,
+        10,
+        None,
+        None,
+    )
+    .unwrap();
+    let note = &result.notes[0];
+
+    assert!(note.head_truncated);
+    // No replacement character: a partial character is not text.
+    assert!(!note.head.contains('\u{FFFD}'));
+    assert_eq!(note.head.chars().count(), 341);
+    assert!(note.head.chars().all(|character| character == '写'));
+}
+
+#[test]
+fn revealing_a_file_resolves_it_inside_the_workspace() {
+    let root = tempdir().unwrap();
+    let notes = root.path().join("notes");
+    std::fs::create_dir(&notes).unwrap();
+    let doc_path = notes.join("note.md");
+    std::fs::write(&doc_path, "# Note\n").unwrap();
+
+    let revealed = reveal_path_in_file_manager_impl(
+        root.path().to_string_lossy().into_owned(),
+        doc_path.to_string_lossy().into_owned(),
+        |path| Ok(path.to_path_buf()),
+    )
+    .unwrap();
+
+    assert_eq!(
+        revealed.canonicalize().unwrap(),
+        doc_path.canonicalize().unwrap()
+    );
+}
+
+#[test]
+fn revealing_refuses_a_path_outside_the_workspace() {
+    let root = tempdir().unwrap();
+    let elsewhere = tempdir().unwrap();
+    let outside = elsewhere.path().join("secret.md");
+    std::fs::write(&outside, "# Secret\n").unwrap();
+
+    let error = reveal_path_in_file_manager_impl(
+        root.path().to_string_lossy().into_owned(),
+        outside.to_string_lossy().into_owned(),
+        |path| Ok(path.to_path_buf()),
+    )
+    .expect_err("a path outside the workspace is not revealed");
+
+    assert_eq!(error.error_code(), "outside_workspace");
+}
+
+#[test]
+fn revealing_refuses_a_file_that_is_not_there() {
+    let root = tempdir().unwrap();
+
+    let error = reveal_path_in_file_manager_impl(
+        root.path().to_string_lossy().into_owned(),
+        root.path()
+            .join("missing.md")
+            .to_string_lossy()
+            .into_owned(),
+        |path| Ok(path.to_path_buf()),
+    )
+    .expect_err("a missing file is not revealed");
+
+    assert_eq!(error.error_code(), "not_found");
+}
+
+#[test]
+fn note_page_lists_only_the_folder_it_was_pointed_at() {
+    let dir = tempdir().unwrap();
+    let root = dir.path();
+    write_notes_in_order(
+        root,
+        &["wiki/generated.md", "raw/a.md", "raw/deep/b.md", "root-note.md"],
+    );
+
+    let result = workspace_note_page_sync(
+        root.to_string_lossy().into_owned(),
+        NoteGroup::All,
+        String::new(),
+        0,
+        50,
+        Some(root.join("raw").to_string_lossy().into_owned()),
+        None,
+    )
+    .unwrap();
+
+    let mut names = page_names(&result);
+    names.sort();
+    assert_eq!(names, vec!["a.md", "b.md"]);
+    // Every count is about the folder being looked at, not the workspace.
+    assert_eq!(result.matched, 2);
+    assert_eq!(result.counts.all, 2);
+    // Unfiled means "directly in this folder" while a folder is being looked at.
+    assert_eq!(result.counts.unfiled, 1);
+}
+
+#[test]
+fn note_page_refuses_a_folder_outside_the_workspace() {
+    let dir = tempdir().unwrap();
+    let elsewhere = tempdir().unwrap();
+    std::fs::write(dir.path().join("a.md"), "# A\n").unwrap();
+
+    let error = workspace_note_page_sync(
+        dir.path().to_string_lossy().into_owned(),
+        NoteGroup::All,
+        String::new(),
+        0,
+        50,
+        Some(elsewhere.path().to_string_lossy().into_owned()),
+        None,
+    )
+    .expect_err("a folder outside the workspace is refused");
+
+    assert_eq!(error.error_code(), "outside_workspace");
+}
+
+#[test]
+fn note_page_reads_a_folder_that_is_no_longer_there_as_empty() {
+    let dir = tempdir().unwrap();
+    std::fs::write(dir.path().join("a.md"), "# A\n").unwrap();
+
+    let result = workspace_note_page_sync(
+        dir.path().to_string_lossy().into_owned(),
+        NoteGroup::All,
+        String::new(),
+        0,
+        50,
+        // Inside the workspace, but nothing is filed there any more.
+        Some(dir.path().join("gone").to_string_lossy().into_owned()),
+        None,
+    );
+
+    match result {
+        Ok(page) => {
+            assert!(page.notes.is_empty());
+            assert_eq!(page.counts.all, 0);
+        }
+        // Resolving a missing folder is also an acceptable answer, as long as it
+        // is not reported as somewhere outside the workspace.
+        Err(error) => assert_ne!(error.error_code(), "outside_workspace"),
+    }
 }

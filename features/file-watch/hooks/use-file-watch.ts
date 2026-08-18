@@ -11,6 +11,7 @@ import type {
     FrontendFileWatchEvent,
     WatchErrorPayload,
 } from "../lib/types";
+import { stopListening } from "../../../common/lib/tauri-events";
 
 type FileWatchMode = "workspace" | "document";
 
@@ -112,7 +113,7 @@ export function useFileWatch({
             ]);
 
             if (cancelled) {
-                nextUnlisteners.forEach((unlisten) => unlisten());
+                nextUnlisteners.forEach(stopListening);
                 return;
             }
 
@@ -145,7 +146,7 @@ export function useFileWatch({
 
         return () => {
             cancelled = true;
-            unlisteners.forEach((unlisten) => unlisten());
+            unlisteners.forEach(stopListening);
 
             const watchIdToStop = activeWatchId;
             activeWatchId = null;

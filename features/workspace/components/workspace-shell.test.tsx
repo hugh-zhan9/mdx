@@ -10,6 +10,15 @@ import { WorkspaceShell } from "./workspace-shell";
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
 
+/**
+ * The editor surface as the shell reaches it: a handle it can ask for a mode,
+ * and a callback the surface announces the mode it reached through.
+ */
+const stageMock = vi.hoisted(() => ({
+  setMode: vi.fn(async () => undefined),
+  announceMode: null as ((mode: "wysiwyg" | "source") => void) | null,
+}));
+
 const draftGet = vi.fn();
 const draftListForWorkspace = vi.fn();
 const draftCleanupExpired = vi.fn();
@@ -99,9 +108,24 @@ vi.mock("./app-dialogs", () => ({
 }));
 
 vi.mock("./editor-stage", () => ({
-  EditorStage: ({ activeTab }: { activeTab: { markdown?: string } | null }) => (
-    <div data-testid="editor">{activeTab?.markdown ?? ""}</div>
-  ),
+  EditorStage: ({
+    activeTab,
+    editorSurfaceRef,
+    onModeChange,
+  }: {
+    activeTab: { markdown?: string } | null;
+    editorSurfaceRef?: { current: unknown };
+    onModeChange?: (mode: "wysiwyg" | "source") => void;
+  }) => {
+    if (editorSurfaceRef) {
+      editorSurfaceRef.current = {
+        reveal: vi.fn(),
+        setMode: stageMock.setMode,
+      };
+    }
+    stageMock.announceMode = onModeChange ?? null;
+    return <div data-testid="editor">{activeTab?.markdown ?? ""}</div>;
+  },
 }));
 
 vi.mock("./file-tree-panel", () => ({
@@ -234,7 +258,9 @@ describe("WorkspaceShell", () => {
 
     expect(host.querySelector("[data-testid='editor']")).not.toBeNull();
     expect(host.querySelector("[data-testid='memory-page']")).toBeNull();
-    expect(host.querySelector("[data-testid='outline']")).not.toBeNull();
+    expect(
+      host.querySelector("[data-mdx-workspace-navigator]"),
+    ).not.toBeNull();
 
     await act(async () => {
       getButton("记忆").click();
@@ -244,8 +270,23 @@ describe("WorkspaceShell", () => {
     // A full-window view: the editor and both side panels give way to it.
     expect(host.querySelector("[data-testid='editor']")).toBeNull();
     expect(host.querySelector("[data-testid='memory-page']")).not.toBeNull();
-    expect(host.textContent).toContain("返回编辑器");
-    expect(host.querySelector("[data-testid='outline']")).toBeNull();
+    expect(host.querySelector("[data-mdx-workspace-navigator]")).toBeNull();
+    // The window says which view it is showing, and the view's own button
+    // becomes the way to close it.
+    expect(host.textContent).toContain("记忆");
+    expect(getButton("返回编辑器")).toBeTruthy();
+
+    await act(async () => {
+      getButton("返回编辑器").click();
+      await flushPromises();
+    });
+
+    expect(host.querySelector("[data-testid='memory-page']")).toBeNull();
+    expect(host.querySelector("[data-testid='editor']")).not.toBeNull();
+    // Everything the view had replaced comes back with it.
+    expect(
+      host.querySelector("[data-mdx-workspace-navigator]"),
+    ).not.toBeNull();
   });
 
   it("opens LLM Wiki as a standalone workspace view", async () => {
@@ -291,7 +332,16 @@ describe("WorkspaceShell", () => {
 
     expect(host.querySelector("[data-testid='llm-wiki-page']")).not.toBeNull();
     expect(host.querySelector("[data-testid='editor']")).toBeNull();
-    expect(host.textContent).toContain("返回编辑器");
+    expect(host.textContent).toContain("LLM Wiki");
+    expect(getButton("返回编辑器")).toBeTruthy();
+
+    await act(async () => {
+      getButton("返回编辑器").click();
+      await flushPromises();
+    });
+
+    expect(host.querySelector("[data-testid='llm-wiki-page']")).toBeNull();
+    expect(host.querySelector("[data-testid='editor']")).not.toBeNull();
   });
 
   it("renders macos workspace chrome regions", async () => {
@@ -324,9 +374,13 @@ describe("WorkspaceShell", () => {
 
     expect(host.querySelector("[data-mdx-workspace-toolbar]")).not.toBeNull();
     expect(host.querySelector("[data-mdx-workspace-main-tabs]")).not.toBeNull();
-    // No tab bar in the right panel any more: it holds the outline alone.
+    // Two columns: the navigator, which holds the groups, the folders and the
+    // note list, and the editor. The outline lives inside the navigator now, so
+    // there is no third column and no tab bar in one.
     expect(host.querySelector("[data-mdx-right-panel-tabs]")).toBeNull();
-    expect(host.querySelector("[data-testid='outline']")).not.toBeNull();
+    expect(
+      host.querySelector("[data-mdx-workspace-navigator]"),
+    ).not.toBeNull();
   });
 
   it("lets the window be dragged by its toolbar", async () => {
@@ -353,9 +407,81 @@ describe("WorkspaceShell", () => {
     expect(toolbar?.hasAttribute("data-tauri-drag-region")).toBe(true);
   });
 
+  it("asks the editor for the other surface rather than switching by itself", async () => {
+    await renderWithLoadedTab();
+
+    expect(getButton("可视模式").getAttribute("aria-pressed")).toBe("true");
+    expect(getButton("源码模式").getAttribute("aria-pressed")).toBe("false");
+
+    await act(async () => {
+      getButton("源码模式").click();
+      await flushPromises();
+    });
+
+    expect(stageMock.setMode).toHaveBeenCalledTimes(1);
+    expect(stageMock.setMode).toHaveBeenCalledWith("source");
+  });
+
+  it("shows the mode the editor reached, not the one that was asked for", async () => {
+    await renderWithLoadedTab();
+
+    // The adapter is allowed to refuse a switch. Until it announces a mode,
+    // the control must keep showing the surface the document is actually on,
+    // or the toolbar is describing an editor that does not exist.
+    await act(async () => {
+      getButton("源码模式").click();
+      await flushPromises();
+    });
+
+    expect(getButton("可视模式").getAttribute("aria-pressed")).toBe("true");
+    expect(getButton("源码模式").getAttribute("aria-pressed")).toBe("false");
+
+    await act(async () => {
+      stageMock.announceMode?.("source");
+      await flushPromises();
+    });
+
+    expect(getButton("源码模式").getAttribute("aria-pressed")).toBe("true");
+    expect(getButton("可视模式").getAttribute("aria-pressed")).toBe("false");
+  });
+
+  async function renderWithLoadedTab() {
+    let workspace = workspaceReducer(createWorkspaceState("/tmp/ws"), {
+      type: "tab/opened",
+      tab: {
+        tabId: "tab-1",
+        path: "/tmp/ws/note.md",
+        title: "note.md",
+        dirty: false,
+        needsRenameOnFirstSave: false,
+        markdown: "# Note",
+      },
+    });
+    const dispatch = (action: WorkspaceAction) => {
+      workspace = workspaceReducer(workspace, action);
+    };
+
+    await act(async () => {
+      root.render(
+        <WorkspaceShell
+          workspace={workspace}
+          dispatch={dispatch}
+          onChooseWorkspace={vi.fn()}
+          canChooseWorkspace={true}
+          preferences={preferences}
+          onPreferencesChange={vi.fn()}
+          onActionsChange={vi.fn()}
+        />,
+      );
+      await flushPromises();
+    });
+  }
+
   function getButton(label: string) {
     const button = Array.from(host.querySelectorAll("button")).find(
-      (candidate) => candidate.textContent === label,
+      (candidate) =>
+        (candidate.getAttribute("aria-label") ??
+          candidate.textContent?.trim()) === label,
     );
 
     if (!button) {

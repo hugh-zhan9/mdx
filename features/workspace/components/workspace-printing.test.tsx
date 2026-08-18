@@ -9,12 +9,12 @@ import type { AppPreferences } from "../lib/types";
 import { WorkspaceShell } from "./workspace-shell";
 
 /**
- * Read-only publishing, as a Workspace tab reaches it.
+ * Turning a Workspace tab into a PDF, which this app does by printing it.
  *
- * As in the Document window's case, nothing on the publishing path is stubbed:
- * the real session binding hands a captured revision to the real publishing
- * entry, which lays it out with the real WASM engine. Only the Tauri command
- * channel at the far end is replaced.
+ * There is no second renderer to stub: the page that prints is the page on
+ * screen, so what these tests pin is the toolbar asking for it — and asking for
+ * the visual surface first, since a PDF of Markdown source is a picture of the
+ * markup rather than the document.
  */
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
@@ -25,6 +25,10 @@ const { invoke, save } = vi.hoisted(() => ({
   save: vi.fn(),
 }));
 const alertDialog = vi.fn(async () => {});
+const stageMock = vi.hoisted(() => ({
+  setMode: vi.fn(async () => undefined),
+  announceMode: null as ((mode: "wysiwyg" | "source") => void) | null,
+}));
 
 vi.mock("@/common/lib/tauri", () => ({
   tauriCore: async () => ({ invoke }),
@@ -109,9 +113,24 @@ vi.mock("./app-dialogs", () => ({
 }));
 
 vi.mock("./editor-stage", () => ({
-  EditorStage: ({ activeTab }: { activeTab: { markdown?: string } | null }) => (
-    <div data-testid="editor">{activeTab?.markdown ?? ""}</div>
-  ),
+  EditorStage: ({
+    activeTab,
+    editorSurfaceRef,
+    onModeChange,
+  }: {
+    activeTab: { markdown?: string } | null;
+    editorSurfaceRef?: { current: unknown };
+    onModeChange?: (mode: "wysiwyg" | "source") => void;
+  }) => {
+    if (editorSurfaceRef) {
+      editorSurfaceRef.current = {
+        reveal: vi.fn(),
+        setMode: stageMock.setMode,
+      };
+    }
+    stageMock.announceMode = onModeChange ?? null;
+    return <div data-testid="editor">{activeTab?.markdown ?? ""}</div>;
+  },
 }));
 
 vi.mock("./file-tree-panel", () => ({
@@ -129,8 +148,6 @@ vi.mock("./settings-button", () => ({
 vi.mock("./tab-strip", () => ({
   TabStrip: () => <div data-testid="tabs" />,
 }));
-
-import { initializeLayoutWasmForTests } from "../../../packages/mdx-editor/test/layout-wasm-init";
 
 const MARKDOWN = "# Workspace note\n\nA paragraph the exporter must lay out.\n";
 
@@ -152,24 +169,27 @@ function workspaceWithMarkdownTab() {
   });
 }
 
-describe("publishing a workspace tab's revision", () => {
+describe("printing a workspace tab", () => {
   let host: HTMLDivElement;
   let root: ReturnType<typeof createRoot>;
-
-  beforeAll(() => {
-    initializeLayoutWasmForTests();
-  });
+  let print: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    invoke.mockImplementation(async (command: string) => {
-      if (command === "layout_export_pdf") {
-        return { pageCount: 2, warnings: [], exportMs: 9 };
-      }
-
-      return undefined;
+    invoke.mockResolvedValue(undefined);
+    print = vi.fn();
+    Object.defineProperty(window, "print", {
+      configurable: true,
+      value: print,
     });
-    save.mockResolvedValue("/tmp/ws/note.pdf");
+    // The command waits a frame so a freshly built surface is in the document.
+    Object.defineProperty(window, "requestAnimationFrame", {
+      configurable: true,
+      value: (callback: FrameRequestCallback) => {
+        callback(0);
+        return 1;
+      },
+    });
     Object.defineProperty(window, "__TAURI_INTERNALS__", {
       configurable: true,
       value: {},
@@ -185,9 +205,7 @@ describe("publishing a workspace tab's revision", () => {
     Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
   });
 
-  async function mountWorkspace(
-    workspace = workspaceWithMarkdownTab(),
-  ) {
+  async function mountWorkspace(workspace = workspaceWithMarkdownTab()) {
     await act(async () => {
       root.render(
         <WorkspaceShell
@@ -204,55 +222,42 @@ describe("publishing a workspace tab's revision", () => {
     });
   }
 
-  async function clickExport() {
+  it("prints the document the window is showing", async () => {
+    await mountWorkspace();
+
     await act(async () => {
-      getButton("导出 PDF").click();
+      getButton("打印 / 存为 PDF").click();
       await flushPromises();
     });
-  }
 
-  it("lays the active tab out and exports it under the workspace root", async () => {
-    await mountWorkspace();
-    await clickExport();
-
-    expect(save).toHaveBeenCalledWith(
-      expect.objectContaining({ defaultPath: "/tmp/ws/note.pdf" }),
-    );
-
-    const call = exportCall();
-    expect(call).toBeDefined();
-
-    const { rootPath, request } = call?.[1] as {
-      rootPath: string;
-      request: Record<string, unknown>;
-    };
-
-    expect(rootPath).toBe("/tmp/ws");
-    expect(request.document_id).toBe("tab-1");
-    expect(request.revision).toBe(1);
-    expect(request.output_path).toBe("/tmp/ws/note.pdf");
-    expect(String(request.layout_document_json)).toContain("Workspace note");
-
-    const snapshot = JSON.parse(String(request.layout_snapshot_json)) as {
-      revision: number;
-      lines: Array<{ textRuns: Array<{ text: string; width: number }> }>;
-    };
-    expect(snapshot.revision).toBe(1);
-    expect(
-      snapshot.lines
-        .flatMap((line) => line.textRuns)
-        .some((run) => run.text.includes("Workspace note") && run.width > 0),
-    ).toBe(true);
-
-    expect(alertDialog).not.toHaveBeenCalled();
+    expect(print).toHaveBeenCalledTimes(1);
+    // Already the visual surface, so nothing had to change first.
+    expect(stageMock.setMode).not.toHaveBeenCalled();
   });
 
-  it("offers nothing to export when the active tab is not loaded Markdown", async () => {
+  it("asks for the visual surface before printing Markdown source", async () => {
+    await mountWorkspace();
+
+    await act(async () => {
+      stageMock.announceMode?.("source");
+      await flushPromises();
+    });
+
+    await act(async () => {
+      getButton("打印 / 存为 PDF").click();
+      await flushPromises();
+    });
+
+    expect(stageMock.setMode).toHaveBeenCalledWith("wysiwyg");
+    expect(print).toHaveBeenCalledTimes(1);
+  });
+
+  it("has nothing to print when the tab is not loaded Markdown", async () => {
     await mountWorkspace(
       workspaceReducer(createWorkspaceState("/tmp/ws"), {
         type: "tab/opened",
         tab: {
-          tabId: "tab-2",
+          tabId: "tab-1",
           path: "/tmp/ws/diagram.png",
           title: "diagram.png",
           dirty: false,
@@ -261,31 +266,14 @@ describe("publishing a workspace tab's revision", () => {
       }),
     );
 
-    expect(getButton("导出 PDF").disabled).toBe(true);
-  });
-
-  it("reports a refused export", async () => {
-    invoke.mockImplementation(async (command: string) => {
-      if (command === "layout_export_pdf") {
-        throw { error_code: "font_data_unavailable", message: "no font data" };
-      }
-
-      return undefined;
-    });
-    await mountWorkspace();
-    await clickExport();
-
-    expect(alertDialog).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: "导出 PDF",
-        message: expect.stringContaining("font_failed"),
-      }),
-    );
+    expect(getButton("打印 / 存为 PDF").disabled).toBe(true);
   });
 
   function getButton(label: string) {
     const button = Array.from(host.querySelectorAll("button")).find(
-      (candidate) => candidate.textContent?.trim() === label,
+      (candidate) =>
+        (candidate.getAttribute("aria-label") ??
+          candidate.textContent?.trim()) === label,
     );
 
     if (!button) {

@@ -139,8 +139,20 @@
 }
 
 :root {
-    --mdx-ui-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
-    --mdx-editor-font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", Arial, sans-serif;
+    /*
+     * One face for the whole application: the system's own.
+     *
+     * The CJK families sit before the Latin fallbacks because San Francisco has
+     * no Chinese glyphs — without them Chinese fell through to whatever the
+     * platform picked last, which is why the file tree and the editor were
+     * setting the same words in two different faces.
+     *
+     * Two names for one list, because the editor is allowed to diverge later;
+     * today it has no reason to.
+     */
+    --mdx-system-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", Arial, sans-serif;
+    --mdx-ui-font: var(--mdx-system-font);
+    --mdx-editor-font: var(--mdx-system-font);
     --mdx-mono-font: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     --mdx-window-toolbar-height: 52px;
     /*
@@ -153,6 +165,13 @@
      */
     --mdx-traffic-light-inset: 84px;
     --mdx-editor-max-width: 52rem;
+    /*
+     * One column width for the full-window views — memory, LLM Wiki — so a page
+     * of status and settings reads as a column. Stretched across a 1900px
+     * window, a two-column list puts its labels a whole screen away from their
+     * values, which is how a form turns into a heap.
+     */
+    --mdx-page-max-width: 56rem;
     --mdx-focus-ring: color-mix(in srgb, var(--color-primary) 24%, transparent);
     /*
      * A hairline, not a rule. macOS separates panes with the faintest line that
@@ -287,6 +306,20 @@ html[data-mdx-appearance="dark"] {
      * this a long document is simply cut off at the bottom of the pane.
      */
     overflow-y: auto;
+}
+
+/*
+ * The column a full-window view is read in — memory, LLM Wiki.
+ *
+ * Written as a rule against a marker rather than as utilities on each page: the
+ * pages are lists of status and settings whose children are already laid out,
+ * and this only has to decide how wide the reading column is. Stretched to a
+ * 1900px window, a label ends up a whole screen from its value.
+ */
+[data-mdx-page-column] > * {
+    margin-inline: auto;
+    max-width: var(--mdx-page-max-width);
+    width: 100%;
 }
 
 /*
@@ -1144,4 +1177,136 @@ html[data-mdx-appearance="dark"] {
     border: 1px solid var(--color-primary);
     border-radius: 5px;
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 16%, transparent);
+}
+
+/*
+ * Printing, and therefore "export as PDF".
+ *
+ * The document on paper is the document on screen: the same renderer, the same
+ * stylesheet, the same fonts. What changes is that a window's furniture goes
+ * away and the layout stops being a window — no fixed rows, no panes with their
+ * own scrollbars, no measure holding the text to a readable column in the middle
+ * of a wide screen, because the page is already that column.
+ *
+ * This replaced a second layout engine and a hand-written PDF writer. Every rule
+ * those had to grow one at a time — paragraph spacing, list markers, table
+ * lines, code backgrounds, page breaks — is already in the stylesheet above.
+ */
+@media print {
+    /*
+     * Print in ink on white, whatever theme the window is in. A dark theme
+     * printed as written would be light text on a white page.
+     */
+    :root {
+        --color-base-100: #ffffff;
+        --color-base-200: #ffffff;
+        --color-base-300: #f2f2f2;
+        --color-base-content: #111111;
+        --mdx-chrome-bg: #ffffff;
+        --mdx-sidebar-bg: #ffffff;
+        --mdx-content-bg: #ffffff;
+        --mdx-separator: #d8d8d8;
+        --mdx-code-bg: #f4f4f5;
+        --mdx-card-bg: #f4f4f5;
+        --mdx-selection-bg: transparent;
+    }
+
+    @page {
+        margin: 20mm 18mm;
+    }
+
+    html,
+    body {
+        height: auto;
+        overflow: visible;
+        background: #ffffff;
+    }
+
+    /*
+     * Every wrapper between the window and the document is sized for a window.
+     * On paper they are one flow, so each is unwrapped: laid out as a block, as
+     * tall as its content, and not scrolling anything.
+     */
+    [data-mdx-window-layout],
+    [data-mdx-window-layout] > *,
+    [data-mdx-document-shell],
+    [data-mdx-document-shell] > *,
+    [data-mdx-editor-column],
+    [data-mdx-editor-column] > *,
+    [data-mdx-markdown-editor],
+    [data-mdx-markdown-editor-stage] {
+        display: block !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        overflow: visible !important;
+        background: transparent !important;
+    }
+
+    /*
+     * The window's furniture. None of it is part of the document.
+     *
+     * After the unwrapping above on purpose: both are `!important` at the same
+     * specificity, so the last rule wins, and hiding has to be the one that
+     * does. With these first, the toolbar and the sidebar printed as the
+     * document's opening lines.
+     */
+    [data-mdx-workspace-toolbar],
+    [data-mdx-workspace-navigator],
+    [data-mdx-workspace-main-tabs],
+    [data-mdx-document-toolbar],
+    [data-mdx-document-shell] aside,
+    [data-mdx-document-status-bar],
+    [data-mdx-context-menu],
+    [data-mdx-note-list],
+    [role="separator"] {
+        display: none !important;
+    }
+
+    /*
+     * The page is the measure. The screen's column and its generous bottom —
+     * which exists so the last line can be scrolled up — would print as a
+     * narrow strip followed by half a blank page.
+     */
+    [data-mdx-markdown-editor] .ProseMirror {
+        max-width: none;
+        margin-inline: 0;
+        min-height: 0;
+        padding: 0;
+    }
+
+    /* Keep a heading with what it introduces, and keep a block whole. */
+    [data-mdx-markdown-editor] h1,
+    [data-mdx-markdown-editor] h2,
+    [data-mdx-markdown-editor] h3,
+    [data-mdx-markdown-editor] h4,
+    [data-mdx-markdown-editor] h5,
+    [data-mdx-markdown-editor] h6 {
+        break-after: avoid;
+    }
+
+    [data-mdx-markdown-editor] pre,
+    [data-mdx-markdown-editor] blockquote,
+    [data-mdx-markdown-editor] table,
+    [data-mdx-markdown-editor] img {
+        break-inside: avoid;
+    }
+
+    /*
+     * A code block's ground carries its meaning, so it is printed rather than
+     * dropped as a background the printer is free to skip.
+     */
+    [data-mdx-markdown-editor] pre,
+    [data-mdx-markdown-editor] code,
+    [data-mdx-markdown-editor] table th {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    /* Nothing on paper is focused, hovered or being edited. */
+    [data-mdx-markdown-editor] *:focus,
+    [data-mdx-markdown-editor] *:focus-visible {
+        outline: none !important;
+        box-shadow: none !important;
+    }
 }

@@ -44,10 +44,19 @@ export const PUBLISHING_PAGE: PublishingPageSetup = {
     fontEmbedMode: "subset",
 };
 
-/** The printable area of `PUBLISHING_PAGE`, in CSS pixels at 96 dpi. */
+/**
+ * The printable area of `PUBLISHING_PAGE`, in points.
+ *
+ * Points, not CSS pixels: the exporter draws the layout's own numbers as PDF
+ * points, so whatever unit the document is laid out in becomes the unit it is
+ * printed in. Laid out at 601 by 931 — the same area in pixels at 96 dpi —
+ * every measurement came out a third too large and lines wrapped at a width
+ * wider than the paper itself.
+ */
 export const PUBLISHING_VIEWPORT: PublishingViewport = {
-    width: 601,
-    height: 931,
+    // 595 - 72 - 72, and 842 - 72 - 72.
+    width: 451,
+    height: 698,
 };
 
 /** Wall-clock budget for laying one captured revision out. */

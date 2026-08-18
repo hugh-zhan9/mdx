@@ -41,14 +41,22 @@ const BLOCK_KIND: Record<PublishingLayoutBlock["kind"], LayoutBlock["kind"]> = {
     frontmatter: "fallback",
 };
 
-const DEFAULT_FONT_SIZE = 14;
+/** Body size in points: what a printed document is normally set in. */
+const DEFAULT_FONT_SIZE = 11;
+/**
+ * Heading sizes in points, for a printed page.
+ *
+ * A scale rather than six arbitrary numbers: each step is about a fifth larger
+ * than the next, which is enough to tell a level apart from the one below it at
+ * arm's length without a heading taking a line of its own to breathe.
+ */
 const HEADING_FONT_SIZES: Record<number, number> = {
-    1: 28,
-    2: 22,
-    3: 18,
-    4: 16,
-    5: 15,
-    6: 14,
+    1: 22,
+    2: 17,
+    3: 14,
+    4: 12.5,
+    5: 11.5,
+    6: 11,
 };
 
 /**

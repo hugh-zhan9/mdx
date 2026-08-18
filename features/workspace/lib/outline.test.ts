@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseMarkdownOutline } from "./outline";
+import { outlineHeadingLabel, parseMarkdownOutline } from "./outline";
 
 describe("parseMarkdownOutline", () => {
     it("parses h1-h6 in source order", () => {
@@ -89,5 +89,44 @@ describe("parseMarkdownOutline source ranges", () => {
         expect(markdown.slice(heading.range.anchor, heading.range.head)).toBe(
             "After",
         );
+    });
+});
+
+describe("outlineHeadingLabel", () => {
+    it("decodes the character references the editor itself writes", () => {
+        // A heading holding only an escaped space: the body shows it blank, so
+        // the outline must not show five characters instead.
+        expect(outlineHeadingLabel("&#x20;")).toBe("");
+        expect(outlineHeadingLabel("one&#x20;two")).toBe("one two");
+        expect(outlineHeadingLabel("&#65;")).toBe("A");
+        expect(outlineHeadingLabel("Fish &amp; Chips")).toBe("Fish & Chips");
+    });
+
+    it("leaves a reference that names no character exactly as written", () => {
+        expect(outlineHeadingLabel("&frac12;")).toBe("&frac12;");
+        expect(outlineHeadingLabel("&#x110000;")).toBe("&#x110000;");
+        expect(outlineHeadingLabel("&#xd800;")).toBe("&#xd800;");
+        expect(outlineHeadingLabel("&#0;")).toBe("&#0;");
+    });
+
+    it("keeps what inline markup wraps and drops the markup", () => {
+        expect(outlineHeadingLabel("**Bold** and `code`")).toBe(
+            "Bold and code",
+        );
+        expect(outlineHeadingLabel("~~gone~~ and _italic_")).toBe(
+            "gone and italic",
+        );
+    });
+
+    it("keeps what a link says and drops where it points", () => {
+        expect(outlineHeadingLabel("[百度](https://baidu.com)")).toBe("百度");
+        expect(outlineHeadingLabel("[[目标笔记|读题]]")).toBe("读题");
+        expect(outlineHeadingLabel("[[目标笔记]]")).toBe("目标笔记");
+        expect(outlineHeadingLabel("![屏幕截图](a.png)")).toBe("屏幕截图");
+    });
+
+    it("does not touch the source text a plain heading already is", () => {
+        expect(outlineHeadingLabel("Two Sum")).toBe("Two Sum");
+        expect(outlineHeadingLabel("2026-03-23 17:06")).toBe("2026-03-23 17:06");
     });
 });

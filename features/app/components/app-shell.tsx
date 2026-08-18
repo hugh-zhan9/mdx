@@ -6,6 +6,7 @@ import { tauriCore } from "@/common/lib/tauri";
 import { DocumentApp } from "@/features/document/components/document-app";
 import { DocumentError } from "@/features/document/components/document-error";
 import { WorkspaceApp } from "@/features/workspace/components/workspace-app";
+import { PrimaryTextControlButton } from "../../../common/components/ui-controls";
 import {
     normalizeAppWindowSession,
     type AppWindowSession,
@@ -130,8 +131,25 @@ export class AppRenderErrorBoundary extends Component<
                             MDX 渲染失败
                         </h1>
                         <p className="text-base-content/70">
-                            请重新打开窗口；诊断信息已写入开发者控制台。
+                            诊断信息已写入开发者控制台。重新加载会重建界面，磁盘上的文件不受影响。
                         </p>
+                        {/*
+                         * A way out of this screen, because there was none: the
+                         * boundary holds until something changes the reset key,
+                         * and nothing on this screen could. Reloading rebuilds
+                         * the window from the same files.
+                         */}
+                        <div className="mt-4">
+                            <PrimaryTextControlButton
+                                onClick={() => {
+                                    if (typeof window !== "undefined") {
+                                        window.location.reload();
+                                    }
+                                }}
+                            >
+                                重新加载
+                            </PrimaryTextControlButton>
+                        </div>
                     </div>
                 </main>
             );

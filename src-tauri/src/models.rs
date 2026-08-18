@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct WorkspaceError {
@@ -56,6 +56,63 @@ pub struct ScanWorkspaceResult {
     pub nodes: Vec<FileTreeNode>,
     pub truncated: bool,
     pub entry_count: usize,
+    pub warnings: Vec<String>,
+}
+
+/// One note, as a list of notes needs it.
+///
+/// `head` is the first bytes of the file rather than the whole document: a list
+/// row shows a title and a line of prose, and reading a megabyte to draw forty
+/// characters is a cost paid once per note in the workspace.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteIndexEntry {
+    pub path: String,
+    /// Milliseconds since the Unix epoch, or `None` when the file system did
+    /// not report a modification time for this file.
+    pub modified_ms: Option<i64>,
+    pub head: String,
+    /// Whether the file continues past `head`.
+    pub head_truncated: bool,
+}
+
+/// Which notes a page is a page of.
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum NoteGroup {
+    All,
+    /// Changed within the last week.
+    Recent,
+    /// Sitting directly in the workspace root, filed under no folder.
+    Unfiled,
+}
+
+/// How many notes each group holds, before any filter is applied.
+///
+/// Counted from the same pass that timed the notes, so the numbers cost nothing
+/// beyond what ordering the list already required. They describe the workspace
+/// rather than the page: a count that only counted the notes that fit on screen
+/// would be a wrong answer to "how many are there".
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteGroupCounts {
+    pub all: usize,
+    pub recent: usize,
+    pub unfiled: usize,
+}
+
+/// One page of notes, and what the workspace holds around it.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct NotePageResult {
+    pub root_path: String,
+    /// This page, most recently edited first, with each note's beginning read.
+    pub notes: Vec<NoteIndexEntry>,
+    /// How many notes the group holds once the filter has been applied.
+    pub matched: usize,
+    pub counts: NoteGroupCounts,
+    /// Whether the walk itself left files out, which its own limit can do.
+    pub truncated: bool,
     pub warnings: Vec<String>,
 }
 

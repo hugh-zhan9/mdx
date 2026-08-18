@@ -10,6 +10,7 @@ import {
     isPreviewableFilePath,
     isRenderableHtmlFilePath,
     shouldOpenWithDefaultApplication,
+    workspaceRelativePath,
     normalizeWorkspacePath,
 } from "./path";
 
@@ -153,5 +154,35 @@ describe("isMarkdownFilePath", () => {
         expect(isMarkdownFilePath("/tmp/ws/Idea.MD")).toBe(true);
         expect(isMarkdownFilePath("/tmp/ws/Idea.mdx")).toBe(false);
         expect(isMarkdownFilePath("/tmp/ws/Idea.txt")).toBe(false);
+    });
+});
+
+describe("workspaceRelativePath", () => {
+    it("names a file by where it sits inside the workspace", () => {
+        expect(workspaceRelativePath("/tmp/ws", "/tmp/ws/notes/a.md")).toBe(
+            "notes/a.md",
+        );
+    });
+
+    it("does not count a separator twice", () => {
+        expect(workspaceRelativePath("/tmp/ws/", "/tmp/ws/a.md")).toBe("a.md");
+        expect(workspaceRelativePath("/", "/a.md")).toBe("a.md");
+        expect(workspaceRelativePath("C:/", "C:/a.md")).toBe("a.md");
+    });
+
+    it("reads Windows separators as separators", () => {
+        expect(
+            workspaceRelativePath("C:\\ws", "C:\\ws\\notes\\a.md"),
+        ).toBe("notes/a.md");
+    });
+
+    it("has nothing to name for the root itself", () => {
+        expect(workspaceRelativePath("/tmp/ws", "/tmp/ws")).toBe("");
+    });
+
+    it("keeps the full path of a file outside the workspace", () => {
+        expect(workspaceRelativePath("/tmp/ws", "/tmp/other/a.md")).toBe(
+            "/tmp/other/a.md",
+        );
     });
 });

@@ -55,7 +55,10 @@ export function FileTreeNodeView({
         "flex h-7 w-full min-w-0 items-center gap-1 truncate pr-3 text-left text-sm outline-none",
         isSelected
             ? "bg-primary/10 text-base-content"
-            : "text-base-content/72 hover:bg-base-200",
+            : // The sidebar's ground is base-200, so hovering used to paint the
+              // row the colour it already was and the pointer had no effect at
+              // all. This is the tone every other control in the app hovers to.
+              "text-base-content/85 hover:bg-[var(--mdx-control-hover-bg)]",
     ].join(" ");
 
     return (

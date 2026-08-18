@@ -19,6 +19,7 @@ import { WorkspaceShell } from "./workspace-shell";
 
 const stageMock = vi.hoisted(() => ({
     reveal: vi.fn(async () => ({ ok: true as const })),
+    setMode: vi.fn(async () => undefined),
 }));
 
 vi.mock("@/common/lib/tauri", () => ({
@@ -114,7 +115,10 @@ vi.mock("./editor-stage", () => ({
         editorSurfaceRef?: RefObject<MarkdownEditorSurfaceHandle | null>;
     }) => {
         if (editorSurfaceRef) {
-            editorSurfaceRef.current = { reveal: stageMock.reveal };
+            editorSurfaceRef.current = {
+                reveal: stageMock.reveal,
+                setMode: stageMock.setMode,
+            };
         }
         return <div data-testid="editor" />;
     },
@@ -222,6 +226,20 @@ describe("workspace outline navigation", () => {
         });
     }
 
+    /**
+     * The outline shares the navigator's column with the note list, so it has
+     * to be the one showing before a heading can be clicked.
+     */
+    function openOutlineTab() {
+        const tab = Array.from(
+            host.querySelectorAll<HTMLButtonElement>("button"),
+        ).find((candidate) => candidate.textContent === "大纲");
+        if (!tab) throw new Error("no outline tab in the navigator");
+        act(() => {
+            tab.click();
+        });
+    }
+
     function clickHeading(id: string) {
         const button = host.querySelector<HTMLButtonElement>(
             `[data-testid='outline-${id}']`,
@@ -234,6 +252,7 @@ describe("workspace outline navigation", () => {
 
     it("reveals the heading's Markdown source range through the editor surface", async () => {
         await mount();
+        openOutlineTab();
 
         clickHeading("beta-heading");
 

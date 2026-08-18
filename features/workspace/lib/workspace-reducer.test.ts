@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { ensureWorkspaceSearchState } from "./workspace-search";
 import { createWorkspaceState, workspaceReducer } from "./workspace-reducer";
+import {
+    MAX_NAVIGATOR_WIDTH,
+    MIN_RAIL_WIDTH,
+} from "./panel-layout";
 
 describe("workspaceReducer", () => {
     it("marks a tab dirty after content changes", () => {
@@ -176,7 +180,7 @@ describe("workspaceReducer", () => {
         const initialState = createWorkspaceState("/tmp/ws");
         const resized = workspaceReducer(initialState, {
             type: "panel/resized",
-            side: "left",
+            side: "list",
             width: 320,
         });
         const collapsed = workspaceReducer(resized, {
@@ -218,7 +222,7 @@ describe("workspaceReducer", () => {
             },
         });
         const completedSearch = ensureWorkspaceSearchState(completed.search);
-        expect(completed.panel.leftWidth).toBe(320);
+        expect(completed.panel.listWidth).toBe(320);
         expect(completed.panel.rightCollapsed).toBe(true);
         expect(completed.treeFilterQuery).toBe("idea");
         expect(completedSearch.query).toBe("body");
@@ -585,7 +589,7 @@ describe("workspaceReducer", () => {
         const tooLarge = workspaceReducer(tooSmall, {
             type: "panel/resized",
             side: "right",
-            width: 800,
+            width: 2_000,
         });
         const decimal = workspaceReducer(tooLarge, {
             type: "panel/resized",
@@ -593,8 +597,86 @@ describe("workspaceReducer", () => {
             width: 295.42578125,
         });
 
-        expect(tooSmall.panel.rightWidth).toBe(160);
-        expect(tooLarge.panel.rightWidth).toBe(640);
+        // The app's bounds, not this reducer's own: the narrowest column it
+        // has is the rail, and the widest a panel may be is the navigator's max.
+        expect(tooSmall.panel.rightWidth).toBe(MIN_RAIL_WIDTH);
+        expect(tooLarge.panel.rightWidth).toBe(MAX_NAVIGATOR_WIDTH);
         expect(decimal.panel.rightWidth).toBe(295);
+    });
+});
+
+describe("workspaceReducer tree focus", () => {
+    const tree = [
+        {
+            kind: "folder" as const,
+            name: "raw",
+            path: "/tmp/ws/raw",
+            children: [
+                {
+                    kind: "file" as const,
+                    name: "a.md",
+                    path: "/tmp/ws/raw/a.md",
+                },
+            ],
+        },
+    ];
+
+    function withTree() {
+        return workspaceReducer(createWorkspaceState("/tmp/ws"), {
+            type: "tree/loaded",
+            fileTree: tree,
+        });
+    }
+
+    it("points the tree at a folder, and back at the workspace", () => {
+        const focused = workspaceReducer(withTree(), {
+            type: "tree/focusChanged",
+            path: "/tmp/ws/raw",
+        });
+        expect(focused.treeFocusPath).toBe("/tmp/ws/raw");
+
+        const cleared = workspaceReducer(focused, {
+            type: "tree/focusChanged",
+            path: null,
+        });
+        expect(cleared.treeFocusPath).toBeNull();
+    });
+
+    it("refuses a folder outside this workspace", () => {
+        const state = withTree();
+        const unchanged = workspaceReducer(state, {
+            type: "tree/focusChanged",
+            path: "/tmp/other/raw",
+        });
+
+        expect(unchanged).toBe(state);
+    });
+
+    it("drops a focus whose folder is gone the next time the tree loads", () => {
+        const focused = workspaceReducer(withTree(), {
+            type: "tree/focusChanged",
+            path: "/tmp/ws/raw",
+        });
+
+        const reloaded = workspaceReducer(focused, {
+            type: "tree/loaded",
+            fileTree: [],
+        });
+
+        expect(reloaded.treeFocusPath).toBeNull();
+    });
+
+    it("keeps a focus whose folder is still there", () => {
+        const focused = workspaceReducer(withTree(), {
+            type: "tree/focusChanged",
+            path: "/tmp/ws/raw",
+        });
+
+        const reloaded = workspaceReducer(focused, {
+            type: "tree/loaded",
+            fileTree: tree,
+        });
+
+        expect(reloaded.treeFocusPath).toBe("/tmp/ws/raw");
     });
 });

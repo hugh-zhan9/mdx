@@ -24,6 +24,7 @@ import {
 } from "./app-dialogs";
 import { SettingsButton } from "./settings-button";
 import { WorkspaceShell } from "./workspace-shell";
+import { stopListening } from "@/common/lib/tauri-events";
 
 export function WorkspaceApp() {
     return (
@@ -204,7 +205,7 @@ function useWorkspaceMenuEvents(
             unlisteners.push(...nextUnlisteners);
 
             if (disposed) {
-                unlisteners.forEach((unlisten) => unlisten());
+                unlisteners.forEach(stopListening);
             }
         };
 
@@ -214,7 +215,7 @@ function useWorkspaceMenuEvents(
 
         return () => {
             disposed = true;
-            unlisteners.forEach((unlisten) => unlisten());
+            unlisteners.forEach(stopListening);
         };
     }, [chooseWorkspace, workspaceActionsRef]);
 }
@@ -334,7 +335,7 @@ function useWorkspaceCloseGuard(
             );
 
             if (disposed) {
-                nextUnlisten();
+                stopListening(nextUnlisten);
                 return;
             }
 
@@ -347,7 +348,7 @@ function useWorkspaceCloseGuard(
 
         return () => {
             disposed = true;
-            unlisten?.();
+            stopListening(unlisten);
         };
     }, [dialogs, persistCurrentWindowSize, workspaceRef]);
 }

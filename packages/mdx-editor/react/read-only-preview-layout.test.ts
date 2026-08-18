@@ -214,6 +214,8 @@ describe("the read-only preview layout port", () => {
             width: 40,
             height: 16,
             fontFamily: "Helvetica",
+            // The fixture's own block style, echoed back by the fake bridge:
+            // this run's size is the document's, not the port's default.
             fontSize: 14,
             text: "docs",
             link: "https://example.com/docs",

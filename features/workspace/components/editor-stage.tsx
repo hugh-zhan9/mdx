@@ -11,6 +11,7 @@ import type {
   MarkdownEditorSurfaceHandle,
 } from "@/features/editor/components/markdown-editor-surface";
 import type { EditorSessionBinding } from "@/features/editor/lib/editor-session-binding";
+import type { EditorSurfaceMode } from "../../../packages/mdx-editor";
 import { documentFingerprint } from "@/features/file-watch/lib/external-change";
 import { EmptyState } from "../../../common/components/ui-controls";
 import { HtmlPreview } from "./html-preview";
@@ -52,6 +53,8 @@ interface EditorStageProps {
     tabId: string,
     selection: Record<string, unknown> | null,
   ) => void;
+  /** Passed straight through: which surface the editor settled on. */
+  onModeChange?: (mode: EditorSurfaceMode) => void;
 }
 
 export function EditorStage({
@@ -66,6 +69,7 @@ export function EditorStage({
   onInitialMarkdownLoadSettled,
   onPendingCliCommandHandled,
   onSelectionChange,
+  onModeChange,
 }: EditorStageProps) {
   const [loadError, setLoadError] = useState<{
     tabId: string;
@@ -159,7 +163,10 @@ export function EditorStage({
     pendingCliCommand?.tabId === activeTab.tabId ? pendingCliCommand : null;
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col bg-base-100">
+    <section
+      data-mdx-editor-column=""
+      className="flex min-h-0 flex-1 flex-col bg-base-100"
+    >
       <div className="min-h-0 flex-1 overflow-hidden">
         {activeTabKind === "pdf" ? (
           <BinaryBlobPreview
@@ -234,6 +241,7 @@ export function EditorStage({
             onPendingCliCommandHandled={onPendingCliCommandHandled}
             onCommandRefused={reportRefusedEditorCommand}
             onSelectionChange={onSelectionChange}
+            onModeChange={onModeChange}
           />
         )}
       </div>

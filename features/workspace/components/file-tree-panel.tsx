@@ -17,14 +17,17 @@ import type {
     SetStateAction,
 } from "react";
 import {
+    focusedTreeNodes,
     getFileTreeParentPath,
     isPathWithinFolder,
 } from "../lib/file-tree";
+import { FolderOpen } from "lucide-react";
 import {
     isMarkdownFilePath,
     isPreviewableFilePath,
     normalizeWorkspacePath,
     shouldOpenWithDefaultApplication,
+    workspaceRelativePath,
 } from "../lib/path";
 import { filterTreeByName } from "../lib/tree-filter";
 import type {
@@ -49,6 +52,9 @@ interface FileTreePanelProps {
     rootPath: string;
     fileTree: FileTreeNode[];
     treeFilterQuery: string;
+    /** The folder the tree is showing, or null for the whole workspace. */
+    focusPath: string | null;
+    onFocusChange: (path: string | null) => void;
     searchState: WorkspaceFullTextSearchState;
     collapsed: boolean;
     dispatch: (action: WorkspaceAction) => void;
@@ -88,6 +94,8 @@ export function FileTreePanel({
     rootPath,
     fileTree,
     treeFilterQuery,
+    focusPath,
+    onFocusChange,
     searchState,
     collapsed,
     dispatch,
@@ -117,9 +125,23 @@ export function FileTreePanel({
     const [refreshing, setRefreshing] = useState(false);
     const [, startRefreshTransition] = useTransition();
     const searchActive = treeFilterQuery.trim().length > 0;
+    /**
+     * The tree the panel is showing: the workspace, or one folder inside it.
+     *
+     * A focus whose folder is not in the tree falls back to the whole thing
+     * rather than to nothing — the reducer clears a stale focus the next time
+     * the tree loads, and an empty tree in the meantime says nothing useful.
+     */
+    const focusedNodes = useMemo(() => {
+        if (!focusPath) {
+            return fileTree;
+        }
+
+        return focusedTreeNodes(fileTree, focusPath) ?? fileTree;
+    }, [fileTree, focusPath]);
     const visibleNodes = useMemo(() => {
-        return filterTreeByName(fileTree, treeFilterQuery);
-    }, [fileTree, treeFilterQuery]);
+        return filterTreeByName(focusedNodes, treeFilterQuery);
+    }, [focusedNodes, treeFilterQuery]);
     const actionTargetNode = useMemo(() => {
         if (selectedPath) {
             const selectedNode = findNodeByPath(fileTree, selectedPath);
@@ -415,6 +437,19 @@ export function FileTreePanel({
         [dialogs, dispatch, refreshTree, rootPath, showError],
     );
 
+    /**
+     * Deletes a named file for a caller that already knows which one it means.
+     *
+     * The note list has a path and a title and no selection; this hands both to
+     * the same confirm-and-trash the tree's own delete uses.
+     */
+    const trashFile = useCallback(
+        async (path: string, name: string) => {
+            await deleteNode({ kind: "file", path, name });
+        },
+        [deleteNode],
+    );
+
     const renameSelection = useCallback(async () => {
         if (!actionTargetNode) {
             setMessage("请先选择文件或文件夹。");
@@ -506,6 +541,7 @@ export function FileTreePanel({
             createMarkdownFile: createMarkdownFileAtSelection,
             renameSelection,
             deleteSelection,
+            trashFile,
             refreshTree,
         }),
         [
@@ -514,6 +550,7 @@ export function FileTreePanel({
             deleteSelection,
             refreshTree,
             renameSelection,
+            trashFile,
         ],
     );
 
@@ -728,6 +765,40 @@ export function FileTreePanel({
                             }}
                         />
 
+                        {/*
+                         * Which folder the tree is showing, and the way back
+                         * out of it. Without this a narrowed tree is
+                         * indistinguishable from a workspace that lost most of
+                         * its files.
+                         */}
+                        {focusPath ? (
+                            <div
+                                data-mdx-tree-focus=""
+                                className="flex min-w-0 shrink-0 items-center gap-2 border-b border-[var(--mdx-separator)] px-3 py-1.5"
+                            >
+                                <FolderOpen
+                                    aria-hidden="true"
+                                    className="h-3.5 w-3.5 shrink-0 text-base-content/55"
+                                />
+                                <span
+                                    className="min-w-0 flex-1 truncate text-xs text-base-content/75"
+                                    title={focusPath}
+                                >
+                                    {workspaceRelativePath(
+                                        rootPath,
+                                        focusPath,
+                                    ) || focusPath}
+                                </span>
+                                <button
+                                    type="button"
+                                    className="shrink-0 rounded px-1.5 py-0.5 text-[11px] text-base-content/60 transition-colors hover:bg-[var(--mdx-control-hover-bg)] hover:text-base-content"
+                                    onClick={() => onFocusChange(null)}
+                                >
+                                    显示全部
+                                </button>
+                            </div>
+                        ) : null}
+
                         <div className="min-h-0 flex-1 overflow-auto py-1">
                             {message ? (
                                 <div className="border-b border-[var(--mdx-separator)] px-3 py-2 text-xs text-warning">
@@ -849,6 +920,13 @@ export function FileTreePanel({
                         void createMarkdownFile(contextMenu.node.path);
                     }
                 }}
+                onFocusFolder={() => {
+                    if (contextMenu?.node.kind === "folder") {
+                        onFocusChange(contextMenu.node.path);
+                    }
+                }}
+                focused={focusPath !== null}
+                onShowWholeTree={() => onFocusChange(null)}
                 onRename={() => {
                     if (contextMenu?.node) {
                         void renameNode(contextMenu.node);

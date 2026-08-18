@@ -4,6 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { createWorkspaceState, workspaceReducer } from "../lib/workspace-reducer";
 import { buildFileTree } from "../lib/file-tree";
+import {
+    clampListWidth,
+    clampRailWidth,
+    DEFAULT_LIST_WIDTH,
+    MIN_RAIL_WIDTH,
+    NAVIGATOR_RAIL_WIDTH,
+} from "../lib/panel-layout";
 import type {
     AppPreferences,
     FileTreeNode,
@@ -30,6 +37,7 @@ import {
     createDefaultAppPreferences,
     normalizeAppPreferences,
 } from "../lib/preferences";
+import { stopListening } from "../../../common/lib/tauri-events";
 
 type BootstrapStatus = "loading" | "ready" | "empty" | "error";
 
@@ -52,8 +60,9 @@ interface BootstrapWorkspaceResult {
 
 const STATE_VERSION = 1;
 const DEFAULT_PANEL_STATE: WorkspacePanelState = {
-    leftCollapsed: false,
-    leftWidth: 300,
+    navigatorCollapsed: false,
+    listWidth: DEFAULT_LIST_WIDTH,
+    railWidth: NAVIGATOR_RAIL_WIDTH,
     rightCollapsed: false,
     rightWidth: 300,
 };
@@ -326,7 +335,7 @@ export function useWorkspaceBootstrap() {
                 );
 
                 if (disposed) {
-                    nextUnlisten();
+                    stopListening(nextUnlisten);
                     return;
                 }
 
@@ -350,7 +359,7 @@ export function useWorkspaceBootstrap() {
             clearResizeTimer();
 
             if (unlisten) {
-                unlisten();
+                stopListening(unlisten);
             }
 
             window.removeEventListener("resize", onBrowserResize);
@@ -503,6 +512,9 @@ function applyPersistedWorkspace(
     return {
         ...workspace,
         panel: normalizePanelState(persistedWorkspace.panels),
+        // The folder this workspace was left looking at. If it has since gone,
+        // the reducer drops it the first time the tree is loaded.
+        treeFocusPath: persistedWorkspace.treeFocusPath ?? null,
         tabs: tabMap,
         tabOrder,
         activeTabId,
@@ -648,6 +660,7 @@ function toPersistedWorkspace(
             ),
         activeTabId: workspace.activeTabId,
         panels: workspace.panel,
+        treeFocusPath: workspace.treeFocusPath ?? null,
     };
 }
 
@@ -757,6 +770,11 @@ function normalizeAppState(state: PersistedAppState | null): PersistedAppState {
                           : [],
                       activeTabId: workspace.activeTabId ?? null,
                       panels: normalizePanelState(workspace.panels),
+                      // Absent in anything saved before the tree could be
+                      // pointed at a folder.
+                      treeFocusPath: workspace.treeFocusPath
+                          ? normalizeWorkspacePath(workspace.treeFocusPath)
+                          : null,
                   }))
             : [],
         windowSize: normalizePersistedWindowSize(state.windowSize),
@@ -773,30 +791,47 @@ function createDefaultAppState(): PersistedAppState {
     };
 }
 
+/**
+ * A panel state saved by any earlier version of this app.
+ *
+ * Two renamings have happened here: the left panel became the navigator, and
+ * the navigator's single width became one width per column. A state saved before
+ * that holds the two columns added together, so the list's width is what is left
+ * of it once the tree has taken its share.
+ */
+interface LegacyPanelState {
+    leftCollapsed?: boolean;
+    leftWidth?: number;
+}
+
 function normalizePanelState(
-    panel: WorkspacePanelState | undefined,
+    panel: (WorkspacePanelState & LegacyPanelState) | undefined,
 ): WorkspacePanelState {
+    const railWidth = clampRailWidth(
+        panel?.railWidth ?? DEFAULT_PANEL_STATE.railWidth,
+    );
+    const listWidth =
+        panel?.listWidth ??
+        (typeof panel?.leftWidth === "number"
+            ? panel.leftWidth - railWidth
+            : undefined);
+
     return {
-        leftCollapsed: panel?.leftCollapsed ?? DEFAULT_PANEL_STATE.leftCollapsed,
-        leftWidth: normalizePanelWidth(
-            normalizeLegacyDefaultPanelWidth(panel?.leftWidth),
-            DEFAULT_PANEL_STATE.leftWidth,
+        navigatorCollapsed:
+            panel?.navigatorCollapsed ??
+            panel?.leftCollapsed ??
+            DEFAULT_PANEL_STATE.navigatorCollapsed,
+        listWidth: clampListWidth(
+            listWidth ?? DEFAULT_PANEL_STATE.listWidth,
         ),
+        railWidth,
         rightCollapsed:
             panel?.rightCollapsed ?? DEFAULT_PANEL_STATE.rightCollapsed,
         rightWidth: normalizePanelWidth(
-            normalizeLegacyDefaultPanelWidth(panel?.rightWidth),
+            panel?.rightWidth,
             DEFAULT_PANEL_STATE.rightWidth,
         ),
     };
-}
-
-function normalizeLegacyDefaultPanelWidth(width: number | undefined) {
-    if (width === 280 || width === 240) {
-        return DEFAULT_PANEL_STATE.leftWidth;
-    }
-
-    return width;
 }
 
 function normalizePanelWidth(width: number | undefined, fallback: number) {
@@ -804,7 +839,9 @@ function normalizePanelWidth(width: number | undefined, fallback: number) {
         return fallback;
     }
 
-    return Math.round(Math.min(Math.max(width, 160), 640));
+    // Wide enough for the narrowest column this app has — the rail — and no
+    // wider than a panel that would leave the editor nothing.
+    return Math.round(Math.min(Math.max(width, MIN_RAIL_WIDTH), 820));
 }
 
 function getCurrentWindowSize(fallback: PersistedWindowSize) {

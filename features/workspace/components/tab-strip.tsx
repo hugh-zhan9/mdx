@@ -1,6 +1,10 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 import { X } from "lucide-react";
+import { ContextMenu } from "../../../common/components/context-menu";
+import type { ContextMenuItem } from "../../../common/components/context-menu";
 import { IconButton } from "../../../common/components/ui-controls";
 import type { WorkspaceAction, WorkspaceTab } from "../lib/types";
 
@@ -9,6 +13,19 @@ interface TabStripProps {
     activeTabId: string | null;
     dispatch: (action: WorkspaceAction) => void;
     onCloseTab: (tabId: string) => Promise<void>;
+    /** Shows the file where it lives, without opening it. */
+    onRevealTab?: (tab: WorkspaceTab) => void;
+    onCopyTabPath?: (tab: WorkspaceTab) => void;
+    /** Closes every tab but this one, and every tab, respectively. */
+    onCloseOtherTabs?: (tabId: string) => void;
+    onCloseAllTabs?: () => void;
+}
+
+/** Where a right-click landed, and on which tab. */
+interface TabMenuState {
+    tab: WorkspaceTab;
+    x: number;
+    y: number;
 }
 
 export function TabStrip({
@@ -16,7 +33,86 @@ export function TabStrip({
     activeTabId,
     dispatch,
     onCloseTab,
+    onRevealTab,
+    onCopyTabPath,
+    onCloseOtherTabs,
+    onCloseAllTabs,
 }: TabStripProps) {
+    const activeTabRef = useRef<HTMLDivElement | null>(null);
+    const [menu, setMenu] = useState<TabMenuState | null>(null);
+
+    /**
+     * Keeps the active tab where it can be seen.
+     *
+     * A tab is activated from outside this strip as often as from inside it —
+     * the file tree, a wikilink, reopening a workspace — and in a strip that
+     * has overflowed, a tab scrolled out of sight reads as a file that did not
+     * open at all.
+     */
+    useEffect(() => {
+        activeTabRef.current?.scrollIntoView({
+            block: "nearest",
+            inline: "nearest",
+        });
+    }, [activeTabId]);
+
+    const openMenu = (
+        tab: WorkspaceTab,
+        event: ReactMouseEvent<HTMLDivElement>,
+    ) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setMenu({ tab, x: event.clientX, y: event.clientY });
+    };
+
+    /**
+     * What a right-click on a tab offers.
+     *
+     * The file's own actions first, then the tab's own: what to do with the
+     * document, and then what to do with the window's view of it.
+     */
+    const menuItems = (tab: WorkspaceTab): ContextMenuItem[] => {
+        const items: ContextMenuItem[] = [];
+
+        if (onRevealTab) {
+            items.push({
+                label: "在 Finder 中显示",
+                onSelect: () => onRevealTab(tab),
+            });
+        }
+
+        if (onCopyTabPath) {
+            items.push({
+                label: "复制路径",
+                onSelect: () => onCopyTabPath(tab),
+            });
+        }
+
+        items.push({
+            label: "关闭",
+            onSelect: () => void onCloseTab(tab.tabId),
+            separatorBefore: items.length > 0,
+        });
+
+        if (onCloseOtherTabs) {
+            items.push({
+                label: "关闭其他标签页",
+                onSelect: () => onCloseOtherTabs(tab.tabId),
+                disabled: tabs.length < 2,
+                disabledReason: "只有这一个标签页",
+            });
+        }
+
+        if (onCloseAllTabs) {
+            items.push({
+                label: "关闭全部标签页",
+                onSelect: () => onCloseAllTabs(),
+            });
+        }
+
+        return items;
+    };
+
     return (
         <div
             data-mdx-workspace-main-tabs=""
@@ -31,10 +127,16 @@ export function TabStrip({
                     {tabs.map((tab) => (
                         <div
                             key={tab.tabId}
+                            ref={
+                                activeTabId === tab.tabId
+                                    ? activeTabRef
+                                    : undefined
+                            }
                             data-mdx-workspace-tab=""
                             data-active={
                                 activeTabId === tab.tabId ? "true" : undefined
                             }
+                            onContextMenu={(event) => openMenu(tab, event)}
                             className={[
                                 // No border: the active tab is told apart by
                                 // its ground, the way a macOS tab is. A box
@@ -95,6 +197,14 @@ export function TabStrip({
                     ))}
                 </div>
             )}
+            {menu ? (
+                <ContextMenu
+                    x={menu.x}
+                    y={menu.y}
+                    items={menuItems(menu.tab)}
+                    onClose={() => setMenu(null)}
+                />
+            ) : null}
         </div>
     );
 }

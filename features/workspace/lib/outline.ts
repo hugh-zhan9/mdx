@@ -102,6 +102,76 @@ function splitSourceLines(markdown: string): SourceLine[] {
     return lines;
 }
 
+/**
+ * A heading as a label, for a list that is read rather than edited.
+ *
+ * `text` is the heading's Markdown source, and navigation measures the heading's
+ * span with its length, so it cannot be tidied in place. This is the same words
+ * with the markup taken off, for display only.
+ *
+ * Character references are decoded because the document itself decodes them:
+ * this editor writes a trailing space as `&#x20;` when it saves, and the body
+ * then shows that heading as a space. An outline printing the five characters
+ * `&#x20;` is describing a heading the reader cannot see.
+ */
+export function outlineHeadingLabel(text: string): string {
+    return decodeCharacterReferences(
+        text
+            // An image in a heading says whatever its alt text says.
+            .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+            // A link keeps what it says and loses where it points.
+            .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+            .replace(
+                /\[\[([^\]|]*)(?:\|([^\]]*))?\]\]/g,
+                (_match, target: string, label?: string) => label ?? target,
+            )
+            // Emphasis, strikethrough and code markers, keeping what they wrap.
+            .replace(/(\*\*|__|~~|[*_`])/g, ""),
+    ).trim();
+}
+
+const NAMED_CHARACTER_REFERENCES: Record<string, string> = {
+    amp: "&",
+    apos: "'",
+    gt: ">",
+    lt: "<",
+    nbsp: "\u00a0",
+    quot: '"',
+};
+
+function decodeCharacterReferences(text: string): string {
+    return (
+        text
+            .replace(/&#x([0-9a-f]+);/gi, (match, hex: string) =>
+                characterFrom(Number.parseInt(hex, 16), match),
+            )
+            .replace(/&#(\d+);/g, (match, decimal: string) =>
+                characterFrom(Number(decimal), match),
+            )
+            // Only the handful a Markdown heading is likely to carry. An
+            // unknown name is left exactly as written rather than guessed at.
+            .replace(
+                /&([a-z]+);/gi,
+                (match, name: string) =>
+                    NAMED_CHARACTER_REFERENCES[name.toLowerCase()] ?? match,
+            )
+    );
+}
+
+function characterFrom(code: number, original: string): string {
+    // A reference outside the code points, or to half of a surrogate pair,
+    // names no character. Left as written: it is what the source says.
+    if (!Number.isInteger(code) || code <= 0 || code > 0x10ffff) {
+        return original;
+    }
+
+    if (code >= 0xd800 && code <= 0xdfff) {
+        return original;
+    }
+
+    return String.fromCodePoint(code);
+}
+
 function isClosingFence(line: string) {
     return line.includes("```");
 }

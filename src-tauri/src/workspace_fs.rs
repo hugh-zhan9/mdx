@@ -8,8 +8,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::document::document_fingerprint;
 use crate::models::{
-    AffectedPrefix, CreateFolderResult, CreateMarkdownFileResult, FileTreeNode, PathChangeResult,
-    ScanWorkspaceResult, TrashPathResult, WorkspaceError,
+    AffectedPrefix, CreateFolderResult, CreateMarkdownFileResult, FileTreeNode, NoteGroup,
+    NoteGroupCounts, NoteIndexEntry, NotePageResult, PathChangeResult, ScanWorkspaceResult,
+    TrashPathResult, WorkspaceError,
 };
 use crate::path_guard::{
     canonicalize_in_workspace, canonicalize_workspace_root, is_allowed_markdown_file,
@@ -17,6 +18,10 @@ use crate::path_guard::{
 };
 
 const DEFAULT_MAX_TREE_ENTRIES: usize = 100_000;
+/// How much of a note is read to describe it in a list.
+const NOTE_HEAD_BYTES: u64 = 1024;
+/// How long ago a note can have changed and still count as recently edited.
+const NOTE_RECENT_WINDOW_MS: i64 = 7 * 24 * 60 * 60 * 1000;
 const PREVIEW_TEXT_EXTENSIONS: &[&str] = &[
     "",
     "csv",
@@ -106,6 +111,203 @@ where
         })?
 }
 
+#[tauri::command]
+pub async fn workspace_note_page(
+    root_path: String,
+    group: NoteGroup,
+    query: String,
+    offset: usize,
+    limit: usize,
+    focus_path: Option<String>,
+    options: Option<ScanWorkspaceOptions>,
+) -> Result<NotePageResult, WorkspaceError> {
+    run_blocking(move || {
+        workspace_note_page_sync(
+            root_path, group, query, offset, limit, focus_path, options,
+        )
+    })
+    .await
+}
+
+/// One page of the workspace's notes, newest first, plus what each group holds.
+///
+/// Built on the same walk the file tree uses, so the two cannot disagree about
+/// what is in the workspace: the same excluded directories, the same hidden-file
+/// rule, the same entry limit.
+///
+/// Every note is timed, because ordering by recency needs every note's time and
+/// the group counts fall out of the same pass for free. Reading file contents is
+/// the expensive part and only this page's notes are read — a workspace of
+/// tens of thousands of notes costs one stat each and twenty reads, not twenty
+/// thousand reads.
+pub fn workspace_note_page_sync(
+    root_path: String,
+    group: NoteGroup,
+    query: String,
+    offset: usize,
+    limit: usize,
+    focus_path: Option<String>,
+    options: Option<ScanWorkspaceOptions>,
+) -> Result<NotePageResult, WorkspaceError> {
+    let scan = scan_workspace_sync(root_path, options)?;
+    let mut paths = Vec::new();
+    collect_markdown_paths(&scan.nodes, &mut paths);
+
+    let mut warnings = scan.warnings;
+    let recent_since_ms = now_ms().map(|now| now - NOTE_RECENT_WINDOW_MS);
+
+    // The folder being looked at, or the whole workspace. Everything below —
+    // which notes are listed, and every count — is relative to it: a count of
+    // the whole workspace while one folder is being looked at is a number about
+    // somewhere else.
+    let base = match focus_path {
+        Some(path) => {
+            let canonical = canonicalize_in_workspace(&scan.root_path, &path)?;
+            let base = path_to_string(&canonical);
+
+            if !is_within_folder(&base, &scan.root_path) && base != scan.root_path
+            {
+                return Err(WorkspaceError::new(
+                    "outside_workspace",
+                    "the folder to list notes from is outside this workspace",
+                ));
+            }
+
+            base
+        }
+        None => scan.root_path.clone(),
+    };
+    let base_prefix_len = base.len();
+
+    let mut counts = NoteGroupCounts {
+        all: 0,
+        recent: 0,
+        unfiled: 0,
+    };
+    let mut timed: Vec<(String, Option<i64>)> = Vec::with_capacity(paths.len());
+
+    for path in paths {
+        // Outside the folder being looked at, so not part of this list at all.
+        if !is_within_folder(&path, &base) {
+            continue;
+        }
+
+        let modified_ms = modified_ms_of(&path);
+        let is_recent = match (recent_since_ms, modified_ms) {
+            (Some(since), Some(modified)) => modified >= since,
+            // No clock, or no time for this file: not evidence of being recent.
+            _ => false,
+        };
+        let is_unfiled = is_directly_in_root(&path, base_prefix_len);
+
+        counts.all += 1;
+
+        if is_recent {
+            counts.recent += 1;
+        }
+
+        if is_unfiled {
+            counts.unfiled += 1;
+        }
+
+        let in_group = match group {
+            NoteGroup::All => true,
+            NoteGroup::Recent => is_recent,
+            NoteGroup::Unfiled => is_unfiled,
+        };
+
+        if in_group && matches_note_name(&path, &query) {
+            timed.push((path, modified_ms));
+        }
+    }
+
+    // Most recently edited first, and a note with no known time last: an
+    // unknown time is not evidence of being new. Ties break on path so paging
+    // through the same workspace twice cannot show a note twice or skip one.
+    timed.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+
+    let matched = timed.len();
+    let mut notes = Vec::new();
+    let mut unreadable = 0usize;
+
+    for (path, _) in timed.into_iter().skip(offset).take(limit) {
+        let (entry, readable) = read_note_entry(path);
+
+        if !readable {
+            unreadable += 1;
+        }
+
+        notes.push(entry);
+    }
+
+    if unreadable > 0 {
+        // The file is in the tree, so it stays in the list. Dropping it would
+        // hide a note that exists; saying nothing would explain neither the
+        // missing excerpt nor the missing date.
+        warnings.push(format!(
+            "{unreadable} note(s) could not be read; they are listed by name only."
+        ));
+    }
+
+    Ok(NotePageResult {
+        root_path: scan.root_path,
+        notes,
+        matched,
+        counts,
+        truncated: scan.truncated,
+        warnings,
+    })
+}
+
+/// Now, in milliseconds since the Unix epoch, or `None` if the clock is before it.
+fn now_ms() -> Option<i64> {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|since_epoch| i64::try_from(since_epoch.as_millis()).ok())
+}
+
+/// Whether a path is inside a folder, at any depth.
+fn is_within_folder(path: &str, folder: &str) -> bool {
+    path.len() > folder.len()
+        && path.starts_with(folder)
+        && path[folder.len()..].starts_with('/')
+}
+
+/// Whether a note sits directly in the folder being listed, filed no deeper.
+///
+/// Both paths came out of the same walk, so the note's path starts with the
+/// folder's and the question is only whether anything separates the rest of it.
+fn is_directly_in_root(path: &str, root_prefix_len: usize) -> bool {
+    let Some(relative) = path.get(root_prefix_len..) else {
+        return false;
+    };
+    let relative = relative.strip_prefix('/').unwrap_or(relative);
+
+    !relative.is_empty() && !relative.contains('/')
+}
+
+/// Whether a note's file name contains what was typed, ignoring case.
+///
+/// The name rather than the contents: a filter has to answer over every note in
+/// the workspace, and reading tens of thousands of files to answer a keystroke
+/// is the thing this whole command is shaped to avoid. Content is what the
+/// workspace's full-text search is for.
+fn matches_note_name(path: &str, query: &str) -> bool {
+    let needle = query.trim().to_lowercase();
+
+    if needle.is_empty() {
+        return true;
+    }
+
+    let name = Path::new(path)
+        .file_name()
+        .map(|name| name.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+
+    name.contains(&needle)
+}
+
 #[cfg(test)]
 pub fn scan_workspace_with_limit(
     root_path: String,
@@ -192,6 +394,30 @@ pub fn open_path_with_default_application(
 ) -> Result<(), WorkspaceError> {
     open_path_with_default_application_impl(root_path, path, open_path_with_default_application_os)
         .map(|_| ())
+}
+
+/// Shows a workspace file where it lives, without opening it.
+#[tauri::command]
+pub fn reveal_path_in_file_manager(
+    root_path: String,
+    path: String,
+) -> Result<(), WorkspaceError> {
+    reveal_path_in_file_manager_impl(root_path, path, reveal_path_in_file_manager_os).map(|_| ())
+}
+
+pub(crate) fn reveal_path_in_file_manager_impl<T>(
+    root_path: String,
+    path: String,
+    reveal: impl FnOnce(&Path) -> Result<T, WorkspaceError>,
+) -> Result<T, WorkspaceError> {
+    // The same guard as opening one: it has to be a file inside this workspace.
+    // Revealing is the weaker of the two — it says where something is instead of
+    // handing it to whichever application claims the extension — but it still
+    // tells the user about a path, so it is not allowed to tell them about a
+    // path outside the workspace they opened.
+    let target = resolve_existing_workspace_file_path(root_path, path)?;
+
+    reveal(&target.path)
 }
 
 pub(crate) fn open_path_with_default_application_impl<T>(
@@ -621,6 +847,88 @@ fn scan_dir(
     }
 
     Ok(nodes)
+}
+
+fn collect_markdown_paths(nodes: &[FileTreeNode], out: &mut Vec<String>) {
+    for node in nodes {
+        match node {
+            FileTreeNode::File { path, .. } => {
+                if is_allowed_markdown_file(path) {
+                    out.push(path.clone());
+                }
+            }
+            FileTreeNode::Folder { children, .. } => collect_markdown_paths(children, out),
+        }
+    }
+}
+
+/// When a note last changed, or `None` when the platform did not say.
+fn modified_ms_of(path: &str) -> Option<i64> {
+    fs::metadata(path)
+        .ok()?
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|since_epoch| i64::try_from(since_epoch.as_millis()).ok())
+}
+
+/// Reads one note's beginning and modification time in a single open.
+///
+/// Returns the entry it could build and whether the file was readable at all.
+/// An unreadable note is still a note: it keeps its path and loses its text.
+fn read_note_entry(path: String) -> (NoteIndexEntry, bool) {
+    let unreadable = |path: String| NoteIndexEntry {
+        path,
+        modified_ms: None,
+        head: String::new(),
+        head_truncated: false,
+    };
+
+    let Ok(file) = File::open(&path) else {
+        return (unreadable(path), false);
+    };
+
+    let modified_ms = file
+        .metadata()
+        .ok()
+        .and_then(|metadata| metadata.modified().ok())
+        .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
+        .and_then(|since_epoch| i64::try_from(since_epoch.as_millis()).ok());
+
+    let mut buffer = Vec::new();
+    // One byte past the limit, so a file that exactly fills the head is not
+    // reported as having more text after it.
+    if file
+        .take(NOTE_HEAD_BYTES + 1)
+        .read_to_end(&mut buffer)
+        .is_err()
+    {
+        return (unreadable(path), false);
+    }
+
+    let head_truncated = buffer.len() as u64 > NOTE_HEAD_BYTES;
+
+    if head_truncated {
+        buffer.truncate(NOTE_HEAD_BYTES as usize);
+    }
+
+    let head = match std::str::from_utf8(&buffer) {
+        Ok(text) => text.to_string(),
+        // A read that stops at a fixed size can land inside a character. The
+        // bytes before it are still text; the partial one is not.
+        Err(error) => String::from_utf8_lossy(&buffer[..error.valid_up_to()]).into_owned(),
+    };
+
+    (
+        NoteIndexEntry {
+            path,
+            modified_ms,
+            head,
+            head_truncated,
+        },
+        true,
+    )
 }
 
 fn is_hidden_file(name: &str) -> bool {
@@ -1144,5 +1452,37 @@ fn open_path_with_default_application_os(_path: &Path) -> Result<(), WorkspaceEr
     Err(WorkspaceError::new(
         "open_failed",
         "opening files with the default application is only enabled on macOS",
+    ))
+}
+
+#[cfg(target_os = "macos")]
+fn reveal_path_in_file_manager_os(path: &Path) -> Result<(), WorkspaceError> {
+    // `-R` selects the file in Finder rather than opening it, which is what
+    // "show me where this is" means: without it, a Markdown file would be handed
+    // to whatever application owns the extension.
+    std::process::Command::new("open")
+        .arg("-R")
+        .arg(path)
+        .status()
+        .map_err(|error| {
+            WorkspaceError::from_io("reveal_failed", "failed to reveal the file", &error)
+        })
+        .and_then(|status| {
+            if status.success() {
+                Ok(())
+            } else {
+                Err(WorkspaceError::new(
+                    "reveal_failed",
+                    format!("the file manager exited with status {status}"),
+                ))
+            }
+        })
+}
+
+#[cfg(not(target_os = "macos"))]
+fn reveal_path_in_file_manager_os(_path: &Path) -> Result<(), WorkspaceError> {
+    Err(WorkspaceError::new(
+        "reveal_failed",
+        "revealing files in the file manager is only enabled on macOS",
     ))
 }

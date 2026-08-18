@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFileTree } from "./file-tree";
+import { buildFileTree, focusedTreeNodes } from "./file-tree";
 import { filterTreeByName } from "./tree-filter";
 import type { FileTreeNode } from "./types";
 
@@ -218,5 +218,51 @@ describe("filterTreeByName", () => {
             { text: "Notes", highlighted: true },
             { text: ".md", highlighted: false },
         ]);
+    });
+});
+
+describe("focusedTreeNodes", () => {
+    const tree = buildFileTree([
+        {
+            kind: "folder",
+            name: "raw",
+            path: "/tmp/ws/raw",
+            children: [
+                { kind: "file", name: "a.md", path: "/tmp/ws/raw/a.md" },
+                {
+                    kind: "folder",
+                    name: "notes",
+                    path: "/tmp/ws/raw/notes",
+                    children: [
+                        {
+                            kind: "file",
+                            name: "b.md",
+                            path: "/tmp/ws/raw/notes/b.md",
+                        },
+                    ],
+                },
+            ],
+        },
+        { kind: "folder", name: "wiki", path: "/tmp/ws/wiki", children: [] },
+        { kind: "file", name: "index.md", path: "/tmp/ws/index.md" },
+    ]).nodes;
+
+    it("shows the workspace as if it started at that folder", () => {
+        const nodes = focusedTreeNodes(tree, "/tmp/ws/raw");
+
+        expect(nodes?.map((node) => node.name)).toEqual(["notes", "a.md"]);
+    });
+
+    it("finds a folder nested inside another", () => {
+        const nodes = focusedTreeNodes(tree, "/tmp/ws/raw/notes");
+
+        expect(nodes?.map((node) => node.name)).toEqual(["b.md"]);
+    });
+
+    it("tells an empty folder apart from a folder that is not there", () => {
+        expect(focusedTreeNodes(tree, "/tmp/ws/wiki")).toEqual([]);
+        expect(focusedTreeNodes(tree, "/tmp/ws/gone")).toBeNull();
+        // A file is not a folder to look inside.
+        expect(focusedTreeNodes(tree, "/tmp/ws/index.md")).toBeNull();
     });
 });

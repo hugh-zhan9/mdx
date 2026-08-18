@@ -30,6 +30,47 @@ export function buildFileTree(rawNodes: FileTreeNode[]): FileTreeBuildResult {
     );
 }
 
+/**
+ * The tree as seen from one folder.
+ *
+ * Returns that folder's children, so the tree reads as if the workspace started
+ * there. `null` means the folder is not in this tree — deleted, renamed, or
+ * belonging to another workspace — which the caller has to tell apart from a
+ * folder that is simply empty.
+ */
+export function focusedTreeNodes(
+    nodes: FileTreeNode[],
+    focusPath: string,
+): FileTreeNode[] | null {
+    const target = normalizeWorkspacePath(focusPath);
+
+    if (!target) {
+        return null;
+    }
+
+    for (const node of nodes) {
+        if (node.kind !== "folder") {
+            continue;
+        }
+
+        if (node.path === target) {
+            return node.children;
+        }
+
+        // Only descend where the path can be: the tree is sorted but not
+        // indexed, and a folder cannot contain a path it is not a prefix of.
+        if (isPathWithinFolder(target, node.path)) {
+            const found = focusedTreeNodes(node.children, target);
+
+            if (found !== null) {
+                return found;
+            }
+        }
+    }
+
+    return null;
+}
+
 export function getFileTreeParentPath(path: string) {
     const normalizedPath = normalizeWorkspacePath(path);
     const slashIndex = normalizedPath.lastIndexOf("/");

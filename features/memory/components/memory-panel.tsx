@@ -238,6 +238,10 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
             value: tab.id,
             label: tab.label,
             disabled: tab.disabled,
+            // These four hold this workspace's own material and conclusions,
+            // which do not exist until memory is turned on. Saying so is the
+            // difference between a disabled tab and a broken one.
+            title: tab.disabled ? "启用记忆后可用" : undefined,
           }))}
           onChange={(next) => setActiveTab(next)}
         />
@@ -249,7 +253,15 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
         </div>
       ) : null}
 
-      <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+      {/*
+       * The column, given to whichever tab is mounted. Each tab renders one
+       * root element, so constraining the children is the same thing as
+       * wrapping them and leaves every tab's own markup alone.
+       */}
+      <div
+        data-mdx-page-column=""
+        className="min-h-0 min-w-0 flex-1 overflow-auto"
+      >
         {memory.loading ? (
           <p className="p-8 text-center text-xs text-base-content/55">加载中。</p>
         ) : memory.status === null ? (

@@ -123,3 +123,16 @@ afterAll(async () => {
     if (remaining <= 0) return;
     await new Promise((resolve) => setTimeout(resolve, remaining));
 });
+
+/**
+ * jsdom does not implement `scrollIntoView`.
+ *
+ * Filled in here rather than guarded in the components: the app runs in a real
+ * WebView where every element has it, and a component that checked would be
+ * carrying a branch that only exists for the test environment.
+ */
+if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = function scrollIntoView() {
+        // Nothing to scroll in a document with no layout.
+    };
+}

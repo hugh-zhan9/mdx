@@ -55,6 +55,7 @@ import {
 } from "../lib/document-state";
 import type { DraftRecord } from "@/features/recovery/lib/types";
 import type { LoadedDocumentState } from "../lib/types";
+import { stopListening } from "@/common/lib/tauri-events";
 
 interface DocumentDraftRecovery {
   draft: DraftRecord;
@@ -928,7 +929,7 @@ export function DocumentShell({
       });
 
       if (disposed) {
-        nextUnlisten();
+        stopListening(nextUnlisten);
         return;
       }
 
@@ -944,7 +945,7 @@ export function DocumentShell({
 
     return () => {
       disposed = true;
-      unlisten?.();
+      stopListening(unlisten);
     };
   }, [closeDocumentWindow, dialogs]);
 
@@ -980,7 +981,7 @@ export function DocumentShell({
       unlisteners.push(...nextUnlisteners);
 
       if (disposed) {
-        unlisteners.forEach((unlisten) => unlisten());
+        unlisteners.forEach(stopListening);
       }
     };
 
@@ -993,7 +994,7 @@ export function DocumentShell({
 
     return () => {
       disposed = true;
-      unlisteners.forEach((unlisten) => unlisten());
+      unlisteners.forEach(stopListening);
     };
   }, [requestDocumentWindowClose]);
 

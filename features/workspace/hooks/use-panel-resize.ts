@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
+import {
+    clampListWidth,
+    clampRailWidth,
+} from "../lib/panel-layout";
 import type {
     WorkspaceAction,
     WorkspacePanelSide,
@@ -14,8 +18,7 @@ interface UsePanelResizeOptions {
     dispatch: (action: WorkspaceAction) => void;
 }
 
-const MIN_PANEL_WIDTH = 160;
-const MAX_PANEL_WIDTH = 640;
+const MAX_PANEL_WIDTH = 820;
 
 export function usePanelResize({
     side,
@@ -23,9 +26,15 @@ export function usePanelResize({
     dispatch,
 }: UsePanelResizeOptions) {
     const dragCleanupRef = useRef<(() => void) | null>(null);
-    const width = side === "left" ? panel.leftWidth : panel.rightWidth;
+    const width =
+        side === "list"
+            ? clampListWidth(panel.listWidth)
+            : side === "rail"
+              ? clampRailWidth(panel.railWidth)
+              : panel.rightWidth;
+    // Both navigator columns are hidden together, so they share one flag.
     const isCollapsed =
-        side === "left" ? panel.leftCollapsed : panel.rightCollapsed;
+        side === "right" ? panel.rightCollapsed : panel.navigatorCollapsed;
 
     const setCollapsed = useCallback(
         (collapsed: boolean) => {
@@ -55,13 +64,15 @@ export function usePanelResize({
 
             const onPointerMove = (moveEvent: PointerEvent) => {
                 const delta = moveEvent.clientX - startX;
+                // The right panel's handle is on its left edge, so dragging
+                // right makes it narrower; the other two grow to the right.
                 const nextWidth =
-                    side === "left" ? startWidth + delta : startWidth - delta;
+                    side === "right" ? startWidth - delta : startWidth + delta;
 
                 dispatch({
                     type: "panel/resized",
                     side,
-                    width: clampPanelWidth(nextWidth),
+                    width: clampWidthForSide(side, nextWidth),
                 });
             };
 
@@ -99,14 +110,30 @@ export function usePanelResize({
             role: "separator",
             "aria-orientation": "vertical" as const,
             "aria-label":
-                side === "left"
-                    ? "Resize file panel"
-                    : "Resize outline panel",
+                side === "list"
+                    ? "调整笔记列表宽度"
+                    : side === "rail"
+                      ? "调整文件树宽度"
+                      : "调整右侧面板宽度",
             onPointerDown: onResizePointerDown,
         },
     };
 }
 
-function clampPanelWidth(width: number) {
-    return Math.min(Math.max(width, MIN_PANEL_WIDTH), MAX_PANEL_WIDTH);
+/**
+ * Keeps a drag inside what that column can be.
+ *
+ * Each column has its own limits and nothing else's: dragging the folder tree
+ * wider makes the navigator wider, and the editor is what gives up the room.
+ */
+function clampWidthForSide(side: WorkspacePanelSide, width: number) {
+    if (side === "rail") {
+        return clampRailWidth(width);
+    }
+
+    if (side === "list") {
+        return clampListWidth(width);
+    }
+
+    return Math.min(Math.max(width, 160), MAX_PANEL_WIDTH);
 }

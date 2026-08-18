@@ -36,7 +36,7 @@ export function MemoryOverviewTab({
 
   return (
     <div className="flex min-w-0 flex-col gap-4 p-4 text-sm">
-      <section className="flex min-w-0 items-start justify-between gap-4">
+      <section className="flex min-w-0 items-start justify-between gap-4 rounded-[var(--mdx-panel-radius)] bg-[var(--mdx-card-bg)] p-3">
         <div className="min-w-0">
           <div className="font-medium">
             {status.enabled ? "记忆已启用" : "记忆未启用"}
@@ -81,7 +81,12 @@ export function MemoryOverviewTab({
         </section>
       ) : null}
 
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+      {/*
+       * The label column is as wide as the labels, so a value starts where the
+       * longest label ends. Two equal columns put every value at the halfway
+       * mark of whatever width the window happened to be.
+       */}
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 text-xs">
         <dt className="text-base-content/60">本项目</dt>
         <dd className="min-w-0 truncate" title={status.wing ?? ""}>
           {status.wing ?? "尚未绑定"}

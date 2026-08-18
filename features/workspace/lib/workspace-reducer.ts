@@ -9,6 +9,13 @@ import {
     ensureWorkspaceSearchState,
     normalizeSearchQuery,
 } from "./workspace-search";
+import { focusedTreeNodes } from "./file-tree";
+import {
+    DEFAULT_LIST_WIDTH,
+    MAX_NAVIGATOR_WIDTH,
+    MIN_RAIL_WIDTH,
+    NAVIGATOR_RAIL_WIDTH,
+} from "./panel-layout";
 import type {
     AffectedPrefix,
     FileTreeNode,
@@ -19,13 +26,12 @@ import type {
 } from "./types";
 
 const DEFAULT_PANEL_STATE = {
-    leftCollapsed: false,
-    leftWidth: 300,
+    navigatorCollapsed: false,
+    listWidth: DEFAULT_LIST_WIDTH,
+    railWidth: NAVIGATOR_RAIL_WIDTH,
     rightCollapsed: false,
     rightWidth: 300,
 };
-const MIN_PANEL_WIDTH = 160;
-const MAX_PANEL_WIDTH = 640;
 
 export function createWorkspaceState(
     rootPath: string,
@@ -54,7 +60,13 @@ export function workspaceReducer(
             return {
                 ...state,
                 fileTree: action.fileTree,
+                // A folder that is no longer there cannot be the one being
+                // looked at, and a tree focused on nothing would look empty
+                // with no way to say why.
+                treeFocusPath: surviving(state.treeFocusPath, action.fileTree),
             };
+        case "tree/focusChanged":
+            return focusTree(state, action.path);
         case "tab/opened":
             return openTab(state, action.tab);
         case "tab/activated":
@@ -479,6 +491,39 @@ function renameTab(
     });
 }
 
+/**
+ * Points the tree at a folder, or at the whole workspace again.
+ *
+ * A path outside this workspace is refused rather than corrected: it describes
+ * somewhere this tree cannot show, and quietly focusing something else would be
+ * worse than doing nothing.
+ */
+function focusTree(state: WorkspaceState, path: string | null): WorkspaceState {
+    if (path === null) {
+        return { ...state, treeFocusPath: null };
+    }
+
+    const normalized = normalizeWorkspacePath(path);
+
+    if (!normalized || !isPathInsideRoot(state.rootPath, normalized)) {
+        return state;
+    }
+
+    return { ...state, treeFocusPath: normalized };
+}
+
+/** The focused folder, if the tree still has it. */
+function surviving(
+    focusPath: string | null | undefined,
+    fileTree: FileTreeNode[],
+): string | null {
+    if (!focusPath) {
+        return null;
+    }
+
+    return focusedTreeNodes(fileTree, focusPath) === null ? null : focusPath;
+}
+
 function resizePanel(
     state: WorkspaceState,
     side: WorkspacePanelSide,
@@ -490,7 +535,12 @@ function resizePanel(
         return state;
     }
 
-    const key = side === "left" ? "leftWidth" : "rightWidth";
+    const key =
+        side === "list"
+            ? "listWidth"
+            : side === "rail"
+              ? "railWidth"
+              : "rightWidth";
 
     return {
         ...state,
@@ -506,7 +556,14 @@ function collapsePanel(
     side: WorkspacePanelSide,
     collapsed: boolean,
 ): WorkspaceState {
-    const key = side === "left" ? "leftCollapsed" : "rightCollapsed";
+    // The folder tree collapses with the navigator around it, so it has no
+    // state of its own to set here.
+    if (side === "rail") {
+        return state;
+    }
+
+    const key =
+        side === "list" ? "navigatorCollapsed" : "rightCollapsed";
 
     return {
         ...state,
@@ -600,10 +657,19 @@ function ensureSingleTabOrderEntry(tabOrder: string[], tabId: string) {
     return nextTabOrder;
 }
 
+/**
+ * A width a panel could be.
+ *
+ * The bounds are the app's, not this reducer's: they used to be a private 160
+ * and 640 here while the layout and the drag handle worked to different numbers,
+ * so a width could be accepted by one and corrected by another.
+ */
 function normalizePanelWidth(width: number) {
     if (!Number.isFinite(width) || width < 0) {
         return null;
     }
 
-    return Math.round(Math.min(Math.max(width, MIN_PANEL_WIDTH), MAX_PANEL_WIDTH));
+    return Math.round(
+        Math.min(Math.max(width, MIN_RAIL_WIDTH), MAX_NAVIGATOR_WIDTH),
+    );
 }

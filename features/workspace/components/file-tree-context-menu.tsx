@@ -1,6 +1,7 @@
 "use client";
 
-import type { MouseEvent as ReactMouseEvent } from "react";
+import { ContextMenu } from "../../../common/components/context-menu";
+import type { ContextMenuItem } from "../../../common/components/context-menu";
 import type { FilteredFileTreeNode } from "../lib/types";
 
 interface FileTreeContextMenuProps {
@@ -10,10 +11,18 @@ interface FileTreeContextMenuProps {
     onClose: () => void;
     onCreateFolder: () => void;
     onCreateMarkdownFile: () => void;
+    onFocusFolder: () => void;
+    /** Whether the tree is already showing one folder rather than all of them. */
+    focused: boolean;
+    onShowWholeTree: () => void;
     onRename: () => void;
     onDelete: () => void;
 }
 
+/**
+ * What a right-click on the tree offers, in the shared menu every right-click
+ * in this app opens.
+ */
 export function FileTreeContextMenu({
     node,
     x,
@@ -21,6 +30,9 @@ export function FileTreeContextMenu({
     onClose,
     onCreateFolder,
     onCreateMarkdownFile,
+    onFocusFolder,
+    focused,
+    onShowWholeTree,
     onRename,
     onDelete,
 }: FileTreeContextMenuProps) {
@@ -28,57 +40,47 @@ export function FileTreeContextMenu({
         return null;
     }
 
-    const isFolder = node.kind === "folder";
-    const handleClick = (
-        handler: () => void,
-    ) =>
-        (event: ReactMouseEvent<HTMLButtonElement>) => {
-            event.preventDefault();
-            event.stopPropagation();
-            handler();
-            onClose();
-        };
+    // Only a folder can be created inside, so only a folder offers it.
+    const items: ContextMenuItem[] =
+        node.kind === "folder"
+            ? [
+                  { label: "新建文件夹", onSelect: onCreateFolder },
+                  { label: "新建文档", onSelect: onCreateMarkdownFile },
+                  {
+                      label: "只看这个文件夹",
+                      onSelect: onFocusFolder,
+                      separatorBefore: true,
+                  },
+                  ...(focused
+                      ? [{ label: "显示全部", onSelect: onShowWholeTree }]
+                      : []),
+                  {
+                      label: "重命名",
+                      onSelect: onRename,
+                      separatorBefore: true,
+                  },
+                  {
+                      label: "移到废纸篓",
+                      onSelect: onDelete,
+                      destructive: true,
+                  },
+              ]
+            : [
+                  ...(focused
+                      ? [
+                            {
+                                label: "显示全部",
+                                onSelect: onShowWholeTree,
+                            },
+                        ]
+                      : []),
+                  { label: "重命名", onSelect: onRename },
+                  {
+                      label: "移到废纸篓",
+                      onSelect: onDelete,
+                      destructive: true,
+                  },
+              ];
 
-    return (
-        <div
-            className="fixed z-30 min-w-48 rounded-lg bg-base-100 py-1 text-sm shadow-[0_0_0_0.5px_color-mix(in_srgb,var(--color-base-content)_14%,transparent),0_12px_32px_-8px_color-mix(in_srgb,var(--color-base-content)_40%,transparent)]"
-            style={{ left: x, top: y }}
-            onClick={(event) => event.stopPropagation()}
-            onContextMenu={(event) => event.preventDefault()}
-        >
-            {isFolder ? (
-                <>
-                    <button
-                        type="button"
-                        className="block w-full whitespace-nowrap px-3 py-1.5 text-left text-base-content/75 hover:bg-base-200"
-                        onClick={handleClick(onCreateFolder)}
-                    >
-                        新建文件夹
-                    </button>
-                    <button
-                        type="button"
-                        className="block w-full whitespace-nowrap px-3 py-1.5 text-left text-base-content/75 hover:bg-base-200"
-                        onClick={handleClick(onCreateMarkdownFile)}
-                    >
-                        新建文档
-                    </button>
-                    <div className="my-1 border-t border-[var(--mdx-separator)]" />
-                </>
-            ) : null}
-            <button
-                type="button"
-                className="block w-full whitespace-nowrap px-3 py-1.5 text-left text-base-content/75 hover:bg-base-200"
-                onClick={handleClick(onRename)}
-            >
-                重命名
-            </button>
-            <button
-                type="button"
-                className="block w-full whitespace-nowrap px-3 py-1.5 text-left text-error hover:bg-error/10"
-                onClick={handleClick(onDelete)}
-            >
-                移到废纸篓
-            </button>
-        </div>
-    );
+    return <ContextMenu x={x} y={y} items={items} onClose={onClose} />;
 }

@@ -9,6 +9,10 @@ import {
     useRef,
     useState,
 } from "react";
+import {
+    PrimaryTextControlButton,
+    TextControlButton,
+} from "../../../common/components/ui-controls";
 
 interface AlertOptions {
     title?: string;
@@ -328,84 +332,62 @@ function DialogBody({
                     </label>
                 ) : null}
 
-                <div className="mt-4 flex justify-end gap-2">
+                {/*
+                 * The same two buttons the rest of the app uses: what the
+                 * dialog is asking for is primary, everything else is quiet.
+                 * These were five hand-written variants with no radius, no
+                 * focus ring, and a near-black confirm that matched nothing.
+                 */}
+                <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
                     {dialog.kind === "alert" ? (
-                        <button
-                            type="button"
-                            className="h-8 px-3 text-sm text-base-content/75 hover:bg-base-200"
-                            onClick={() => onClose(true)}
-                        >
+                        <PrimaryTextControlButton onClick={() => onClose(true)}>
                             知道了
-                        </button>
+                        </PrimaryTextControlButton>
                     ) : null}
 
                     {dialog.kind === "confirm" ? (
                         <>
-                            <button
-                                type="button"
-                                className="h-8 px-3 text-sm text-base-content/65 hover:bg-base-200"
-                                onClick={() => onClose(false)}
-                            >
+                            <TextControlButton onClick={() => onClose(false)}>
                                 {dialog.cancelLabel ?? "取消"}
-                            </button>
-                            <button
-                                type="button"
-                                className={[
-                                    "h-8 px-3 text-sm",
-                                    dialog.destructive
-                                        ? "bg-error text-error-content hover:bg-error/85"
-                                        : "bg-base-content text-base-100 hover:bg-base-content/85",
-                                ].join(" ")}
+                            </TextControlButton>
+                            <PrimaryTextControlButton
+                                destructive={dialog.destructive}
                                 onClick={() => onClose(true)}
                             >
                                 {dialog.confirmLabel ?? "确定"}
-                            </button>
+                            </PrimaryTextControlButton>
                         </>
                     ) : null}
 
                     {dialog.kind === "prompt" ? (
                         <>
-                            <button
-                                type="button"
-                                className="h-8 px-3 text-sm text-base-content/65 hover:bg-base-200"
-                                onClick={() => onClose(null)}
-                            >
+                            <TextControlButton onClick={() => onClose(null)}>
                                 {dialog.cancelLabel ?? "取消"}
-                            </button>
-                            <button
-                                type="button"
-                                className="h-8 px-3 text-sm bg-base-content text-base-100 hover:bg-base-content/85"
-                                onClick={submitPrompt}
-                            >
+                            </TextControlButton>
+                            <PrimaryTextControlButton onClick={submitPrompt}>
                                 {dialog.confirmLabel ?? "确定"}
-                            </button>
+                            </PrimaryTextControlButton>
                         </>
                     ) : null}
 
                     {dialog.kind === "choice" ? (
                         <>
                             {dialog.choices.map((choice) => (
-                                <button
+                                <TextControlButton
                                     key={choice.value}
-                                    type="button"
-                                    className={[
-                                        "h-8 px-3 text-sm",
+                                    className={
                                         choice.destructive
-                                            ? "text-error hover:bg-error/10"
-                                            : "text-base-content/75 hover:bg-base-200",
-                                    ].join(" ")}
+                                            ? "hover:bg-error/10 hover:text-error active:bg-error/15"
+                                            : undefined
+                                    }
                                     onClick={() => onClose(choice.value)}
                                 >
                                     {choice.label}
-                                </button>
+                                </TextControlButton>
                             ))}
-                            <button
-                                type="button"
-                                className="h-8 px-3 text-sm text-base-content/70 hover:bg-base-200"
-                                onClick={() => onClose(null)}
-                            >
+                            <TextControlButton onClick={() => onClose(null)}>
                                 {dialog.cancelLabel ?? "取消"}
-                            </button>
+                            </TextControlButton>
                         </>
                     ) : null}
                 </div>

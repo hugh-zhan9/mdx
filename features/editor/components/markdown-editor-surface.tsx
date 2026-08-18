@@ -70,6 +70,15 @@ export interface MarkdownEditorSurfaceHandle {
      * heading index or any knowledge of which surface is mounted.
      */
     reveal(range: EditorSourceSelection): Promise<EditorCommandResult>;
+    /**
+     * Asks for a surface mode, resolving once the request has settled.
+     *
+     * A view change, not an edit: it decides which surface draws the document,
+     * never what the document says. The adapter may refuse — an unsafe visual
+     * parse — and the surface reports that itself, so a caller gets no verdict
+     * to mishandle and no way to force a switch the editor rejected.
+     */
+    setMode(mode: EditorSurfaceMode): Promise<void>;
 }
 
 export interface MarkdownEditorSurfaceProps {
@@ -82,6 +91,14 @@ export interface MarkdownEditorSurfaceProps {
     editable?: boolean;
     /** Which surface this document opens on. Not persisted, not a preference. */
     initialMode?: EditorSurfaceMode;
+    /**
+     * The surface the editor settled on.
+     *
+     * Reported, not controlled: the adapter decides whether a switch happens,
+     * so chrome that draws the current mode has to be told what it became
+     * rather than what was asked for.
+     */
+    onModeChange?: (mode: EditorSurfaceMode) => void;
     /**
      * Called only for changes the session accepted. `documentId` is the
      * document the change belongs to, which is not necessarily the document
@@ -142,6 +159,7 @@ export const MarkdownEditorSurface = forwardRef<
         markdown,
         editable = true,
         initialMode = "wysiwyg",
+        onModeChange,
         onMarkdownChange,
         onRejectedChange,
         onDiagnostic,
@@ -392,12 +410,85 @@ export const MarkdownEditorSurface = forwardRef<
         [currentSelection, runCommand],
     );
 
+    /**
+     * Asks the adapter for a surface, and says why when it did not happen.
+     *
+     * The ⌘⇧M chord and the toolbar's mode control both come through here, so
+     * a refusal reads the same however the switch was asked for, and neither
+     * caller decides the mode itself.
+     */
+    const requestMode = useCallback(async (target: EditorSurfaceMode) => {
+        const askedFor = snapshotRef.current;
+        // A throw here would otherwise be an unhandled rejection that also
+        // leaves the control looking dead, which is the very thing this
+        // branch exists to prevent.
+        const result = await adapterRef.current
+            ?.setMode(target)
+            .catch((error: unknown) => ({
+                ok: false as const,
+                code: "unsafe_visual_parse" as const,
+                diagnostics: [
+                    {
+                        code: "unsafe_visual_parse" as const,
+                        message:
+                            error instanceof Error
+                                ? error.message
+                                : String(error),
+                    },
+                ],
+            }));
+        // The switch is awaited, so the document underneath may have been
+        // swapped by the time it answers. A refusal describes the Markdown it
+        // was asked about, and saying it over someone else's document would be
+        // a lie.
+        // No adapter means no switch was attempted, which is not an answer
+        // about the content and must not retire an existing notice.
+        if (
+            result === undefined ||
+            !askedFor ||
+            snapshotRef.current?.documentId !== askedFor.documentId
+        ) {
+            return;
+        }
+        // A refusal keeps the request from doing anything visible, and this is
+        // the only path to the other surface — silence here reads as a broken
+        // editor. The surface says so itself because `onDiagnostic` is optional
+        // and no window passes it.
+        setModeRefusal(
+            result.ok
+                ? null
+                : {
+                      documentId: askedFor.documentId,
+                      revision: askedFor.revision,
+                      // A refusal always carries its diagnostic, and that
+                      // diagnostic is what locates the offending source for
+                      // the user.
+                      message: `无法切换到可视模式：${result.diagnostics[0].message}`,
+                  },
+        );
+    }, []);
+
+    /**
+     * Keeps this surface's mode and whatever draws it in step.
+     *
+     * The adapter announces the mode it reached, which is the only statement
+     * either of them should be believed on.
+     */
+    const handleAdapterModeChange = useCallback(
+        (next: EditorSurfaceMode) => {
+            setMode(next);
+            onModeChange?.(next);
+        },
+        [onModeChange],
+    );
+
     useImperativeHandle(
         ref,
         (): MarkdownEditorSurfaceHandle => ({
             reveal: revealRange,
+            setMode: requestMode,
         }),
-        [revealRange],
+        [requestMode, revealRange],
     );
 
     /**
@@ -476,59 +567,7 @@ export const MarkdownEditorSurface = forwardRef<
                 // The adapter owns the switch: it drains the mounted surface,
                 // refuses a target it cannot build, and announces the mode it
                 // reached, so nothing here decides the mode itself.
-                const target = mode === "source" ? "wysiwyg" : "source";
-                const askedFor = snapshotRef.current;
-                void (async () => {
-                    // A throw here would otherwise be an unhandled rejection
-                    // that also leaves the key looking dead, which is the very
-                    // thing this branch exists to prevent.
-                    const result = await adapterRef.current
-                        ?.setMode(target)
-                        .catch((error: unknown) => ({
-                            ok: false as const,
-                            code: "unsafe_visual_parse" as const,
-                            diagnostics: [
-                                {
-                                    code: "unsafe_visual_parse" as const,
-                                    message:
-                                        error instanceof Error
-                                            ? error.message
-                                            : String(error),
-                                },
-                            ],
-                        }));
-                    // The switch is awaited, so the document underneath may
-                    // have been swapped by the time it answers. A refusal
-                    // describes the Markdown it was asked about, and saying it
-                    // over someone else's document would be a lie.
-                    // No adapter means no switch was attempted, which is not an
-                    // answer about the content and must not retire an existing
-                    // notice.
-                    if (
-                        result === undefined ||
-                        !askedFor ||
-                        snapshotRef.current?.documentId !== askedFor.documentId
-                    ) {
-                        return;
-                    }
-                    // A refusal keeps the key from doing anything visible, and
-                    // this is the only binding that reaches the other surface —
-                    // silence here reads as a broken editor. The surface says
-                    // so itself because `onDiagnostic` is optional and no
-                    // window passes it.
-                    setModeRefusal(
-                        result.ok
-                            ? null
-                            : {
-                                  documentId: askedFor.documentId,
-                                  revision: askedFor.revision,
-                                  // A refusal always carries its diagnostic,
-                                  // and that diagnostic is what locates the
-                                  // offending source for the user.
-                                  message: `无法切换到可视模式：${result.diagnostics[0].message}`,
-                              },
-                    );
-                })();
+                void requestMode(mode === "source" ? "wysiwyg" : "source");
                 return;
             }
 
@@ -551,7 +590,7 @@ export const MarkdownEditorSurface = forwardRef<
             }
             goNext();
         },
-        [goNext, goPrevious, isFindOpen, mode, openFind, openReplace],
+        [goNext, goPrevious, isFindOpen, mode, openFind, openReplace, requestMode],
     );
 
     useEffect(() => {
@@ -758,7 +797,7 @@ export const MarkdownEditorSurface = forwardRef<
                     services={services}
                     onChange={handleChange}
                     onSelectionChange={handleSelectionChange}
-                    onModeChange={setMode}
+                    onModeChange={handleAdapterModeChange}
                     onDiagnostic={handleDiagnostic}
                     onOpenWikilink={handleOpenWikilink}
                     onReady={handleReady}

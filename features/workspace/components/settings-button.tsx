@@ -20,6 +20,7 @@ import type { WorkspaceMemoryConfig } from "@/features/memory/lib/types";
 import type { LlmWikiKnowledgeConfig } from "@/features/llm-wiki/lib/types";
 import type { LlmProviderApiMode } from "@/features/llm-wiki/lib/types";
 import {
+  IconButton,
   PrimaryTextControlButton,
   SegmentedControl,
   TextControlButton,
@@ -61,10 +62,11 @@ export function SettingsButton({
 
   return (
     <>
-      <TextControlButton onClick={() => setOpen(true)}>
-        <Settings aria-hidden="true" />
-        设置
-      </TextControlButton>
+      <IconButton
+        onClick={() => setOpen(true)}
+        label="设置"
+        icon={<Settings />}
+      />
       {actualOpen ? (
         <SettingsDialog
           onClose={() => setOpen(false)}
@@ -734,7 +736,7 @@ function SettingsDialog({
                       刷新
                     </TextControlButton>
                   </div>
-                  <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-base-200 p-2.5 font-sans text-xs leading-relaxed text-base-content/75">
+                  <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-base-200 p-2.5 font-[inherit] text-xs leading-relaxed text-base-content/75">
                     {workspaceRoot
                       ? llmWikiLog || "暂无日志"
                       : "打开工作区后显示 LLM Wiki 日志"}

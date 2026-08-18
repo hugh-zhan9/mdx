@@ -2,6 +2,7 @@
 
 import type { HTMLAttributes } from "react";
 import { EmptyState } from "../../../common/components/ui-controls";
+import { outlineHeadingLabel } from "../lib/outline";
 import type { MarkdownOutlineHeading } from "../lib/types";
 
 interface OutlinePanelProps {
@@ -23,7 +24,7 @@ export function OutlinePanel({
 
     return (
         <aside className="relative h-full min-h-0 overflow-hidden border-l border-[var(--mdx-separator)] bg-[var(--mdx-sidebar-bg)]">
-            <div className="h-full overflow-auto py-2 text-sm">
+            <div className="h-full overflow-auto py-2">
                 {headings.length === 0 ? (
                     <div className="flex min-h-36 items-center">
                         <EmptyState
@@ -32,18 +33,50 @@ export function OutlinePanel({
                         />
                     </div>
                 ) : (
-                    headings.map((heading, index) => (
-                        <button
-                            key={heading.id}
-                            type="button"
-                            className="block w-full truncate py-1 pr-3 text-left text-base-content/70 hover:bg-[var(--mdx-control-hover-bg)] hover:text-base-content"
-                            style={{ paddingLeft: 10 + heading.level * 10 }}
-                            title={heading.text}
-                            onClick={() => onHeadingClick?.(heading, index)}
-                        >
-                            {heading.text}
-                        </button>
-                    ))
+                    headings.map((heading, index) => {
+                        // The label is the heading read as text; `heading.text`
+                        // stays the Markdown source, which is what the click
+                        // below navigates by.
+                        const label = outlineHeadingLabel(heading.text);
+
+                        return (
+                            <button
+                                key={heading.id}
+                                type="button"
+                                className={[
+                                    "block w-full truncate py-[3px] pr-3 text-left transition-colors hover:bg-[var(--mdx-control-hover-bg)] hover:text-base-content",
+                                    // Depth reads as weight as well as indent:
+                                    // an indent alone is easy to lose at the
+                                    // third level, and a document's shape is
+                                    // the thing this list exists to show.
+                                    heading.level <= 2
+                                        ? "text-[13px] text-base-content/80"
+                                        : "text-xs text-base-content/60",
+                                ].join(" ")}
+                                style={{
+                                    paddingLeft: 12 + (heading.level - 1) * 12,
+                                }}
+                                // The source text, so a heading whose label is
+                                // blank can still be identified on hover.
+                                title={heading.text}
+                                onClick={() => onHeadingClick?.(heading, index)}
+                            >
+                                {label.length > 0 ? (
+                                    label
+                                ) : (
+                                    /*
+                                     * A heading that says nothing — an escaped
+                                     * space is the usual way this happens. It
+                                     * is still a heading and still navigable,
+                                     * so it keeps its row and says what it is.
+                                     */
+                                    <span className="text-base-content/40">
+                                        （空标题）
+                                    </span>
+                                )}
+                            </button>
+                        );
+                    })
                 )}
             </div>
 

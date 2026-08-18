@@ -165,7 +165,11 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
        * forms and their results, not a dashboard: a question box stretched
        * across two thousand pixels is harder to read, not roomier.
        */}
-      <div className="min-h-0 flex-1 overflow-auto px-4 py-3 text-xs">
+      {/* The same column the memory view uses, for the same reason. */}
+      <div
+        data-mdx-page-column=""
+        className="min-h-0 flex-1 overflow-auto px-4 py-3 text-xs"
+      >
         <div className="mx-auto w-full max-w-3xl space-y-3">
 
         {activeOperation ? (
@@ -201,7 +205,7 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
             {panelMessage ? (
               <pre
                 data-testid="llm-wiki-progress"
-                className="max-h-72 overflow-auto whitespace-pre-wrap rounded-[var(--mdx-control-radius)] bg-[var(--mdx-card-bg)] p-2 font-sans text-xs leading-relaxed text-base-content/75"
+                className="max-h-72 overflow-auto whitespace-pre-wrap rounded-[var(--mdx-control-radius)] bg-[var(--mdx-card-bg)] p-2 font-[inherit] text-xs leading-relaxed text-base-content/75"
               >
                 {panelMessage}
               </pre>
@@ -384,7 +388,7 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
         {panelMessage && !showStatusProgress ? (
           <pre
             data-testid="llm-wiki-progress"
-            className="max-h-72 overflow-auto whitespace-pre-wrap rounded-[var(--mdx-control-radius)] bg-[var(--mdx-card-bg)] p-2 font-sans text-xs leading-relaxed text-base-content/75"
+            className="max-h-72 overflow-auto whitespace-pre-wrap rounded-[var(--mdx-control-radius)] bg-[var(--mdx-card-bg)] p-2 font-[inherit] text-xs leading-relaxed text-base-content/75"
           >
             {panelMessage}
           </pre>

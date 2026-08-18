@@ -155,8 +155,18 @@ export interface PathChangeResult {
 }
 
 export interface WorkspacePanelState {
-    leftCollapsed: boolean;
-    leftWidth: number;
+    /** Whether the navigator — rail and list together — is hidden. */
+    navigatorCollapsed: boolean;
+    /**
+     * The two navigator columns, each with its own width.
+     *
+     * Independent rather than a total and a split: widening the folder tree
+     * widens the navigator and takes the room from the editor, instead of
+     * squeezing the note list, which is not what dragging a tree's edge is
+     * asking for.
+     */
+    listWidth: number;
+    railWidth: number;
     rightCollapsed: boolean;
     rightWidth: number;
 }
@@ -166,6 +176,16 @@ export interface WorkspaceFileTreeActions {
     createMarkdownFile: () => Promise<void>;
     renameSelection: () => Promise<void>;
     deleteSelection: () => Promise<void>;
+    /**
+     * Moves one named file to the trash, wherever it was asked for.
+     *
+     * The tree owns deleting: it confirms, moves the file, closes the tabs that
+     * were showing it and refreshes itself. Anything else that lists files — the
+     * note list — asks for the same thing to happen rather than repeating it,
+     * because a second copy of that sequence is a second chance to forget the
+     * open tab.
+     */
+    trashFile: (path: string, name: string) => Promise<void>;
     refreshTree: () => Promise<void>;
 }
 
@@ -240,10 +260,20 @@ export interface WorkspaceState {
     activeTabId: string | null;
     panel: WorkspacePanelState;
     treeFilterQuery?: string;
+    /**
+     * The folder the file tree is showing, or null for the whole workspace.
+     *
+     * A workspace can hold directories the app itself manages — generated wiki
+     * output, indexes, assets — and someone working in one subtree should not
+     * have to look past them. This narrows the tree without hiding anything:
+     * nothing is excluded from the workspace, one folder is being looked at.
+     */
+    treeFocusPath?: string | null;
     search: WorkspaceSearchState;
 }
 
-export type WorkspacePanelSide = "left" | "right";
+/** Which edge is being dragged: the note list's, the folder tree's, or the old right panel's. */
+export type WorkspacePanelSide = "list" | "rail" | "right";
 
 export interface PersistedAppState {
     stateVersion: number;
@@ -266,6 +296,8 @@ export interface PersistedWorkspaceState {
     tabs: PersistedWorkspaceTab[];
     activeTabId: string | null;
     panels: WorkspacePanelState;
+    /** The folder the tree was left showing, or null for the whole workspace. */
+    treeFocusPath?: string | null;
 }
 
 export interface PersistedWorkspaceTab {
@@ -353,6 +385,11 @@ export type WorkspaceAction =
           type: "panel/collapsedChanged";
           side: WorkspacePanelSide;
           collapsed: boolean;
+      }
+    | {
+          type: "tree/focusChanged";
+          /** A folder inside the workspace, or null to show the whole tree. */
+          path: string | null;
       }
     | {
           type: "treeFilter/queryChanged";

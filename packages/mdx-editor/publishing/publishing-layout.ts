@@ -26,7 +26,8 @@ import type {
 } from "./types";
 
 const DEFAULT_FONT_FAMILY = "Helvetica";
-const DEFAULT_FONT_SIZE = 14;
+/** Body size in points, matching what the layout port sets on each block. */
+const DEFAULT_FONT_SIZE = 11;
 const DEFAULT_LINE_HEIGHT = 1.5;
 
 export function buildPublishingLayoutDocument(

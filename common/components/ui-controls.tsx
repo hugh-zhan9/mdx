@@ -1,3 +1,4 @@
+import { Search } from "lucide-react";
 import type {
     ButtonHTMLAttributes,
     InputHTMLAttributes,
@@ -97,6 +98,22 @@ export function SegmentedControl<Value extends string>({
         label: string;
         /** Selectable but not right now — a backend with no configuration yet. */
         disabled?: boolean;
+        /**
+         * Why it cannot be chosen, for the segments that are disabled.
+         *
+         * A greyed segment with nothing to explain it reads as a broken
+         * control, and the user's next move is to click it again harder.
+         */
+        title?: string;
+        /**
+         * Drawn instead of the label, which becomes the accessible name.
+         *
+         * For a control that sits in a row of icon buttons: two words among
+         * six icons reads as two different kinds of control rather than one
+         * toolbar. The words are still there for a screen reader and for the
+         * tooltip — they are just not painted.
+         */
+        icon?: ReactNode;
     }>;
     onChange: (value: Value) => void;
     disabled?: boolean;
@@ -145,8 +162,10 @@ export function SegmentedControl<Value extends string>({
                         aria-selected={isTabs ? selected : undefined}
                         aria-pressed={isTabs ? undefined : selected}
                         disabled={disabled || option.disabled}
+                        aria-label={option.icon ? option.label : undefined}
+                        title={option.title ?? (option.icon ? option.label : undefined)}
                         className={[
-                            `h-7 min-w-0 truncate rounded px-2.5 text-xs ${fill ? "flex-1" : ""}`,
+                            `flex h-7 min-w-0 items-center justify-center truncate rounded text-xs ${option.icon ? "px-2" : "px-2.5"} ${fill ? "flex-1" : ""}`,
                             " outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:text-base-content/35",
                             selected
                                 ? "bg-base-100 text-base-content shadow-[var(--mdx-raised-shadow)]"
@@ -154,7 +173,16 @@ export function SegmentedControl<Value extends string>({
                         ].join(" ")}
                         onClick={() => onChange(option.value)}
                     >
-                        {option.label}
+                        {option.icon ? (
+                            <span
+                                aria-hidden="true"
+                                className="inline-flex h-4 w-4 items-center justify-center [&>svg]:h-4 [&>svg]:w-4"
+                            >
+                                {option.icon}
+                            </span>
+                        ) : (
+                            option.label
+                        )}
                     </button>
                 );
             })}
@@ -180,15 +208,28 @@ export function TextControlButton({
 }
 
 export function PrimaryTextControlButton({
+    destructive = false,
     className,
     ...props
-}: ButtonHTMLAttributes<HTMLButtonElement>) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+    /**
+     * The action throws something away.
+     *
+     * Still the primary button — it is what is being asked for — but red, so the
+     * one confirmation that cannot be undone does not look like every other
+     * confirmation.
+     */
+    destructive?: boolean;
+}) {
     return (
         <button
             type="button"
             className={[
                 baseButtonClass,
-                "h-8 min-w-0 max-w-full gap-1.5 whitespace-nowrap rounded-md bg-primary px-3 text-xs font-medium text-primary-content shadow-sm hover:bg-primary/90 hover:text-primary-content disabled:bg-primary/30 disabled:text-primary-content/70 [&>svg]:h-4 [&>svg]:w-4 [&>svg]:shrink-0",
+                "h-8 min-w-0 max-w-full gap-1.5 whitespace-nowrap rounded-md px-3 text-xs font-medium shadow-sm [&>svg]:h-4 [&>svg]:w-4 [&>svg]:shrink-0",
+                destructive
+                    ? "bg-error text-error-content hover:bg-error/90 hover:text-error-content disabled:bg-error/30 disabled:text-error-content/70"
+                    : "bg-primary text-primary-content hover:bg-primary/90 hover:text-primary-content disabled:bg-primary/30 disabled:text-primary-content/70",
                 className,
             ].filter(Boolean).join(" ")}
             {...props}
@@ -264,6 +305,53 @@ const radiusClass = "rounded-[var(--mdx-control-radius)]";
 const fieldClass = `w-full min-w-0 ${radiusClass} border border-[var(--mdx-field-border)] bg-base-100 text-base-content placeholder:text-base-content/45 focus:border-[var(--mdx-field-border-focus)] disabled:cursor-not-allowed disabled:bg-base-200/60 disabled:text-base-content/40 ${focusRingClass}`;
 
 /** A single-line field. */
+/**
+ * A filter field, drawn the way macOS draws a search box: filled and
+ * borderless.
+ *
+ * Shared because it had been written twice — the file tree's filter and the note
+ * list's — and an outlined white box on a tinted column reads as a form control
+ * borrowed from a web page rather than part of a sidebar.
+ */
+export function SearchField({
+    value,
+    onChange,
+    placeholder,
+    label,
+    className,
+}: {
+    value: string;
+    onChange: (value: string) => void;
+    placeholder: string;
+    /** The accessible name, since the placeholder is not one. */
+    label: string;
+    className?: string;
+}) {
+    return (
+        <label
+            className={[
+                "flex min-w-0 items-center gap-2 rounded-[var(--mdx-control-radius)] bg-base-content/6 px-2.5 transition-colors focus-within:bg-base-content/9 focus-within:ring-2 focus-within:ring-primary/25",
+                className,
+            ]
+                .filter(Boolean)
+                .join(" ")}
+        >
+            <Search
+                aria-hidden="true"
+                className="h-4 w-4 shrink-0 text-base-content/55"
+            />
+            <input
+                type="search"
+                className="h-7 min-w-0 flex-1 border-0 bg-transparent px-0 text-xs text-base-content outline-none transition-colors placeholder:text-base-content/65 focus:outline-none"
+                value={value}
+                onChange={(event) => onChange(event.target.value)}
+                placeholder={placeholder}
+                aria-label={label}
+            />
+        </label>
+    );
+}
+
 export function TextInput({
     className,
     ...props
@@ -335,7 +423,7 @@ export function LogBlock({
     return (
         <pre
             className={[
-                `max-h-72 overflow-auto whitespace-pre-wrap ${radiusClass} bg-[var(--mdx-card-bg)] p-2.5 font-sans text-xs leading-relaxed text-base-content/75`,
+                `max-h-72 overflow-auto whitespace-pre-wrap ${radiusClass} bg-[var(--mdx-card-bg)] p-2.5 font-[inherit] text-xs leading-relaxed text-base-content/75`,
                 className,
             ]
                 .filter(Boolean)

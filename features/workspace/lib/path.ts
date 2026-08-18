@@ -83,6 +83,33 @@ export function isPathInsideRoot(rootPath: string, candidatePath: string) {
     );
 }
 
+/**
+ * How a file reads inside its workspace: relative to the root, with no leading
+ * separator.
+ *
+ * A path that is not inside the root keeps its full spelling. Trimming it to a
+ * suffix would say the file lives in this workspace, which is the one thing a
+ * caller is using this to tell the user.
+ */
+export function workspaceRelativePath(rootPath: string, filePath: string) {
+    const file = normalizeWorkspacePath(filePath);
+
+    if (!isPathInsideRoot(rootPath, filePath)) {
+        return file;
+    }
+
+    const root = stripTrailingSlash(normalizeWorkspacePath(rootPath));
+
+    // The root is the workspace, so it has no path inside it to name.
+    if (file.length === root.length) {
+        return "";
+    }
+
+    // A root that already ends in a separator — "/" or a bare drive — must not
+    // have one counted twice, or the first character of the name is eaten.
+    return file.slice(root.endsWith("/") ? root.length : root.length + 1);
+}
+
 export function isMarkdownFilePath(path: string) {
     const normalized = normalizeWorkspacePath(path).toLowerCase();
 

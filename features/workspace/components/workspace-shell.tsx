@@ -3,13 +3,13 @@
 import {
   BookOpen,
   Brain,
-  FileDown,
+  Code2,
   FileText,
   FolderOpen,
   PanelLeftClose,
   PanelLeftOpen,
-  PanelRightClose,
-  PanelRightOpen,
+  Printer,
+  X,
 } from "lucide-react";
 import {
   useCallback,
@@ -19,15 +19,16 @@ import {
   useRef,
   useState,
 } from "react";
+import type { ReactNode } from "react";
 import { nanoid } from "nanoid";
-import { tauriCore, tauriDialog } from "@/common/lib/tauri";
+import { tauriCore } from "@/common/lib/tauri";
 import { useFileWatch } from "@/features/file-watch/hooks/use-file-watch";
+import { DocumentStatusBar } from "@/features/editor/components/document-status-bar";
 import { createEditorSessionBinding } from "@/features/editor/lib/editor-session-binding";
-import {
-  describePublishingFailure,
-  exportPublishedDocumentPdf,
-} from "@/features/editor/lib/publishing-client";
-import type { EditorReplaceReason } from "../../../packages/mdx-editor";
+import type {
+  EditorReplaceReason,
+  EditorSurfaceMode,
+} from "../../../packages/mdx-editor";
 import {
   decideWorkspaceExternalChange,
   documentFingerprint,
@@ -46,14 +47,20 @@ import {
 } from "@/features/recovery/lib/draft-client";
 import {
   IconButton,
-  TextControlButton,
+  SegmentedControl,
 } from "../../../common/components/ui-controls";
 import { usePanelResize } from "../hooks/use-panel-resize";
 import { syncCliWorkspaceSnapshot } from "../lib/cli-sync";
 import { refreshCleanOpenTabFromDisk } from "../lib/cli-file-updated";
 import { parseMarkdownOutline } from "../lib/outline";
+import { useNotePages } from "../hooks/use-note-pages";
+import type { NoteGroup } from "../lib/note-index";
 import { calculateWorkspacePanelLayout } from "../lib/panel-layout";
-import { isMarkdownFilePath, normalizeWorkspacePath } from "../lib/path";
+import {
+  isMarkdownFilePath,
+  normalizeWorkspacePath,
+  workspaceRelativePath,
+} from "../lib/path";
 import {
   buildWorkspaceViewToggles,
   type WorkspaceView,
@@ -97,7 +104,8 @@ import type { SaveQueue } from "../lib/workspace-save";
 import { EditorStage } from "./editor-stage";
 import { FileTreePanel } from "./file-tree-panel";
 import { useAppDialogs } from "./app-dialogs";
-import { OutlinePanel } from "./outline-panel";
+import { WorkspaceNavigator } from "./workspace-navigator";
+import type { NavigatorTab } from "./workspace-navigator";
 import { SettingsButton } from "./settings-button";
 import { TabStrip } from "./tab-strip";
 import type {
@@ -105,6 +113,7 @@ import type {
   SelfWriteMarker,
   WatchErrorPayload,
 } from "@/features/file-watch/lib/types";
+import { stopListening } from "@/common/lib/tauri-events";
 
 interface WorkspaceShellProps {
   workspace: WorkspaceState;
@@ -149,6 +158,21 @@ interface ExternalDeletedPrompt {
 
 const WORKSPACE_VIEW_TOGGLES = buildWorkspaceViewToggles();
 
+/**
+ * The two surfaces, named the way the editor's own refusals name them.
+ *
+ * Short labels on purpose: this control sits in a title bar next to the
+ * document's name, and the pair only has to be told apart from each other.
+ */
+const EDITOR_MODE_OPTIONS: ReadonlyArray<{
+  value: EditorSurfaceMode;
+  label: string;
+  icon: ReactNode;
+}> = [
+  { value: "wysiwyg", label: "可视模式", icon: <FileText /> },
+  { value: "source", label: "源码模式", icon: <Code2 /> },
+];
+
 export function WorkspaceShell({
   workspace,
   dispatch,
@@ -190,7 +214,34 @@ export function WorkspaceShell({
     "editor",
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [exportingPdf, setExportingPdf] = useState(false);
+  /**
+   * Which surface the editor settled on, as reported by the editor.
+   *
+   * Never set by the control that changes it: the adapter can refuse a switch,
+   * and a toolbar that moved on its own would then be showing a mode the
+   * document is not in.
+   */
+  const [editorMode, setEditorMode] = useState<EditorSurfaceMode>("wysiwyg");
+  /** Which notes the navigator is listing, and what has been typed to narrow them. */
+  const [noteGroup, setNoteGroup] = useState<NoteGroup>("all");
+  const [noteQuery, setNoteQuery] = useState("");
+  /**
+   * The filter as the backend is asked about it.
+   *
+   * Behind what is typed, because answering it means walking the workspace: at
+   * a keystroke each, a long word would ask twenty-seven thousand questions to
+   * get to the one that mattered.
+   */
+  const [settledNoteQuery, setSettledNoteQuery] = useState("");
+  /** Whether the navigator's second column is the note list or the outline. */
+  const [navigatorTab, setNavigatorTab] = useState<NavigatorTab>("notes");
+  /**
+   * The clock a note's age is measured against.
+   *
+   * Held rather than read while rendering, so every row in one paint agrees on
+   * what "now" is, and stepped once a minute because "41分钟前" stops being true.
+   */
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [workspaceBodyWidth, setWorkspaceBodyWidth] = useState(() =>
     typeof window === "undefined" ? 1280 : window.innerWidth,
   );
@@ -280,7 +331,53 @@ export function WorkspaceShell({
    * that acts on a document — the panels, the outline, PDF export — is asking
    * this rather than naming any one of them.
    */
+  /**
+   * How many times the file tree has been replaced.
+   *
+   * A counter rather than a serialisation of the tree: the tree can hold a
+   * hundred thousand entries, and every mutation hands back a new array, so its
+   * identity is already the signal. The first render's tree is not a change.
+   */
+  const [noteIndexFileTreeVersion, setNoteIndexFileTreeVersion] = useState(0);
+  const seenFileTreeRef = useRef(workspace.fileTree);
+
+  useEffect(() => {
+    if (seenFileTreeRef.current === workspace.fileTree) {
+      return;
+    }
+
+    seenFileTreeRef.current = workspace.fileTree;
+    setNoteIndexFileTreeVersion((version) => version + 1);
+  }, [workspace.fileTree]);
+
   const isEditorView = workspaceView === "editor";
+  /**
+   * What makes the note list stale.
+   *
+   * The set of files, and any tab going from unsaved to saved: a save changes a
+   * note's opening lines and its time without changing the tree, so the tree
+   * alone would leave the row showing what the note used to say.
+   */
+  const noteIndexRevalidateKey = useMemo(
+    () =>
+      [
+        noteIndexFileTreeVersion,
+        ...tabs.map((tab) => `${tab.path}:${tab.dirty ? 1 : 0}`),
+      ].join("|"),
+    [noteIndexFileTreeVersion, tabs],
+  );
+  const notePages = useNotePages(workspace.rootPath, isTauriRuntime(), {
+    group: noteGroup,
+    query: settledNoteQuery,
+    // The same folder the tree is showing: looking at one folder means looking
+    // at its notes, not at the whole workspace's.
+    focusPath: workspace.treeFocusPath ?? null,
+    revalidateKey: noteIndexRevalidateKey,
+  });
+  /** What the window is showing, for the title slot, while it is not a document. */
+  const activeWorkspaceViewLabel =
+    WORKSPACE_VIEW_TOGGLES.find((toggle) => toggle.view === workspaceView)
+      ?.openLabel ?? "";
 
   useEffect(() => {
     externalConflictRef.current = externalConflict;
@@ -1160,13 +1257,27 @@ export function WorkspaceShell({
     };
   }, [cancelWorkspaceSearchRequest, clearSelfWriteMarker]);
 
-  const leftPanel = usePanelResize({
-    side: "left",
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 60_000);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSettledNoteQuery(noteQuery), 200);
+
+    return () => window.clearTimeout(timer);
+  }, [noteQuery]);
+
+  /** The note list — and, through it, whether the navigator is showing at all. */
+  const listPanel = usePanelResize({
+    side: "list",
     panel: workspace.panel,
     dispatch: dispatchAndMirror,
   });
-  const rightPanel = usePanelResize({
-    side: "right",
+  /** The rail inside the navigator: the groups and the folder tree. */
+  const railPanel = usePanelResize({
+    side: "rail",
     panel: workspace.panel,
     dispatch: dispatchAndMirror,
   });
@@ -1645,6 +1756,93 @@ export function WorkspaceShell({
     }
   }, [externalConflict]);
 
+  /**
+   * Shows a file where it lives, without opening it.
+   *
+   * By path, because both places that offer it — a tab and a note row — have a
+   * path and nothing else in common. The backend does the revealing: only it can
+   * say whether that path is inside the workspace it was asked about.
+   */
+  const revealPathInFileManager = useCallback(
+    (path: string) => {
+      void (async () => {
+        try {
+          const { invoke } = await tauriCore();
+          await invoke("reveal_path_in_file_manager", {
+            rootPath: workspaceRef.current.rootPath,
+            path,
+          });
+        } catch (error) {
+          void dialogs.alert({
+            title: "在 Finder 中显示",
+            message: formatError(error, "无法在 Finder 中显示这个文件。"),
+          });
+        }
+      })();
+    },
+    [dialogs],
+  );
+
+  const copyPathToClipboard = useCallback((path: string) => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      return;
+    }
+
+    void navigator.clipboard.writeText(path).catch((error) => {
+      console.warn("Failed to copy a path.", error);
+    });
+  }, []);
+
+  /**
+   * Closes tabs one at a time, in order.
+   *
+   * Sequentially because closing an unsaved tab asks the user what to do with
+   * it: several of those at once would be several dialogs at once, and the
+   * answer to one decides whether the file is still there for the next.
+   */
+  const closeTabs = useCallback(
+    async (tabIds: string[]) => {
+      for (const tabId of tabIds) {
+        await closeTab(tabId);
+      }
+    },
+    [closeTab],
+  );
+
+  const closeOtherTabs = useCallback(
+    (keptTabId: string) => {
+      void closeTabs(
+        workspaceRef.current.tabOrder.filter((tabId) => tabId !== keptTabId),
+      );
+    },
+    [closeTabs],
+  );
+
+  const closeAllTabs = useCallback(() => {
+    void closeTabs([...workspaceRef.current.tabOrder]);
+  }, [closeTabs]);
+
+  /**
+   * Prints the document, which is also how it is exported as a PDF.
+   *
+   * What prints is what the window is rendering, so a document being read as
+   * Markdown source is switched to the visual surface first: a PDF of the source
+   * is a picture of the markup, not the document. The adapter may refuse that
+   * switch — an unsafe visual parse — and then what is on screen is what prints,
+   * which is the honest outcome rather than a blank page.
+   */
+  const printActiveDocument = useCallback(() => {
+    void (async () => {
+      if (editorMode === "source") {
+        await editorSurfaceRef.current?.setMode("wysiwyg");
+      }
+
+      // One frame, so a surface built by that switch is in the document before
+      // the print snapshot is taken.
+      window.requestAnimationFrame(() => window.print());
+    })();
+  }, [editorMode]);
+
   const closeDeletedWorkspaceTab = useCallback(
     async (tabId: string, options?: { discardDirty?: boolean }) => {
       const tab = workspaceRef.current.tabs[tabId];
@@ -1789,62 +1987,6 @@ export function WorkspaceShell({
     }
   }, [saveTab]);
 
-  /**
-   * Publishes the active tab's revision as a PDF.
-   *
-   * The revision is captured from the session binding before the file dialog
-   * opens, so the output corresponds to the tab the user was looking at when
-   * they asked. A failure is reported and nothing else happens: this path
-   * cannot save a tab, clear dirty state or touch a draft.
-   */
-  const exportActiveTabPdf = useCallback(async () => {
-    const workspaceNow = workspaceRef.current;
-    const tabId = workspaceNow.activeTabId;
-    const tab = tabId ? workspaceNow.tabs[tabId] : undefined;
-
-    if (
-      exportingPdf ||
-      !tab ||
-      tab.markdown === undefined ||
-      !isMarkdownFilePath(tab.path)
-    ) {
-      return;
-    }
-
-    const snapshot = editorSession.snapshotFor({
-      documentId: tab.tabId,
-      markdown: tab.markdown,
-    });
-
-    setExportingPdf(true);
-    try {
-      const outputPath = await choosePdfExportPath(tab.path);
-
-      if (!outputPath) {
-        return;
-      }
-
-      const outcome = await exportPublishedDocumentPdf({
-        snapshot,
-        rootPath: workspaceNow.rootPath,
-        outputPath,
-      });
-
-      if (!outcome.ok) {
-        void dialogs.alert({
-          title: "导出 PDF",
-          message: describePublishingFailure(outcome),
-        });
-      }
-    } catch (error) {
-      void dialogs.alert({
-        title: "导出 PDF",
-        message: formatError(error, "导出 PDF 失败。"),
-      });
-    } finally {
-      setExportingPdf(false);
-    }
-  }, [dialogs, editorSession, exportingPdf]);
   const closeActiveTab = useCallback(async () => {
     const tabId = workspaceRef.current.activeTabId;
 
@@ -1925,6 +2067,32 @@ export function WorkspaceShell({
       return tabId;
     },
     [dispatchAndMirror],
+  );
+  /**
+   * The navigator's plus button, when the tree has told us how to create a file.
+   *
+   * Undefined until then, so the button is disabled rather than silently doing
+   * nothing: the tree owns file creation, including where the new file lands.
+   */
+  const trashFile = fileTreeActions?.trashFile;
+  const deleteNoteFromNavigator = useMemo(
+    () =>
+      trashFile
+        ? (path: string, title: string) => {
+            void trashFile(path, title);
+          }
+        : undefined,
+    [trashFile],
+  );
+  const createMarkdownFile = fileTreeActions?.createMarkdownFile;
+  const createNoteFromNavigator = useMemo(
+    () =>
+      createMarkdownFile
+        ? () => {
+            void createMarkdownFile();
+          }
+        : undefined,
+    [createMarkdownFile],
   );
   const handleWorkspaceSearchResultClick = useCallback(
     (result: WorkspaceSearchResultItem) => {
@@ -2056,7 +2224,7 @@ export function WorkspaceShell({
       unlisteners.push(...nextUnlisteners);
 
       if (disposed) {
-        unlisteners.forEach((unlisten) => unlisten());
+        unlisteners.forEach(stopListening);
       }
     };
 
@@ -2066,7 +2234,7 @@ export function WorkspaceShell({
 
     return () => {
       disposed = true;
-      unlisteners.forEach((unlisten) => unlisten());
+      unlisteners.forEach(stopListening);
     };
   }, [
     dispatchAndMirror,
@@ -2083,19 +2251,20 @@ export function WorkspaceShell({
   }, []);
   const panelLayout = calculateWorkspacePanelLayout({
     containerWidth: workspaceBodyWidth,
-    leftCollapsed: !isEditorView || leftPanel.isCollapsed,
-    leftWidth: leftPanel.width,
-    rightCollapsed: !isEditorView || rightPanel.isCollapsed,
-    rightWidth: rightPanel.width,
+    navigatorCollapsed: !isEditorView || listPanel.isCollapsed,
+    railWidth: railPanel.width,
+    listWidth: listPanel.width,
   });
   const gridTemplateColumns = [
-    `${panelLayout.leftWidth}px`,
+    `${panelLayout.navigatorWidth}px`,
     "minmax(0, 1fr)",
-    `${panelLayout.rightWidth}px`,
   ].join(" ");
 
   return (
-    <div className="grid h-full min-h-0 grid-rows-[var(--mdx-window-toolbar-height)_minmax(0,1fr)] bg-[var(--mdx-content-bg)]">
+    <div
+      data-mdx-window-layout=""
+      className="grid h-full min-h-0 grid-rows-[var(--mdx-window-toolbar-height)_minmax(0,1fr)] bg-[var(--mdx-content-bg)]"
+    >
       <header
         data-mdx-workspace-toolbar=""
         // The whole toolbar drags the window. The title bar is an overlay with
@@ -2114,14 +2283,64 @@ export function WorkspaceShell({
           className="flex min-w-0 flex-1 items-center gap-2 pl-[var(--mdx-traffic-light-inset)]"
         >
           <IconButton
-            onClick={leftPanel.toggleCollapsed}
-            label={leftPanel.isCollapsed ? "展开文件树" : "收起文件树"}
-            title={leftPanel.isCollapsed ? "展开文件树" : "收起文件树"}
+            onClick={listPanel.toggleCollapsed}
+            label={listPanel.isCollapsed ? "展开侧栏" : "收起侧栏"}
+            title={listPanel.isCollapsed ? "展开侧栏" : "收起侧栏"}
             icon={
-              leftPanel.isCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />
+              listPanel.isCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />
             }
             disabled={!isEditorView}
           />
+          {/*
+           * This side says what the window is showing — a document's name, or a
+           * full-window view's. Only this side uses words: everything on the
+           * right is an icon, so a control that spelled itself out over there
+           * read as a different kind of control from its neighbours.
+           */}
+          {!isEditorView ? (
+            <div
+              data-tauri-drag-region
+              className="min-w-0 truncate text-[13px] font-semibold text-base-content"
+            >
+              {activeWorkspaceViewLabel}
+            </div>
+          ) : null}
+          {/*
+           * What document this window is on, which is what a title bar is for.
+           * The tab strip names the file too, but only its name — the second
+           * line is where in the workspace that name lives, so two files both
+           * called index.md are told apart without opening a tooltip.
+           */}
+          {isEditorView && activeTab ? (
+            <div
+              data-tauri-drag-region
+              className="flex min-w-0 flex-col justify-center leading-tight"
+            >
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="min-w-0 truncate text-[13px] font-semibold text-base-content">
+                  {activeTab.title}
+                </span>
+                {activeTab.dirty ? (
+                  <>
+                    <span
+                      aria-hidden="true"
+                      title="未保存"
+                      className="h-[6px] w-[6px] shrink-0 rounded-full bg-base-content/40"
+                    />
+                    <span className="sr-only">（未保存）</span>
+                  </>
+                ) : null}
+              </div>
+              {/*
+               * A file outside the workspace keeps its whole path, so this can
+               * be the root's own name only when the relative path is empty.
+               */}
+              <span className="min-w-0 truncate text-[11px] text-base-content/50">
+                {workspaceRelativePath(workspace.rootPath, activeTab.path) ||
+                  activeTab.title}
+              </span>
+            </div>
+          ) : null}
         </div>
 
         <div
@@ -2129,78 +2348,96 @@ export function WorkspaceShell({
           className="flex min-w-0 shrink-0 items-center gap-2"
         >
           {message ? (
-            <div className="max-w-80 truncate text-xs text-warning">
+            <div className="max-w-64 truncate text-xs text-warning">
               {message}
             </div>
           ) : null}
-          <TextControlButton
-            onClick={onChooseWorkspace}
-            disabled={!canChooseWorkspace}
-          >
-            <FolderOpen aria-hidden="true" />
-            打开文件夹
-          </TextControlButton>
-          <TextControlButton
-            onClick={() => void exportActiveTabPdf()}
-            disabled={!isEditorView || !activeTabIsLoadedMarkdown || exportingPdf}
-          >
-            <FileDown aria-hidden="true" />
-            {exportingPdf ? "导出中" : "导出 PDF"}
-          </TextControlButton>
           {/*
-           * One button per full-window view, each toggling back to the editor.
-           * They are separate rather than one cycling control so the toolbar
-           * shows what is available without the user clicking to find out.
+           * Which surface is editing, as a control rather than a secret. The
+           * ⌘⇧M chord was the only way to reach the Markdown source, so the
+           * window never said which of the two you were looking at — and the
+           * control asks the editor rather than deciding, because the adapter
+           * is allowed to refuse a switch it cannot make safely.
            */}
-          {WORKSPACE_VIEW_TOGGLES.map((toggle) => {
-            const active = workspaceView === toggle.view;
-            return (
-              <TextControlButton
-                key={toggle.view}
-                aria-pressed={active}
-                onClick={() =>
-                  setWorkspaceView((current) =>
-                    current === toggle.view ? "editor" : toggle.view,
-                  )
-                }
-                className={
-                  active
-                    ? "bg-base-content/10 text-base-content"
-                    : undefined
-                }
-              >
-                {active ? (
-                  <FileText aria-hidden="true" />
-                ) : toggle.view === "memory" ? (
-                  <Brain aria-hidden="true" />
-                ) : (
-                  <BookOpen aria-hidden="true" />
-                )}
-                {active ? toggle.closeLabel : toggle.openLabel}
-              </TextControlButton>
-            );
-          })}
-          <SettingsButton
-            open={settingsOpen}
-            onOpenChange={setSettingsOpen}
-            workspaceRoot={workspace.rootPath}
-            preferences={preferences}
-            onPreferencesChange={onPreferencesChange}
-            onLlmConfigSaved={llmWiki.refresh}
+          <SegmentedControl
+            label="编辑模式"
+            value={editorMode}
+            options={EDITOR_MODE_OPTIONS}
+            disabled={!isEditorView || !activeTabIsLoadedMarkdown}
+            onChange={(next) => {
+              void editorSurfaceRef.current?.setMode(next);
+            }}
           />
-          <IconButton
-            label={rightPanel.isCollapsed ? "展开目录" : "收起目录"}
-            icon={
-              rightPanel.isCollapsed ? <PanelRightOpen /> : <PanelRightClose />
-            }
-            onClick={rightPanel.toggleCollapsed}
-            disabled={!isEditorView}
+          <div
+            aria-hidden="true"
+            className="h-5 w-px shrink-0 bg-[var(--mdx-separator)]"
           />
+          {/*
+           * Icons, not labelled buttons. Five sets of words across a title bar
+           * read as a web page's navigation and crowded out the document's own
+           * name; each action keeps its words as its accessible name and its
+           * tooltip, which is where a desktop toolbar keeps them.
+           */}
+          <div className="flex shrink-0 items-center gap-0.5">
+            <IconButton
+              onClick={onChooseWorkspace}
+              disabled={!canChooseWorkspace}
+              label="打开文件夹"
+              icon={<FolderOpen />}
+            />
+            <IconButton
+              onClick={printActiveDocument}
+              disabled={!isEditorView || !activeTabIsLoadedMarkdown}
+              label="打印 / 存为 PDF"
+              icon={<Printer />}
+            />
+            {/*
+             * One button per full-window view, each toggling back to the
+             * editor. They are separate rather than one cycling control so the
+             * toolbar shows what is available without the user clicking to find
+             * out. The pressed state says which one is open; the way out of it
+             * is on the left, where the window says what you are looking at.
+             */}
+            {WORKSPACE_VIEW_TOGGLES.map((toggle) => {
+              const active = workspaceView === toggle.view;
+              return (
+                <IconButton
+                  key={toggle.view}
+                  active={active}
+                  aria-pressed={active}
+                  label={active ? toggle.closeLabel : toggle.openLabel}
+                  icon={
+                    active ? (
+                      <X />
+                    ) : toggle.view === "memory" ? (
+                      <Brain />
+                    ) : (
+                      <BookOpen />
+                    )
+                  }
+                  onClick={() =>
+                    setWorkspaceView((current) =>
+                      current === toggle.view ? "editor" : toggle.view,
+                    )
+                  }
+                />
+              );
+            })}
+            <SettingsButton
+              open={settingsOpen}
+              onOpenChange={setSettingsOpen}
+              workspaceRoot={workspace.rootPath}
+              preferences={preferences}
+              onPreferencesChange={onPreferencesChange}
+              onLlmConfigSaved={llmWiki.refresh}
+            />
+          </div>
         </div>
       </header>
 
       <div
         ref={workspaceBodyRef}
+        data-mdx-window-layout=""
         className="grid min-h-0 bg-[var(--mdx-content-bg)]"
         style={{ gridTemplateColumns }}
       >
@@ -2208,30 +2445,67 @@ export function WorkspaceShell({
           className="min-h-0 overflow-hidden bg-[var(--mdx-sidebar-bg)]"
           style={{ gridColumn: 1 }}
         >
-          <FileTreePanel
-            rootPath={workspace.rootPath}
-            fileTree={workspace.fileTree}
-            treeFilterQuery={treeFilterQuery}
-            searchState={fullTextSearchState}
-            collapsed={leftPanel.isCollapsed}
-            dispatch={dispatchAndMirror}
-            preferences={preferences}
-            activeTabPath={activeTab?.path ?? null}
-            onActionsChange={setFileTreeActions}
-            onSearchQueryChange={(query) =>
-              dispatchAndMirror({
-                type: "search/queryChanged",
-                query,
-              })
-            }
-            onSearchCaseSensitiveToggle={() =>
-              dispatchAndMirror({
-                type: "search/caseSensitivityToggled",
-              })
-            }
-            onSearchResultClick={handleWorkspaceSearchResultClick}
-            resizeHandleProps={leftPanel.resizeHandleProps}
-          />
+          {!isEditorView || listPanel.isCollapsed ? null : (
+            <WorkspaceNavigator
+              rows={notePages.rows}
+              counts={notePages.counts}
+              matched={notePages.matched}
+              hasMore={notePages.hasMore}
+              onLoadMore={notePages.loadMore}
+              notesLoading={notePages.loading}
+              notesError={notePages.error}
+              group={noteGroup}
+              onGroupChange={setNoteGroup}
+              query={noteQuery}
+              onQueryChange={setNoteQuery}
+              activePath={activeTab?.path ?? null}
+              onOpenNote={(path) => {
+                openWorkspacePathTab(path);
+              }}
+              onCreateNote={createNoteFromNavigator}
+              onDeleteNote={deleteNoteFromNavigator}
+              onRevealNote={revealPathInFileManager}
+              onCopyNotePath={copyPathToClipboard}
+              nowMs={nowMs}
+              tab={navigatorTab}
+              onTabChange={setNavigatorTab}
+              headings={activeHeadings}
+              onHeadingClick={scrollToHeading}
+              resizeHandleProps={listPanel.resizeHandleProps}
+              railWidth={panelLayout.railWidth}
+              railResizeHandleProps={railPanel.resizeHandleProps}
+              tree={
+                <FileTreePanel
+                  rootPath={workspace.rootPath}
+                  fileTree={workspace.fileTree}
+                  treeFilterQuery={treeFilterQuery}
+                  focusPath={workspace.treeFocusPath ?? null}
+                  onFocusChange={(path) =>
+                    dispatchAndMirror({ type: "tree/focusChanged", path })
+                  }
+                  searchState={fullTextSearchState}
+                  collapsed={false}
+                  dispatch={dispatchAndMirror}
+                  preferences={preferences}
+                  activeTabPath={activeTab?.path ?? null}
+                  onActionsChange={setFileTreeActions}
+                  onSearchQueryChange={(query) =>
+                    dispatchAndMirror({
+                      type: "search/queryChanged",
+                      query,
+                    })
+                  }
+                  onSearchCaseSensitiveToggle={() =>
+                    dispatchAndMirror({
+                      type: "search/caseSensitivityToggled",
+                    })
+                  }
+                  onSearchResultClick={handleWorkspaceSearchResultClick}
+                  resizeHandleProps={{}}
+                />
+              }
+            />
+          )}
         </div>
 
         <main
@@ -2256,6 +2530,10 @@ export function WorkspaceShell({
             activeTabId={workspace.activeTabId}
             dispatch={dispatchAndMirror}
             onCloseTab={closeTab}
+            onRevealTab={(tab) => revealPathInFileManager(tab.path)}
+            onCopyTabPath={(tab) => copyPathToClipboard(tab.path)}
+            onCloseOtherTabs={closeOtherTabs}
+            onCloseAllTabs={closeAllTabs}
           />
           {draftMessage ? (
             <div className="border-b border-[var(--mdx-separator)] bg-[var(--mdx-chrome-bg)] px-3 py-1.5 text-xs text-base-content/65">
@@ -2441,39 +2719,20 @@ export function WorkspaceShell({
             }
             onPendingCliCommandHandled={handlePendingCliCommandHandled}
             onSelectionChange={handleSelectionChange}
+            onModeChange={setEditorMode}
           />
+          {/*
+           * Only for a document whose text is actually in hand: a tab still
+           * loading, an image, a PDF has no words to count, and a bar reading
+           * "0 词" over it would be a count rather than a blank.
+           */}
+          {activeTabIsLoadedMarkdown ? (
+            <DocumentStatusBar markdown={activeTab?.markdown ?? ""} />
+          ) : null}
             </>
           )}
         </main>
 
-        <div
-          className="relative min-h-0 overflow-hidden"
-          style={{ gridColumn: 3 }}
-        >
-          {!isEditorView || rightPanel.isCollapsed ? null : (
-            <aside className="h-full min-h-0 overflow-hidden border-l border-[var(--mdx-separator)] bg-[var(--mdx-sidebar-bg)]">
-              {/*
-               * The outline alone, with no switch above it. LLM Wiki moved to a
-               * full-window view, and a tab bar holding one tab labels nothing
-               * while costing a row.
-               */}
-              <div className="flex h-full min-h-0 flex-col">
-                <div className="min-h-0 flex-1 overflow-hidden [&>aside]:h-full [&>aside]:border-l-0 [&>aside]:border-t-0 [&>aside>div:last-child]:hidden">
-                  <OutlinePanel
-                    headings={activeHeadings}
-                    collapsed={false}
-                    onHeadingClick={scrollToHeading}
-                    resizeHandleProps={{}}
-                  />
-                </div>
-              </div>
-              <div
-                {...rightPanel.resizeHandleProps}
-                className="absolute left-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-base-content/10"
-              />
-            </aside>
-          )}
-        </div>
       </div>
       {externalConflictDiffOpen && activeExternalConflict ? (
         <DiffViewer
@@ -2562,25 +2821,6 @@ function isTauriRuntime() {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
-async function choosePdfExportPath(markdownPath: string) {
-  if (!isTauriRuntime()) {
-    throw new Error("导出 PDF 仅在桌面版中可用。");
-  }
-
-  const { save } = await tauriDialog();
-  const selectedPath = await save({
-    title: "导出 PDF",
-    defaultPath: markdownPath.replace(/\.(md|markdown)$/i, "") + ".pdf",
-    filters: [
-      {
-        name: "PDF",
-        extensions: ["pdf"],
-      },
-    ],
-  });
-
-  return typeof selectedPath === "string" ? selectedPath : null;
-}
 
 function draftTabsForAction(
   workspace: WorkspaceState,
