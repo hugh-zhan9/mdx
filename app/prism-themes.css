@@ -102,13 +102,19 @@
         color: #690;
     }
 
+    /*
+     * The upstream theme gives these a half-white fill, which is invisible on
+     * the white page it was written for and a pale box on any other. It is the
+     * same assumption the block backgrounds were dropped for, one line further
+     * in: an operator is a character, and the page it sits on belongs to the
+     * theme.
+     */
     .token.operator,
     .token.entity,
     .token.url,
     .language-css .token.string,
     .style .token.string {
         color: #9a6e3a;
-        background: hsla(0, 0%, 100%, 0.5);
     }
 
     .token.atrule,
