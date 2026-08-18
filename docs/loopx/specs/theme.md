@@ -63,6 +63,7 @@ usable theme.
 | `--mdx-theme-text` | Body text | Colour |
 | `--mdx-theme-border` | Separators and borders | Colour |
 | `--mdx-theme-accent` | Primary buttons, selected state | Colour |
+| `--mdx-theme-accent-text` | Text on top of the accent | Colour |
 | `--mdx-theme-link` | Links and wikilinks | Colour |
 | `--mdx-theme-code-bg` | Inline code and code block background | Colour |
 | `--mdx-theme-selection` | Selection background | Colour |

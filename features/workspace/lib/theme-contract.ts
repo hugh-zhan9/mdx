@@ -33,6 +33,7 @@ export const THEME_CONTRACT_PROPERTIES = [
     "--mdx-theme-text",
     "--mdx-theme-border",
     "--mdx-theme-accent",
+    "--mdx-theme-accent-text",
     "--mdx-theme-link",
     "--mdx-theme-code-bg",
     "--mdx-theme-selection",
@@ -55,6 +56,7 @@ const PROPERTY_KINDS: Record<ThemeContractProperty, ValueKind> = {
     "--mdx-theme-text": "color",
     "--mdx-theme-border": "color",
     "--mdx-theme-accent": "color",
+    "--mdx-theme-accent-text": "color",
     "--mdx-theme-link": "color",
     "--mdx-theme-code-bg": "color",
     "--mdx-theme-selection": "color",
@@ -84,6 +86,9 @@ const PROPERTY_TARGETS: Partial<Record<ThemeContractProperty, string[]>> = {
     "--mdx-theme-text": ["--color-base-content"],
     "--mdx-theme-border": ["--color-base-300", "--mdx-separator"],
     "--mdx-theme-accent": ["--color-primary"],
+    // The words on top of the accent. Without it a theme that changes the accent
+    // to something pale keeps white button text and cannot be read.
+    "--mdx-theme-accent-text": ["--color-primary-content"],
     "--mdx-theme-link": ["--color-info"],
     "--mdx-theme-code-bg": ["--mdx-code-bg"],
     "--mdx-theme-selection": ["--mdx-selection-bg"],
@@ -271,19 +276,31 @@ export function userThemesCss(themes: ParsedUserTheme[]): string {
             const body = Object.entries(theme.declarations)
                 .map(([property, value]) => `  ${property}: ${value};`)
                 .join("\n");
-            return `[data-theme="${cssIdentifierSafe(theme.id)}"] {\n${body}\n}`;
+            return `[data-theme="${cssStringSafe(theme.id)}"] {\n${body}\n}`;
         })
         .join("\n\n");
 }
 
 /**
- * The id as it may appear inside a selector string.
+ * The id as it may appear inside the attribute selector's quoted string.
  *
  * Ids come from file names, which the user controls, so the one place a name
- * reaches CSS is narrowed to characters that cannot end the attribute selector.
+ * reaches CSS is escaped rather than trusted. Escaped, not narrowed: this used
+ * to replace every character outside `[A-Za-z0-9_:.-]` with a dash, which put a
+ * selector on the page that no element could match — the `data-theme` attribute
+ * carries the id itself. Every theme whose file name was not ASCII appeared in
+ * the list, could be chosen, and then painted nothing.
+ *
+ * Inside a double-quoted CSS string only three things matter: a backslash, a
+ * quote, and a raw newline. The first two are escaped — backslash first, or the
+ * escapes added here would themselves be escaped — and the third is removed,
+ * because no file name needs one and a string cannot span lines.
  */
-function cssIdentifierSafe(id: string): string {
-    return id.replace(/[^A-Za-z0-9_:.-]/g, "-");
+function cssStringSafe(id: string): string {
+    return id
+        .replace(/\\/g, "\\\\")
+        .replace(/"/g, '\\"')
+        .replace(/[\n\r\f]/g, "");
 }
 
 /**

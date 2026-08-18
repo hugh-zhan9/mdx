@@ -104,6 +104,40 @@ describe("selectors are not honoured", () => {
         expect(parsed.declarations["--color-base-100"]).toBe("#1a1f2b");
     });
 
+    it("addresses a theme whose name is not ASCII", () => {
+        // The `data-theme` attribute carries the id itself, so a selector built
+        // by replacing the characters it disliked matched no element at all: the
+        // theme was listed, was selectable, and painted nothing.
+        const css = userThemesCss([
+            {
+                id: "user:暖沙",
+                name: "暖沙",
+                appearance: "light",
+                declarations: { "--color-base-100": "#ffffff" },
+                ignored: [],
+            },
+        ]);
+
+        expect(css).toContain('[data-theme="user:暖沙"]');
+    });
+
+    it("keeps a name from ending the string it sits in", () => {
+        // The one place a user-controlled name reaches CSS. A quote that closed
+        // the attribute selector would let a file name write a rule.
+        const css = userThemesCss([
+            {
+                id: 'user:x"] { display: none } [data-theme="y',
+                name: "x",
+                appearance: "light",
+                declarations: { "--color-base-100": "#ffffff" },
+                ignored: [],
+            },
+        ]);
+
+        expect(oneRule(css)).not.toBeNull();
+        expect(oneRule(css)?.body).toContain("--color-base-100: #ffffff;");
+    });
+
     it("carries no selector or at-rule into the generated stylesheet", () => {
         const css = userThemesCss([
             theme(`@import url("http://evil.example/x.css");
@@ -257,12 +291,73 @@ describe("the contract itself", () => {
     it("cannot be addressed outside its own theme id", () => {
         const css = userThemesCss([theme(MINIMAL, 'evil"] , [data-x="y.css')]);
 
-        // The file name reaches a selector string, so it is narrowed to
-        // characters that cannot close the attribute selector.
-        expect(css).not.toContain('"] ,');
-        expect(css.match(/\[data-theme=/g)).toHaveLength(1);
+        // The file name reaches a selector string, so every quote in it is
+        // escaped and the string it sits in still ends where we put its end.
+        // One rule, addressed to one theme, whatever the name tried to open —
+        // and the palette still inside it.
+        expect(oneRule(css)).not.toBeNull();
+        expect(oneRule(css)?.body).toContain("--color-base-100: #f3ece1;");
     });
 });
+
+/**
+ * The generated rule, split at the quote that really ends the theme id.
+ *
+ * Walked rather than searched: the id is a user-controlled string, so a brace or
+ * a quote inside it means nothing to CSS but everything to a naive split. An
+ * escaped pair is skipped whole and a raw newline is a failure, which is exactly
+ * how a browser reads a quoted string — so if this finds one selector and one
+ * body, so does the browser.
+ */
+function oneRule(css: string): { selector: string; body: string } | null {
+    const opening = '[data-theme="';
+
+    if (!css.startsWith(opening)) {
+        return null;
+    }
+
+    let index = opening.length;
+
+    for (; index < css.length; index += 1) {
+        const character = css[index];
+
+        if (character === "\\") {
+            index += 1;
+            continue;
+        }
+
+        if (character === '"') {
+            break;
+        }
+
+        if (character === "\n" || character === "\r" || character === "\f") {
+            // A CSS string cannot span lines, so the rule would already be broken.
+            return null;
+        }
+    }
+
+    if (index >= css.length) {
+        return null;
+    }
+
+    const after = css.slice(index + 1);
+    const body = after.slice(after.indexOf("{"));
+
+    if (!after.startsWith("] {") || !body.endsWith("}")) {
+        return null;
+    }
+
+    // One body, and nothing outside it: a name that opened a rule of its own
+    // would leave a second brace here, outside the string it was written in.
+    if (
+        (body.match(/\{/g) ?? []).length !== 1 ||
+        (body.match(/\}/g) ?? []).length !== 1
+    ) {
+        return null;
+    }
+
+    return { selector: css.slice(0, index + 1), body };
+}
 
 describe("ids", () => {
     it("prefixes every user theme, so it cannot shadow a built-in one", () => {
