@@ -25,6 +25,27 @@ pub fn cjk_fallback_fonts() -> Vec<String> {
     ]
 }
 
+/// Exact CJK faces to embed in an exported document, in priority order.
+///
+/// PostScript names rather than families: embedding needs one specific face,
+/// and the regular weight is the one that matches what the document looked
+/// like on screen.
+#[cfg(target_os = "macos")]
+pub fn cjk_embedding_faces() -> Vec<String> {
+    vec![
+        "PingFangSC-Regular".into(),
+        "HiraginoSansGB-W3".into(),
+        "STHeitiSC-Light".into(),
+        "ArialUnicodeMS".into(),
+    ]
+}
+
+/// Stub implementation for non-macOS platforms.
+#[cfg(not(target_os = "macos"))]
+pub fn cjk_embedding_faces() -> Vec<String> {
+    Vec::new()
+}
+
 /// Fallback chain for mathematical glyphs.
 #[cfg(target_os = "macos")]
 pub fn math_fallback_fonts() -> Vec<String> {

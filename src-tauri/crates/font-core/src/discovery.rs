@@ -1,6 +1,7 @@
-use crate::{FontDescriptor, FontError};
+use crate::{FontDescriptor, FontError, FontFileData};
+use font_kit::family_name::FamilyName;
 use font_kit::handle::Handle;
-use font_kit::properties::Style;
+use font_kit::properties::{Properties, Style};
 use font_kit::source::SystemSource;
 use std::cmp::Ordering;
 use std::collections::HashSet;
@@ -52,6 +53,79 @@ pub fn load_font_bytes(descriptor: &FontDescriptor) -> Result<Vec<u8>, FontError
         })?;
 
     load_font_bytes_from_handle(&handle, &descriptor.font_id)
+}
+
+/// Loads the first CJK-capable font file the system can give us.
+///
+/// Exact faces come first, because a family match picks whatever weight the
+/// matcher likes — asking macOS for "PingFang SC" hands back Medium, which is
+/// visibly heavier than the text on screen. Families are the backstop for a
+/// machine that has some other CJK font installed.
+pub fn load_cjk_font_file() -> Result<FontFileData, FontError> {
+    for postscript_name in crate::fallback::cjk_embedding_faces() {
+        if let Ok(file) = load_font_file_for_postscript_name(&postscript_name) {
+            return Ok(file);
+        }
+    }
+
+    for family in crate::fallback::cjk_fallback_fonts() {
+        if let Ok(file) = load_font_file_for_family(&family) {
+            return Ok(file);
+        }
+    }
+
+    Err(FontError::FontDataUnavailable {
+        font_id: "cjk".to_string(),
+    })
+}
+
+/// Loads one exact face by PostScript name, with the index inside its file.
+pub fn load_font_file_for_postscript_name(
+    postscript_name: &str,
+) -> Result<FontFileData, FontError> {
+    let source = SystemSource::new();
+    let handle = source
+        .select_by_postscript_name(postscript_name)
+        .map_err(|_| FontError::UnknownFontId {
+            font_id: postscript_name.to_string(),
+        })?;
+
+    font_file_from_handle(handle, postscript_name)
+}
+
+/// Loads a family's font file together with the face index inside it.
+///
+/// Glyph metrics only need the bytes, so [`load_font_bytes`] drops the index.
+/// Embedding a font in an exported document needs both: the CJK families that
+/// ship with macOS live in collections — `PingFang.ttc` alone holds eighteen
+/// faces — and a collection is not a font until an index picks one out.
+pub fn load_font_file_for_family(family: &str) -> Result<FontFileData, FontError> {
+    let source = SystemSource::new();
+    let handle = source
+        .select_best_match(
+            &[FamilyName::Title(family.to_string())],
+            &Properties::new(),
+        )
+        .map_err(|_| FontError::UnknownFontId {
+            font_id: family.to_string(),
+        })?;
+
+    font_file_from_handle(handle, family)
+}
+
+fn font_file_from_handle(handle: Handle, font_id: &str) -> Result<FontFileData, FontError> {
+    match handle {
+        Handle::Path { path, font_index } => Ok(FontFileData {
+            bytes: fs::read(&path).map_err(|_| FontError::FontDataUnavailable {
+                font_id: font_id.to_string(),
+            })?,
+            face_index: font_index,
+        }),
+        Handle::Memory { bytes, font_index } => Ok(FontFileData {
+            bytes: (*bytes).clone(),
+            face_index: font_index,
+        }),
+    }
 }
 
 fn discover_with_font_kit() -> Vec<FontDescriptor> {

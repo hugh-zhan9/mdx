@@ -409,6 +409,18 @@ export function DocumentShell({
           title: "导出 PDF",
           message: describePublishingFailure(outcome),
         });
+        return;
+      }
+
+      // A warning means the file was written but something in it is not what
+      // the document says — a character with no glyph in the embedded font
+      // comes out blank. Staying silent about that hands over a PDF with holes
+      // in it and calls the export a success.
+      if (outcome.warnings.length > 0) {
+        void dialogs.alert({
+          title: "导出 PDF",
+          message: `已导出，但有以下情况：\n${outcome.warnings.join("\n")}`,
+        });
       }
     } catch (exportError) {
       void dialogs.alert({

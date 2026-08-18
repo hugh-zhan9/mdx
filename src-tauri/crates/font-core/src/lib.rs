@@ -49,6 +49,13 @@ impl fmt::Display for FontError {
 
 impl std::error::Error for FontError {}
 
+/// A font file as it sits on disk, with the face inside it that was asked for.
+#[derive(Debug, Clone)]
+pub struct FontFileData {
+    pub bytes: Vec<u8>,
+    pub face_index: u32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FontInitResult {
     pub default_fonts: Vec<FontDescriptor>,

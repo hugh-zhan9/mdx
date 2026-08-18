@@ -8,13 +8,15 @@ use layout_core::{
 };
 use lopdf::{
     content::{Content, Operation},
-    dictionary, Dictionary, Document, Object, ObjectId, Stream,
+    dictionary, Dictionary, Document, Object, ObjectId, Stream, StringFormat,
 };
 use serde::Deserialize;
 use serde_json::Value;
+use std::collections::BTreeSet;
 
+use crate::embedded_font::{build_embedded_font, postscript_name_of, EmbeddedFont};
 use crate::model::{PdfExportRequest, PdfExportResult};
-use crate::pagination::paginate_snapshot;
+use crate::pagination::{paginate_snapshot, PaginatedDocument};
 
 pub fn export_pdf(request: &PdfExportRequest) -> Result<PdfExportResult, String> {
     let started = Instant::now();
@@ -22,13 +24,33 @@ pub fn export_pdf(request: &PdfExportRequest) -> Result<PdfExportResult, String>
     let paginated = paginate_snapshot(&snapshot, &request.page_size, &request.margins);
     let mut warnings = Vec::new();
 
-    let mut doc = Document::with_version("1.5");
+    // 1.7 because an embedded OpenType font program is a PDF 1.6 feature. A
+    // document with no such font is unaffected by the version it declares.
+    let mut doc = Document::with_version("1.7");
     let pages_id = doc.new_object_id();
-    let font_id = doc.add_object(dictionary! {
+    let latin_font_id = doc.add_object(dictionary! {
         "Type" => "Font",
         "Subtype" => "Type1",
         "BaseFont" => "Helvetica",
     });
+
+    let embedded_font = resolve_embedded_font(&paginated)?;
+    if let Some(font) = embedded_font.as_ref() {
+        if !font.missing.is_empty() {
+            warnings.push(format!(
+                "{} characters have no glyph in {} and were left blank: {}",
+                font.missing.len(),
+                font.postscript_name,
+                font.missing.iter().collect::<String>()
+            ));
+        }
+    }
+    let embedded_font_id = embedded_font
+        .as_ref()
+        .map(|font| add_embedded_font_objects(&mut doc, font));
+    let fonts = TextFonts {
+        embedded: embedded_font.as_ref(),
+    };
 
     let mut page_ids = Vec::new();
     let page_count = paginated.pages.len().max(1);
@@ -51,20 +73,14 @@ pub fn export_pdf(request: &PdfExportRequest) -> Result<PdfExportResult, String>
                 let baseline_y = request.page_size.height_pt
                     - request.margins.top_pt
                     - (line_local_y + (run.baseline - line.baseline));
-                content.operations.push(Operation::new("BT", vec![]));
-                content.operations.push(Operation::new(
-                    "Tf",
-                    vec![Object::Name(b"F1".to_vec()), run.font_size.into()],
-                ));
-                content.operations.push(Operation::new(
-                    "Td",
-                    vec![run.left.into(), baseline_y.into()],
-                ));
-                content.operations.push(Operation::new(
-                    "Tj",
-                    vec![Object::string_literal(run.text.clone())],
-                ));
-                content.operations.push(Operation::new("ET", vec![]));
+                write_text(
+                    &mut content,
+                    &fonts,
+                    run.font_size,
+                    run.left,
+                    baseline_y,
+                    &run.text,
+                );
 
                 if let Some(href) = run.style.link.as_ref() {
                     link_targets.push((
@@ -89,16 +105,16 @@ pub fn export_pdf(request: &PdfExportRequest) -> Result<PdfExportResult, String>
                     draw_rect_outline(&mut content, request, draw_op);
                 }
                 CanvasDrawKind::CodeHighlight => {
-                    draw_code_highlight(&mut content, request, draw_op, font_id);
+                    draw_code_highlight(&mut content, request, draw_op, &fonts);
                 }
                 CanvasDrawKind::Math => {
-                    draw_math_op(&mut content, request, draw_op, font_id)?;
+                    draw_math_op(&mut content, request, draw_op, &fonts)?;
                 }
                 CanvasDrawKind::Image => {
                     draw_image_op(&mut doc, &mut content, request, draw_op, &mut xobjects)?;
                 }
                 CanvasDrawKind::Mermaid => {
-                    draw_mermaid_op(&mut content, request, draw_op, font_id, &mut warnings);
+                    draw_mermaid_op(&mut content, request, draw_op, &fonts, &mut warnings);
                 }
             }
         }
@@ -116,7 +132,7 @@ pub fn export_pdf(request: &PdfExportRequest) -> Result<PdfExportResult, String>
             "Parent" => pages_id,
             "Contents" => content_id,
             "Resources" => dictionary! {
-                "Font" => dictionary! { "F1" => font_id },
+                "Font" => font_resource_dictionary(latin_font_id, embedded_font_id),
                 "XObject" => xobject_dictionary(xobjects)
             },
             "MediaBox" => vec![
@@ -160,6 +176,225 @@ pub fn export_pdf(request: &PdfExportRequest) -> Result<PdfExportResult, String>
         warnings,
         export_ms: started.elapsed().as_millis() as u64,
     })
+}
+
+/// Which font a string is drawn with, and how its bytes reach the page.
+///
+/// Helvetica keeps drawing Latin text: it costs nothing, every reader has it,
+/// and an all-ASCII document stays as small as it was. Anything Helvetica
+/// cannot spell goes through the embedded subset by glyph id.
+struct TextFonts<'a> {
+    embedded: Option<&'a EmbeddedFont>,
+}
+
+impl TextFonts<'_> {
+    fn encode(&self, text: &str) -> (&'static [u8], Object) {
+        match self.embedded {
+            Some(font) if !text.is_ascii() => {
+                let mut glyph_ids = Vec::with_capacity(text.chars().count() * 2);
+                for character in text.chars() {
+                    let subset_id = font.glyph(character).map(|glyph| glyph.subset_id).unwrap_or(0);
+                    glyph_ids.extend_from_slice(&subset_id.to_be_bytes());
+                }
+
+                (b"F2", Object::String(glyph_ids, StringFormat::Hexadecimal))
+            }
+            _ => (b"F1", Object::string_literal(text.to_string())),
+        }
+    }
+}
+
+fn font_resource_dictionary(latin_font_id: ObjectId, embedded_font_id: Option<ObjectId>) -> Dictionary {
+    let mut fonts = dictionary! { "F1" => latin_font_id };
+    if let Some(embedded_font_id) = embedded_font_id {
+        fonts.set("F2", embedded_font_id);
+    }
+
+    fonts
+}
+
+/// Builds the subset this document needs, or nothing when Helvetica suffices.
+fn resolve_embedded_font(paginated: &PaginatedDocument) -> Result<Option<EmbeddedFont>, String> {
+    let characters = collect_embedded_characters(paginated);
+    if characters.is_empty() {
+        return Ok(None);
+    }
+
+    let file = font_core::discovery::load_cjk_font_file().map_err(|error| {
+        format!(
+            "this document contains text the built-in PDF fonts cannot draw, and no system font was available to embed: {error}"
+        )
+    })?;
+    let postscript_name = postscript_name_of(&file.bytes, file.face_index)
+        .unwrap_or_else(|| "EmbeddedFont".to_string());
+
+    build_embedded_font(
+        &file.bytes,
+        file.face_index,
+        &postscript_name,
+        &characters,
+    )
+}
+
+/// Every character that has to come out of the embedded font.
+///
+/// A run is drawn with one font, so a run holding any non-ASCII character needs
+/// its Latin characters embedded too — otherwise "AI 直接干完了" would lose the
+/// "AI". Collecting slightly more than the page draws is harmless; collecting
+/// less leaves a blank where a character should be.
+fn collect_embedded_characters(paginated: &PaginatedDocument) -> BTreeSet<char> {
+    let mut characters = BTreeSet::new();
+    let mut consider = |text: &str| {
+        if !text.is_ascii() {
+            characters.extend(text.chars());
+        }
+    };
+
+    for page in &paginated.pages {
+        for line in &page.lines {
+            for run in &line.text_runs {
+                consider(&run.text);
+            }
+        }
+
+        for draw_op in &page.draw_ops {
+            if matches!(draw_op.kind, CanvasDrawKind::Image) {
+                continue;
+            }
+
+            if let Some(text) = text_from_data(&draw_op.data) {
+                consider(&text);
+            }
+
+            if let Some(svg) = svg_from_data(&draw_op.data) {
+                for text_node in svg_text_nodes(&svg) {
+                    consider(text_node.text.trim());
+                }
+            }
+        }
+    }
+
+    characters
+}
+
+/// Writes the font program and the four objects PDF needs to describe it.
+fn add_embedded_font_objects(doc: &mut Document, font: &EmbeddedFont) -> ObjectId {
+    let base_font = font.base_font_name();
+    let mut program_dictionary = dictionary! {};
+    if font.cff_outlines {
+        program_dictionary.set("Subtype", Object::Name(b"OpenType".to_vec()));
+    } else {
+        program_dictionary.set("Length1", Object::Integer(font.program.len() as i64));
+    }
+    let program_id = doc.add_object(Stream::new(program_dictionary, font.program.clone()));
+
+    let mut descriptor = dictionary! {
+        "Type" => "FontDescriptor",
+        "FontName" => Object::Name(base_font.clone().into_bytes()),
+        // Symbolic: the subset is addressed by glyph id and carries no Latin
+        // encoding a reader could second-guess.
+        "Flags" => 4,
+        "FontBBox" => vec![
+            font.bbox[0].into(),
+            font.bbox[1].into(),
+            font.bbox[2].into(),
+            font.bbox[3].into(),
+        ],
+        "ItalicAngle" => font.italic_angle,
+        "Ascent" => font.ascender,
+        "Descent" => font.descender,
+        "CapHeight" => font.cap_height,
+        "StemV" => 80,
+    };
+    descriptor.set(
+        if font.cff_outlines {
+            "FontFile3"
+        } else {
+            "FontFile2"
+        },
+        program_id,
+    );
+    let descriptor_id = doc.add_object(descriptor);
+
+    let mut widths = font
+        .glyphs
+        .values()
+        .map(|glyph| (glyph.subset_id, glyph.width))
+        .collect::<Vec<_>>();
+    widths.sort_by_key(|(subset_id, _)| *subset_id);
+    let width_array = widths
+        .into_iter()
+        .flat_map(|(subset_id, width)| {
+            [
+                Object::Integer(i64::from(subset_id)),
+                Object::Array(vec![width.into()]),
+            ]
+        })
+        .collect::<Vec<_>>();
+
+    let mut descendant = dictionary! {
+        "Type" => "Font",
+        "Subtype" => if font.cff_outlines { "CIDFontType0" } else { "CIDFontType2" },
+        "BaseFont" => Object::Name(base_font.clone().into_bytes()),
+        "CIDSystemInfo" => dictionary! {
+            "Registry" => Object::string_literal("Adobe"),
+            "Ordering" => Object::string_literal("Identity"),
+            "Supplement" => 0,
+        },
+        "FontDescriptor" => descriptor_id,
+        "DW" => 1000,
+        "W" => width_array,
+    };
+    if !font.cff_outlines {
+        descendant.set("CIDToGIDMap", Object::Name(b"Identity".to_vec()));
+    }
+    let descendant_id = doc.add_object(descendant);
+
+    let to_unicode_id = doc.add_object(Stream::new(dictionary! {}, to_unicode_cmap(font)));
+
+    doc.add_object(dictionary! {
+        "Type" => "Font",
+        "Subtype" => "Type0",
+        "BaseFont" => Object::Name(base_font.into_bytes()),
+        "Encoding" => "Identity-H",
+        "DescendantFonts" => vec![Object::Reference(descendant_id)],
+        "ToUnicode" => to_unicode_id,
+    })
+}
+
+/// Maps every embedded glyph back to the text it came from.
+///
+/// Without this the words are on the page but not in the document: copying a
+/// paragraph out of the PDF, or searching it, would return glyph ids.
+fn to_unicode_cmap(font: &EmbeddedFont) -> Vec<u8> {
+    let mut entries = font
+        .glyphs
+        .iter()
+        .map(|(character, glyph)| (glyph.subset_id, *character))
+        .collect::<Vec<_>>();
+    entries.sort_by_key(|(subset_id, _)| *subset_id);
+
+    let mut cmap = String::from(
+        "/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n/CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n",
+    );
+
+    // A CMap may not declare more than 100 mappings in one block.
+    for chunk in entries.chunks(100) {
+        cmap.push_str(&format!("{} beginbfchar\n", chunk.len()));
+        for (subset_id, character) in chunk {
+            let mut utf16 = [0u16; 2];
+            let encoded = character.encode_utf16(&mut utf16);
+            let destination = encoded
+                .iter()
+                .map(|unit| format!("{unit:04X}"))
+                .collect::<String>();
+            cmap.push_str(&format!("<{subset_id:04X}> <{destination}>\n"));
+        }
+        cmap.push_str("endbfchar\n");
+    }
+
+    cmap.push_str("endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend");
+    cmap.into_bytes()
 }
 
 /// Writes one link annotation so the exported document keeps where a link points.
@@ -225,13 +460,13 @@ fn draw_code_highlight(
     content: &mut Content,
     request: &PdfExportRequest,
     draw_op: &CanvasDrawOp,
-    font_id: lopdf::ObjectId,
+    fonts: &TextFonts<'_>,
 ) {
     draw_filled_rect(content, request, draw_op);
     if let Some(text) = text_from_data(&draw_op.data) {
         write_text(
             content,
-            font_id,
+            fonts,
             10.0,
             draw_op.x + 4.0,
             pdf_text_y(request, draw_op.y + 14.0),
@@ -244,7 +479,7 @@ fn draw_math_op(
     content: &mut Content,
     request: &PdfExportRequest,
     draw_op: &CanvasDrawOp,
-    font_id: lopdf::ObjectId,
+    fonts: &TextFonts<'_>,
 ) -> Result<(), String> {
     let value = parse_draw_data(&draw_op.data)?;
     match value.get("type").and_then(Value::as_str) {
@@ -255,7 +490,7 @@ fn draw_math_op(
                 .ok_or_else(|| format!("math draw op {} missing text content", draw_op.block_id))?;
             write_text(
                 content,
-                font_id,
+                fonts,
                 draw_op.height.max(8.0) * 0.7,
                 draw_op.x,
                 pdf_text_y(request, draw_op.y + draw_op.height * 0.75),
@@ -268,7 +503,7 @@ fn draw_math_op(
             let name = value.get("name").and_then(Value::as_str).unwrap_or("");
             write_text(
                 content,
-                font_id,
+                fonts,
                 draw_op.height.max(10.0) * 0.8,
                 draw_op.x,
                 pdf_text_y(request, draw_op.y + draw_op.height * 0.85),
@@ -285,7 +520,7 @@ fn draw_math_op(
             if let Some(text) = text_from_value(&value) {
                 write_text(
                     content,
-                    font_id,
+                    fonts,
                     draw_op.height.max(8.0) * 0.7,
                     draw_op.x,
                     pdf_text_y(request, draw_op.y + draw_op.height * 0.75),
@@ -307,15 +542,15 @@ fn draw_mermaid_op(
     content: &mut Content,
     request: &PdfExportRequest,
     draw_op: &CanvasDrawOp,
-    font_id: lopdf::ObjectId,
+    fonts: &TextFonts<'_>,
     warnings: &mut Vec<String>,
 ) {
     if let Some(svg) = svg_from_data(&draw_op.data) {
-        draw_svg_subset(content, request, draw_op, font_id, &svg, warnings);
+        draw_svg_subset(content, request, draw_op, fonts, &svg, warnings);
     } else if let Some(text) = text_from_data(&draw_op.data) {
         write_text(
             content,
-            font_id,
+            fonts,
             10.0,
             draw_op.x + 4.0,
             pdf_text_y(request, draw_op.y + 14.0),
@@ -440,7 +675,7 @@ fn draw_svg_subset(
     content: &mut Content,
     request: &PdfExportRequest,
     draw_op: &CanvasDrawOp,
-    font_id: lopdf::ObjectId,
+    fonts: &TextFonts<'_>,
     svg: &str,
     warnings: &mut Vec<String>,
 ) {
@@ -498,7 +733,7 @@ fn draw_svg_subset(
     for text_node in svg_text_nodes(svg) {
         write_text(
             content,
-            font_id,
+            fonts,
             attr_f32(text_node.tag, "font-size").unwrap_or(10.0),
             draw_op.x + attr_f32(text_node.tag, "x").unwrap_or_default(),
             pdf_text_y(
@@ -753,29 +988,27 @@ fn png_frame_to_rgb(
 
 fn write_text(
     content: &mut Content,
-    font_id: lopdf::ObjectId,
+    fonts: &TextFonts<'_>,
     font_size: f32,
     x: f32,
     y: f32,
     text: &str,
 ) {
+    if text.is_empty() {
+        return;
+    }
+
+    let (font_name, encoded) = fonts.encode(text);
     content.operations.push(Operation::new("BT", vec![]));
     content.operations.push(Operation::new(
         "Tf",
-        vec![Object::Name(resource_font_name(font_id)), font_size.into()],
+        vec![Object::Name(font_name.to_vec()), font_size.into()],
     ));
     content
         .operations
         .push(Operation::new("Td", vec![x.into(), y.into()]));
-    content.operations.push(Operation::new(
-        "Tj",
-        vec![Object::string_literal(text.to_string())],
-    ));
+    content.operations.push(Operation::new("Tj", vec![encoded]));
     content.operations.push(Operation::new("ET", vec![]));
-}
-
-fn resource_font_name(_font_id: lopdf::ObjectId) -> Vec<u8> {
-    b"F1".to_vec()
 }
 
 fn pdf_top(request: &PdfExportRequest, y: f32, height: f32) -> f32 {

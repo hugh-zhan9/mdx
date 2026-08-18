@@ -227,6 +227,33 @@ describe("publishing a document window's revision", () => {
     expect(alertDialog).not.toHaveBeenCalled();
   });
 
+  it("tells the reader when the written file is not what the document says", async () => {
+    invoke.mockImplementation(async (command: string) => {
+      if (command === "load_app_state") {
+        return { preferences: {} };
+      }
+
+      if (command === "layout_export_pdf") {
+        return {
+          pageCount: 1,
+          warnings: ["1 characters have no glyph in PingFangSC-Regular and were left blank: ✓"],
+          exportMs: 7,
+        };
+      }
+
+      return undefined;
+    });
+    await mountDocument();
+    await clickExport();
+
+    expect(alertDialog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "导出 PDF",
+        message: expect.stringContaining("no glyph"),
+      }),
+    );
+  });
+
   it("reports a refused export and leaves the document alone", async () => {
     invoke.mockImplementation(async (command: string) => {
       if (command === "load_app_state") {

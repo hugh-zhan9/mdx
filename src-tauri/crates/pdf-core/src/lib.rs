@@ -1,3 +1,4 @@
+pub mod embedded_font;
 pub mod export;
 pub mod model;
 pub mod pagination;
