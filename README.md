@@ -8,140 +8,217 @@
 
 # Loam
 
-**Loam is a local-first Markdown app with two modes: single-document editing and folder workspaces.**
+**A local-first Markdown workspace for macOS, where raw notes settle into knowledge.**
 
-It combines a Markdown-native editing kernel with a Tauri desktop shell for working with local folders and individual Markdown documents.
+Loam is soil that grew from something — leaf litter and mineral, layered, the upper
+layer feeding what comes out of it. That is the shape of this app: notes are kept as
+plain Markdown files you own, and two layers sit on top of them. An LLM wiki turns
+raw material into linked articles; a memory library turns it into conclusions that
+agents can read. Nothing is stored in a format you cannot open in another editor.
 
-## Modes
+Markdown files are the only thing on disk that matters. Everything else — layout,
+tabs, drafts, memory — is derived, and lives beside the app rather than inside your
+notes.
 
-- Document Mode: opens when Finder or the system “Open With” flow launches a single `.md` / `.markdown` file. The window contains only the Markdown editor and the current document outline, without the file tree, tabs, or LLM Wiki.
-- Workspace Mode: opens when you launch Loam directly, restore the recent workspace, or open a folder inside the app. The window contains the file tree, tabs, outline, and optional LLM Wiki knowledge-base features.
+## Two windows
 
-Document Mode is not controlled by `loam-cli`, does not restore the recent workspace, and does not support `.mdx`.
+- **Workspace** — opened by launching Loam, restoring the last folder, or opening a
+  folder. One root, a list of notes, tabs, outline, search, and the knowledge
+  features.
+- **Document** — opened when Finder or “Open With” hands over a single `.md` /
+  `.markdown` file. Just the editor and that document's outline: no file tree, no
+  tabs. It is not driven by `loam-cli` and does not restore the last workspace.
 
-## Features
+Only `.md` and `.markdown` are opened and listed.
 
-- Document Mode: lightweight single Markdown document window with outline, save, dirty close confirmation, and sibling `.assets/` image assets
-- Workspace Mode: single-root workspace for local Markdown notes
-- Workspace Mode: left file tree for folders, `.md`, and `.markdown` files
-- Workspace Mode: multi-tab editing with dirty-state tracking
-- Workspace Mode: right outline panel generated from H1-H6 headings
-- Workspace Mode: full-text search across `.md` and `.markdown`, including `raw/`
-- Workspace Mode: default search limits of 2 MB per file, 200 total results, and 20 matches per file
-- Workspace Mode and Document Mode: external file watching; clean content auto-reloads while dirty content shows a conflict prompt and read-only diff
-- Unsaved Markdown bodies are stored as plaintext drafts under `~/.loam/drafts/`
-- Drafts are deleted after save/discard and expired drafts are cleaned after 30 days
-- Local app state saved under `~/.loam/state.json`
-- Image assets saved into the current document or workspace `.assets/` directory, with a global fallback under `~/.loam/assets`
-- `loam-cli` for Workspace Mode local automation and agent-driven editing
+## The workspace
 
-## Scope
+Three columns, left to right:
 
-Loam is desktop-first. The current app does not provide a web product, Quick Look extension, an auto-update flow, multi-root workspaces, PDF/image/binary full-text search, or LLM Wiki onboarding.
+1. **Rail** — note groups with counts, and the file tree. The tree can be pointed at
+   one folder (`raw/`, say) and the note list and counts follow it.
+2. **Note list** — every note as a card: title, two-line excerpt, relative time,
+   newest first. Paged as you scroll, so a folder with tens of thousands of notes
+   opens as fast as one with ten. Right-click for Finder, path, or trash.
+3. **Editor** — with an outline panel that can be collapsed.
 
-The editor currently supports `.md` and `.markdown` files. This MVP does not treat `.mdx` as a Document Mode file and does not display `.mdx` files in the workspace file tree.
+Rail and list widths are independent and persist per workspace, as does which
+folder the tree is pointed at.
 
-## Architecture
+## Editing
 
-- Frontend: Next.js 16, React 19, TypeScript, Tailwind CSS
-- Desktop shell: Tauri 2 and Rust
-- Editor kernel: self-owned Markdown-native editing kernel under `packages/mdx-editor/`
-- Syntax highlighting: Prism
-- Tests: Vitest for frontend logic, Rust tests for Tauri-side workspace behavior
+One document, two faces, switched with **⌘⇧M**:
 
-The frontend owns workspace UI state, tabs, outline parsing, panel sizing, and editor integration. Rust/Tauri owns protected file-system access, app-state persistence, image assets, trash operations, and the local CLI socket.
+- **Visual** — the rendered document, edited in place (Milkdown/ProseMirror).
+- **Source** — the Markdown itself (CodeMirror), same file, same selection.
 
-## CLI
+What the editor speaks: headings, lists, tables, footnotes, callouts, frontmatter,
+task lists, inline and block math (KaTeX), Mermaid diagrams, wikilinks
+(`[[target|alias]]`), and images pasted or dropped in.
 
-The macOS build includes `loam-cli`, which talks to the running Workspace Mode app over a local Unix socket at `~/.loam/cli.sock`.
+Details that took some deciding:
 
-Supported commands include:
+- **Links** open with **⌘ + click**, and the pointer only becomes a hand while ⌘ is
+  held. A plain click puts the caret in the label, because a link's text is text
+  someone will want to fix. With the caret inside a link, a field appears holding
+  its address — the half of `[label](address)` a rendered document hides.
+- **A drawn Mermaid diagram puts its own fence away.** The source comes back when the
+  caret is inside the block, and clicking the diagram is what puts it there. A
+  diagram that failed to draw always keeps its source on screen.
+- **⌘A inside a code block takes the code**; press it again for the whole note.
+- **PDF is the system print dialog** acting on the rendered document. There is no
+  second renderer, so an exported page cannot disagree with what you were editing.
+
+## Knowledge
+
+### LLM wiki
+
+For workspaces that keep raw material under `raw/`: ingest a file, digest a topic,
+lint the result, query it. Runs against an OpenAI-compatible endpoint you configure
+in Settings → LLM. Available in the Workspace window and over the CLI socket.
+
+### Memory
+
+Two layers, and the distinction is the whole feature:
+
+- **Material** is what happened — a decision, a finding, a piece of a conversation —
+  kept as written, with its source, asserting nothing.
+- **Conclusions** are what you read out of the material. They cite it, start as
+  candidates, and only reach an agent's context once adopted through a gate that
+  wants supporting evidence and no standing counterexample.
+
+Turning it on takes one online step: the panel downloads an embedding model
+(`minishlab/potion-multilingual-128M`) into `~/.loam/models/`. Writing and semantic
+search both use it, and there is no degraded mode — without the model a write is
+refused rather than quietly turned into keyword matching. After the download it runs
+offline.
+
+Using memory yourself needs nothing else. Letting Claude Code, Codex or Cursor read
+it is a separate, opt-in step (Memory → Agent integration) that installs a skill,
+hooks, and an MCP server pointing at the bundled `loam-mcp`.
+
+Full guide: [docs/memory-usage.md](docs/memory-usage.md).
+
+**Status, honestly:** the library, its schema and the whole material/conclusion path
+are implemented and tested, but have never been exercised against a real embedding
+model end to end. The first thing to do with it is download the model and store one
+piece of material.
+
+## Appearance
+
+Ten built-in themes — three light (system, paper, graphite), two more light
+(daylight for maximum contrast, celadon for a cool light that is not grey), three
+dark (system, midnight, ink) and two more (cocoa, a dark with no blue in it, and
+obsidian, near-black at maximum contrast) — plus **follow the system**.
+
+The shirt icon on the title bar opens appearance, where you can also **make a theme**:
+ten colours, each starting from the theme already on screen, saved as a plain `.css`
+file in `~/.loam/themes/`. That file is written against the same public contract a
+hand-written theme uses (`--mdx-theme-*`, documented in
+[docs/loopx/specs/theme.md](docs/loopx/specs/theme.md)) and read back by the same
+parser — so a theme made in the app can be edited by hand, and one written by hand
+opens in the app. A theme is data: selectors, `@import` and `url()` are never
+extracted from it.
+
+## Where things are kept
+
+| Path | What |
+| --- | --- |
+| `~/.loam/state.json` | window size, tabs, panel widths, which folder the tree shows |
+| `~/.loam/drafts/` | unsaved bodies as plaintext, deleted on save, expired after 30 days |
+| `~/.loam/themes/` | your own themes |
+| `~/.loam/models/` | the embedding model |
+| `~/.loam/memory/palace.db` | one memory library for every workspace, separated by project |
+| `~/.loam/assets/` | fallback for images with nowhere better to go |
+| `~/.loam/cli.sock` | the socket `loam-cli` talks to |
+| `<workspace>/.assets/` | images pasted into a note |
+| `<workspace>/.loam/` | this workspace's memory configuration |
+
+Memory follows the machine, not the repository: cloning your notes elsewhere does not
+bring it. Export a bundle to move it.
+
+## CLI and MCP
+
+`loam-cli` drives the running Workspace window over `~/.loam/cli.sock`:
 
 ```bash
-loam-cli new
-loam-cli list
-loam-cli open <path>
-loam-cli content [--tab <id>]
-loam-cli selection [--tab <id>]
-loam-cli insert [--tab <id>] <text>
-loam-cli save [--tab <id>]
-loam-cli focus [--tab <id>]
-loam-cli close [--tab <id>] [--force]
-loam-cli create-file <dir> [name]
-loam-cli create-folder <dir> <name>
-loam-cli rename <path> <new-name>
-loam-cli llm-wiki status
-loam-cli llm-wiki ingest <raw-path>
-loam-cli llm-wiki digest --title "..." <prompt...>
-loam-cli llm-wiki lint [--json]
-loam-cli llm-wiki query [--json] <question...>
-loam-cli llm-wiki search <query...>
-loam-cli memory status [--json]
-loam-cli memory init
-loam-cli memory repair [--rebuild-index]
-loam-cli memory index rebuild
-loam-cli memory thread save --source manual --title "..." --file <path>
-loam-cli memory add --title "..." --body "..."
-loam-cli memory recall [--json] <query...>
-loam-cli memory working get
-loam-cli memory inbox list
-loam-cli memory inbox accept <inbox-id>
-loam-cli memory distill --thread <thread-id>
-loam-cli memory capture import --source codex --file <path>
-loam-cli memory promote <thread-id|memory-id|path>
-loam-cli memory agent setup [--all|--codex|--claude|--cursor] [--no-hooks] [--dry-run]
-loam-cli memory export --output <dir>
-loam-cli memory import --input <dir> --dry-run
-loam-cli memory --root <workspace> status
+loam-cli new | list | open <path> | focus | save | close
+loam-cli content | selection | insert <text>
+loam-cli create-file <dir> [name] | create-folder <dir> <name> | rename <path> <name>
+loam-cli llm-wiki status | ingest <raw-path> | digest --title "..." <prompt...>
+loam-cli llm-wiki lint | query <question...> | search <query...>
 loam-cli serve --workspace <workspace> --port 14243
+```
+
+Memory also runs headlessly, against a workspace rather than a window:
+
+```bash
+loam-cli memory --root <workspace> init | status | doctor | model | reindex
+loam-cli memory --root <workspace> add --title "..." --body "..." | show | list | delete
+loam-cli memory --root <workspace> search | context | brief | recall <query...>
+loam-cli memory --root <workspace> distill | gate | adopt | demote | promote
+loam-cli memory --root <workspace> capture | legacy-import | export | import
+loam-cli memory --root <workspace> agent setup [--all|--claude|--codex|--cursor] [--dry-run]
+```
+
+Every command's own `--help` is the authority; this list is a map, not a contract.
+MCP for agents:
+
+```bash
 loam-mcp --workspace <workspace>
 ```
 
-Memory commands manage Markdown-native records under `memory/` and `.loam/`. They can run through the active Workspace Mode socket, or headlessly with `loam-cli memory --root <workspace> ...`.
-
-Packaged builds include `loam-cli` and `loam-mcp` sidecars. Agent integration for Codex, Claude, and Cursor is opt-in from the Memory Settings panel or `loam-cli memory --root <workspace> agent setup ...`.
-
-For the full Memory usage guide, see [docs/memory-usage.md](docs/memory-usage.md).
-
-The LLM Wiki CLI surface remains socket-only and always targets the active Workspace Mode root. Only Memory commands support `--root` headless execution.
+Packaged builds carry `loam-cli` and `loam-mcp` as sidecars, at
+`/Applications/Loam.app/Contents/MacOS/`.
 
 ## Build
 
-### Desktop Development
-
 ```bash
 npm install
-npx tauri dev
+npx tauri dev        # desktop, with the renderer's dev server
+npm run dev          # renderer only, for UI debugging — not a web product
+npx tauri build      # a signed-to-nothing .app and .dmg
+npm run install:local  # copy the built app to /Applications and re-sign it
 ```
 
-Tauri starts the Next.js renderer development server automatically.
-
-### Renderer Debugging
-
-```bash
-npm run dev
-```
-
-This only starts the Next.js renderer. Opening `http://localhost:3000` in a browser is useful for UI debugging, but it is not a standalone web product and cannot use desktop-only capabilities such as folder selection, file-system commands, LLM Wiki backend commands, or the local CLI socket.
-
-### Native Target
-
-macOS is the supported native target for this MVP.
-The desktop shell uses macOS-first window chrome, quiet toolbar/sidebar surfaces, and a centered Markdown reading column.
-
-```bash
-npm install
-npx tauri build
-```
+Adding a theme to `app/globals.css` needs the renderer's cache cleared —
+`rm -rf .next` — because Turbopack re-emits edited rules on a hot reload but does not
+re-resolve the `@plugin` invocations a palette is declared with.
 
 ## Verification
 
 ```bash
 npm run lint
 npm run test
+npm run audit:editor:boundaries
 cd src-tauri && cargo test
 ```
 
+The boundary audit is the one worth knowing about: it fails if product code imports
+Milkdown, ProseMirror or CodeMirror directly, queries editor-private DOM, or deep
+imports the editor package. The editor is reachable through one entry point and one
+pinned command vocabulary, which is what let the editor underneath it be replaced
+without the product noticing.
+
+## Architecture
+
+- **Frontend** — Next.js 16, React 19, TypeScript, Tailwind CSS 4 with daisyUI
+- **Desktop shell** — Tauri 2, Rust
+- **Editor** — Milkdown/ProseMirror for the visual surface and CodeMirror for source,
+  behind one adapter in `packages/mdx-editor/`; Markdown is the only persisted form
+- **Highlighting** — Prism
+- **Memory** — mempal, an embedded library with its own SQLite schema
+- **Tests** — Vitest for the frontend, `cargo test` for everything Rust owns
+
+The frontend owns workspace state, tabs, outline parsing, panel sizing and the editor
+integration. Rust owns file-system access, app state, image assets, trash, the CLI
+socket, the LLM wiki pipeline and the memory library.
+
+## Scope
+
+macOS only. One root per workspace. No web product, no Quick Look extension, no
+auto-update, no full-text search inside PDFs or images.
+
 ## License
 
-The application layer, helper libraries, and self-owned Markdown editor kernel in this repository are MIT licensed; see [LICENSE](LICENSE).
+MIT; see [LICENSE](LICENSE).

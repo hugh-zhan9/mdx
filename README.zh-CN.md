@@ -8,139 +8,159 @@
 
 # Loam
 
-**Loam 是一个本地优先 Markdown 应用，提供单文档编辑和文件夹工作区两种模式。**
+**macOS 上的本地优先 Markdown 工作台——原始笔记在这里沉降成知识。**
 
-它把 Markdown 原生可视化编辑内核，和 Tauri 桌面壳结合起来，用来编辑本机文件夹和单个 Markdown 文档。
+Loam 是壤土：腐殖质与矿物分层混成，上面那层养着从里面长出来的东西。这个应用就是这个形状——笔记始终是你自己的纯 Markdown 文件，上面叠两层：LLM wiki 把原始素材变成互链的文章，记忆库把它变成 agent 能读到的结论。没有任何东西存成别的编辑器打不开的格式。
 
-## 两种模式
+磁盘上唯一要紧的东西是 Markdown 文件。其余的（布局、标签页、草稿、记忆）都是派生物，放在应用旁边，而不是塞进你的笔记里。
 
-- Document Mode：从 Finder 或系统“打开方式”打开单个 `.md` / `.markdown` 文件时进入。界面只包含 Markdown 编辑器和当前文档目录，不显示文件树、标签页或 LLM Wiki。
-- Workspace Mode：直接启动 Loam、恢复最近工作区，或在应用内打开文件夹时进入。界面包含文件树、多标签、目录和可选 LLM Wiki 知识库能力。
+## 两个窗口
 
-Document Mode 不参与 `loam-cli` 自动化，不恢复为最近工作区，也不支持 `.mdx`。
+- **工作区**——启动应用、恢复上次的文件夹、或打开一个文件夹时出现。单根目录，一份笔记列表，标签页、大纲、搜索，以及知识相关的功能。
+- **单文档**——Finder 或"打开方式"把一个 `.md` / `.markdown` 交给它时出现。只有编辑器和这份文档的大纲：没有文件树，没有标签页。它不受 `loam-cli` 驱动，也不恢复上次的工作区。
 
-## 功能
+只打开和列出 `.md` 与 `.markdown`。
 
-- Document Mode：单 Markdown 文档编辑窗口，支持标题目录、保存、关闭前未保存确认和同级 `.assets/` 图片资产
-- Workspace Mode：单根本地工作区
-- Workspace Mode：左侧文件树，显示文件夹、`.md` 和 `.markdown` 文件
-- Workspace Mode：多标签编辑，跟踪未保存状态
-- Workspace Mode：右侧标题目录，从当前文档的 H1-H6 实时生成
-- Workspace Mode：全文搜索 `.md` 和 `.markdown`，包含 `raw/` 目录
-- Workspace Mode：默认搜索限制为单文件 2 MB、总结果 200 条、每个文件 20 条匹配
-- Workspace Mode / Document Mode：文件外部变更监听；干净内容自动重载，脏内容显示冲突提示和只读差异视图
-- 未保存 Markdown 正文会以明文草稿保存在 `~/.loam/drafts/`
-- 草稿在保存或丢弃后会删除，过期草稿会在 30 天后清理
-- 应用状态保存到 `~/.loam/state.json`
-- 图片优先保存到当前文档或工作区的 `.assets/`，异常时退回 `~/.loam/assets`
-- Workspace Mode 提供 `loam-cli`，支持本地自动化和 Agent 驱动编辑
+## 工作区
 
-## 范围
+从左到右三栏：
 
-Loam 当前优先服务桌面端。当前应用不提供 Web 产品形态、Quick Look 扩展、自动更新流程、多根工作区、PDF/图片/二进制全文搜索，也不包含 LLM Wiki onboarding。
+1. **导航栏**——带计数的笔记分组，以及文件树。文件树可以只盯着某一个文件夹（比如 `raw/`），笔记列表和计数会跟着它一起收窄。
+2. **笔记列表**——每条笔记一张卡片：标题、两行摘要、相对时间，最近编辑在前。滚动时分页加载，所以两万多条笔记的文件夹和十条的打开一样快。右键可以在 Finder 中显示、复制路径、移到废纸篓。
+3. **编辑器**——右侧大纲栏可以收起。
 
-当前编辑器支持 `.md` 和 `.markdown` 文件。这个 MVP 不把 `.mdx` 作为 Document Mode 文件处理，也不在工作区文件树中显示 `.mdx` 文件。
+导航栏和列表的宽度互相独立、按工作区记住，"只看某个文件夹"这个选择也一样。
 
-## 架构
+## 编辑
 
-- 前端：Next.js 16、React 19、TypeScript、Tailwind CSS
-- 桌面壳：Tauri 2、Rust
-- 编辑器内核：`packages/mdx-editor/` 下的自研 Markdown 原生可视化编辑内核
-- 代码高亮：Prism
-- 测试：前端逻辑使用 Vitest，Tauri 侧工作区行为使用 Rust tests
+一份文档，两张脸，**⌘⇧M** 切换：
 
-前端负责工作区 UI 状态、标签页、标题目录解析、面板尺寸和编辑器集成。Rust/Tauri 负责受保护的文件系统访问、应用状态持久化、图片资产、废纸篓操作和本地 CLI socket。
+- **可视**——渲染后的文档，就地编辑（Milkdown/ProseMirror）。
+- **源码**——Markdown 本身（CodeMirror），同一个文件，同一处选区。
 
-## CLI
+编辑器认得：标题、列表、表格、脚注、callout、frontmatter、任务列表、行内与块级公式（KaTeX）、Mermaid 图、wikilink（`[[目标|别名]]`），以及粘贴或拖进来的图片。
 
-macOS 构建包含 `loam-cli`，它通过 `~/.loam/cli.sock` 连接正在运行的 Workspace Mode 应用。
+有几处是想过才这么定的：
 
-支持的命令包括：
+- **链接用 ⌘ + 点击打开**，而且只有按住 ⌘ 时指针才变成手型。普通点击是把光标放进标签文字里——因为链接的文字就是文字，总有人要改它。光标进入链接时会出现一个字段，里面是它的地址：`[标签](地址)` 里被渲染隐藏掉的那一半。
+- **图画出来之后，它自己把源码收起来。** 光标进入这个块时源码回来，而点图正是把光标放进去的动作。画不出来的图永远把源码留在屏幕上。
+- **代码块里按 ⌘A 取的是这段代码**，再按一次才是整篇笔记。
+- **PDF 就是系统打印对话框**作用在渲染后的文档上。没有第二个排版器，所以导出的页面不可能和你编辑时看到的不一致。
+
+## 知识
+
+### LLM wiki
+
+给把原始素材放在 `raw/` 下的工作区用：导入一个文件、就某个题目生成、检查结果、提问。走你在「设置 → LLM」里配的 OpenAI 兼容端点。工作区窗口和 CLI socket 都能用。
+
+### 记忆
+
+两层，而这个区分就是整个功能的骨架：
+
+- **素材**是发生过的事——一条决定、一个发现、一段对话——原样存着，带出处，不代表任何判断。
+- **结论**是你从素材里读出的意思。它引用素材，先以候选存在，只有被采纳、并通过门禁（要有支持证据、且没有挂着的反例）之后，才会进入 agent 的上下文。
+
+打开它需要一次联网：面板会把嵌入模型（`minishlab/potion-multilingual-128M`）下载到 `~/.loam/models/`。写入和语义检索都要用它，而且**没有降级模式**——没有模型时写入会被拒绝，而不是悄悄退化成关键词匹配。下载完之后完全离线运行。
+
+你自己用记忆，不需要装别的东西。让 Claude Code / Codex / Cursor 读到它是另一件事，需要你主动去装（记忆 → Agent 集成）：它会写入一个技能、若干 hook，以及一个指向随包 `loam-mcp` 的 MCP server。
+
+完整说明见 [docs/memory-usage.md](docs/memory-usage.md)。
+
+**如实说明当前状态**：记忆库、schema 和整条素材/结论路径都已实现并有测试覆盖，但**从未在真实嵌入模型下端到端跑过**。要用它，第一步就是下载模型并存一条素材。
+
+## 外观
+
+十个内置主题——浅色三个（系统浅色、纸感、石墨）加两个（白昼，对比度拉满；青瓷，冷调但不是灰），深色三个（系统深色、午夜、墨蓝）加两个（暖褐，不含蓝调的深色；曜石，近黑且对比最高）——以及**跟随系统**。
+
+标题栏上那个衣服图标打开外观，在那里还可以**自己做一个主题**：十个颜色，每个都从当前屏幕上的主题起步，保存成 `~/.loam/themes/` 里一份普通的 `.css` 文件。那份文件写的是和手写主题同一套公开契约（`--mdx-theme-*`，见 [docs/loopx/specs/theme.md](docs/loopx/specs/theme.md)），由同一个解析器读回来——所以应用里做的主题能用编辑器改，手写的主题也能在应用里打开。主题是数据：选择器、`@import`、`url()` 一律不会被提取。
+
+## 东西都放在哪
+
+| 路径 | 内容 |
+| --- | --- |
+| `~/.loam/state.json` | 窗口尺寸、标签页、栏宽、文件树盯着哪个文件夹 |
+| `~/.loam/drafts/` | 未保存的正文，纯文本；保存后删除，过期 30 天清理 |
+| `~/.loam/themes/` | 你自己的主题 |
+| `~/.loam/models/` | 嵌入模型 |
+| `~/.loam/memory/palace.db` | 一个记忆库服务所有工作区，按项目区分 |
+| `~/.loam/assets/` | 没有更好去处的图片的兜底位置 |
+| `~/.loam/cli.sock` | `loam-cli` 说话用的 socket |
+| `<工作区>/.assets/` | 粘进笔记的图片 |
+| `<工作区>/.loam/` | 这个工作区的记忆配置 |
+
+记忆跟着机器走，不跟着仓库走：把笔记 clone 到别处不会把记忆带过去，要带就导出一份备份包。
+
+## CLI 与 MCP
+
+`loam-cli` 通过 `~/.loam/cli.sock` 驱动正在运行的工作区窗口：
 
 ```bash
-loam-cli new
-loam-cli list
-loam-cli open <path>
-loam-cli content [--tab <id>]
-loam-cli selection [--tab <id>]
-loam-cli insert [--tab <id>] <text>
-loam-cli save [--tab <id>]
-loam-cli focus [--tab <id>]
-loam-cli close [--tab <id>] [--force]
-loam-cli create-file <dir> [name]
-loam-cli create-folder <dir> <name>
-loam-cli rename <path> <new-name>
-loam-cli llm-wiki status
-loam-cli llm-wiki ingest <raw-path>
-loam-cli llm-wiki digest --title "..." <prompt...>
-loam-cli llm-wiki lint [--json]
-loam-cli llm-wiki query [--json] <question...>
-loam-cli llm-wiki search <query...>
-loam-cli memory status [--json]
-loam-cli memory init
-loam-cli memory repair [--rebuild-index]
-loam-cli memory index rebuild
-loam-cli memory thread save --source manual --title "..." --file <path>
-loam-cli memory add --title "..." --body "..."
-loam-cli memory recall [--json] <query...>
-loam-cli memory working get
-loam-cli memory inbox list
-loam-cli memory inbox accept <inbox-id>
-loam-cli memory distill --thread <thread-id>
-loam-cli memory capture import --source codex --file <path>
-loam-cli memory promote <thread-id|memory-id|path>
-loam-cli memory agent setup [--all|--codex|--claude|--cursor] [--no-hooks] [--dry-run]
-loam-cli memory export --output <dir>
-loam-cli memory import --input <dir> --dry-run
-loam-cli memory --root <workspace> status
-loam-cli serve --workspace <workspace> --port 14243
-loam-mcp --workspace <workspace>
+loam-cli new | list | open <路径> | focus | save | close
+loam-cli content | selection | insert <文本>
+loam-cli create-file <目录> [名字] | create-folder <目录> <名字> | rename <路径> <名字>
+loam-cli llm-wiki status | ingest <raw 路径> | digest --title "..." <提示...>
+loam-cli llm-wiki lint | query <问题...> | search <关键词...>
+loam-cli serve --workspace <工作区> --port 14243
 ```
 
-Memory 命令管理 `memory/` 和 `.loam/` 下的 Markdown 原生记忆记录。它们可以通过当前 Workspace Mode socket 运行，也可以使用 `loam-cli memory --root <workspace> ...` 无界面运行。
+记忆还可以脱离窗口、直接对着一个工作区跑：
 
-正式打包会随应用带上 `loam-cli` 和 `loam-mcp` sidecar。Codex、Claude、Cursor 的 Agent 集成需要用户在 Memory Settings 面板或 `loam-cli memory --root <workspace> agent setup ...` 中主动配置。
+```bash
+loam-cli memory --root <工作区> init | status | doctor | model | reindex
+loam-cli memory --root <工作区> add --title "..." --body "..." | show | list | delete
+loam-cli memory --root <工作区> search | context | brief | recall <查询...>
+loam-cli memory --root <工作区> distill | gate | adopt | demote | promote
+loam-cli memory --root <工作区> capture | legacy-import | export | import
+loam-cli memory --root <工作区> agent setup [--all|--claude|--codex|--cursor] [--dry-run]
+```
 
-Memory 的完整使用说明见 [docs/memory-usage.md](docs/memory-usage.md)。
+每条命令自己的 `--help` 才是准的，上面这份是地图不是契约。给 agent 用的 MCP：
 
-LLM Wiki 的 CLI 仍然只通过 socket 工作，并始终针对当前 Workspace Mode root。只有 Memory 命令支持 `--root` 无界面运行。
+```bash
+loam-mcp --workspace <工作区>
+```
+
+打包后的应用把 `loam-cli` 和 `loam-mcp` 作为 sidecar 带在
+`/Applications/Loam.app/Contents/MacOS/` 里。
 
 ## 构建
 
-### 桌面开发
-
 ```bash
 npm install
-npx tauri dev
+npx tauri dev          # 桌面端，附带渲染层的开发服务器
+npm run dev            # 只起渲染层，用于调 UI——它不是一个 Web 产品
+npx tauri build        # 产出 .app 与 .dmg
+npm run install:local  # 把构建好的应用拷进 /Applications 并重新签名
 ```
 
-Tauri 会自动启动 Next.js 渲染层开发服务。
-
-### 渲染层调试
-
-```bash
-npm run dev
-```
-
-该命令只启动 Next.js renderer。在浏览器中打开 `http://localhost:3000` 只适合调试 UI，不是独立 Web 产品入口，也不能使用文件夹选择、文件系统命令、LLM Wiki 后端命令和本地 CLI socket 等桌面能力。
-
-### 原生目标
-
-macOS 是当前 MVP 支持的原生目标。
-
-```bash
-npm install
-npx tauri build
-```
+往 `app/globals.css` 里加主题需要先清渲染层缓存——`rm -rf .next`——因为 Turbopack 会在热更新时重新输出改过的规则，但**不会**重新解析声明调色板用的 `@plugin`。
 
 ## 验证
 
 ```bash
 npm run lint
 npm run test
+npm run audit:editor:boundaries
 cd src-tauri && cargo test
 ```
 
+其中边界审计值得知道：如果产品代码直接 import 了 Milkdown、ProseMirror 或 CodeMirror，查询了编辑器私有 DOM，或者深度 import 了编辑器包，它就会失败。编辑器只通过一个入口和一套钉住的命令词汇表对外，这正是它底层的编辑器能被整个换掉、而产品层毫无察觉的原因。
+
+## 架构
+
+- **前端**——Next.js 16、React 19、TypeScript、Tailwind CSS 4 + daisyUI
+- **桌面外壳**——Tauri 2、Rust
+- **编辑器**——可视面用 Milkdown/ProseMirror，源码面用 CodeMirror，两者藏在 `packages/mdx-editor/` 的同一个适配器后面；Markdown 是唯一被持久化的形态
+- **高亮**——Prism
+- **记忆**——mempal，一个内嵌库，自带 SQLite schema
+- **测试**——前端用 Vitest，Rust 侧用 `cargo test`
+
+前端拥有工作区状态、标签页、大纲解析、栏宽和编辑器集成。Rust 拥有文件系统访问、应用状态、图片资源、废纸篓、CLI socket、LLM wiki 流水线和记忆库。
+
+## 范围
+
+只支持 macOS。每个工作区一个根目录。没有 Web 产品、没有 Quick Look 扩展、没有自动更新、不搜索 PDF 与图片内部的文字。
+
 ## 许可
 
-本仓库中的应用层、辅助库和自研 Markdown 编辑器内核均使用 MIT 许可；见 [LICENSE](LICENSE)。
+MIT，见 [LICENSE](LICENSE)。
