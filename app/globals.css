@@ -4,6 +4,15 @@
     themes: false;
 }
 
+/*
+ * Adding a theme below needs the dev server's cache cleared — `rm -rf .next` —
+ * before it appears. Turbopack re-emits edited rules on a hot reload but does not
+ * re-resolve `@plugin` invocations, so a newly declared palette compiles to
+ * nothing and the theme looks broken rather than absent. A production build is
+ * unaffected, and `features/workspace/lib/themes.test.ts` only reads this file's
+ * text, so nothing else will tell you.
+ */
+
 @plugin "daisyui/theme" {
     name: "light";
     default: true;
@@ -93,6 +102,55 @@
 }
 
 /*
+ * 白昼 — pure white and black at the highest contrast this palette can carry,
+ * for bright rooms and for anyone who wants the letters to stop being grey.
+ */
+@plugin "daisyui/theme" {
+    name: "daylight";
+    --color-accent: #0a2e8a;
+    --color-accent-content: #ffffff;
+    --color-base-100: #ffffff;
+    --color-base-200: #f0f1f2;
+    --color-base-300: #a7adb3;
+    --color-base-content: #000000;
+    --color-primary: #0b3ecc;
+    --color-primary-content: #ffffff;
+    --color-neutral: #e4e6e8;
+    --color-neutral-content: #16181a;
+    --color-info: #0a3fb0;
+    --color-info-content: #082e80;
+    --color-warning: #7a4400;
+    --color-error: #a80000;
+    --color-error-content: #ffffff;
+    --depth: 0;
+}
+
+/*
+ * 青瓷 — a light that is cool without being grey. Low-saturation green sits
+ * furthest from the eye's fatigue, and the greys here are the only other option
+ * for someone who does not want warm paper.
+ */
+@plugin "daisyui/theme" {
+    name: "celadon";
+    --color-accent: #3a7a5f;
+    --color-accent-content: #ffffff;
+    --color-base-100: #f8faf8;
+    --color-base-200: #e9f1ea;
+    --color-base-300: #cedcd2;
+    --color-base-content: #1f2b25;
+    --color-primary: #2e6a52;
+    --color-primary-content: #ffffff;
+    --color-neutral: #e1eae3;
+    --color-neutral-content: #3a463f;
+    --color-info: #226b5c;
+    --color-info-content: #16564a;
+    --color-warning: #856612;
+    --color-error: #a54040;
+    --color-error-content: #ffffff;
+    --depth: 0;
+}
+
+/*
  * 午夜 — near-black for dark rooms and OLED panels.
  */
 @plugin "daisyui/theme" {
@@ -135,6 +193,55 @@
     --color-warning: #d9a441;
     --color-error: #d97066;
     --color-error-content: #10141c;
+    --depth: 0;
+}
+
+/*
+ * 暖褐 — a dark with no blue in it. Every other dark theme here is neutral or
+ * cool, and blue light at midnight is the thing people turn a dark theme on to
+ * get away from.
+ */
+@plugin "daisyui/theme" {
+    name: "cocoa";
+    --color-accent: #dcb894;
+    --color-accent-content: #241d19;
+    --color-base-100: #241d19;
+    --color-base-200: #1b1512;
+    --color-base-300: #3b302a;
+    --color-base-content: #eee5dd;
+    --color-primary: #c98d58;
+    --color-primary-content: #241d19;
+    --color-neutral: #2f2621;
+    --color-neutral-content: #d6cbc2;
+    --color-info: #e0a86a;
+    --color-info-content: #f0c79a;
+    --color-warning: #d9a13a;
+    --color-error: #d97066;
+    --color-error-content: #241d19;
+    --depth: 0;
+}
+
+/*
+ * 曜石 — near-black like 午夜, and the opposite of it: that one lowers contrast
+ * for a dark room, this one raises it as far as it goes, for legibility.
+ */
+@plugin "daisyui/theme" {
+    name: "obsidian";
+    --color-accent: #ffffff;
+    --color-accent-content: #000000;
+    --color-base-100: #0d0d10;
+    --color-base-200: #000000;
+    --color-base-300: #4b4b55;
+    --color-base-content: #ffffff;
+    --color-primary: #66a3ff;
+    --color-primary-content: #000510;
+    --color-neutral: #1b1b20;
+    --color-neutral-content: #f2f2f7;
+    --color-info: #8cbcff;
+    --color-info-content: #b8d6ff;
+    --color-warning: #ffc53d;
+    --color-error: #ff7062;
+    --color-error-content: #000510;
     --depth: 0;
 }
 

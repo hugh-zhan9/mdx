@@ -54,6 +54,18 @@ export const BUILT_IN_THEMES: readonly ThemeDefinition[] = [
         appearance: "light",
     },
     {
+        id: "daylight",
+        name: "白昼",
+        description: "纯白与纯黑，最高对比度，强光环境与需要更清晰字形时用。",
+        appearance: "light",
+    },
+    {
+        id: "celadon",
+        name: "青瓷",
+        description: "低饱和青绿浅色，不想要暖纸也不想要灰的选择。",
+        appearance: "light",
+    },
+    {
         id: "dark",
         name: "深色",
         description: "macOS 系统深色，柔和的黑与系统蓝。",
@@ -69,6 +81,18 @@ export const BUILT_IN_THEMES: readonly ThemeDefinition[] = [
         id: "ink",
         name: "墨蓝",
         description: "蓝黑基调，低对比，长时间阅读不刺眼。",
+        appearance: "dark",
+    },
+    {
+        id: "cocoa",
+        name: "暖褐",
+        description: "不含蓝调的暖黑，深夜久坐时比冷色深色更松弛。",
+        appearance: "dark",
+    },
+    {
+        id: "obsidian",
+        name: "曜石",
+        description: "近黑配纯白正文，与午夜相反：把对比度拉到最高。",
         appearance: "dark",
     },
 ] as const;

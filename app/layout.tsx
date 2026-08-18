@@ -21,7 +21,7 @@ export const metadata: Metadata = {
  */
 const themeInitScript = `
 (function () {
-  var DARK = { dark: 1, midnight: 1, ink: 1 };
+  var DARK = { dark: 1, midnight: 1, ink: 1, cocoa: 1, obsidian: 1 };
   var read = function () {
     try { return localStorage.getItem("themePreference") || localStorage.getItem("theme") || "system"; } catch (_) { return "system"; }
   };
