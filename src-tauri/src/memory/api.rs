@@ -61,6 +61,16 @@ pub struct StoredItem {
     /// Present on conclusions: candidate, promoted, demoted, retired.
     pub status: Option<String>,
     pub excerpt: String,
+    /// Conclusions only: the material this stands on.
+    ///
+    /// Carried so a conclusion can be shown with what it was drawn from. The ids
+    /// are enough: the panel fetches a piece of material when someone opens it,
+    /// rather than every list read paying for text nobody looked at.
+    pub supporting_refs: Vec<String>,
+    /// Conclusions only: what was checked before it was adopted.
+    pub verification_refs: Vec<String>,
+    /// Conclusions only: what stands against it, and blocks promotion.
+    pub counterexample_refs: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
@@ -69,6 +79,14 @@ pub struct ListFilter {
     /// `material`, `conclusion`, or unset for both.
     #[serde(default)]
     pub kind: Option<String>,
+    /// Every project in the library rather than this workspace's own.
+    ///
+    /// One library serves every workspace, and the split by project is this
+    /// layer's, not the store's — so answering "everything I have ever stored" is
+    /// a matter of not applying it. Off by default: a workspace asking about its
+    /// own memory is the common case, and cross-project reading is a decision.
+    #[serde(default)]
+    pub all_projects: bool,
     #[serde(default)]
     pub status: Option<String>,
     #[serde(default)]
@@ -261,6 +279,8 @@ pub fn import_path(root: &Path, path: &Path) -> Result<IngestOutcome, WorkspaceE
 }
 
 pub fn list(root: &Path, filter: ListFilter) -> Result<Vec<StoredItem>, WorkspaceError> {
+    // Resolved even when every project is asked for, so a first read still binds
+    // the workspace to a project rather than leaving it unbound.
     let wing = wing_for(root)?;
     let limit = filter.limit.unwrap_or(200);
 
@@ -281,7 +301,7 @@ pub fn list(root: &Path, filter: ListFilter) -> Result<Vec<StoredItem>, Workspac
             else {
                 continue;
             };
-            if drawer.wing != wing {
+            if !filter.all_projects && drawer.wing != wing {
                 continue;
             }
             let kind = match drawer.memory_kind {
@@ -306,6 +326,9 @@ pub fn list(root: &Path, filter: ListFilter) -> Result<Vec<StoredItem>, Workspac
                 statement: drawer.statement.clone(),
                 status,
                 excerpt: excerpt(&drawer.content),
+                supporting_refs: drawer.supporting_refs.clone(),
+                verification_refs: drawer.verification_refs.clone(),
+                counterexample_refs: drawer.counterexample_refs.clone(),
             });
 
             if items.len() >= limit {
@@ -350,6 +373,9 @@ pub fn show(drawer_id: &str) -> Result<StoredItem, WorkspaceError> {
             status: drawer.status.as_ref().map(status_slug),
             // The whole text, not an excerpt: this is the "open it" call.
             excerpt: drawer.content.clone(),
+            supporting_refs: drawer.supporting_refs.clone(),
+            verification_refs: drawer.verification_refs.clone(),
+            counterexample_refs: drawer.counterexample_refs.clone(),
         })
     })
 }

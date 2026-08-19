@@ -200,6 +200,9 @@ enum MemoryCommand {
         status: Option<String>,
         #[arg(long)]
         limit: Option<usize>,
+        /// Every project in the library, not just this workspace's own.
+        #[arg(long)]
+        all_projects: bool,
     },
     /// Hide one entry from every read path.
     Delete {
@@ -536,10 +539,12 @@ fn request_from_memory_command(command: &MemoryCommand) -> io::Result<CliRequest
             kind,
             status,
             limit,
+            all_projects,
         } => CliRequest::MemoryList {
             kind: kind.clone(),
             status: status.clone(),
             limit: *limit,
+            all_projects: *all_projects,
         },
         MemoryCommand::Delete { drawer_id } => CliRequest::MemoryDelete {
             drawer_id: trim_required_value(drawer_id, "drawer_id")?,
@@ -1865,6 +1870,23 @@ mod tests {
                 kind: Some("conclusion".to_string()),
                 status: Some("candidate".to_string()),
                 limit: None,
+                all_projects: false,
+            }
+        );
+
+        // The whole library, which is a different question from this workspace's
+        // memory and so has to be asked for.
+        let across = Cli::try_parse_from([
+            "loam-cli", "memory", "list", "--all-projects",
+        ])
+        .unwrap();
+        assert_eq!(
+            request_from_command(&across.command).unwrap(),
+            CliRequest::MemoryList {
+                kind: None,
+                status: None,
+                limit: None,
+                all_projects: true,
             }
         );
 
@@ -2179,7 +2201,7 @@ mod tests {
         let summary = loam_lib::memory_agent_setup::render_agent_setup_summary(&changes, true);
         let skill = changes
             .iter()
-            .find(|change| change.path.ends_with(".codey/skills/loam-memory/SKILL.md"))
+            .find(|change| change.path.ends_with(".codex/skills/loam-memory/SKILL.md"))
             .expect("codex skill change");
         assert!(skill.contents.contains("## Agent-Time Memory Extraction"));
         // The skill has to teach the two layers, because an agent that thinks
@@ -2245,10 +2267,10 @@ mod tests {
             );
         }
         assert!(summary.contains("would_write"));
-        assert!(summary.contains(".codey/config.toml"));
+        assert!(summary.contains(".codex/config.toml"));
         assert!(summary.contains(".claude/hooks/hooks.json"));
         assert!(summary.contains(".cursor/hooks.json"));
-        assert!(!home.path().join(".codey/config.toml").exists());
+        assert!(!home.path().join(".codex/config.toml").exists());
     }
 
     #[test]
@@ -2295,7 +2317,7 @@ mod tests {
             assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
             assert!(error.to_string().contains("invalid memory agent 'unknown'"));
         }
-        assert!(!home.path().join(".codey/config.toml").exists());
+        assert!(!home.path().join(".codex/config.toml").exists());
         assert!(!home.path().join(".claude/CLAUDE.md").exists());
         assert!(!home.path().join(".cursor/rules/loam-memory.mdc").exists());
     }
@@ -2333,5 +2355,130 @@ mod tests {
         // The hook must not decide what a compressed conversation meant.
         assert!(!hook.contains("\"distill\""));
         assert!(!hook.contains("\"--accept\""));
+    }
+
+    #[test]
+    fn codex_setup_writes_where_codex_reads_and_keeps_the_rest_of_agents_md() {
+        // Two decisions, pinned. The install goes to `~/.codex` — it used to write
+        // `~/.codey`, a directory that exists on some machines, so nothing failed and
+        // the integration simply landed where the agent never looks. And AGENTS.md
+        // gets the same managed block CLAUDE.md gets, without disturbing whatever
+        // else is in the file: another tool's section stays, ours is replaceable.
+        let home = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let root_path = root.path().to_string_lossy().to_string();
+        fs::create_dir_all(home.path().join(".codex")).unwrap();
+        fs::write(
+            home.path().join(".codex/AGENTS.md"),
+            "# My own notes\n\n## mempal project memory\n\n1. Call `mempal_status`\n",
+        )
+        .unwrap();
+
+        let paths = loam_lib::memory_agent_setup::AgentSetupPaths {
+            home: home.path().to_path_buf(),
+            loam_cli: "/tmp/loam-cli".to_string(),
+            loam_mcp: "/tmp/loam-mcp".to_string(),
+            hook_script: home.path().join(".mdx-memory-precompact-hook.mjs"),
+        };
+        let targets = loam_lib::memory_agent_setup::AgentSetupTargets {
+            codex: true,
+            claude: false,
+            cursor: false,
+            hooks: true,
+        };
+        let apply = || {
+            let changes = loam_lib::memory_agent_setup::plan_memory_agent_setup(
+                &root_path,
+                &targets,
+                &paths,
+            )
+            .unwrap();
+            loam_lib::memory_agent_setup::apply_agent_setup_changes(&changes).unwrap();
+        };
+        apply();
+
+        assert!(home.path().join(".codex/skills/loam-memory/SKILL.md").exists());
+        assert!(!home.path().join(".codey").exists());
+        let config = fs::read_to_string(home.path().join(".codex/config.toml")).unwrap();
+        assert!(config.contains("[mcp_servers.loam-memory]"));
+
+        let agents = fs::read_to_string(home.path().join(".codex/AGENTS.md")).unwrap();
+        assert!(agents.contains("<!-- BEGIN LOAM MEMORY v1 -->"));
+        assert!(agents.contains("`loam-memory` MCP server"));
+        // Someone else's section, untouched.
+        assert!(agents.contains("## mempal project memory"));
+        assert!(agents.contains("# My own notes"));
+
+        // Installing twice replaces the block rather than stacking another copy.
+        apply();
+        let again = fs::read_to_string(home.path().join(".codex/AGENTS.md")).unwrap();
+        assert_eq!(again.matches("<!-- BEGIN LOAM MEMORY v1 -->").count(), 1);
+        assert_eq!(again.matches("## mempal project memory").count(), 1);
+
+        // And uninstalling takes only our block back out.
+        let removals = loam_lib::memory_agent_setup::plan_memory_agent_uninstall(
+            Some("codex"),
+            &paths,
+        )
+        .unwrap();
+        loam_lib::memory_agent_setup::apply_agent_setup_changes(&removals).unwrap();
+        let after = fs::read_to_string(home.path().join(".codex/AGENTS.md")).unwrap();
+        assert!(!after.contains("<!-- BEGIN LOAM MEMORY v1 -->"));
+        assert!(after.contains("## mempal project memory"));
+        assert!(after.contains("# My own notes"));
+    }
+
+    #[test]
+    fn doctor_reports_installed_after_installing() {
+        // The round trip nobody had checked: install all three agents, then ask the
+        // doctor about what was just written. Claude answered "not installed or
+        // configured" every time, because its hook check looked for two strings the
+        // writer never produces — `"hook"` (the file says `"hooks"`) and `"claude"`
+        // (the word appears unquoted, inside the command). So the panel's row stayed
+        // on 安装 after a successful install and nothing said why.
+        let home = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let root_path = root.path().to_string_lossy().to_string();
+        let paths = loam_lib::memory_agent_setup::AgentSetupPaths {
+            home: home.path().to_path_buf(),
+            loam_cli: "/tmp/loam-cli".to_string(),
+            loam_mcp: "/tmp/loam-mcp".to_string(),
+            hook_script: home.path().join(".mdx-memory-precompact-hook.mjs"),
+        };
+        let targets = loam_lib::memory_agent_setup::AgentSetupTargets {
+            codex: true,
+            claude: true,
+            cursor: true,
+            hooks: true,
+        };
+        let changes = loam_lib::memory_agent_setup::plan_memory_agent_setup(
+            &root_path,
+            &targets,
+            &paths,
+        )
+        .unwrap();
+        loam_lib::memory_agent_setup::apply_agent_setup_changes(&changes).unwrap();
+
+        let report = loam_lib::memory_agent_setup::memory_agent_doctor_for_home(
+            &root_path,
+            home.path(),
+        )
+        .unwrap();
+
+        for status in &report.statuses {
+            assert!(
+                status.installed,
+                "{} reported not installed right after being installed: {:?}",
+                status.agent_source, status
+            );
+        }
+        assert!(report.ok, "doctor not ok after install: {report:?}");
+        // And the hook version is read from what was written, rather than guessed.
+        let claude = report
+            .statuses
+            .iter()
+            .find(|status| status.agent_source == "claude")
+            .unwrap();
+        assert_eq!(claude.hook_version.as_deref(), Some("1"));
     }
 }

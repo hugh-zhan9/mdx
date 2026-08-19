@@ -317,53 +317,72 @@ async fn memory_import_bundle(
     .await
 }
 
+// These three read and write files under the home directory — agent config, skill
+// files, hook entries — and then run the doctor over what they wrote. Declared as
+// synchronous commands they did all of that on the main thread, which is the thread
+// that also delivers the reply to the webview: the window stopped repainting for
+// the duration and pressing 安装 looked like it did nothing at all. Same freeze as
+// `llm_wiki_lint`, same fix.
+
 #[tauri::command]
-fn memory_integration_status(
+async fn memory_integration_status(
     root_path: String,
 ) -> Result<Vec<memory_models::MemoryIntegrationStatus>, WorkspaceError> {
-    memory_agent_setup::memory_agent_status(root_path, None).map_err(|error| {
-        WorkspaceError::new(
-            "memory_integration_status_failed",
-            error.to_string(),
-        )
+    run_blocking_memory_task(move || {
+        memory_agent_setup::memory_agent_status(root_path, None).map_err(|error| {
+            WorkspaceError::new(
+                "memory_integration_status_failed",
+                error.to_string(),
+            )
+        })
     })
+    .await
 }
 
 #[tauri::command]
-fn memory_integration_repair(
+async fn memory_integration_repair(
     root_path: String,
     agent: String,
 ) -> Result<memory_models::MemoryDoctorReport, WorkspaceError> {
-    memory_agent_setup::memory_agent_repair(
-        root_path.clone(),
-        memory_agent_setup::MemoryAgentCommandRequest {
-            agent: Some(agent.clone()),
-            dry_run: false,
-            keep_data: false,
-        },
-    )
-    .map_err(|error| {
-        WorkspaceError::new(
-            "memory_integration_repair_failed",
-            error.to_string(),
+    run_blocking_memory_task(move || {
+        memory_agent_setup::memory_agent_repair(
+            root_path.clone(),
+            memory_agent_setup::MemoryAgentCommandRequest {
+                agent: Some(agent.clone()),
+                dry_run: false,
+                keep_data: false,
+            },
         )
-    })?;
-    memory_agent_setup::memory_agent_doctor(root_path, Some(agent)).map_err(|error| {
-        WorkspaceError::new(
-            "memory_integration_repair_failed",
-            error.to_string(),
+        .map_err(|error| {
+            WorkspaceError::new(
+                "memory_integration_repair_failed",
+                error.to_string(),
+            )
+        })?;
+
+        memory_agent_setup::memory_agent_doctor(root_path, Some(agent)).map_err(
+            |error| {
+                WorkspaceError::new(
+                    "memory_integration_repair_failed",
+                    error.to_string(),
+                )
+            },
         )
     })
+    .await
 }
 
 #[tauri::command]
-fn memory_agent_setup(
+async fn memory_agent_setup(
     root_path: String,
     request: memory_agent_setup::MemoryAgentSetupRequest,
 ) -> Result<memory_agent_setup::MemoryAgentSetupResult, WorkspaceError> {
-    memory_agent_setup::memory_agent_setup(root_path, request).map_err(|error| {
-        WorkspaceError::new("memory_agent_setup_failed", error.to_string())
+    run_blocking_memory_task(move || {
+        memory_agent_setup::memory_agent_setup(root_path, request).map_err(|error| {
+            WorkspaceError::new("memory_agent_setup_failed", error.to_string())
+        })
     })
+    .await
 }
 
 #[cfg(test)]

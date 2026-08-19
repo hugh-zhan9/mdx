@@ -343,8 +343,13 @@ pub fn plan_memory_agent_setup(
     }
 
     if targets.codex {
+        // `~/.codex`, which is where Codex reads: its own `AGENTS.md` is the file
+        // with real content in it, and it is where mempal registered its MCP before
+        // this. The install used to write `~/.codey` — a directory that also exists
+        // on some machines, so nothing failed; the integration simply landed
+        // somewhere the agent never looks.
         for skill_root in [
-            paths.home.join(".codey/skills/loam-memory/SKILL.md"),
+            paths.home.join(".codex/skills/loam-memory/SKILL.md"),
             paths.home.join(".agents/skills/loam-memory/SKILL.md"),
         ] {
             changes.push(AgentSetupChange {
@@ -355,11 +360,25 @@ pub fn plan_memory_agent_setup(
             });
         }
         changes.push(AgentSetupChange {
-            path: paths.home.join(".codey/config.toml"),
+            path: paths.home.join(".codex/config.toml"),
             contents: update_codex_config(
-                &paths.home.join(".codey/config.toml"),
+                &paths.home.join(".codex/config.toml"),
                 &paths.loam_mcp,
                 root_path,
+            )?,
+            executable: false,
+            action: AgentSetupChangeAction::Write,
+        });
+        // The instruction block, the same way Claude gets one. Without it a
+        // correctly registered MCP server is a set of tools nothing tells the agent
+        // to reach for — which is the difference this integration had against
+        // mempal, whose own block sat in this file until it was switched off.
+        // Everything outside our markers is preserved, including that block.
+        changes.push(AgentSetupChange {
+            path: paths.home.join(".codex/AGENTS.md"),
+            contents: update_agent_markdown_block(
+                &paths.home.join(".codex/AGENTS.md"),
+                &codex_memory_block(root_path, &paths.loam_cli),
             )?,
             executable: false,
             action: AgentSetupChangeAction::Write,
@@ -454,15 +473,22 @@ pub fn plan_memory_agent_uninstall(
 
     if selected.iter().any(|agent| agent == "codex") {
         for path in [
-            paths.home.join(".codey/skills/loam-memory/SKILL.md"),
+            paths.home.join(".codex/skills/loam-memory/SKILL.md"),
             paths.home.join(".agents/skills/loam-memory/SKILL.md"),
         ] {
             push_remove_file_contents_if_exists(&mut changes, path)?;
         }
         push_if_changed(
             &mut changes,
-            paths.home.join(".codey/config.toml"),
+            paths.home.join(".codex/config.toml"),
             |path| remove_codex_config(path),
+        )?;
+        // Only our own block comes out of AGENTS.md; anything else in the file,
+        // including another tool's section, is left exactly as it was.
+        push_if_changed(
+            &mut changes,
+            paths.home.join(".codex/AGENTS.md"),
+            remove_agent_markdown_block,
         )?;
     }
 
@@ -580,14 +606,15 @@ fn inspect_codex_status(
     errors: &mut Vec<String>,
     warnings: &mut Vec<String>,
 ) -> MemoryIntegrationStatus {
-    let config = read_status_file(&home.join(".codey/config.toml"), "codex", errors);
+    let config = read_status_file(&home.join(".codex/config.toml"), "codex", errors);
+    let agents_md = read_status_file(&home.join(".codex/AGENTS.md"), "codex", errors);
     let agents_skill = read_status_file(
         &home.join(".agents/skills/loam-memory/SKILL.md"),
         "codex",
         errors,
     );
-    let codey_skill = read_status_file(
-        &home.join(".codey/skills/loam-memory/SKILL.md"),
+    let codex_skill = read_status_file(
+        &home.join(".codex/skills/loam-memory/SKILL.md"),
         "codex",
         errors,
     );
@@ -596,9 +623,14 @@ fn inspect_codex_status(
     });
     let skill_ok = agents_skill
         .as_deref()
-        .or(codey_skill.as_deref())
+        .or(codex_skill.as_deref())
         .is_some_and(|contents| contents.contains("name: loam-memory"));
-    build_status("codex", config_ok && skill_ok, None, warnings)
+    // Checked because it is now written: an install without the block leaves the
+    // agent with tools and no instruction to use them.
+    let block_ok = agents_md
+        .as_deref()
+        .is_some_and(|contents| contents.contains(LOAM_MEMORY_BLOCK_BEGIN));
+    build_status("codex", config_ok && skill_ok && block_ok, None, warnings)
 }
 
 fn inspect_claude_status(
@@ -620,16 +652,53 @@ fn inspect_claude_status(
     let skill_ok = skill
         .as_deref()
         .is_some_and(|contents| contents.contains("name: loam-memory"));
-    let hook_ok = hooks.as_deref().is_some_and(|contents| {
-        contents.contains("\"loam-memory\"")
-            && contents.contains("\"hook\"")
-            && contents.contains("\"claude\"")
-            && contents.contains(root_path)
+    // Parsed rather than grepped. This used to look for four strings in the file,
+    // two of which nothing has ever written: the hook file says `"hooks"` and never
+    // `"hook"`, and the word claude appears only inside the command line, unquoted.
+    // So claude reported "not installed or configured" no matter what had just been
+    // written for it — the row in the panel stayed on 安装 after a successful
+    // install, and `memory_agent_doctor` never came back ok.
+    let hook_entry = hooks
+        .as_deref()
+        .and_then(|contents| serde_json::from_str::<serde_json::Value>(contents).ok())
+        .and_then(|value| {
+            value
+                .get("hooks")
+                .and_then(|hooks| hooks.get("PreCompact"))
+                .and_then(|entries| entries.as_array())
+                .and_then(|entries| {
+                    entries
+                        .iter()
+                        .find(|entry| is_loam_memory_json_entry(entry))
+                        .cloned()
+                })
+        });
+    let hook_ok = hook_entry.as_ref().is_some_and(|entry| {
+        entry
+            .get("hooks")
+            .and_then(|commands| commands.as_array())
+            .is_some_and(|commands| {
+                commands.iter().any(|command| {
+                    command
+                        .get("command")
+                        .and_then(|command| command.as_str())
+                        .is_some_and(|command| {
+                            command.contains("hook claude") && command.contains(root_path)
+                        })
+                })
+            })
     });
+    let hook_version = hook_entry
+        .as_ref()
+        .and_then(|entry| entry.get("version"))
+        .and_then(|version| version.as_str())
+        .map(str::to_owned);
     build_status(
         "claude",
         block_ok && skill_ok && hook_ok,
-        hook_ok.then(|| LOAM_MEMORY_HOOK_VERSION.to_string()),
+        hook_ok.then(|| {
+            hook_version.unwrap_or_else(|| LOAM_MEMORY_HOOK_VERSION.to_string())
+        }),
         warnings,
     )
 }
@@ -1244,6 +1313,12 @@ CLI fallback:
 fn claude_memory_block(root_path: &str, loam_cli: &str) -> String {
     format!(
         "## Loam Memory\nWhen the user asks to remember, save, recall, search, persist decisions, or load prior context, use the `loam-memory` skill and the `loam-memory` MCP server.\n\nUse `memory_recall` for task context and cite what you use. Store what happened with `memory_add` during the turn it happens; draw conclusions from stored material with `memory_distill`, which produces a candidate that only a person can adopt. Do not wait for background capture or pre-compact hooks before preserving something confirmed. Ask before storing anything sensitive or uncertain — capture is one-way. Pre-compact hooks capture and accept distilled memory before compression; the installed Claude hook command is `{loam_cli} memory --root \"{root_path}\" hook claude PreCompact`. Full thread archival is separate and should only be used when preserving original conversation text matters. Do not store secrets or promote memory into wiki/raw material unless the user explicitly asks."
+    )
+}
+
+fn codex_memory_block(root_path: &str, loam_cli: &str) -> String {
+    format!(
+        "## Loam Memory\nWhen the user asks to remember, save, recall, search, persist decisions, or load prior context, use the `loam-memory` skill and the `loam-memory` MCP server.\n\nUse `memory_recall` for task context and cite what you use. Store what happened with `memory_add` during the turn it happens; draw conclusions from stored material with `memory_distill`, which produces a candidate that only a person can adopt. Ask before storing anything sensitive or uncertain — capture is one-way. There is no pre-compaction hook on this side, so preserve anything confirmed when it happens rather than waiting for one. The library for this workspace is `{root_path}`; the same reads and writes are available from the command line as `{loam_cli} memory`. Do not store secrets or promote memory into wiki/raw material unless the user explicitly asks."
     )
 }
 

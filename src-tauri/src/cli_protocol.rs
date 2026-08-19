@@ -97,6 +97,8 @@ pub enum CliRequest {
         drawer_id: String,
     },
     MemoryList {
+        #[serde(default)]
+        all_projects: bool,
         /// `material`, `conclusion`, or unset for both.
         #[serde(default)]
         kind: Option<String>,
@@ -336,12 +338,14 @@ pub fn run_memory_request(root: &Path, request: CliRequest) -> CliResponse {
             kind,
             status,
             limit,
+            all_projects,
         } => memory_payload(api::list(
             root,
             api::ListFilter {
                 kind,
                 status,
                 limit,
+                all_projects,
             },
         )),
         CliRequest::MemoryDelete { drawer_id } => memory_payload(api::delete(&drawer_id)),
