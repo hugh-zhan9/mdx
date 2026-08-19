@@ -3,9 +3,15 @@
 import { RefreshCw } from "lucide-react";
 import { type FormEvent, useCallback, useState } from "react";
 import {
-  Card,
   EmptyState,
+  PanelScroll,
+  PanelViewport,
+  HairlineItem,
   IconButton,
+  LogBlock,
+  PanelSection,
+  PanelStrip,
+  PanelText,
   PrimaryTextControlButton,
   StatList,
   TextArea,
@@ -45,6 +51,11 @@ function formatPanelProgressMessage(message: string) {
     `... 已截断，完整进度共 ${lines.length} 行、${message.length} 个字符。`,
   ].join("\n");
 }
+
+/** What each section is for, in words the heading alone does not carry. */
+const ASK_HINT = "按当前 wiki 的内容回答，并列出它引用到的页面。";
+const DIGEST_HINT = "把一个主题写成一篇综述，存成 wiki 里的一页 Markdown。";
+const NEEDS_LLM = "需要先配置 LLM";
 
 /** What the two secondary actions do, in words that say what pressing them means. */
 const SECONDARY_ACTION_TITLES: Record<string, string> = {
@@ -142,12 +153,16 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
   // itself in place.
   const askDisabledHint = askMode?.disabled ? "需要先配置 LLM" : null;
   const digestDisabledHint = digestMode?.disabled ? "需要先配置 LLM" : null;
-  const showStatusProgress = Boolean(panelMessage);
   const queryDisabled =
     queryActionsDisabled ||
     status?.mode !== "llmWiki" ||
     isQuerying ||
     question.trim().length === 0;
+  /**
+   * Nothing to show two columns of yet: this workspace has no wiki at all, so the
+   * page is the one action that creates it.
+   */
+  const uninitialised = status?.mode === "ordinary";
   const digestDisabled =
     actionsDisabled ||
     status?.mode !== "llmWiki" ||
@@ -157,333 +172,346 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
   return (
     <section className="flex h-full min-h-0 flex-col bg-base-100">
       {/*
-       * Mode switch and refresh on one row, with no title: the toolbar button
-       * that opened this view already names it, and a heading directly under it
-       * spent a row saying something already on screen.
+       * What is happening right now, on one line under the chrome — the same strip
+       * the memory panel keeps, for the same reason: it is the fact that decides
+       * whether anything below it means anything yet.
        */}
-      <div className="flex min-w-0 items-center justify-between gap-3 border-b border-[var(--mdx-separator)] px-4 py-2">
-        <div className="min-w-0 truncate text-[13px] font-semibold text-base-content">
-          {viewModel.title}
-        </div>
-        <IconButton
-          label="刷新状态"
-          icon={<RefreshCw className={isLoading ? "animate-spin" : undefined} />}
-          onClick={() => void refresh()}
-          disabled={isLoading || isProcessing}
-        />
-      </div>
-
-      {/*
-       * Held to a readable measure rather than run to the window edge. These are
-       * forms and their results, not a dashboard: a question box stretched
-       * across two thousand pixels is harder to read, not roomier.
-       */}
-      {/* The same column the memory view uses, for the same reason. */}
-      <div
-        data-mdx-page-column=""
-        className="min-h-0 flex-1 overflow-auto px-4 py-3 text-xs"
-      >
-        <div className="mx-auto w-full max-w-3xl space-y-3">
-
-        {progress ? (
-          <Card className="min-w-0 space-y-1.5">
-            <div className="flex min-w-0 items-baseline justify-between gap-3">
-              <span className="text-[13px] font-semibold text-base-content">
-                正在处理 {progress.index}/{progress.total}
-              </span>
-              <span className="shrink-0 text-[11px] text-base-content/50">
-                已等待 {progress.elapsedSeconds} 秒
-              </span>
-            </div>
-            <div
-              className="min-w-0 truncate text-xs text-base-content/70"
-              title={progress.file}
-            >
-              {progress.file}
-            </div>
+      {progress || activeOperation ? (
+        <PanelStrip>
+          {progress ? (
             <StatList
+              singleLine
               items={[
+                {
+                  label: "正在处理",
+                  value: `${progress.index}/${progress.total}`,
+                },
                 { label: "已完成", value: progress.completed },
                 { label: "已失败", value: progress.failed },
+                { label: "已等待", value: `${progress.elapsedSeconds} 秒` },
+                {
+                  label: "当前",
+                  value: progress.file,
+                  title: progress.file,
+                },
               ]}
             />
-          </Card>
-        ) : null}
-
-        {activeOperation ? (
-          <div className="flex min-w-0 items-center gap-2 rounded-[var(--mdx-control-radius)] bg-[var(--mdx-card-bg)] p-2">
-            <div className="min-w-0 flex-1 truncate text-base-content/75">
-              {activeStageLabel ?? activeOperationLabel ?? "处理中"}
-            </div>
-            <button
-              type="button"
-              className="h-7 shrink-0 rounded-[var(--mdx-control-radius)] border border-[var(--mdx-field-border)] px-2.5 text-xs text-base-content/75 outline-none transition-colors hover:bg-base-content/6 hover:text-base-content focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 disabled:cursor-not-allowed disabled:text-base-content/35"
-              disabled={!activeOperationId}
-              onClick={() => void cancelActiveOperation()}
-            >
-              取消
-            </button>
-          </div>
-        ) : null}
-
-        <section className="space-y-3">
-            <div className="min-w-0">
-              <div className="truncate text-sm font-semibold text-base-content">
-                {viewModel.title}
-              </div>
-              {/* One row: six counts stacked into six lines said nothing more
-                  than six counts on one line, and pushed everything below the
-                  fold. */}
-              <StatList className="mt-1.5" items={viewModel.statusStats} />
-            </div>
-
-            {panelMessage ? (
-              <pre
-                data-testid="llm-wiki-progress"
-                className="max-h-72 overflow-auto whitespace-pre-wrap rounded-[var(--mdx-control-radius)] bg-[var(--mdx-card-bg)] p-2 font-[inherit] text-xs leading-relaxed text-base-content/75"
-              >
-                {panelMessage}
-              </pre>
-            ) : null}
-
-            {viewModel.emptyState ? (
-              <Card className="py-3">
-                <EmptyState
-                  title={viewModel.emptyState.title}
-                  description={viewModel.emptyState.description}
-                  actionLabel={emptyStateActionLabel}
-                  onAction={
-                    viewModel.emptyState.actionLabel === "配置 LLM"
-                      ? handleConfigure
-                      : handlePrimaryAction
-                  }
-                  actionDisabled={actionsDisabled}
-                />
-              </Card>
-            ) : (
-              <div className="flex justify-end">
-                <PrimaryTextControlButton
-                  disabled={actionsDisabled}
-                  onClick={handlePrimaryAction}
-                >
-                  {primaryActionLabel}
-                </PrimaryTextControlButton>
-              </div>
-            )}
-
-            {/*
-             * Named for what they do, with what they do underneath. They were two
-             * words — 检查, 图谱 — in a bare two-column grid, which read as labels
-             * rather than controls and said nothing about what pressing them meant.
-             */}
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {viewModel.secondaryActions.map((action) => (
-                <div
-                  key={action.id}
-                  className="flex min-w-0 items-center justify-between gap-2 rounded-[var(--mdx-control-radius)] bg-[var(--mdx-card-bg)] px-2.5 py-2"
-                >
-                  <div className="min-w-0">
-                    <div className="text-xs text-base-content/80">
-                      {SECONDARY_ACTION_TITLES[action.id]}
-                    </div>
-                    <div className="mt-0.5 text-[11px] leading-relaxed text-base-content/50">
-                      {SECONDARY_ACTION_HINTS[action.id]}
-                    </div>
-                  </div>
-                  <TextControlButton
-                    className="shrink-0"
-                    disabled={actionsDisabled || action.disabled}
-                    onClick={() =>
-                      action.id === "lint" ? void lint() : void graph()
-                    }
-                  >
-                    {activeOperation === action.id
-                      ? (activeOperationLabel ?? "进行中")
-                      : action.label}
-                  </TextControlButton>
-                </div>
-              ))}
-            </div>
-
-            {viewModel.failed.length > 0 ? (
-              <div className="space-y-2 rounded-[var(--mdx-control-radius)] bg-[var(--mdx-card-bg)] p-2">
-                <div className="text-xs font-semibold text-base-content/75">
-                  失败明细
-                </div>
-                <div
-                  data-testid="llm-wiki-failed-details"
-                  className="max-h-48 space-y-2 overflow-auto break-words pr-1"
-                >
-                  {viewModel.failed.map((failure) => (
-                    <div
-                      key={failure.path}
-                      className="min-w-0 border-t border-[var(--mdx-separator)] pt-2 first:border-t-0 first:pt-0"
-                      title={`${failure.path}\n${failure.reason}`}
-                    >
-                      <div className="break-all text-xs font-medium text-base-content/80">
-                        {failure.path}
-                      </div>
-                      <div className="mt-1 break-words text-xs leading-relaxed text-base-content/65">
-                        {failure.reason}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-        </section>
-
-        <section className="space-y-2 border-t border-[var(--mdx-separator)] pt-3">
-          <SectionHeading
-            title="提问"
-            hint={askDisabledHint}
-            onConfigure={handleConfigure}
-          />
-          <form className="space-y-2" onSubmit={handleQuerySubmit}>
-            {/* No field label: the section is called 提问, the box says what to
-                type in it, and a third word between them was what closed the gap
-                to the heading. */}
-            <label className="block text-xs text-base-content/70">
-              <TextArea
-                className="min-h-24 text-xs leading-relaxed"
-                value={question}
-                onChange={(event) => setQuestion(event.target.value)}
-                disabled={
-                  queryActionsDisabled || status?.mode !== "llmWiki"
-                }
-                placeholder="询问当前 Wiki"
-                rows={4}
-              />
-            </label>
-            <div className="flex justify-end">
-              <PrimaryTextControlButton type="submit" disabled={queryDisabled}>
-                {isQuerying ? "正在查询" : "查询 Wiki"}
-              </PrimaryTextControlButton>
-            </div>
-          </form>
-
-          {queryAnswer ? (
-            <Card className="space-y-2">
-              <div className="whitespace-pre-wrap break-words text-xs leading-relaxed text-base-content/80">
-                {queryAnswer.answer}
-              </div>
-              {queryAnswer.references.length > 0 ? (
-                <div className="space-y-1 border-t border-[var(--mdx-separator)] pt-2 text-base-content/70">
-                  {queryAnswer.references.map((reference) => (
-                    <div
-                      key={reference.path}
-                      className="min-w-0"
-                      title={`${reference.title}\n${reference.path}`}
-                    >
-                      <div className="truncate text-xs text-base-content/80">
-                        {reference.title}
-                      </div>
-                      <div className="truncate text-[11px] text-base-content/55">
-                        {reference.path}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              {queryAnswer.insufficientContext ? (
-                <div className="text-[11px] text-warning">
-                  当前 Wiki 内容不足以完整回答该问题。
-                </div>
-              ) : null}
-            </Card>
-          ) : null}
-        </section>
-
-        <section className="space-y-2 border-t border-[var(--mdx-separator)] pt-3">
-          <SectionHeading
-            title="生成综述"
-            hint={digestDisabledHint}
-            onConfigure={handleConfigure}
-          />
-          <form className="space-y-2" onSubmit={handleDigestSubmit}>
-            <label className="block space-y-1.5 text-xs text-base-content/70">
-              <span>文件名</span>
-              <TextInput
-                className="text-xs"
-                value={digestTitle}
-                onChange={(event) => setDigestTitle(event.target.value)}
-                disabled={
-                  actionsDisabled ||
-                  status?.mode !== "llmWiki" ||
-                  isProcessing
-                }
-                placeholder="project-summary"
-              />
-            </label>
-            <label className="block space-y-1.5 text-xs text-base-content/70">
-              <span>主题</span>
-              <TextArea
-                className="min-h-20 text-xs leading-relaxed"
-                value={digestPrompt}
-                onChange={(event) => setDigestPrompt(event.target.value)}
-                disabled={
-                  actionsDisabled ||
-                  status?.mode !== "llmWiki" ||
-                  isProcessing
-                }
-                placeholder="生成综述的问题或主题"
-                rows={3}
-              />
-            </label>
-            <div className="flex justify-end">
-              <PrimaryTextControlButton type="submit" disabled={digestDisabled}>
-                {activeOperation === "digest"
-                  ? (activeOperationLabel ?? "正在生成")
-                  : "生成综述"}
-              </PrimaryTextControlButton>
-            </div>
-          </form>
-        </section>
-
-        {panelMessage && !showStatusProgress ? (
-          <pre
-            data-testid="llm-wiki-progress"
-            className="max-h-72 overflow-auto whitespace-pre-wrap rounded-[var(--mdx-control-radius)] bg-[var(--mdx-card-bg)] p-2 font-[inherit] text-xs leading-relaxed text-base-content/75"
+          ) : (
+            <StatList
+              items={[
+                {
+                  label: "状态",
+                  value:
+                    activeStageLabel ?? activeOperationLabel ?? "处理中",
+                },
+              ]}
+            />
+          )}
+          {/*
+           * Always rendered while the strip is up, disabled when there is nothing to
+           * cancel. The ingest loop clears `activeOperation` in its per-file
+           * `finally` and sets it again on the next file, so a conditional button
+           * unmounted and remounted once per file — the strip changing width each
+           * time, which is what flickered.
+           */}
+          <TextControlButton
+            className="shrink-0"
+            disabled={!activeOperationId}
+            onClick={() => void cancelActiveOperation()}
           >
-            {panelMessage}
-          </pre>
-        ) : null}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/**
- * A section title, plus why the section cannot be used yet.
- *
- * This is what a disabled tab could never say. The two LLM-backed sections need
- * a configured provider; before that they used to be tabs that simply refused to
- * open, leaving the user to guess. Now they are visible, inert, and explain
- * themselves.
- */
-function SectionHeading({
-  title,
-  hint,
-  onConfigure,
-}: {
-  title: string;
-  hint: string | null;
-  onConfigure: () => void;
-}) {
-  return (
-    <div className="flex min-w-0 items-center justify-between gap-3">
-      <div className="text-[13px] font-semibold text-base-content">{title}</div>
-      {hint ? (
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="min-w-0 truncate text-[11px] text-base-content/50">
-            {hint}
-          </span>
-          <TextControlButton className="shrink-0" onClick={onConfigure}>
-            配置 LLM
+            取消
           </TextControlButton>
-        </div>
+        </PanelStrip>
       ) : null}
-    </div>
+
+      {/*
+       * Two columns: what the machine is doing, and what you are asking of it. The
+       * same shape as 素材与结论, for the same reason — the two halves are read
+       * together, and stacked in one column the answer to a question sat below a
+       * screenful of queue counts. One column under a narrow window, where two of
+       * 300px are worse than one of 600.
+       */}
+      {uninitialised ? (
+        <PanelScroll>
+          {/* Same optical centre as the memory panel's ask page. */}
+          <div className="flex min-h-full min-w-0 items-center justify-center px-6 pb-[16vh] pt-10">
+            <div className="w-full max-w-xl min-w-0">
+              <EmptyState
+                title={viewModel.emptyState?.title ?? "初始化 LLM Wiki"}
+                description={
+                  viewModel.emptyState?.description ??
+                  "创建 Wiki 目录后，可以用当前工作区内容提问或生成综述。"
+                }
+                actionLabel={emptyStateActionLabel}
+                onAction={
+                  viewModel.emptyState?.actionLabel === "配置 LLM"
+                    ? handleConfigure
+                    : handlePrimaryAction
+                }
+                actionDisabled={actionsDisabled}
+              />
+            </div>
+          </div>
+        </PanelScroll>
+      ) : (
+        <PanelViewport>
+          <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+            <section className="flex min-h-0 min-w-0 flex-col overflow-auto lg:border-r lg:border-[var(--mdx-separator)]">
+              <PanelSection
+                title={viewModel.title}
+                hint="raw 里的文件由后台逐个读成 wiki 页；下面的计数是那一轮的进度。"
+                actions={
+                  <>
+                    <PrimaryTextControlButton
+                      disabled={actionsDisabled}
+                      onClick={handlePrimaryAction}
+                    >
+                      {primaryActionLabel}
+                    </PrimaryTextControlButton>
+                    <IconButton
+                      label="刷新状态"
+                      icon={
+                        <RefreshCw
+                          className={isLoading ? "animate-spin" : undefined}
+                        />
+                      }
+                      onClick={() => void refresh()}
+                      disabled={isLoading || isProcessing}
+                    />
+                  </>
+                }
+              >
+                <StatList items={viewModel.statusStats} />
+
+                {/*
+                 * Named for what they do, with what they do underneath. They were two
+                 * words — 检查, 图谱 — in a bare two-column grid, which read as labels
+                 * rather than controls and said nothing about what pressing them meant.
+                 */}
+                <ul className="mt-6 flex min-w-0 flex-col">
+                  {viewModel.secondaryActions.map((action) => (
+                    <HairlineItem key={action.id}>
+                      <div className="flex min-w-0 items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <div className="text-[13.5px] font-medium leading-[1.75] text-base-content">
+                            {SECONDARY_ACTION_TITLES[action.id]}
+                          </div>
+                          <PanelText tone="meta">
+                            {SECONDARY_ACTION_HINTS[action.id]}
+                          </PanelText>
+                        </div>
+                        <TextControlButton
+                          outlined
+                          className="shrink-0"
+                          disabled={actionsDisabled || action.disabled}
+                          onClick={() =>
+                            action.id === "lint" ? void lint() : void graph()
+                          }
+                        >
+                          {activeOperation === action.id
+                            ? (activeOperationLabel ?? "进行中")
+                            : action.label}
+                        </TextControlButton>
+                      </div>
+                    </HairlineItem>
+                  ))}
+                </ul>
+
+                {/* The operation's own output belongs on this side: it is the
+                    machine reporting, not an answer to a question. */}
+                {/*
+                  * A fixed height, because this is the box a running operation
+                  * writes into: growing by a line as each file reports moved
+                  * everything below it, once per file.
+                  */}
+                {panelMessage ? (
+                  <LogBlock className="mt-6 h-24" testId="llm-wiki-progress">
+                    {panelMessage}
+                  </LogBlock>
+                ) : null}
+
+                {viewModel.failed.length > 0 ? (
+                  <section className="mt-6 min-w-0">
+                    <PanelText tone="meta">失败明细</PanelText>
+                    <ul
+                      data-testid="llm-wiki-failed-details"
+                      className="mt-1 flex max-h-64 min-w-0 flex-col overflow-auto"
+                    >
+                      {viewModel.failed.map((failure) => (
+                        <HairlineItem key={failure.path} className="py-2.5">
+                          <div
+                            className="min-w-0"
+                            title={`${failure.path}\n${failure.reason}`}
+                          >
+                            <div className="break-all text-[13px] leading-[1.6] text-base-content/85">
+                              {failure.path}
+                            </div>
+                            <PanelText tone="meta" className="break-words">
+                              {failure.reason}
+                            </PanelText>
+                          </div>
+                        </HairlineItem>
+                      ))}
+                    </ul>
+                  </section>
+                ) : null}
+              </PanelSection>
+            </section>
+
+            <section className="flex min-h-0 min-w-0 flex-col overflow-auto">
+              {/*
+               * Both LLM-backed sections are visible whether or not a provider is
+               * configured, and say so in their own hint. They used to be tabs that
+               * refused to open, which left the user to guess why.
+               */}
+              <PanelSection
+                title="提问"
+                hint={askDisabledHint ? `${NEEDS_LLM}。${ASK_HINT}` : ASK_HINT}
+                actions={
+                  askDisabledHint ? (
+                    <TextControlButton outlined onClick={handleConfigure}>
+                      配置 LLM
+                    </TextControlButton>
+                  ) : null
+                }
+              >
+                <form
+                  className="flex min-w-0 flex-col gap-3"
+                  onSubmit={handleQuerySubmit}
+                >
+                  {/* No field label: the section is called 提问 and the box says what
+                      to type in it. */}
+                  <TextArea
+                    className="min-h-24"
+                    value={question}
+                    onChange={(event) => setQuestion(event.target.value)}
+                    disabled={queryActionsDisabled || status?.mode !== "llmWiki"}
+                    placeholder="询问当前 Wiki"
+                    rows={4}
+                  />
+                  <div className="flex justify-end">
+                    <TextControlButton
+                      outlined
+                      type="submit"
+                      disabled={queryDisabled}
+                    >
+                      {isQuerying ? "正在查询" : "查询 Wiki"}
+                    </TextControlButton>
+                  </div>
+                </form>
+
+                {queryAnswer ? (
+                  <div className="mt-5 min-w-0">
+                    <PanelText className="whitespace-pre-wrap break-words">
+                      {queryAnswer.answer}
+                    </PanelText>
+                    {queryAnswer.insufficientContext ? (
+                      <PanelText tone="meta" className="mt-2 text-warning">
+                        当前 Wiki 内容不足以完整回答该问题。
+                      </PanelText>
+                    ) : null}
+                    {queryAnswer.references.length > 0 ? (
+                      <>
+                        <PanelText tone="meta" className="mt-4">
+                          引用到的页面
+                        </PanelText>
+                        <ul className="mt-1 flex min-w-0 flex-col">
+                          {queryAnswer.references.map((reference) => (
+                            <HairlineItem
+                              key={reference.path}
+                              className="py-2.5"
+                            >
+                              <div
+                                className="min-w-0"
+                                title={`${reference.title}\n${reference.path}`}
+                              >
+                                <div className="truncate text-[13px] leading-[1.6] text-base-content/85">
+                                  {reference.title}
+                                </div>
+                                <PanelText tone="meta" className="truncate">
+                                  {reference.path}
+                                </PanelText>
+                              </div>
+                            </HairlineItem>
+                          ))}
+                        </ul>
+                      </>
+                    ) : null}
+                  </div>
+                ) : null}
+              </PanelSection>
+
+              <PanelSection
+                className="border-t border-[var(--mdx-separator)]"
+                title="生成综述"
+                hint={
+                  digestDisabledHint ? `${NEEDS_LLM}。${DIGEST_HINT}` : DIGEST_HINT
+                }
+                actions={
+                  digestDisabledHint ? (
+                    <TextControlButton outlined onClick={handleConfigure}>
+                      配置 LLM
+                    </TextControlButton>
+                  ) : null
+                }
+              >
+                <form
+                  className="flex min-w-0 flex-col gap-3"
+                  onSubmit={handleDigestSubmit}
+                >
+                  {/* A file name is short, so its field is short: a full-width box for
+                      eight characters is what made these pages look like forms. The
+                      topic is prose and gets the room prose needs. */}
+                  <label className="flex min-w-0 flex-col gap-1.5 sm:max-w-xs">
+                    <span className="text-[13px] leading-[1.6] text-base-content/50">
+                      文件名
+                    </span>
+                    <TextInput
+                      value={digestTitle}
+                      onChange={(event) => setDigestTitle(event.target.value)}
+                      disabled={
+                        actionsDisabled ||
+                        status?.mode !== "llmWiki" ||
+                        isProcessing
+                      }
+                      placeholder="project-summary"
+                    />
+                  </label>
+                  <label className="flex min-w-0 flex-col gap-1.5">
+                    <span className="text-[13px] leading-[1.6] text-base-content/50">
+                      主题
+                    </span>
+                    <TextArea
+                      className="min-h-20"
+                      value={digestPrompt}
+                      onChange={(event) => setDigestPrompt(event.target.value)}
+                      disabled={
+                        actionsDisabled ||
+                        status?.mode !== "llmWiki" ||
+                        isProcessing
+                      }
+                      placeholder="生成综述的问题或主题"
+                      rows={3}
+                    />
+                  </label>
+                  <div className="flex justify-end">
+                    <TextControlButton
+                      outlined
+                      type="submit"
+                      disabled={digestDisabled}
+                    >
+                      {activeOperation === "digest"
+                        ? (activeOperationLabel ?? "正在生成")
+                        : "生成综述"}
+                    </TextControlButton>
+                  </div>
+                </form>
+              </PanelSection>
+            </section>
+          </div>
+        </PanelViewport>
+      )}
+
+    </section>
   );
 }

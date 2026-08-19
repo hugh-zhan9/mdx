@@ -108,7 +108,10 @@ describe("LlmWikiPanel", () => {
         );
 
         expect(failedRegion).not.toBeNull();
-        expect(failedRegion?.className).toContain("max-h-48");
+        // What matters is that a long list scrolls inside itself instead of
+        // stretching the panel — not which of Tailwind's heights it uses.
+        expect(failedRegion?.className).toContain("overflow-auto");
+        expect(failedRegion?.className).toMatch(/max-h-\d+/);
         expect(failedRegion?.className).toContain("overflow-auto");
     });
 

@@ -664,7 +664,17 @@ export function useLlmWikiWorkspace(
             : current,
         );
         if (config?.hasApiKey) {
-          void runBackgroundIngest(rootPath, result.pending);
+          // Started, not awaited — the scan is finished and the queue runs behind
+          // it. With a bare `void` its rejection escaped the `try` around this call
+          // and reached the dev overlay as an unhandled error, printed as
+          // "[object Object]" because a Tauri error is a plain object.
+          void runBackgroundIngest(rootPath, result.pending).catch(
+            (ingestError: unknown) => {
+              if (activeRootPathRef.current === rootPath) {
+                setMessageForError("后台处理 raw 失败", ingestError);
+              }
+            },
+          );
         }
       } catch (error) {
         if (activeRootPathRef.current === rootPath) {
