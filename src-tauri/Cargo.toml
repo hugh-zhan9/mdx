@@ -6,7 +6,7 @@ members = []
 
 [package]
 name = "loam"
-version = "0.3.0"
+version = "0.4.0"
 description = "Loam desktop workspace"
 authors = ["Jayden Wang"]
 license = "MIT"
