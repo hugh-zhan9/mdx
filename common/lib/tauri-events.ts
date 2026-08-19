@@ -13,15 +13,35 @@
  * failure is logged rather than swallowed silently, because a listener that
  * cannot be stopped in a window that is *not* closing would be a leak, and the
  * warning is the only thing that would say so.
+ *
+ * Both ways it can fail. The webview's `unregisterListener` is an async function,
+ * so the lookup above throws into a rejected promise rather than up the stack: a
+ * `try` around the call catches nothing, and the rejection surfaces as an
+ * unhandled error with this cleanup at the bottom of its trace. A hot reload does
+ * it too — the replaced module's cleanup runs against handler ids the new one has
+ * already forgotten.
  */
 export function stopListening(unlisten: (() => void) | null | undefined) {
     if (!unlisten) {
         return;
     }
 
-    try {
-        unlisten();
-    } catch (error) {
+    const report = (error: unknown) => {
         console.warn("Failed to stop a Tauri event listener.", error);
+    };
+
+    try {
+        const stopped: unknown = unlisten();
+
+        if (
+            typeof stopped === "object" &&
+            stopped !== null &&
+            "then" in stopped &&
+            typeof (stopped as PromiseLike<unknown>).then === "function"
+        ) {
+            void Promise.resolve(stopped as PromiseLike<unknown>).catch(report);
+        }
+    } catch (error) {
+        report(error);
     }
 }
