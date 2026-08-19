@@ -5,7 +5,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { loadImage, storeImageForDocument } from "@/common/lib/image-storage";
 import { tokenize } from "@/common/lib/prism";
 import { tauriCore, tauriDialog, tauriWindow } from "@/common/lib/tauri";
-import { TextControlButton } from "@/common/components/ui-controls";
+import {
+  DialogOverlay,
+  DialogSurface,
+  TextControlButton,
+} from "@/common/components/ui-controls";
 import type { AppWindowSession } from "@/features/app/lib/app-session";
 import { MarkdownEditorSurface } from "@/features/editor/components/markdown-editor-surface";
 import type { MarkdownEditorSurfaceHandle } from "@/features/editor/components/markdown-editor-surface";
@@ -1271,12 +1275,10 @@ function CopyMarkdownDialog({
   }, []);
 
   return (
-    <div className="fixed inset-0 z-50 flex min-w-0 items-center justify-center bg-black/35 p-4">
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="mdx-copy-markdown-title"
-        className="flex max-h-[88vh] w-full max-w-3xl min-w-0 flex-col rounded-xl bg-base-100 text-base-content shadow-[var(--mdx-panel-shadow)]"
+    <DialogOverlay>
+      <DialogSurface
+        labelledBy="mdx-copy-markdown-title"
+        className="w-full max-w-3xl"
       >
         <header className="flex items-center justify-between border-b border-[var(--mdx-separator)] px-4 py-3">
           <h2 id="mdx-copy-markdown-title" className="text-sm font-semibold">
@@ -1296,8 +1298,8 @@ function CopyMarkdownDialog({
           value={markdown}
           className="min-h-0 flex-1 resize-none border-0 bg-base-100 p-4 font-mono text-xs leading-relaxed text-base-content outline-none"
         />
-      </section>
-    </div>
+      </DialogSurface>
+    </DialogOverlay>
   );
 }
 

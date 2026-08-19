@@ -12,6 +12,7 @@ import {
 import {
     PrimaryTextControlButton,
     TextControlButton,
+    DialogOverlay,
 } from "../../../common/components/ui-controls";
 
 interface AlertOptions {
@@ -289,7 +290,7 @@ function DialogBody({
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-6">
+        <DialogOverlay>
             <div
                 role="dialog"
                 aria-modal="true"
@@ -392,6 +393,6 @@ function DialogBody({
                     ) : null}
                 </div>
             </div>
-        </div>
+        </DialogOverlay>
     );
 }

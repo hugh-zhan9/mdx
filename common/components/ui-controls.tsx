@@ -1,4 +1,5 @@
 import { Search } from "lucide-react";
+import { Fragment, useEffect } from "react";
 import type {
     ButtonHTMLAttributes,
     InputHTMLAttributes,
@@ -191,15 +192,35 @@ export function SegmentedControl<Value extends string>({
 }
 
 export function TextControlButton({
+    outlined = false,
     className,
     ...props
-}: ButtonHTMLAttributes<HTMLButtonElement>) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+    /**
+     * Drawn with an edge at rest.
+     *
+     * For a form's submit. A row action can be borderless — it is beside the thing
+     * it acts on, and the row explains it — but the button that sends a form has
+     * nothing beside it, and with no edge at all it reads as a caption in the
+     * corner rather than as the control that submits.
+     */
+    outlined?: boolean;
+}) {
     return (
         <button
             type="button"
             className={[
                 baseButtonClass,
                 "h-7 min-w-0 max-w-full gap-1.5 whitespace-nowrap px-2.5 text-xs font-medium text-base-content/72 hover:bg-[var(--mdx-control-hover-bg)] hover:text-base-content active:bg-[var(--mdx-control-active-bg)] [&>svg]:h-4 [&>svg]:w-4 [&>svg]:shrink-0",
+                outlined
+                    // An inset ring rather than a border, because the shared base
+                    // class already sets `border-transparent` and which of the two
+                    // wins depends on the order Tailwind emits them, not on the order
+                    // they are written here. Same technique as IconButton's pressed
+                    // edge. A shade stronger than a text field's 12%: a field is a
+                    // large rectangle, a 28px button at that value reads as no edge.
+                    ? "bg-base-100 shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-base-content)_20%,transparent)]"
+                    : undefined,
                 className,
             ].filter(Boolean).join(" ")}
             {...props}
@@ -409,11 +430,46 @@ export function Card({
 }
 
 /**
- * Preformatted output — a log, a report, a diagnostic dump.
+ * The type scale these panels are allowed to use.
  *
- * Scrolls inside itself, so a long log cannot stretch the panel holding it.
+ * Four steps, in the proportions a document has rather than a form's: a heading at
+ * 20px, prose at 13.5px with the line height that makes it readable rather than
+ * merely fitted, the sentence that qualifies a heading at 13px, and provenance at
+ * 11.5px. Anything else is a fifth size, and a fifth size is how a panel stops
+ * looking designed.
+ *
+ * The panels used 10, 11, 12, 13 and 14px with no order among them, and they read
+ * as forms: everything at one size, nothing to look at first. This is the editor's
+ * own voice — the best surface in the app — applied to the panels beside it.
  */
-export function LogBlock({
+const TITLE =
+    "text-[20px] font-[650] leading-[1.3] tracking-[-0.01em] text-base-content";
+const BODY = "text-[13.5px] leading-[1.75] text-base-content/85";
+const HINT = "text-[13px] leading-[1.6] text-base-content/50";
+const META = "text-[11.5px] leading-relaxed text-base-content/45";
+
+/**
+ * The horizontal room a panel's content keeps.
+ *
+ * Wide, and wider on a wide window: the whole point of the editorial direction is
+ * that text has margins. Clamped so a narrow window does not spend half itself on
+ * whitespace.
+ */
+export const PANEL_GUTTER = "px-[clamp(14px,2.1vw,24px)]";
+const GUTTER = PANEL_GUTTER;
+
+/**
+ * How wide a line of text is allowed to get.
+ *
+ * Never a margin: it caps a paragraph inside whatever room it has, so a page can
+ * use the whole window while its sentences stay readable. A page-wide cap — which
+ * is what this replaced — centres the entire view and leaves dead bands down both
+ * sides of a wide window, which is a different thing and looks like a mistake.
+ */
+const PROSE = "max-w-[68ch]";
+
+/** A heading in the page's own voice, for the places that are not a section. */
+export function PanelTitle({
     children,
     className,
 }: {
@@ -421,7 +477,580 @@ export function LogBlock({
     className?: string;
 }) {
     return (
+        <h2 className={[TITLE, className].filter(Boolean).join(" ")}>
+            {children}
+        </h2>
+    );
+}
+
+/**
+ * One occasion's worth of controls, under a heading that says which occasion.
+ *
+ * The heading and its explanation are one component because they were never
+ * written the same way twice: a `div` with a font weight here, an `h3` with a
+ * different grey there, and hints that sometimes sat above the heading they
+ * qualified.
+ */
+export function PanelSection({
+    title,
+    hint,
+    actions,
+    children,
+    className,
+}: {
+    title: string;
+    hint?: string;
+    actions?: ReactNode;
+    children: ReactNode;
+    className?: string;
+}) {
+    return (
+        <section
+            className={["min-w-0", className].filter(Boolean).join(" ")}
+        >
+            <header
+                className={`flex min-w-0 items-start justify-between gap-4 ${GUTTER} pt-6`}
+            >
+                <div className="min-w-0">
+                    <h3 className={TITLE}>{title}</h3>
+                    {hint ? (
+                        <p className={`mt-1.5 ${HINT} ${PROSE}`}>{hint}</p>
+                    ) : null}
+                </div>
+                {actions ? (
+                    <div className="flex shrink-0 items-center gap-2">
+                        {actions}
+                    </div>
+                ) : null}
+            </header>
+            <div className={`min-w-0 ${GUTTER} pb-7 pt-4`}>{children}</div>
+        </section>
+    );
+}
+
+/**
+ * The line a panel keeps under its chrome: what is true right now.
+ *
+ * Same gutter as the sections below it, one rule along the bottom, and nothing
+ * else — it is not a section, it is the sentence a panel says about itself before
+ * you read anything. Shared because both panels had drawn it by hand, with the
+ * gutter measurement copied rather than referenced.
+ */
+export function PanelStrip({
+    children,
+    className,
+}: {
+    children: ReactNode;
+    className?: string;
+}) {
+    return (
+        <div
+            className={[
+                "flex min-w-0 flex-wrap items-center justify-between gap-x-6 gap-y-1.5",
+                `border-b border-[var(--mdx-separator)] py-2.5 ${GUTTER}`,
+                className,
+            ]
+                .filter(Boolean)
+                .join(" ")}
+        >
+            {children}
+        </div>
+    );
+}
+
+/**
+ * A view that scrolls: a page of sections, facts, forms.
+ *
+ * One definition because the answer kept being re-decided per panel — and the last
+ * time it was decided in CSS, as a blanket cap on a marker attribute, it silently
+ * applied to the two views that should fill the window.
+ */
+export function PanelScroll({
+    children,
+    className,
+}: {
+    children: ReactNode;
+    className?: string;
+}) {
+    return (
+        <div
+            className={[
+                "min-h-0 min-w-0 flex-1 overflow-auto",
+                className,
+            ]
+                .filter(Boolean)
+                .join(" ")}
+        >
+            {children}
+        </div>
+    );
+}
+
+/**
+ * A view that is exactly the height of its panel and scrolls nothing itself.
+ *
+ * For content that manages its own movement — columns that scroll separately, a
+ * canvas that pans and zooms. Inside a scrolling box such a view has auto height,
+ * which is how a canvas ends up sized by its own aspect ratio instead of by the
+ * window.
+ */
+export function PanelViewport({
+    children,
+    className,
+}: {
+    children: ReactNode;
+    className?: string;
+}) {
+    return (
+        <div
+            className={[
+                "flex min-h-0 min-w-0 flex-1 overflow-hidden",
+                className,
+            ]
+                .filter(Boolean)
+                .join(" ")}
+        >
+            {children}
+        </div>
+    );
+}
+
+/**
+ * The ground a modal sits on: scrim, centring, and the ways out of it.
+ *
+ * Five dialogs had written this themselves, and no two agreed: two scrims at
+ * different opacities, two of them anchored to the top of the window with a
+ * hand-picked top padding, escape handled in some and not others. Centred, because
+ * a dialog is the only thing on screen while it is up.
+ *
+ * `onDismiss` is what makes the scrim and Escape work; a dialog that must not be
+ * lost by a stray click simply does not pass it.
+ */
+export function DialogOverlay({
+    children,
+    onDismiss,
+    className,
+}: {
+    children: ReactNode;
+    onDismiss?: () => void;
+    className?: string;
+}) {
+    useEffect(() => {
+        if (!onDismiss) return;
+
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") onDismiss();
+        };
+
+        window.addEventListener("keydown", onKeyDown);
+
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, [onDismiss]);
+
+    return (
+        <div
+            className={[
+                "fixed inset-0 z-50 flex items-center justify-center bg-black/25 p-6 backdrop-blur-[2px]",
+                className,
+            ]
+                .filter(Boolean)
+                .join(" ")}
+            role="presentation"
+            onMouseDown={
+                onDismiss
+                    ? (event) => {
+                          if (event.target === event.currentTarget) onDismiss();
+                      }
+                    : undefined
+            }
+        >
+            {children}
+        </div>
+    );
+}
+
+/**
+ * The surface a modal is drawn on.
+ *
+ * Rounded and softly shadowed, the way macOS draws a panel, and never taller than
+ * the window it is in — the size a given dialog wants is its own business, but
+ * fitting on screen is not. The hairline is inside the shadow rather than a border
+ * of its own, so the corner stays clean.
+ */
+export function DialogSurface({
+    label,
+    labelledBy,
+    children,
+    className,
+    testId,
+}: {
+    label?: string;
+    /** Id of the heading that names this dialog, for the ones that draw one. */
+    labelledBy?: string;
+    children: ReactNode;
+    className?: string;
+    /** For tests that need to find this dialog among several. */
+    testId?: string;
+}) {
+    return (
+        <section
+            role="dialog"
+            aria-modal="true"
+            aria-label={label}
+            aria-labelledby={labelledBy}
+            data-testid={testId}
+            className={[
+                "flex max-h-full min-h-0 min-w-0 flex-col overflow-hidden",
+                "rounded-[var(--mdx-panel-radius)] bg-base-100 shadow-[var(--mdx-panel-shadow)]",
+                className,
+            ]
+                .filter(Boolean)
+                .join(" ")}
+        >
+            {children}
+        </section>
+    );
+}
+
+/** A modal's top row: what it is, and the actions that close it. */
+export function DialogHeader({
+    children,
+    actions,
+}: {
+    children: ReactNode;
+    actions?: ReactNode;
+}) {
+    return (
+        <header className="flex min-w-0 shrink-0 items-center justify-between gap-3 border-b border-[var(--mdx-separator)] px-5 py-3">
+            <div className="flex min-w-0 items-center gap-3 text-[13px] font-semibold text-base-content">
+                {children}
+            </div>
+            {actions ? (
+                <div className="flex shrink-0 items-center gap-2">{actions}</div>
+            ) : null}
+        </header>
+    );
+}
+
+/**
+ * A state, said as a word.
+ *
+ * Small, spaced, in the colour that means it — and with no fill. A row of filled
+ * pills turns a list into a scoreboard; the state matters, but it is not the thing
+ * you read first, and in this direction nothing gets a box unless it can be pressed.
+ */
+export function StateLabel({
+    tone = "neutral",
+    children,
+}: {
+    tone?: ChipTone;
+    children: ReactNode;
+}) {
+    return (
+        <span
+            className={[
+                "shrink-0 text-[11.5px] font-medium tracking-[0.06em]",
+                tone === "success"
+                    ? "text-success"
+                    : tone === "warning"
+                      ? "text-warning"
+                      : tone === "error"
+                        ? "text-error"
+                        : tone === "primary"
+                          ? "text-primary"
+                          : "text-base-content/45",
+            ].join(" ")}
+        >
+            {children}
+        </span>
+    );
+}
+
+/**
+ * One entry in a list, separated by a rule rather than boxed.
+ *
+ * The hairline is the whole device: it says "these are separate things" without
+ * drawing a container around each of them, which is what keeps a page of records
+ * looking like a page rather than like a form.
+ */
+export function HairlineItem({
+    children,
+    className,
+    interactive = false,
+}: {
+    children: ReactNode;
+    className?: string;
+    interactive?: boolean;
+}) {
+    return (
+        <li
+            className={[
+                "min-w-0 border-t border-[var(--mdx-separator)] py-4 first:border-t-0",
+                interactive
+                    ? "-mx-3 px-3 transition-colors hover:bg-base-content/4"
+                    : undefined,
+                className,
+            ]
+                .filter(Boolean)
+                .join(" ")}
+        >
+            {children}
+        </li>
+    );
+}
+
+/** What a chip's colour is allowed to mean. */
+export type ChipTone = "neutral" | "primary" | "success" | "warning" | "error";
+
+const CHIP_TONES: Record<ChipTone, string> = {
+    neutral: "bg-base-content/6 text-base-content/60",
+    primary: "bg-primary/12 text-primary",
+    success: "bg-success/15 text-success",
+    warning: "bg-warning/18 text-warning",
+    error: "bg-error/12 text-error",
+};
+
+/**
+ * A short label that carries a state.
+ *
+ * Rounded fully and never larger than 10px, so it reads as a marker on something
+ * rather than as text of its own. Tone is the whole point: a chip whose colour
+ * means nothing is decoration.
+ */
+export function Chip({
+    tone = "neutral",
+    children,
+    className,
+}: {
+    tone?: ChipTone;
+    children: ReactNode;
+    className?: string;
+}) {
+    return (
+        <span
+            className={[
+                "shrink-0 rounded-full px-2 py-0.5 text-[10px] leading-[1.5]",
+                CHIP_TONES[tone],
+                className,
+            ]
+                .filter(Boolean)
+                .join(" ")}
+        >
+            {children}
+        </span>
+    );
+}
+
+/**
+ * Label-and-value facts on one line.
+ *
+ * For the strip a panel keeps in view: which project, how much is stored, whether
+ * the thing it needs is present. Every value in the same weight and every label in
+ * the same grey, because the eye reads the shape of the row before it reads any of
+ * the words.
+ */
+export function StatList({
+    items,
+    className,
+    singleLine = false,
+}: {
+    items: Array<{
+        label: string;
+        value: ReactNode;
+        tone?: "normal" | "warning" | "error";
+        title?: string;
+    }>;
+    className?: string;
+    /**
+     * Never wraps to a second line.
+     *
+     * For a live strip: one of its values is a file path that changes with every
+     * file processed, and a wrapping row went from one line to two and back as the
+     * paths got longer and shorter — the whole page under it jumping each time,
+     * which is what "it flickers once per file" was.
+     */
+    singleLine?: boolean;
+}) {
+    return (
+        <div
+            className={[
+                "flex min-w-0 items-center gap-x-6 gap-y-1.5",
+                singleLine ? "flex-nowrap overflow-hidden" : "flex-wrap",
+                "text-[12px] leading-relaxed text-base-content/50",
+                className,
+            ]
+                .filter(Boolean)
+                .join(" ")}
+        >
+            {items.map((item) => (
+                <span
+                    key={item.label}
+                    className={[
+                        "min-w-0 truncate",
+                        item.tone === "warning"
+                            ? "text-warning"
+                            : item.tone === "error"
+                              ? "text-error"
+                              : undefined,
+                    ]
+                        .filter(Boolean)
+                        .join(" ")}
+                    title={item.title}
+                >
+                    {item.label}{" "}
+                    <span
+                        className={
+                            item.tone && item.tone !== "normal"
+                                ? undefined
+                                : "font-semibold text-base-content"
+                        }
+                    >
+                        {item.value}
+                    </span>
+                </span>
+            ))}
+        </div>
+    );
+}
+
+/**
+ * The word above a field, in the one grey the panels use for it.
+ *
+ * Written inline at four sizes across the settings dialog and the wiki forms —
+ * 11px, 12px, `text-xs`, and once at body size — which is the kind of drift that
+ * makes a form look assembled rather than designed.
+ */
+export function FieldLabel({
+    children,
+    className,
+}: {
+    children: ReactNode;
+    className?: string;
+}) {
+    return (
+        <span className={[HINT, className].filter(Boolean).join(" ")}>
+            {children}
+        </span>
+    );
+}
+
+/**
+ * A checkbox, at one size.
+ *
+ * Four screens drew their own — `h-4 w-4`, `mt-1`, one with a hand-drawn border,
+ * one with none — so no two checkboxes in the app were the same box. The accent
+ * colour is the theme's, which is what makes a checked box look like it belongs to
+ * this application rather than to the browser.
+ */
+export function Checkbox({
+    className,
+    ...props
+}: InputHTMLAttributes<HTMLInputElement>) {
+    return (
+        <input
+            type="checkbox"
+            className={[
+                "size-3.5 shrink-0 accent-[var(--color-primary)] disabled:cursor-not-allowed",
+                className,
+            ]
+                .filter(Boolean)
+                .join(" ")}
+            {...props}
+        />
+    );
+}
+
+/**
+ * Labelled facts, one per row, in a hairline table.
+ *
+ * Written four separate times — the overview, the diagnostics, the wiki status, the
+ * settings dialog — and no two agreed on the label column: two equal columns put
+ * every value at the halfway mark of whatever width the window happened to be, and
+ * a `gap-x-4` grid put them wherever the longest label in *that* list ended. One
+ * definition is what makes two pages look like one product.
+ */
+export function FactRows({
+    items,
+    className,
+}: {
+    items: Array<{ label: string; value: ReactNode; title?: string }>;
+    className?: string;
+}) {
+    return (
+        <dl
+            className={[
+                // Padding inside the label cell rather than a gap between the two:
+                // a gap leaves a break in the rule under every row, and a row of
+                // rules with a notch in each one looks like a mistake.
+                // A table of short facts, at the width short facts need: stretched
+                // across a wide window a value ends up a screen away from its label.
+                "grid min-w-0 max-w-2xl grid-cols-[clamp(72px,20%,132px)_minmax(0,1fr)]",
+                // The first row carries no rule: it is the top of the list, and a rule
+                // there reads as a line under the heading above it.
+                "[&>*:nth-child(1)]:border-t-0 [&>*:nth-child(2)]:border-t-0",
+                className,
+            ]
+                .filter(Boolean)
+                .join(" ")}
+        >
+            {items.map((item) => (
+                <Fragment key={item.label}>
+                    <dt
+                        className={`border-t border-[var(--mdx-separator)] py-2.5 pr-6 ${HINT}`}
+                    >
+                        {item.label}
+                    </dt>
+                    <dd
+                        className={`min-w-0 truncate border-t border-[var(--mdx-separator)] py-2.5 ${BODY}`}
+                        title={item.title}
+                    >
+                        {item.value}
+                    </dd>
+                </Fragment>
+            ))}
+        </dl>
+    );
+}
+
+/** Body and meta text, so a screen does not have to remember the sizes. */
+export function PanelText({
+    tone = "body",
+    children,
+    className,
+}: {
+    tone?: "body" | "meta";
+    children: ReactNode;
+    className?: string;
+}) {
+    return (
+        <p
+            className={[tone === "meta" ? META : BODY, PROSE, className]
+                .filter(Boolean)
+                .join(" ")}
+        >
+            {children}
+        </p>
+    );
+}
+
+/**
+ * Preformatted output — a log, a report, a diagnostic dump.
+ *
+ * Scrolls inside itself, so a long log cannot stretch the panel holding it.
+ */
+export function LogBlock({
+    children,
+    className,
+    testId,
+}: {
+    children: ReactNode;
+    className?: string;
+    /** For the tests that assert on what a long-running operation reported. */
+    testId?: string;
+}) {
+    return (
         <pre
+            data-testid={testId}
             className={[
                 `max-h-72 overflow-auto whitespace-pre-wrap ${radiusClass} bg-[var(--mdx-card-bg)] p-2.5 font-[inherit] text-xs leading-relaxed text-base-content/75`,
                 className,

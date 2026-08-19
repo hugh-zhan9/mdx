@@ -278,7 +278,6 @@
      * window, a two-column list puts its labels a whole screen away from their
      * values, which is how a form turns into a heap.
      */
-    --mdx-page-max-width: 56rem;
     --mdx-focus-ring: color-mix(in srgb, var(--color-primary) 24%, transparent);
     /*
      * A hairline, not a rule. macOS separates panes with the faintest line that
@@ -440,20 +439,6 @@ html[data-mdx-appearance="dark"] {
 
 [data-mdx-surface-mode="source"] .cm-line {
     padding-inline: 0;
-}
-
-/*
- * The column a full-window view is read in — memory, LLM Wiki.
- *
- * Written as a rule against a marker rather than as utilities on each page: the
- * pages are lists of status and settings whose children are already laid out,
- * and this only has to decide how wide the reading column is. Stretched to a
- * 1900px window, a label ends up a whole screen from its value.
- */
-[data-mdx-page-column] > * {
-    margin-inline: auto;
-    max-width: var(--mdx-page-max-width);
-    width: 100%;
 }
 
 /*

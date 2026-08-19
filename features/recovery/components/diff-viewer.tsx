@@ -5,6 +5,8 @@ import { useMemo, useState } from "react";
 import {
     PrimaryTextControlButton,
     TextControlButton,
+    DialogOverlay,
+    DialogSurface,
 } from "../../../common/components/ui-controls";
 import {
     buildDiffSegments,
@@ -58,12 +60,10 @@ export function DiffViewer({
     const identical = summary.changes === 0;
 
     return (
-        <div className="fixed inset-0 z-50 flex min-w-0 items-center justify-center bg-black/35 p-4">
-            <section
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="mdx-recovery-diff-title"
-                className="flex max-h-[90vh] w-full max-w-6xl min-w-0 flex-col rounded-[var(--mdx-control-radius)] border border-[var(--mdx-field-border)] bg-base-100 text-base-content shadow-xl"
+        <DialogOverlay>
+            <DialogSurface
+                labelledBy="mdx-recovery-diff-title"
+                className="w-full max-w-6xl"
             >
                 <header className="flex min-w-0 items-center justify-between gap-3 border-b border-[var(--mdx-separator)] px-4 py-3">
                     <div className="flex min-w-0 items-baseline gap-3">
@@ -141,8 +141,8 @@ export function DiffViewer({
                         {primaryAction.label}
                     </PrimaryTextControlButton>
                 </footer>
-            </section>
-        </div>
+            </DialogSurface>
+        </DialogOverlay>
     );
 }
 

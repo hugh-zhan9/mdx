@@ -1,11 +1,16 @@
 "use client";
 
 import type { Ref } from "react";
-import { Card } from "@/common/components/ui-controls";
+import {
+  Checkbox,
+  FieldLabel,
+  PanelSection,
+  PanelText,
+} from "@/common/components/ui-controls";
 import type { WorkspaceMemoryConfig } from "../lib/types";
 
 interface MemorySettingsSectionProps {
-  sectionRef?: Ref<HTMLElement>;
+  sectionRef?: Ref<HTMLDivElement>;
   disabled: boolean;
   config: WorkspaceMemoryConfig | null;
   onToggleCapture: (enabled: boolean) => void;
@@ -37,42 +42,53 @@ export function MemorySettingsSection({
   const sources = config?.capture.sources ?? [];
 
   return (
-    <section ref={sectionRef} className="flex min-w-0 flex-col gap-2">
-      <h2 className="text-sm font-medium">记忆</h2>
-      <Card className="flex min-w-0 flex-col gap-3 text-sm">
-        <label className="flex min-w-0 items-start gap-2">
-          <input
-            type="checkbox"
-            className="mt-1 shrink-0"
-            disabled={disabled || config === null}
-            checked={captureEnabled}
-            onChange={(event) => onToggleCapture(event.target.checked)}
-          />
-          <span className="min-w-0">
-            <span className="block">自动捕获 agent 会话</span>
-            <span className="mt-0.5 block text-xs leading-relaxed text-base-content/60">
-              默认关闭。捕获进库的内容只能事后删除，不能撤回，所以只捕获你在下面勾选的来源。
-            </span>
-          </span>
-        </label>
+    // The dialog's own section, drawn by the same component as its neighbours: it
+    // used to bring its own heading size and its own grid, which is most of what
+    // made this page look unaligned.
+    <div ref={sectionRef} data-settings-section="memory" className="scroll-mt-5">
+      <PanelSection
+        title="记忆"
+        hint="默认关闭。捕获进库的内容只能事后删除，不能撤回，所以只捕获你在下面勾选的来源。"
+      >
+        <div className="flex min-w-0 flex-col gap-5">
+          <label className="flex min-w-0 items-center gap-2.5 text-[13.5px] leading-[1.75] text-base-content/85">
+            <Checkbox
+              disabled={disabled || config === null}
+              checked={captureEnabled}
+              onChange={(event) => onToggleCapture(event.target.checked)}
+            />
+            <span>自动捕获 agent 会话</span>
+          </label>
 
-        <fieldset className="flex min-w-0 flex-col gap-1.5 pl-6">
-          <legend className="sr-only">捕获来源</legend>
-          {SOURCES.map((source) => (
-            <label key={source.id} className="flex items-center gap-2 text-xs">
-              <input
-                type="checkbox"
-                disabled={disabled || !captureEnabled || config === null}
-                checked={sources.includes(source.id)}
-                onChange={(event) =>
-                  onToggleSource(source.id, event.target.checked)
-                }
-              />
-              {source.label}
-            </label>
-          ))}
-        </fieldset>
-      </Card>
-    </section>
+          <fieldset className="min-w-0">
+            <legend className="sr-only">捕获来源</legend>
+            <FieldLabel>捕获哪些来源</FieldLabel>
+            {/* Three names across one row: a column of three said no more and
+                took three times the height. */}
+            <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
+              {SOURCES.map((source) => (
+                <label
+                  key={source.id}
+                  className="flex min-w-0 items-center gap-2 text-[13px] leading-[1.6] text-base-content/85"
+                >
+                  <Checkbox
+                    disabled={disabled || !captureEnabled || config === null}
+                    checked={sources.includes(source.id)}
+                    onChange={(event) =>
+                      onToggleSource(source.id, event.target.checked)
+                    }
+                  />
+                  <span className="truncate">{source.label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          {config === null ? (
+            <PanelText tone="meta">打开工作区后可以修改这一项。</PanelText>
+          ) : null}
+        </div>
+      </PanelSection>
+    </div>
   );
 }

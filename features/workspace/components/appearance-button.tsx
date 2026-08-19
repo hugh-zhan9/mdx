@@ -5,10 +5,16 @@ import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import {
+  DialogHeader,
+  DialogOverlay,
+  DialogSurface,
+  FieldLabel,
   IconButton,
+  PanelText,
   PrimaryTextControlButton,
   SegmentedControl,
   TextControlButton,
+  TextInput,
 } from "../../../common/components/ui-controls";
 import {
   SYSTEM_THEME_PREFERENCE,
@@ -100,47 +106,40 @@ function AppearancePanel({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/20 px-4 py-14 backdrop-blur-[2px]"
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onClose();
-        }
-      }}
-    >
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-label="外观"
+    <DialogOverlay onDismiss={onClose}>
+      <DialogSurface
+        label="外观"
         // Wider than a list strictly needs, because the designer is the widest
         // thing in here: ten colour rows and their explanations. Still narrower
         // than the settings panel — this is one decision, not a page of them.
-        className="flex h-[min(740px,84dvh,calc(100dvh-2rem))] min-h-0 w-[min(92vw,640px)] min-w-0 flex-col overflow-hidden rounded-xl bg-base-100 shadow-[var(--mdx-panel-shadow)]"
+        className="h-[min(740px,84dvh,calc(100dvh-2rem))] w-[min(92vw,640px)]"
       >
-        <header className="flex min-w-0 items-center justify-between gap-3 border-b border-[var(--mdx-separator)] px-4 py-3">
-          <div className="min-w-0 text-sm font-medium">
-            {draft ? "新建主题" : "外观"}
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {message ? (
-              <span className="max-w-48 truncate text-xs text-error">
-                {message}
-              </span>
-            ) : null}
-            <TextControlButton onClick={draft ? () => setDraft(null) : onClose}>
-              <X aria-hidden="true" />
-              {draft ? "取消" : "关闭"}
-            </TextControlButton>
-            {draft ? (
-              <PrimaryTextControlButton onClick={() => void save(draft)}>
-                保存并使用
-              </PrimaryTextControlButton>
-            ) : null}
-          </div>
-        </header>
+        <DialogHeader
+          actions={
+            <>
+              {message ? (
+                <span className="max-w-48 truncate text-xs text-error">
+                  {message}
+                </span>
+              ) : null}
+              <TextControlButton
+                onClick={draft ? () => setDraft(null) : onClose}
+              >
+                <X aria-hidden="true" />
+                {draft ? "取消" : "关闭"}
+              </TextControlButton>
+              {draft ? (
+                <PrimaryTextControlButton onClick={() => void save(draft)}>
+                  保存并使用
+                </PrimaryTextControlButton>
+              ) : null}
+            </>
+          }
+        >
+          {draft ? "新建主题" : "外观"}
+        </DialogHeader>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-3">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
           {draft ? (
             <ThemeDesigner draft={draft} onChange={setDraft} />
           ) : (
@@ -168,10 +167,8 @@ function AppearancePanel({ onClose }: { onClose: () => void }) {
                     ["深色主题", groups.dark],
                   ] as const
                 ).map(([groupLabel, themes]) => (
-                  <div key={groupLabel} className="min-w-0 space-y-1.5">
-                    <p className="text-[11px] text-base-content/45">
-                      {groupLabel}
-                    </p>
+                  <div key={groupLabel} className="min-w-0 space-y-2">
+                    <FieldLabel>{groupLabel}</FieldLabel>
                     <div className="space-y-1">
                       {themes.map((theme) => (
                         <ThemeChoice
@@ -216,8 +213,8 @@ function AppearancePanel({ onClose }: { onClose: () => void }) {
             </>
           )}
         </div>
-      </section>
-    </div>
+      </DialogSurface>
+    </DialogOverlay>
   );
 }
 
@@ -247,33 +244,32 @@ function ThemeDesigner({
 
   return (
     <div className="space-y-4">
-      <label className="block space-y-1.5 text-xs text-base-content/70">
-        <span>名称</span>
-        <input
+      <label className="flex min-w-0 flex-col gap-1.5 sm:max-w-sm">
+        <FieldLabel>名称</FieldLabel>
+        <TextInput
           type="text"
-          className="h-9 w-full rounded-md border border-base-content/12 bg-base-100 px-2.5 text-sm text-base-content outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/20"
           value={draft.name}
           onChange={(event) =>
             onChange({ ...draft, name: event.currentTarget.value })
           }
         />
-        <span className="block text-[11px] text-base-content/45">
+        <PanelText tone="meta">
           {fileName === null
             ? "取个名字，它同时是文件名。"
             : `保存为 ~/.loam/themes/${fileName}`}
-        </span>
+        </PanelText>
       </label>
 
-      <div className="space-y-1.5">
-        <p className="text-xs text-base-content/70">明暗</p>
+      <div className="flex min-w-0 flex-col gap-1.5">
+        <FieldLabel>明暗</FieldLabel>
         <SegmentedControl
           value={draft.appearance}
           options={APPEARANCE_OPTIONS}
           onChange={(next) => onChange({ ...draft, appearance: next })}
         />
-        <p className="text-[11px] leading-relaxed text-base-content/45">
+        <PanelText tone="meta">
           决定滚动条、表单控件、代码配色和 macOS 标题栏站在浅色还是深色一边。
-        </p>
+        </PanelText>
       </div>
 
       <div className="grid gap-0.5 sm:grid-cols-2">
@@ -298,10 +294,10 @@ function ThemeDesigner({
               }
             />
             <span className="min-w-0 flex-1">
-              <span className="block text-xs text-base-content">
+              <span className="block text-[13px] leading-[1.6] text-base-content">
                 {field.label}
               </span>
-              <span className="line-clamp-2 text-[11px] leading-snug text-base-content/50">
+              <span className="line-clamp-2 text-[11.5px] leading-snug text-base-content/45">
                 {field.hint}
               </span>
             </span>
@@ -345,9 +341,9 @@ function UserThemeSection({
   onOpenDirectory: () => void;
 }) {
   return (
-    <div className="space-y-1.5 border-t border-[var(--mdx-separator)] pt-3">
+    <div className="space-y-2 border-t border-[var(--mdx-separator)] pt-4">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] text-base-content/45">自定义主题</p>
+        <FieldLabel>自定义主题</FieldLabel>
         <div className="flex items-center gap-1">
           <TextControlButton onClick={onCreate}>
             <Plus aria-hidden="true" />
@@ -357,25 +353,29 @@ function UserThemeSection({
             <FolderOpen aria-hidden="true" />
             文件夹
           </TextControlButton>
-          <TextControlButton onClick={onRefresh} disabled={loading}>
-            <RefreshCw
-              aria-hidden="true"
-              className={loading ? "animate-spin" : undefined}
-            />
-            刷新
-          </TextControlButton>
+          {/* Icon only, like every other refresh in the app: re-reading a list is
+              never a decision, and it was a named action here and an icon two
+              panels over. */}
+          <IconButton
+            label="刷新主题目录"
+            icon={
+              <RefreshCw className={loading ? "animate-spin" : undefined} />
+            }
+            onClick={onRefresh}
+            disabled={loading}
+          />
         </div>
       </div>
 
       {directoryError ? (
-        <p className="px-2.5 text-[11px] leading-relaxed text-warning">
+        <PanelText tone="meta" className="text-warning">
           {`无法读取主题目录：${directoryError}`}
-        </p>
+        </PanelText>
       ) : entries.length === 0 ? (
-        <p className="px-2.5 text-[11px] leading-relaxed text-base-content/45">
+        <PanelText tone="meta">
           点「新建」从当前主题改一个出来，或把自己写的 .css 放进 ~/.loam/themes/
           后点刷新。
-        </p>
+        </PanelText>
       ) : (
         <div className="grid gap-1 sm:grid-cols-2">
           {entries.map((entry) =>
@@ -395,14 +395,14 @@ function UserThemeSection({
             ) : (
               <div
                 key={entry.id}
-                className="flex items-start gap-2.5 px-2.5 py-2 text-[11px]"
+                className="flex items-start gap-2.5 px-2.5 py-2 text-[11.5px]"
               >
                 <span
                   aria-hidden="true"
                   className="mt-0.5 h-5 w-9 shrink-0 rounded-[3px] border border-dashed border-base-content/20"
                 />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-xs text-base-content/60">
+                  <span className="block text-[13px] leading-[1.6] text-base-content/60">
                     {entry.fileName}
                   </span>
                   <span className="block text-warning">
@@ -438,21 +438,23 @@ function ThemeChoice({
       aria-pressed={selected}
       onClick={onSelect}
       className={[
-        "flex w-full items-center gap-2.5 border px-2.5 py-2 text-left",
+        "flex w-full items-center gap-2.5 rounded-[var(--mdx-control-radius)] border px-2.5 py-2 text-left transition-colors",
         selected
-          ? "border-primary/60 bg-primary/8"
-          : "border-transparent hover:bg-base-content/5",
+          ? "border-primary/45 bg-primary/8"
+          : "border-transparent bg-[var(--mdx-card-bg)] hover:border-base-content/10",
       ].join(" ")}
     >
       {swatch ?? <span aria-hidden="true" className="h-5 w-9 shrink-0" />}
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-xs text-base-content">{name}</span>
+        <span className="block truncate text-[13px] font-medium text-base-content">
+          {name}
+        </span>
         {/*
          * Wrapped to two lines, not truncated: in a column half the width the
          * description is exactly the part that would be cut, and it is the
          * sentence saying why this theme exists rather than the one beside it.
          */}
-        <span className="line-clamp-2 text-[11px] leading-snug text-base-content/50">
+        <span className="line-clamp-2 text-[11.5px] leading-relaxed text-base-content/45">
           {description}
         </span>
       </span>

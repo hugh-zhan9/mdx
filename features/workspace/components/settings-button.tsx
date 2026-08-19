@@ -19,10 +19,21 @@ import type { WorkspaceMemoryConfig } from "@/features/memory/lib/types";
 import type { LlmWikiKnowledgeConfig } from "@/features/llm-wiki/lib/types";
 import type { LlmProviderApiMode } from "@/features/llm-wiki/lib/types";
 import {
+  Checkbox,
+  DialogHeader,
+  DialogOverlay,
+  DialogSurface,
+  FieldLabel,
+  HairlineItem,
   IconButton,
+  LogBlock,
+  PanelSection,
+  PanelText,
   PrimaryTextControlButton,
   SegmentedControl,
+  TextArea,
   TextControlButton,
+  TextInput,
 } from "../../../common/components/ui-controls";
 import type { AppPreferences } from "../lib/types";
 import {
@@ -401,34 +412,24 @@ function SettingsDialog({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/20 px-4 py-14 backdrop-blur-[2px]"
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onClose();
-        }
-      }}
-    >
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-label="设置"
-        // Rounded and softly shadowed, the way macOS draws a panel. A square
-        // sheet with a hard border and a heavy drop shadow reads as a web modal
-        // dropped on top of the app; the hairline is inside the shadow rather
-        // than a border of its own, so the corner stays clean.
-        className="grid h-[min(680px,78dvh,calc(100dvh-2rem))] min-h-0 w-[min(90vw,840px)] min-w-0 grid-cols-[minmax(104px,152px)_minmax(0,1fr)] overflow-hidden rounded-xl bg-base-100 shadow-[var(--mdx-panel-shadow)]"
+    <DialogOverlay onDismiss={onClose}>
+      <DialogSurface
+        label="设置"
+        // A sidebar beside a content pane, so this one is a grid rather than the
+        // shell's default column. The surface itself — corner, shadow, never taller
+        // than the window — comes from the shell, like every other dialog's.
+        className="grid h-[min(680px,78dvh,calc(100dvh-2rem))] w-[min(90vw,840px)] grid-cols-[minmax(104px,152px)_minmax(0,1fr)]"
       >
         <aside className="min-h-0 min-w-0 overflow-auto border-r border-[var(--mdx-separator)] bg-base-200 px-3 py-4">
-          <h2 className="px-2 text-sm font-semibold">设置</h2>
-          <div className="mt-4 space-y-1">
+          {/* No heading of its own: the header beside it already says 设置, and the
+              two sat one above the other saying the same word twice. */}
+          <div className="space-y-1">
             {SETTINGS_SECTIONS.map((section) => (
               <button
                 key={section.id}
                 type="button"
                 className={[
-                  "block w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors",
+                  "block w-full rounded-[var(--mdx-control-radius)] px-2 py-1.5 text-left text-xs transition-colors",
                   activeSection === section.id
                     ? "bg-base-100 font-medium text-base-content"
                     : "text-base-content/70 hover:bg-base-100/70 hover:text-base-content",
@@ -442,130 +443,117 @@ function SettingsDialog({
         </aside>
 
         <div className="flex min-w-0 min-h-0 flex-col">
-          <header className="flex min-w-0 items-center justify-between gap-3 border-b border-[var(--mdx-separator)] px-5 py-3">
-            <div className="min-w-0 text-sm font-medium">设置</div>
-            <div className="flex min-w-0 shrink-0 items-center gap-2">
-              {message ? (
-                <div className="max-w-64 truncate text-xs text-error">
-                  {message}
-                </div>
-              ) : null}
-              <TextControlButton onClick={onClose}>
-                <X aria-hidden="true" />
-                关闭
-              </TextControlButton>
-              <PrimaryTextControlButton
-                onClick={() => void saveSettings()}
-                disabled={
-                  loadingConfig ||
-                  savingSettings ||
-                  !baseUrl.trim() ||
-                  !model.trim()
-                }
-              >
-                <Save aria-hidden="true" />
-                {savingSettings ? "保存中" : "保存"}
-              </PrimaryTextControlButton>
-            </div>
-          </header>
+          <DialogHeader
+            actions={
+              <>
+                {message ? (
+                  <div className="max-w-64 truncate text-xs text-error">
+                    {message}
+                  </div>
+                ) : null}
+                <TextControlButton onClick={onClose}>
+                  <X aria-hidden="true" />
+                  关闭
+                </TextControlButton>
+                <PrimaryTextControlButton
+                  onClick={() => void saveSettings()}
+                  disabled={
+                    loadingConfig ||
+                    savingSettings ||
+                    !baseUrl.trim() ||
+                    !model.trim()
+                  }
+                >
+                  <Save aria-hidden="true" />
+                  {savingSettings ? "保存中" : "保存"}
+                </PrimaryTextControlButton>
+              </>
+            }
+          >
+            设置
+          </DialogHeader>
 
           <div
             ref={contentScrollRef}
             data-settings-scroll-container
-            className="min-h-0 flex-1 space-y-7 overflow-y-auto overflow-x-hidden px-[clamp(16px,3vw,28px)] py-5"
+            className="min-h-0 flex-1 divide-y divide-[var(--mdx-separator)] overflow-y-auto overflow-x-hidden pb-4"
           >
-            <section
+            <div
               ref={(node) => {
                 sectionRefs.current.search = node;
               }}
               data-settings-section="search"
-              className="scroll-mt-5 grid grid-cols-[clamp(64px,12vw,96px)_minmax(0,1fr)] gap-x-5 gap-y-2"
+              className="scroll-mt-5"
             >
-              <h3 className="pt-2 text-xs font-medium text-base-content/70">
-                搜索限制
-              </h3>
-              <div className="space-y-3">
-                <label className="block space-y-1.5 text-xs text-base-content/70">
-                  <span>单文件最大搜索大小（字节）</span>
-                  <input
-                    className="h-9 w-full rounded-md border border-base-content/12 bg-base-100 px-2.5 text-sm text-base-content outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/20"
-                    value={searchMaxFileBytesText}
-                    inputMode="numeric"
-                    onChange={(event) =>
-                      setSearchMaxFileBytesText(event.currentTarget.value)
-                    }
-                    disabled={savingSettings}
-                  />
-                </label>
-                <label className="block space-y-1.5 text-xs text-base-content/70">
-                  <span>最大结果数</span>
-                  <input
-                    className="h-9 w-full rounded-md border border-base-content/12 bg-base-100 px-2.5 text-sm text-base-content outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/20"
-                    value={searchMaxResultsText}
-                    inputMode="numeric"
-                    onChange={(event) =>
-                      setSearchMaxResultsText(event.currentTarget.value)
-                    }
-                    disabled={savingSettings}
-                  />
-                </label>
-                <label className="block space-y-1.5 text-xs text-base-content/70">
-                  <span>每个文件最大匹配数</span>
-                  <input
-                    className="h-9 w-full rounded-md border border-base-content/12 bg-base-100 px-2.5 text-sm text-base-content outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/20"
-                    value={searchMaxMatchesPerFileText}
-                    inputMode="numeric"
-                    onChange={(event) =>
-                      setSearchMaxMatchesPerFileText(event.currentTarget.value)
-                    }
-                    disabled={savingSettings}
-                  />
-                </label>
+              <PanelSection
+                title="搜索限制"
+                hint="超过上限的文件不会被搜索，结果也会截断在这里设定的条数。"
+              >
+              {/*
+               * Three counts on one row rather than three rows of one. Width says
+               * something about a value: a field as wide as the panel claims the
+               * number in it could be long, and none of these can.
+               */}
+              <div className="grid grid-cols-2 gap-x-5 gap-y-4 sm:grid-cols-3">
+                <NumberField
+                  label="单文件上限（字节）"
+                  value={searchMaxFileBytesText}
+                  disabled={savingSettings}
+                  onChange={setSearchMaxFileBytesText}
+                />
+                <NumberField
+                  label="最大结果数"
+                  value={searchMaxResultsText}
+                  disabled={savingSettings}
+                  onChange={setSearchMaxResultsText}
+                />
+                <NumberField
+                  label="每文件最大匹配"
+                  value={searchMaxMatchesPerFileText}
+                  disabled={savingSettings}
+                  onChange={setSearchMaxMatchesPerFileText}
+                />
               </div>
-            </section>
+              </PanelSection>
+            </div>
 
-            <section
+            <div
               ref={(node) => {
                 sectionRefs.current.files = node;
               }}
               data-settings-section="files"
-              className="scroll-mt-5 grid grid-cols-[clamp(64px,12vw,96px)_minmax(0,1fr)] gap-x-5 gap-y-2"
+              className="scroll-mt-5"
             >
-              <h3 className="pt-2 text-xs font-medium text-base-content/70">
-                文件监听
-              </h3>
-              <div className="space-y-3">
-                <label className="flex items-center gap-3 text-sm text-base-content">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 rounded-sm border border-base-content/20 bg-base-100"
-                    checked={fileWatchEnabled}
-                    onChange={(event) =>
-                      setFileWatchEnabled(event.currentTarget.checked)
-                    }
-                    disabled={savingSettings}
-                  />
-                  <span>启用工作区文件监听</span>
-                </label>
-                <p className="text-xs leading-relaxed text-base-content/65">
-                  未保存正文会以明文草稿保存在 ~/.loam/drafts/，保存或丢弃后会清理对应草稿。
-                </p>
-                <div className="border-t border-[var(--mdx-separator)] pt-3">
-                  <div className="mb-2 text-xs text-base-content/70">
-                    过滤项目
-                  </div>
-                  <textarea
-                    className="min-h-24 w-full resize-y rounded-md border border-base-content/12 bg-base-100 px-2.5 py-2 text-sm text-base-content outline-none transition-colors placeholder:text-base-content/45 focus:border-primary/60 focus:ring-2 focus:ring-primary/20"
-                    value={excludeDirsText}
-                    onChange={(event) =>
-                      setExcludeDirsText(event.currentTarget.value)
-                    }
-                    placeholder={"每行一个目录，例如：\nnode_modules\ndist\nraw/archive"}
-                    disabled={savingSettings}
-                  />
+              <PanelSection
+                title="文件监听"
+                hint="未保存正文会以明文草稿保存在 ~/.loam/drafts/，保存或丢弃后会清理对应草稿。"
+              >
+                <div className="flex min-w-0 flex-col gap-5">
+                  <label className="flex min-w-0 items-center gap-2.5 text-[13.5px] leading-[1.75] text-base-content/85">
+                    <Checkbox
+                      checked={fileWatchEnabled}
+                      onChange={(event) =>
+                        setFileWatchEnabled(event.currentTarget.checked)
+                      }
+                      disabled={savingSettings}
+                    />
+                    <span>启用工作区文件监听</span>
+                  </label>
+                  <label className="flex min-w-0 flex-col gap-1.5">
+                    <FieldLabel>不监听的目录，每行一个</FieldLabel>
+                    <TextArea
+                      className="min-h-24"
+                      value={excludeDirsText}
+                      onChange={(event) =>
+                        setExcludeDirsText(event.currentTarget.value)
+                      }
+                      placeholder={"node_modules\ndist\nraw/archive"}
+                      disabled={savingSettings}
+                    />
+                  </label>
                 </div>
-              </div>
-            </section>
+              </PanelSection>
+            </div>
 
             <MemorySettingsSection
               sectionRef={(node) => {
@@ -589,99 +577,148 @@ function SettingsDialog({
               }}
             />
 
-            <section
+            <div
               ref={(node) => {
                 sectionRefs.current.llm = node;
               }}
               data-settings-section="llm"
-              className="scroll-mt-5 grid grid-cols-[clamp(64px,12vw,96px)_minmax(0,1fr)] gap-x-5 gap-y-2"
+              className="scroll-mt-5"
             >
-              <h3 className="pt-2 text-xs font-medium text-base-content/70">
-                LLM API
-              </h3>
-              <div className="space-y-3">
-                <label className="block space-y-1.5 text-xs text-base-content/70">
-                  <span>Base URL</span>
-                  <input
-                    className="h-9 w-full rounded-md border border-base-content/12 bg-base-100 px-2.5 text-sm text-base-content outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/20"
-                    value={baseUrl}
-                    onChange={(event) => setBaseUrl(event.currentTarget.value)}
-                    disabled={loadingConfig || savingSettings}
-                  />
-                </label>
-                <label className="block space-y-1.5 text-xs text-base-content/70">
-                  <span>Model</span>
-                  <input
-                    className="h-9 w-full rounded-md border border-base-content/12 bg-base-100 px-2.5 text-sm text-base-content outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/20"
-                    value={model}
-                    onChange={(event) => setModel(event.currentTarget.value)}
-                    disabled={loadingConfig || savingSettings}
-                  />
-                </label>
-                <div className="space-y-1.5 text-xs text-base-content/70">
-                  <span>API 模式</span>
-                  <SegmentedControl
-                    label="API 模式"
-                    fill
-                    value={apiMode}
-                    options={LLM_API_MODE_OPTIONS}
-                    onChange={setApiMode}
-                    disabled={loadingConfig || savingSettings}
-                  />
-                </div>
-                <label className="block space-y-1.5 text-xs text-base-content/70">
-                  <span>API Key</span>
-                  <input
-                    className="h-9 w-full rounded-md border border-base-content/12 bg-base-100 px-2.5 text-sm text-base-content outline-none transition-colors placeholder:text-base-content/45 focus:border-primary/60 focus:ring-2 focus:ring-primary/20"
-                    value={apiKey}
-                    type="password"
-                    placeholder={
-                      hasExistingApiKey
-                        ? "已配置，留空则保留"
-                        : "请输入 API Key"
-                    }
-                    onChange={(event) => setApiKey(event.currentTarget.value)}
-                    disabled={loadingConfig || savingSettings}
-                  />
-                </label>
-                <div className="border-t border-[var(--mdx-separator)] pt-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-xs text-base-content/70">
-                      LLM Wiki 后台处理
-                    </div>
-                    <TextControlButton
-                      className="h-8 px-3"
-                      onClick={() => void toggleLlmWiki()}
-                      disabled={!workspaceRoot || !llmWikiConfig || loadingLlmWiki}
-                    >
-                      {llmWikiConfig?.paused ? "启用" : "暂停"}
-                    </TextControlButton>
-                  </div>
-                  <div className="mt-3 flex items-center justify-between gap-3">
-                    <div className="text-xs text-base-content/70">日志</div>
-                    <TextControlButton
-                      onClick={() => void refreshLlmWikiLog()}
-                      disabled={!workspaceRoot || loadingLlmWiki}
-                    >
-                      <RefreshCw
-                        aria-hidden="true"
-                        className={loadingLlmWiki ? "animate-spin" : undefined}
+              <PanelSection
+                title="LLM API"
+                hint="提问、综述和 wiki 的后台处理都用这一个 provider。API Key 存在本机的凭据里。"
+              >
+                <div className="flex min-w-0 flex-col gap-5">
+                  <label className="flex min-w-0 flex-col gap-1.5">
+                    <FieldLabel>Base URL</FieldLabel>
+                    <TextInput
+                      value={baseUrl}
+                      onChange={(event) => setBaseUrl(event.currentTarget.value)}
+                      disabled={loadingConfig || savingSettings}
+                    />
+                  </label>
+                  {/* A model name, a two-position switch and a key: three short
+                      values, so three full-width rows was three times the height for
+                      no more information. */}
+                  <div className="grid min-w-0 grid-cols-1 gap-5 sm:grid-cols-[minmax(0,1fr)_auto]">
+                    <label className="flex min-w-0 flex-col gap-1.5">
+                      <FieldLabel>Model</FieldLabel>
+                      <TextInput
+                        value={model}
+                        onChange={(event) => setModel(event.currentTarget.value)}
+                        disabled={loadingConfig || savingSettings}
                       />
-                      刷新
-                    </TextControlButton>
+                    </label>
+                    <div className="flex min-w-0 flex-col gap-1.5">
+                      <FieldLabel>API 模式</FieldLabel>
+                      <SegmentedControl
+                        label="API 模式"
+                        value={apiMode}
+                        options={LLM_API_MODE_OPTIONS}
+                        onChange={setApiMode}
+                        disabled={loadingConfig || savingSettings}
+                      />
+                    </div>
                   </div>
-                  <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-base-200 p-2.5 font-[inherit] text-xs leading-relaxed text-base-content/75">
-                    {workspaceRoot
-                      ? llmWikiLog || "暂无日志"
-                      : "打开工作区后显示 LLM Wiki 日志"}
-                  </pre>
+                  <label className="flex min-w-0 flex-col gap-1.5 sm:max-w-sm">
+                    <FieldLabel>API Key</FieldLabel>
+                    <TextInput
+                      value={apiKey}
+                      type="password"
+                      placeholder={
+                        hasExistingApiKey
+                          ? "已配置，留空则保留"
+                          : "请输入 API Key"
+                      }
+                      onChange={(event) => setApiKey(event.currentTarget.value)}
+                      disabled={loadingConfig || savingSettings}
+                    />
+                  </label>
+
+                  {/* The background worker and its log: two rows about the same
+                      thing, separated by a rule rather than boxed. */}
+                  <ul className="flex min-w-0 flex-col">
+                    <HairlineItem>
+                      <div className="flex min-w-0 items-center justify-between gap-4">
+                        <PanelText className="min-w-0">
+                          LLM Wiki 后台处理
+                        </PanelText>
+                        <TextControlButton
+                          className="shrink-0"
+                          onClick={() => void toggleLlmWiki()}
+                          disabled={
+                            !workspaceRoot || !llmWikiConfig || loadingLlmWiki
+                          }
+                        >
+                          {llmWikiConfig?.paused ? "启用" : "暂停"}
+                        </TextControlButton>
+                      </div>
+                    </HairlineItem>
+                    <HairlineItem>
+                      <div className="flex min-w-0 items-center justify-between gap-4">
+                        <PanelText className="min-w-0">日志</PanelText>
+                        <IconButton
+                          className="shrink-0"
+                          label="刷新 LLM Wiki 日志"
+                          icon={
+                            <RefreshCw
+                              className={
+                                loadingLlmWiki ? "animate-spin" : undefined
+                              }
+                            />
+                          }
+                          onClick={() => void refreshLlmWikiLog()}
+                          disabled={!workspaceRoot || loadingLlmWiki}
+                        />
+                      </div>
+                      <LogBlock className="mt-2 max-h-40">
+                        {workspaceRoot
+                          ? llmWikiLog || "暂无日志"
+                          : "打开工作区后显示 LLM Wiki 日志"}
+                      </LogBlock>
+                    </HairlineItem>
+                  </ul>
                 </div>
-              </div>
-            </section>
+              </PanelSection>
+            </div>
           </div>
         </div>
-      </section>
-    </div>
+      </DialogSurface>
+    </DialogOverlay>
+  );
+}
+
+/**
+ * A count, in a field as wide as a count.
+ *
+ * One component because three of these sat side by side and each had been written
+ * out again: the label, the numeric input mode, the disabled wiring. The width
+ * comes from the grid it is placed in rather than from the field, so a row of three
+ * stays even.
+ */
+function NumberField({
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  disabled: boolean;
+  onChange: (next: string) => void;
+}) {
+  return (
+    <label className="flex min-w-0 flex-col gap-1.5">
+      <FieldLabel className="block truncate">
+        <span title={label}>{label}</span>
+      </FieldLabel>
+      <TextInput
+        value={value}
+        inputMode="numeric"
+        disabled={disabled}
+        onChange={(event) => onChange(event.currentTarget.value)}
+      />
+    </label>
   );
 }
 
