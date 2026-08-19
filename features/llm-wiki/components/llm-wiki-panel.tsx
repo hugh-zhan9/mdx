@@ -7,6 +7,7 @@ import {
   EmptyState,
   IconButton,
   PrimaryTextControlButton,
+  StatList,
   TextArea,
   TextInput,
   TextControlButton,
@@ -45,6 +46,17 @@ function formatPanelProgressMessage(message: string) {
   ].join("\n");
 }
 
+/** What the two secondary actions do, in words that say what pressing them means. */
+const SECONDARY_ACTION_TITLES: Record<string, string> = {
+  lint: "检查 wiki 一致性",
+  graph: "重建知识图谱页",
+};
+
+const SECONDARY_ACTION_HINTS: Record<string, string> = {
+  lint: "扫描 wiki 与 raw，把断链、缺失和重复写进报告。文件多时要跑一会儿。",
+  graph: "按当前 wiki 重新生成图谱 Markdown 页。",
+};
+
 export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
   const {
     status,
@@ -58,6 +70,7 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
     activeOperation,
     activeOperationId,
     activeOperationLabel,
+    progress,
     activeStageLabel,
     cancelActiveOperation,
     initialize,
@@ -149,7 +162,7 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
        * spent a row saying something already on screen.
        */}
       <div className="flex min-w-0 items-center justify-between gap-3 border-b border-[var(--mdx-separator)] px-4 py-2">
-        <div className="min-w-0 truncate text-xs font-medium text-base-content/75">
+        <div className="min-w-0 truncate text-[13px] font-semibold text-base-content">
           {viewModel.title}
         </div>
         <IconButton
@@ -172,6 +185,31 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
       >
         <div className="mx-auto w-full max-w-3xl space-y-3">
 
+        {progress ? (
+          <Card className="min-w-0 space-y-1.5">
+            <div className="flex min-w-0 items-baseline justify-between gap-3">
+              <span className="text-[13px] font-semibold text-base-content">
+                正在处理 {progress.index}/{progress.total}
+              </span>
+              <span className="shrink-0 text-[11px] text-base-content/50">
+                已等待 {progress.elapsedSeconds} 秒
+              </span>
+            </div>
+            <div
+              className="min-w-0 truncate text-xs text-base-content/70"
+              title={progress.file}
+            >
+              {progress.file}
+            </div>
+            <StatList
+              items={[
+                { label: "已完成", value: progress.completed },
+                { label: "已失败", value: progress.failed },
+              ]}
+            />
+          </Card>
+        ) : null}
+
         {activeOperation ? (
           <div className="flex min-w-0 items-center gap-2 rounded-[var(--mdx-control-radius)] bg-[var(--mdx-card-bg)] p-2">
             <div className="min-w-0 flex-1 truncate text-base-content/75">
@@ -193,13 +231,10 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
               <div className="truncate text-sm font-semibold text-base-content">
                 {viewModel.title}
               </div>
-              <div className="mt-2 space-y-1 text-base-content/70">
-                {viewModel.statusLines.map((line) => (
-                  <div key={line} className="truncate" title={line}>
-                    {line}
-                  </div>
-                ))}
-              </div>
+              {/* One row: six counts stacked into six lines said nothing more
+                  than six counts on one line, and pushed everything below the
+                  fold. */}
+              <StatList className="mt-1.5" items={viewModel.statusStats} />
             </div>
 
             {panelMessage ? (
@@ -236,19 +271,37 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-2">
+            {/*
+             * Named for what they do, with what they do underneath. They were two
+             * words — 检查, 图谱 — in a bare two-column grid, which read as labels
+             * rather than controls and said nothing about what pressing them meant.
+             */}
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {viewModel.secondaryActions.map((action) => (
-                <TextControlButton
+                <div
                   key={action.id}
-                  disabled={actionsDisabled || action.disabled}
-                  onClick={() =>
-                    action.id === "lint" ? void lint() : void graph()
-                  }
+                  className="flex min-w-0 items-center justify-between gap-2 rounded-[var(--mdx-control-radius)] bg-[var(--mdx-card-bg)] px-2.5 py-2"
                 >
-                  {activeOperation === action.id
-                    ? (activeOperationLabel ?? action.label)
-                    : action.label}
-                </TextControlButton>
+                  <div className="min-w-0">
+                    <div className="text-xs text-base-content/80">
+                      {SECONDARY_ACTION_TITLES[action.id]}
+                    </div>
+                    <div className="mt-0.5 text-[11px] leading-relaxed text-base-content/50">
+                      {SECONDARY_ACTION_HINTS[action.id]}
+                    </div>
+                  </div>
+                  <TextControlButton
+                    className="shrink-0"
+                    disabled={actionsDisabled || action.disabled}
+                    onClick={() =>
+                      action.id === "lint" ? void lint() : void graph()
+                    }
+                  >
+                    {activeOperation === action.id
+                      ? (activeOperationLabel ?? "进行中")
+                      : action.label}
+                  </TextControlButton>
+                </div>
               ))}
             </div>
 
@@ -287,8 +340,10 @@ export function LlmWikiPanel({ llmWiki, onConfigureLlm }: LlmWikiPanelProps) {
             onConfigure={handleConfigure}
           />
           <form className="space-y-2" onSubmit={handleQuerySubmit}>
-            <label className="block space-y-1.5 text-xs text-base-content/70">
-              <span>问题</span>
+            {/* No field label: the section is called 提问, the box says what to
+                type in it, and a third word between them was what closed the gap
+                to the heading. */}
+            <label className="block text-xs text-base-content/70">
               <TextArea
                 className="min-h-24 text-xs leading-relaxed"
                 value={question}
@@ -418,7 +473,7 @@ function SectionHeading({
 }) {
   return (
     <div className="flex min-w-0 items-center justify-between gap-3">
-      <div className="text-xs font-medium text-base-content/75">{title}</div>
+      <div className="text-[13px] font-semibold text-base-content">{title}</div>
       {hint ? (
         <div className="flex min-w-0 items-center gap-2">
           <span className="min-w-0 truncate text-[11px] text-base-content/50">

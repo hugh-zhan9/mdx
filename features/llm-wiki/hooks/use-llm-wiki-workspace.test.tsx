@@ -96,7 +96,10 @@ describe("useLlmWikiWorkspace", () => {
     });
     await act(async () => {});
 
-    expect(latest?.viewModel.statusLines).toContain("待处理：8");
+    expect(latest?.viewModel.statusStats).toContainEqual({
+            label: "待处理",
+            value: "8",
+        });
     expect(latest?.message).toBe("raw 扫描完成：8 个文件，8 个待处理。");
   });
 
@@ -478,7 +481,10 @@ describe("useLlmWikiWorkspace", () => {
 
     expect(client.rescanRaw).toHaveBeenCalledTimes(3);
     expect(latest?.viewModel.failed).toEqual(failedScan.failed);
-    expect(latest?.viewModel.statusLines).toContain("失败：1");
+    expect(latest?.viewModel.statusStats).toContainEqual({
+            label: "失败",
+            value: "1",
+        });
 
     await act(async () => {
       resolveAfterFailureRescan?.(failedScan);

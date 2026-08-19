@@ -18,7 +18,7 @@ describe("createLlmWikiStatusViewModel", () => {
 
         expect(viewModel.title).toBe("普通 Markdown 工作区");
         expect(viewModel.primaryAction).toBe("初始化 LLM Wiki");
-        expect(viewModel.statusLines).toContain("后台 LLM 未启用");
+        expect(viewModel.statusStats).toContainEqual({ label: "后台 LLM", value: "未启用" });
     });
 
     it("describes an llm wiki workspace without provider config", () => {
@@ -38,7 +38,10 @@ describe("createLlmWikiStatusViewModel", () => {
 
         expect(viewModel.title).toBe("LLM Wiki");
         expect(viewModel.primaryAction).toBe("配置 LLM");
-        expect(viewModel.statusLines).toContain("待处理：3");
+        expect(viewModel.statusStats).toContainEqual({
+            label: "待处理",
+            value: "3",
+        });
     });
 
     it("describes a paused llm wiki workspace", () => {
@@ -55,7 +58,10 @@ describe("createLlmWikiStatusViewModel", () => {
         });
 
         expect(viewModel.primaryAction).toBe("恢复后台处理");
-        expect(viewModel.statusLines).toContain("状态：已暂停");
+        expect(viewModel.statusStats).toContainEqual({
+            label: "状态",
+            value: "已暂停",
+        });
     });
 
     it("exposes failed raw files with reasons", () => {
@@ -76,8 +82,14 @@ describe("createLlmWikiStatusViewModel", () => {
             skippedCount: 0,
         });
 
-        expect(viewModel.statusLines).toContain("待处理：1");
-        expect(viewModel.statusLines).toContain("失败：1");
+        expect(viewModel.statusStats).toContainEqual({
+            label: "待处理",
+            value: "1",
+        });
+        expect(viewModel.statusStats).toContainEqual({
+            label: "失败",
+            value: "1",
+        });
         expect(viewModel.failed).toEqual([
             {
                 path: "raw/notes/a.md",
@@ -104,7 +116,10 @@ describe("createLlmWikiStatusViewModel", () => {
             skippedCount: 0,
         });
 
-        expect(viewModel.statusLines).toContain("失败：120");
+        expect(viewModel.statusStats).toContainEqual({
+            label: "失败",
+            value: "120",
+        });
         expect(viewModel.failed).toHaveLength(50);
         expect(viewModel.failed[0]?.path).toBe("raw/failed-0.md");
         expect(viewModel.failed.at(-1)?.path).toBe("raw/failed-49.md");

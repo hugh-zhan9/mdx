@@ -22,13 +22,13 @@ function createHook(
         viewModel: {
             title: "LLM Wiki",
             primaryAction: "重新扫描 raw",
-            statusLines: [
-                "状态：就绪",
-                "raw 文件：3",
-                "待处理：1",
-                "已完成：1",
-                "失败：1",
-                "已跳过：0",
+            statusStats: [
+                { label: "状态", value: "就绪" },
+                { label: "raw 文件", value: "3" },
+                { label: "待处理", value: "1" },
+                { label: "已完成", value: "1" },
+                { label: "失败", value: "1" },
+                { label: "已跳过", value: "0" },
             ],
             failed: [
                 {
@@ -48,6 +48,7 @@ function createHook(
             emptyState: null,
         },
         message: null,
+        progress: null,
         queryAnswer: null,
         isReady: true,
         isLoading: false,

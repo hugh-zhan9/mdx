@@ -65,6 +65,23 @@ export interface LlmWikiKnowledgeConfig {
     skipPaths: string[];
 }
 
+/**
+ * What an ingest is doing right now.
+ *
+ * Fields rather than a rendered paragraph: only `elapsedSeconds` changes on most
+ * ticks, so the panel can redraw a number instead of replacing a block — which is
+ * what made the area flicker once a second.
+ */
+export interface LlmWikiProgress {
+    /** Which file of the batch, counting from one. */
+    index: number;
+    total: number;
+    file: string;
+    elapsedSeconds: number;
+    completed: number;
+    failed: number;
+}
+
 export interface LlmWikiPanelState {
     mode: LlmWikiMode;
     llmConfigured: boolean;
@@ -102,7 +119,14 @@ export interface LlmWikiEmptyStateViewModel {
 export interface LlmWikiStatusViewModel {
     title: string;
     primaryAction: string;
-    statusLines: string[];
+    /**
+     * The facts about this workspace, as label and value.
+     *
+     * Pairs rather than the pre-joined strings this used to hold: those forced one
+     * fact per line wherever they were rendered, which turned six numbers into six
+     * rows of a column that had room for all of them on one.
+     */
+    statusStats: Array<{ label: string; value: string }>;
     failed: LlmWikiFailedFile[];
     modes: LlmWikiPanelModeViewModel[];
     secondaryActions: LlmWikiSecondaryActionViewModel[];

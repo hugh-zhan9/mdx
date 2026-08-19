@@ -9,7 +9,7 @@ export function createLlmWikiStatusViewModel(
         return {
             title: "普通 Markdown 工作区",
             primaryAction: "初始化 LLM Wiki",
-            statusLines: ["后台 LLM 未启用"],
+            statusStats: [{ label: "后台 LLM", value: "未启用" }],
             failed: [],
             modes: createModes(false),
             secondaryActions: createSecondaryActions(true),
@@ -22,15 +22,20 @@ export function createLlmWikiStatusViewModel(
     }
 
     const hasHiddenFailedDetails = state.failed.length > MAX_FAILED_DETAILS;
-    const statusLines = [
-        state.paused ? "状态：已暂停" : "状态：就绪",
-        `raw 文件：${state.totalRawFiles}`,
-        `待处理：${state.pendingCount}`,
-        `已完成：${state.completedCount}`,
-        `失败：${state.failedCount}`,
-        `已跳过：${state.skippedCount}`,
+    const statusStats = [
+        { label: "状态", value: state.paused ? "已暂停" : "就绪" },
+        { label: "raw 文件", value: String(state.totalRawFiles) },
+        { label: "待处理", value: String(state.pendingCount) },
+        { label: "已完成", value: String(state.completedCount) },
+        { label: "失败", value: String(state.failedCount) },
+        { label: "已跳过", value: String(state.skippedCount) },
         ...(hasHiddenFailedDetails
-            ? [`失败明细：显示前 ${MAX_FAILED_DETAILS} 条`]
+            ? [
+                  {
+                      label: "失败明细",
+                      value: `显示前 ${MAX_FAILED_DETAILS} 条`,
+                  },
+              ]
             : []),
     ];
 
@@ -41,7 +46,7 @@ export function createLlmWikiStatusViewModel(
             : state.llmConfigured
               ? "重新扫描 raw"
               : "配置 LLM",
-        statusLines,
+        statusStats,
         failed: state.failed.slice(0, MAX_FAILED_DETAILS),
         modes: createModes(state.llmConfigured),
         secondaryActions: createSecondaryActions(!state.llmConfigured),

@@ -40,6 +40,7 @@ import {
 import { createLlmWikiStatusViewModel } from "../lib/status-view-model";
 import type {
   LlmWikiPanelState,
+  LlmWikiProgress,
   LlmWikiQueryResponse,
   LlmWikiStatusViewModel,
   LlmWikiWorkspaceStatus,
@@ -51,6 +52,14 @@ export interface LlmWikiWorkspaceHook {
   status: LlmWikiWorkspaceStatus | null;
   viewModel: LlmWikiStatusViewModel;
   message: string | null;
+  /**
+   * What an ingest is doing right now, as fields rather than as a paragraph.
+   *
+   * It was six `label：value` lines joined into `message` and rewritten every
+   * second: the panel could only print the string, so the shape of that block was
+   * decided here, and every tick replaced the whole thing.
+   */
+  progress: LlmWikiProgress | null;
   queryAnswer: LlmWikiQueryResponse | null;
   isReady: boolean;
   isLoading: boolean;
@@ -94,6 +103,14 @@ interface RootSnapshot {
   config: PublicLlmProviderConfig | null;
   scan: RawScanResult;
   message: string | null;
+  /**
+   * What an ingest is doing right now, as fields rather than as a paragraph.
+   *
+   * It was six `label：value` lines joined into `message` and rewritten every
+   * second: the panel could only print the string, so the shape of that block was
+   * decided here, and every tick replaced the whole thing.
+   */
+  progress: LlmWikiProgress | null;
   queryAnswer: LlmWikiQueryResponse | null;
   isLoading: boolean;
   isQuerying: boolean;
@@ -166,7 +183,7 @@ export function useLlmWikiWorkspace(
   );
   const currentSnapshot =
     snapshot.rootPath === rootPath ? snapshot : createInitialSnapshot(rootPath);
-  const { status, config, scan, message, queryAnswer, isQuerying } =
+  const { status, config, scan, message, progress, queryAnswer, isQuerying } =
     currentSnapshot;
   const activeOperation = currentSnapshot.activeOperation;
   const activeOperationId = currentSnapshot.activeOperationId;
@@ -294,14 +311,14 @@ export function useLlmWikiWorkspace(
               current.rootPath === ingestRootPath
                 ? {
                     ...current,
-                    message: [
-                      `正在处理 raw：${processedCount + 1}/${totalInBatch}`,
-                      `当前：${rawRelativePath}`,
-                      `状态：等待 LLM 返回，已等待 ${elapsedSeconds} 秒`,
-                      "阶段：后端会依次执行分析和生成，完成或失败后会写入日志",
-                      `已完成：${processedCount}`,
-                      `已失败：${failed.length}`,
-                    ].join("\n"),
+                    progress: {
+                      index: processedCount + 1,
+                      total: totalInBatch,
+                      file: rawRelativePath,
+                      elapsedSeconds,
+                      completed: processedCount,
+                      failed: failed.length,
+                    },
                   }
                 : current,
             );
@@ -473,6 +490,7 @@ export function useLlmWikiWorkspace(
           config: nextConfig,
           scan: EMPTY_SCAN,
           message: null,
+          progress: null,
           queryAnswer: null,
           isLoading: false,
           isQuerying: false,
@@ -548,6 +566,7 @@ export function useLlmWikiWorkspace(
           config: nextConfig,
           scan: EMPTY_SCAN,
           message: null,
+          progress: null,
           queryAnswer: null,
           isLoading: false,
           isQuerying: false,
@@ -935,6 +954,7 @@ export function useLlmWikiWorkspace(
               ? {
                   ...current,
                   message: `查询 LLM Wiki 失败：${formatError(error)}`,
+                  progress: null,
                   isQuerying: false,
                 }
               : current;
@@ -984,7 +1004,9 @@ export function useLlmWikiWorkspace(
           current.activeOperationId === activeOperationId
             ? {
                 ...current,
-                activeStage: operationState.stage,
+                // Kept when a poll has nothing to say: blanking it made the label
+                // flip between the stage and the operation name once a second.
+                activeStage: operationState.stage ?? current.activeStage,
               }
             : current,
         );
@@ -1054,6 +1076,7 @@ export function useLlmWikiWorkspace(
     status,
     viewModel,
     message,
+    progress,
     queryAnswer,
     isReady,
     isLoading,
@@ -1157,6 +1180,7 @@ function createLoadingSnapshot(
     config: null,
     scan: EMPTY_SCAN,
     message: null,
+    progress: null,
     queryAnswer: null,
     isLoading: Boolean(rootPath),
     isQuerying: false,
@@ -1173,6 +1197,7 @@ function createMissingRootSnapshot(rootPath: string): RootSnapshot {
     config: null,
     scan: EMPTY_SCAN,
     message: "请先打开工作区。",
+    progress: null,
     queryAnswer: null,
     isLoading: false,
     isQuerying: false,
