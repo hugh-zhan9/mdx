@@ -36,7 +36,7 @@ export function MemoryDiagnosticsTab({
           {busy === "export" ? "导出中" : "导出备份"}
         </TextControlButton>
         <TextControlButton disabled={busy !== null} onClick={onLegacyImport}>
-          导入旧记忆
+          {busy === "legacy" ? "导入中" : "导入旧记忆"}
         </TextControlButton>
       </div>
 

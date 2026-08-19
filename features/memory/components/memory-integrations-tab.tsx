@@ -9,7 +9,8 @@ import type { MemoryIntegrationStatus } from "../lib/types";
 interface MemoryIntegrationsTabProps {
   statuses: MemoryIntegrationStatus[];
   loading: boolean;
-  actionLoading: boolean;
+  /** The panel's current action, as `install-<agent>` while one is installing. */
+  busy: string | null;
   /** Installs (or reinstalls) skill, MCP entry and capture hook for one agent. */
   onInstall: (agent: string) => Promise<void>;
 }
@@ -31,10 +32,20 @@ interface MemoryIntegrationsTabProps {
 export function MemoryIntegrationsTab({
   statuses,
   loading,
-  actionLoading,
+  busy,
   onInstall,
 }: MemoryIntegrationsTabProps) {
   const rows = statuses.length > 0 ? statuses : fallbackStatuses();
+  /*
+   * Which row is working. Writing files under the home directory and running the
+   * doctor over them takes long enough to wonder whether the click registered, and
+   * the button used to keep its label and just grey out — along with the other two,
+   * so nothing on screen said which one had been pressed or that anything had
+   * started at all.
+   */
+  const installing = busy?.startsWith("install-")
+    ? busy.slice("install-".length)
+    : null;
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
@@ -63,10 +74,14 @@ export function MemoryIntegrationsTab({
               <TextControlButton
                 outlined
                 className="shrink-0"
-                disabled={actionLoading || loading}
+                disabled={busy !== null || loading}
                 onClick={() => void onInstall(status.agent_source)}
               >
-                {status.installed ? "重新安装" : "安装"}
+                {installing === status.agent_source
+                  ? "安装中"
+                  : status.installed
+                    ? "重新安装"
+                    : "安装"}
               </TextControlButton>
             </div>
           </HairlineItem>

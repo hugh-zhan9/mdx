@@ -616,6 +616,52 @@ export function PanelViewport({
 }
 
 /**
+ * What just happened, said briefly and then gone.
+ *
+ * For the outcome of something you asked for: an install finished, a bundle was
+ * written, a conclusion was adopted. It used to be a line at the foot of the panel,
+ * which on a tall page was off screen at the moment it mattered — the action
+ * reported and nobody saw the report.
+ *
+ * It takes itself away, because an outcome is not a state: leaving it on screen
+ * makes the next screenful say something about the last thing you did. Errors are
+ * not toasts for the same reason in reverse — they stay in a bar until dealt with.
+ */
+export function Toast({
+    children,
+    onDismiss,
+    /** How long it stays. Long enough to read a sentence, not long enough to nag. */
+    duration = 5000,
+}: {
+    children: ReactNode;
+    onDismiss: () => void;
+    duration?: number;
+}) {
+    useEffect(() => {
+        const timer = setTimeout(onDismiss, duration);
+
+        return () => clearTimeout(timer);
+    }, [duration, onDismiss]);
+
+    return (
+        <div
+            role="status"
+            aria-live="polite"
+            className="pointer-events-none fixed bottom-6 left-1/2 z-40 flex max-w-[min(90vw,560px)] -translate-x-1/2 justify-center"
+        >
+            <button
+                type="button"
+                // Dismissable by clicking it: the timer is a courtesy, not a lock.
+                className="pointer-events-auto min-w-0 break-words rounded-full bg-base-100 px-4 py-2 text-left text-[13px] leading-[1.6] text-base-content/85 shadow-[var(--mdx-panel-shadow)] ring-1 ring-base-content/10 transition-colors hover:bg-base-200"
+                onClick={onDismiss}
+            >
+                {children}
+            </button>
+        </div>
+    );
+}
+
+/**
  * The ground a modal sits on: scrim, centring, and the ways out of it.
  *
  * Five dialogs had written this themselves, and no two agreed: two scrims at

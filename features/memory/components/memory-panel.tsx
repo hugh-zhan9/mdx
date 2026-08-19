@@ -7,6 +7,7 @@ import {
   PANEL_GUTTER,
   PanelScroll,
   PanelViewport,
+  Toast,
 } from "@/common/components/ui-controls";
 import { useMemoryWorkspace } from "../hooks/use-memory-workspace";
 import {
@@ -592,7 +593,9 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
              * looked like nothing had happened even when it had written files.
              */
             onInstallAgent={async (agent) => {
-              await run("install-agent", async () => {
+              // Keyed by agent, so the row that was pressed is the one that says
+              // "安装中" — a single global flag greyed all three out and named none.
+              await run(`install-${agent}`, async () => {
                 // Installs, then runs the doctor and hands back what it found —
                 // including the statuses, so the list does not need a second read.
                 const report = await repairMemoryIntegration(rootPath, agent);
@@ -650,6 +653,16 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
        * could only show text, so acting on what you had just read meant closing it
        * and finding the same entry again somewhere else.
        */}
+      {/*
+       * The outcome, as a toast. It used to be a line at the foot of the panel —
+       * below a page of settings on the tab where the install, the export and the
+       * purge all live, so the report was off screen at the moment it mattered.
+       * Errors keep their bar at the top: those wait to be dealt with.
+       */}
+      {message && !error ? (
+        <Toast onDismiss={() => setMessage(null)}>{message}</Toast>
+      ) : null}
+
       {opened ? (
         <MemoryEntryDialog
           item={opened}
@@ -737,16 +750,6 @@ export function MemoryPanel({ rootPath }: MemoryPanelProps) {
         />
       ) : null}
 
-      {/*
-       * On every tab, including setup. It used to skip setup — where the install,
-       * the export and the purge all live — so those actions reported into a bar
-       * that was not rendered, and pressing them looked like nothing happened.
-       */}
-      {message ? (
-        <div className="min-w-0 break-words border-t border-[var(--mdx-separator)] px-3 py-2 text-xs text-base-content/65">
-          {message}
-        </div>
-      ) : null}
     </div>
   );
 }

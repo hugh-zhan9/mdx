@@ -102,7 +102,7 @@ export function MemoryMaterialTab({
            * is already what draws the eye here.
            */}
           <TextControlButton disabled={busy !== null} onClick={onDistillSelected}>
-            由此得出结论
+            {busy === "distill" ? "正在得出" : "由此得出结论"}
           </TextControlButton>
         </div>
       ) : null}

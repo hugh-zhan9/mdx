@@ -166,7 +166,7 @@ export function MemoryConclusionsTab({
               disabled={busy !== null}
               onClick={() => onAdopt(item.drawerId)}
             >
-              采纳
+              {busy === "adopt" ? "采纳中" : "采纳"}
             </PrimaryTextControlButton>
           ) : null}
           {item.status === "promoted" || item.status === "canonical" ? (

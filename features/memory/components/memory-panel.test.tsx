@@ -357,6 +357,63 @@ describe("MemoryPanel", () => {
     expect(host.textContent).toContain("Cursor");
   });
 
+  it("says the install started, on the row that was pressed", async () => {
+    // Writing files under the home directory and running the doctor over them takes
+    // long enough to wonder whether the click registered. The button used to keep
+    // its label and merely grey out — along with the other two rows, so nothing said
+    // which one had been pressed or that anything had begun.
+    const agent = (name: string, installed: boolean) => ({
+      agent_source: name,
+      installed,
+      enabled: installed,
+      authorized: installed,
+      hook_version: installed ? "1" : null,
+      last_event_at: null,
+      last_error: null,
+      doctor_status: installed ? "ok" : "not_checked",
+    });
+    memoryClient.getMemoryIntegrationStatus.mockResolvedValue([
+      agent("claude", false),
+      agent("codex", false),
+    ]);
+    let finish: (() => void) | null = null;
+    memoryClient.repairMemoryIntegration.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = () =>
+            resolve({
+              ok: true,
+              statuses: [agent("claude", true)],
+              errors: [],
+              warnings: [],
+            });
+        }),
+    );
+
+    await mountPanel();
+    await act(async () => {
+      getButton("设置与诊断").click();
+    });
+    await flush();
+    await act(async () => {
+      getButton("安装").click();
+    });
+    await flush();
+
+    // The row that was pressed says so; the other one is only disabled.
+    expect(host.textContent).toContain("安装中");
+    expect(host.textContent?.match(/安装中/g)).toHaveLength(1);
+
+    await act(async () => {
+      finish?.();
+      await flush();
+    });
+
+    // And when it is over, the outcome is on screen and the label has moved on.
+    expect(host.textContent).not.toContain("安装中");
+    expect(host.textContent).toContain("已给 claude 装好技能、MCP 与 hook");
+  });
+
   it("acts on the entry it opened, without making you find it again", async () => {
     // The opened entry used to be a read-only strip along the bottom: you could see
     // what a graph dot said and then had to hunt the same row down in a list to do

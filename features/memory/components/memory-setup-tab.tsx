@@ -159,7 +159,7 @@ export function MemorySetupTab({
           <MemoryIntegrationsTab
             statuses={integrations}
             loading={integrationsLoading}
-            actionLoading={busy !== null}
+            busy={busy}
             onInstall={onInstallAgent}
           />
         </PanelSection>
