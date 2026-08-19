@@ -73,6 +73,44 @@ function installResizeObserverPolyfill(): void {
 installResizeObserverPolyfill();
 
 /**
+ * Answers the question ProseMirror asks when it is clicked.
+ *
+ * A mousedown makes it ask what is at those coordinates, which is
+ * `document.elementFromPoint` — a method jsdom does not implement at all. Its own
+ * feature check only guards the shadow-root case (`view.root.elementFromPoint ?
+ * view.root : doc`) and then calls the method on the document regardless, so the
+ * call throws:
+ *
+ *     elementFromPoint is not a function
+ *
+ * Thrown inside a native event dispatch, it lands outside every `try` in the test
+ * and is reported as an unhandled error. Locally that only printed a warning;
+ * `vitest run` in CI exits non-zero on it, which is what turned a green suite into
+ * a red release job.
+ *
+ * Null is the honest answer, and one ProseMirror already handles: it falls back to
+ * the editor's own bounding box, finds that the coordinates are not inside it, and
+ * reports no position — which is exactly right in a document that has no layout.
+ */
+function installElementFromPointPolyfill(): void {
+    if (typeof Document === "undefined") return;
+
+    if (typeof Document.prototype.elementFromPoint !== "function") {
+        Document.prototype.elementFromPoint = function elementFromPoint() {
+            return null;
+        };
+    }
+
+    if (typeof Document.prototype.elementsFromPoint !== "function") {
+        Document.prototype.elementsFromPoint = function elementsFromPoint() {
+            return [];
+        };
+    }
+}
+
+installElementFromPointPolyfill();
+
+/**
  * Lets Milkdown's readiness timers finish in the environment that started them.
  *
  * `@milkdown/ctx`'s `Timer.start()` schedules a rejection three seconds out and
