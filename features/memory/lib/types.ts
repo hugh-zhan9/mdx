@@ -79,12 +79,20 @@ export interface StoredItem {
   status: ConclusionStatus | null;
   /** An excerpt in lists; the whole text when fetched on its own. */
   excerpt: string;
+  /** Conclusions only: the material this stands on. Ids; fetch to read them. */
+  supportingRefs: string[];
+  /** Conclusions only: what was checked before adoption. */
+  verificationRefs: string[];
+  /** Conclusions only: what stands against it, and blocks promotion. */
+  counterexampleRefs: string[];
 }
 
 export interface ListFilter {
   kind?: StoredItemKind;
   status?: ConclusionStatus;
   limit?: number;
+  /** Read every project in the library rather than this workspace's own. */
+  allProjects?: boolean;
 }
 
 export interface WrittenEvidence {
@@ -171,12 +179,21 @@ export interface RecallResult {
 }
 
 /** What the promotion gate requires, and what this conclusion has. */
+/**
+ * The gate's own report, in the field names it actually arrives with.
+ *
+ * Snake case, unlike everything else across this boundary: the report is
+ * upstream's type, serialized as upstream named it, and the commands hand it
+ * through untouched. Written as camel case here it type-checked, matched a test
+ * factory that had invented the same shape, and crashed the panel the first time a
+ * real conclusion rendered — the counts were simply not there.
+ */
 export interface GateRequirements {
-  minSupportingRefs: number;
-  minVerificationRefs: number;
-  minTeachingRefs: number;
-  reviewerRequired: boolean;
-  counterexamplesBlock: boolean;
+  min_supporting_refs: number;
+  min_verification_refs: number;
+  min_teaching_refs: number;
+  reviewer_required: boolean;
+  counterexamples_block: boolean;
 }
 
 export interface GateEvidenceCounts {
@@ -187,15 +204,15 @@ export interface GateEvidenceCounts {
 }
 
 export interface GateReport {
-  drawerId: string;
+  drawer_id: string;
   tier: string;
   status: string;
-  targetStatus: string;
+  target_status: string;
   allowed: boolean;
   /** Why not, in the backend's own words. Shown verbatim. */
   reasons: string[];
   requirements: GateRequirements;
-  evidenceCounts: GateEvidenceCounts;
+  evidence_counts: GateEvidenceCounts;
 }
 
 export interface DistilledConclusion {
@@ -296,16 +313,42 @@ export interface MemoryIntegrationStatus {
   doctor_status: string;
 }
 
+/**
+ * What the doctor found, and what `memory_integration_repair` answers with.
+ *
+ * The repair command installs and then runs the doctor, so its reply is this — not
+ * the setup result. It was declared here as `{ ok: boolean; [key: string]: unknown }`,
+ * an index signature that types nothing: the statuses it carries were fetched a
+ * second time over the wire because nobody could see they were already in hand.
+ */
 export interface MemoryDoctorReport {
   ok: boolean;
-  [key: string]: unknown;
+  statuses: MemoryIntegrationStatus[];
+  errors: string[];
+  warnings: string[];
 }
 
+/**
+ * What `memory_agent_setup` actually takes.
+ *
+ * One flag per agent, in the command's own snake_case — like `GateReport`, this
+ * struct is deserialized by name on the Rust side. It used to be declared here as
+ * `{ agents?: string[] }`, which is not a shape the command has ever accepted: the
+ * panel type-checked, and pressing 配置智能体 failed at the boundary with "missing
+ * field `codex`". A type that describes nothing real cannot catch anything.
+ */
 export interface MemoryAgentSetupRequest {
-  agents?: string[];
-  dryRun?: boolean;
+  codex: boolean;
+  claude: boolean;
+  cursor: boolean;
+  /** Also install the capture hook, not just the skill and MCP entry. */
+  hooks?: boolean;
+  /** Report what would change without writing it. */
+  dry_run?: boolean;
 }
 
 export interface MemoryAgentSetupResult {
-  [key: string]: unknown;
+  dry_run: boolean;
+  changed_paths: string[];
+  summary: string;
 }

@@ -1,120 +1,82 @@
 import {
-  Card,
+  HairlineItem,
+  PanelText,
+  StateLabel,
   TextControlButton,
 } from "../../../common/components/ui-controls";
 import type { MemoryIntegrationStatus } from "../lib/types";
-
-interface AgentSetupOptions {
-  codex: boolean;
-  claude: boolean;
-  cursor: boolean;
-  hooks: boolean;
-}
 
 interface MemoryIntegrationsTabProps {
   statuses: MemoryIntegrationStatus[];
   loading: boolean;
   actionLoading: boolean;
-  agentSetupOptions: AgentSetupOptions;
-  onAgentSetupOptionsChange: (options: AgentSetupOptions) => void;
-  onRefresh: () => Promise<void>;
-  onSetupAgents: () => Promise<void>;
-  onRepair: (agent: string) => Promise<void>;
+  /** Installs (or reinstalls) skill, MCP entry and capture hook for one agent. */
+  onInstall: (agent: string) => Promise<void>;
 }
 
+/**
+ * Which agents can read this library, and the one act that changes it.
+ *
+ * There used to be two controls here doing the same thing: a 修复 button on each
+ * row, and a group of checkboxes with a 配置智能体 button under them. `修复` calls
+ * `memory_integration_repair`, which is `plan_memory_agent_repair`, which is
+ * `plan_memory_agent_setup` with `hooks: true` — the same install, scoped to one
+ * agent. So the hooks checkbox was honoured on one path and forced on the other,
+ * and nothing on screen said which button did what.
+ *
+ * One button per row now, named for what pressing it does. The hook goes in with
+ * it, always: it only captures once capture is switched on in 设置, so installing
+ * it is not the same as turning it on.
+ */
 export function MemoryIntegrationsTab({
   statuses,
   loading,
   actionLoading,
-  agentSetupOptions,
-  onAgentSetupOptionsChange,
-  onRefresh,
-  onSetupAgents,
-  onRepair,
+  onInstall,
 }: MemoryIntegrationsTabProps) {
-  const selectedAgentCount = [
-    agentSetupOptions.codex,
-    agentSetupOptions.claude,
-    agentSetupOptions.cursor,
-  ].filter(Boolean).length;
-  const setupDisabled = actionLoading || selectedAgentCount === 0;
-  const setAgentOption = (key: keyof AgentSetupOptions, value: boolean) => {
-    onAgentSetupOptionsChange({ ...agentSetupOptions, [key]: value });
-  };
+  const rows = statuses.length > 0 ? statuses : fallbackStatuses();
 
   return (
-    <div className="space-y-3">
-      <div className="flex justify-end gap-1">
-        <TextControlButton onClick={() => void onRefresh()} disabled={loading}>
-          刷新
-        </TextControlButton>
-      </div>
-
-      <div className="grid gap-2">
-        {(statuses.length > 0 ? statuses : fallbackStatuses()).map((status) => (
-          <div
-            key={status.agent_source}
-            className="space-y-2 rounded-[var(--mdx-control-radius)] bg-[var(--mdx-card-bg)] p-2.5"
-          >
-            <div className="flex min-w-0 items-center justify-between gap-2">
+    <div className="flex min-w-0 flex-col gap-4">
+      <ul className="flex min-w-0 flex-col">
+        {rows.map((status) => (
+          <HairlineItem key={status.agent_source}>
+            <div className="flex min-w-0 items-start justify-between gap-4">
               <div className="min-w-0">
-                <div className="font-medium text-base-content">
-                  {formatAgentName(status.agent_source)}
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="min-w-0 truncate text-[13.5px] font-medium leading-[1.75] text-base-content">
+                    {formatAgentName(status.agent_source)}
+                  </span>
+                  <StateLabel tone={status.installed ? "success" : "neutral"}>
+                    {status.installed ? "已安装" : "未安装"}
+                  </StateLabel>
                 </div>
-                <div className="mt-1 text-base-content/60">
+                <PanelText tone="meta">
                   {formatIntegrationSummary(status)}
-                </div>
+                </PanelText>
+                {status.last_error ? (
+                  <PanelText tone="meta" className="break-words text-error">
+                    {status.last_error}
+                  </PanelText>
+                ) : null}
               </div>
               <TextControlButton
-                disabled={actionLoading}
-                onClick={() => void onRepair(status.agent_source)}
+                outlined
+                className="shrink-0"
+                disabled={actionLoading || loading}
+                onClick={() => void onInstall(status.agent_source)}
               >
-                修复
+                {status.installed ? "重新安装" : "安装"}
               </TextControlButton>
             </div>
-            {status.last_error ? (
-              <div className="break-words text-error">{status.last_error}</div>
-            ) : null}
-          </div>
+          </HairlineItem>
         ))}
-      </div>
+      </ul>
 
-      <Card className="space-y-2">
-        <div className="font-medium text-base-content">配置 Agent 集成</div>
-        <div className="grid grid-cols-2 gap-2">
-          <CheckboxControl
-            label="Codex"
-            checked={agentSetupOptions.codex}
-            disabled={actionLoading}
-            onChange={(checked) => setAgentOption("codex", checked)}
-          />
-          <CheckboxControl
-            label="Claude"
-            checked={agentSetupOptions.claude}
-            disabled={actionLoading}
-            onChange={(checked) => setAgentOption("claude", checked)}
-          />
-          <CheckboxControl
-            label="Cursor"
-            checked={agentSetupOptions.cursor}
-            disabled={actionLoading}
-            onChange={(checked) => setAgentOption("cursor", checked)}
-          />
-          <CheckboxControl
-            label="Hook"
-            checked={agentSetupOptions.hooks}
-            disabled={actionLoading}
-            onChange={(checked) => setAgentOption("hooks", checked)}
-          />
-        </div>
-        <TextControlButton
-          className="w-full justify-center"
-          disabled={setupDisabled}
-          onClick={() => void onSetupAgents()}
-        >
-          {actionLoading ? "配置中" : "配置智能体"}
-        </TextControlButton>
-      </Card>
+      <PanelText tone="meta">
+        安装会写入技能文件、MCP 条目和捕获 hook。hook 装上不等于开始捕获——捕获在「设置
+        · 记忆」里另有开关，默认关闭。
+      </PanelText>
     </div>
   );
 }
@@ -146,34 +108,8 @@ function formatAgentName(agent: string) {
 }
 
 function formatIntegrationSummary(status: MemoryIntegrationStatus) {
-  const installed = status.installed ? "已安装" : "未安装";
   const enabled = status.enabled ? "已启用" : "未启用";
   const authorized = status.authorized ? "已授权" : "未授权";
-  const version = status.hook_version ? `v${status.hook_version}` : "无版本";
-  return `${installed} · ${enabled} · ${authorized} · ${version} · ${status.doctor_status}`;
-}
-
-function CheckboxControl({
-  label,
-  checked,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  disabled: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <label className="flex min-w-0 items-center gap-2 text-base-content/75">
-      <input
-        type="checkbox"
-        className="h-4 w-4 accent-primary disabled:cursor-not-allowed"
-        checked={checked}
-        disabled={disabled}
-        onChange={(event) => onChange(event.currentTarget.checked)}
-      />
-      <span className="truncate">{label}</span>
-    </label>
-  );
+  const version = status.hook_version ? `hook v${status.hook_version}` : "无 hook";
+  return `${enabled} · ${authorized} · ${version} · ${status.doctor_status}`;
 }

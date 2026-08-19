@@ -51,6 +51,28 @@ function installRangeMeasurementPolyfill(): void {
 installRangeMeasurementPolyfill();
 
 /**
+ * Gives jsdom the size observer the relation graph builds on mount.
+ *
+ * The graph lays itself out in the pixels its element actually has, which means
+ * constructing a `ResizeObserver` — a class jsdom does not implement at all, so the
+ * constructor throws and the whole panel fails to mount. Reporting nothing is the
+ * honest answer in an environment with no layout: the graph keeps its pre-measured
+ * default size, which is exactly what it draws before the first observation in a
+ * browser too. What it cannot survive is the class being absent.
+ */
+function installResizeObserverPolyfill(): void {
+    if (typeof globalThis.ResizeObserver === "function") return;
+
+    globalThis.ResizeObserver = class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+    } as unknown as typeof ResizeObserver;
+}
+
+installResizeObserverPolyfill();
+
+/**
  * Lets Milkdown's readiness timers finish in the environment that started them.
  *
  * `@milkdown/ctx`'s `Timer.start()` schedules a rejection three seconds out and

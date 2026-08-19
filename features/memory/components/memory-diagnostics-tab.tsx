@@ -1,107 +1,80 @@
 "use client";
 
-import { TextControlButton } from "@/common/components/ui-controls";
+import {
+  FactRows,
+  HairlineItem,
+  PanelText,
+  TextControlButton,
+} from "@/common/components/ui-controls";
 import type { MemoryDiagnostics } from "../lib/types";
 
 interface MemoryDiagnosticsTabProps {
   diagnostics: MemoryDiagnostics | null;
   busy: string | null;
-  onRefresh: () => void;
-  onPurge: () => void;
   onExport: () => void;
   onLegacyImport: () => void;
-  message: string | null;
 }
 
 /**
- * What is wrong, and the three ways out of it.
+ * What is wrong, and the ways out of it that cannot destroy anything.
  *
- * The warnings come from the backend verbatim. Export is here rather than
- * buried in a menu because the library is a single file with no automatic
- * backup: a bundle is the only copy a user can keep.
+ * The warnings come from the backend verbatim. Export is here rather than buried
+ * in a menu because the library is a single file with no automatic backup: a
+ * bundle is the only copy a user can keep. Purging tombstones used to be the
+ * fourth button in this row — it is irreversible, so it has a group of its own.
  */
 export function MemoryDiagnosticsTab({
   diagnostics,
   busy,
-  onRefresh,
-  onPurge,
   onExport,
   onLegacyImport,
-  message,
 }: MemoryDiagnosticsTabProps) {
   return (
-    <div className="flex min-w-0 flex-col gap-4 p-4 text-sm">
+    <div className="flex min-w-0 flex-col gap-6">
       <div className="flex flex-wrap items-center gap-2">
-        <TextControlButton disabled={busy !== null} onClick={onRefresh}>
-          刷新
-        </TextControlButton>
-        <TextControlButton disabled={busy !== null} onClick={onExport}>
-          导出备份
+        <TextControlButton outlined disabled={busy !== null} onClick={onExport}>
+          {busy === "export" ? "导出中" : "导出备份"}
         </TextControlButton>
         <TextControlButton disabled={busy !== null} onClick={onLegacyImport}>
           导入旧记忆
         </TextControlButton>
-        <TextControlButton
-          className="hover:bg-error/10 hover:text-error"
-          disabled={busy !== null}
-          onClick={onPurge}
-        >
-          彻底清除已删除
-        </TextControlButton>
       </div>
 
-      {message ? (
-        <p className="min-w-0 break-words rounded-[var(--mdx-control-radius)] bg-base-200/70 px-3 py-2 text-xs">
-          {message}
-        </p>
-      ) : null}
-
       {diagnostics === null ? (
-        <p className="text-xs text-base-content/55">加载中。</p>
+        <PanelText tone="meta">加载中。</PanelText>
       ) : (
         <>
           {diagnostics.warnings.length > 0 ? (
             <section className="min-w-0">
-              <h3 className="text-xs font-medium text-base-content/70">
-                需要注意
-              </h3>
-              <ul className="mt-1 flex flex-col gap-1">
+              <PanelText tone="meta">需要注意</PanelText>
+              <ul className="mt-1 flex min-w-0 flex-col">
                 {diagnostics.warnings.map((warning) => (
-                  <li
-                    key={warning}
-                    className="min-w-0 break-words text-xs leading-relaxed text-base-content/70"
-                  >
-                    {warning}
-                  </li>
+                  <HairlineItem key={warning} className="py-2.5">
+                    <PanelText className="break-words">{warning}</PanelText>
+                  </HairlineItem>
                 ))}
               </ul>
             </section>
           ) : (
-            <p className="text-xs text-base-content/60">没有发现问题。</p>
+            <PanelText>没有发现问题。</PanelText>
           )}
 
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-            <dt className="text-base-content/60">库文件</dt>
-            <dd className="min-w-0 truncate" title={diagnostics.library.path}>
-              {diagnostics.library.path}
-            </dd>
-            <dt className="text-base-content/60">schema</dt>
-            <dd>
-              {diagnostics.library.schemaVersion ?? "未知"} / 支持{" "}
-              {diagnostics.library.supportedSchemaVersion}
-            </dd>
-            <dt className="text-base-content/60">可写</dt>
-            <dd>{diagnostics.library.writable ? "是" : "否"}</dd>
-            <dt className="text-base-content/60">条目</dt>
-            <dd>{diagnostics.library.drawerCount ?? "未知"}</dd>
-            <dt className="text-base-content/60">模型</dt>
-            <dd className="min-w-0 truncate">
-              {diagnostics.model.model}
-              {diagnostics.model.ready ? "" : "（未下载）"}
-            </dd>
-            <dt className="text-base-content/60">项目数</dt>
-            <dd>{diagnostics.projects}</dd>
-          </dl>
+          {/*
+           * The library path, the entry count and the model are stated at the top of
+           * this page already — three sections merged into one page, and each had
+           * been repeating the other two's facts. What is only interesting when
+           * something is wrong stays here.
+           */}
+          <FactRows
+            items={[
+              {
+                label: "schema",
+                value: `${diagnostics.library.schemaVersion ?? "未知"} / 支持 ${diagnostics.library.supportedSchemaVersion}`,
+              },
+              { label: "可写", value: diagnostics.library.writable ? "是" : "否" },
+              { label: "项目数", value: diagnostics.projects },
+            ]}
+          />
         </>
       )}
     </div>

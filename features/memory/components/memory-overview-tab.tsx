@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import {
+  FactRows,
+  HairlineItem,
+  PanelText,
   PrimaryTextControlButton,
   TextControlButton,
 } from "@/common/components/ui-controls";
@@ -14,6 +16,8 @@ interface MemoryOverviewTabProps {
   onToggleEnabled: (enabled: boolean) => void;
   onDownloadModel: () => void;
   onRebuildIndex: () => void;
+  /** Points this workspace at a project that already holds material. */
+  onRebind: (wing: string) => void;
 }
 
 /**
@@ -31,23 +35,28 @@ export function MemoryOverviewTab({
   onToggleEnabled,
   onDownloadModel,
   onRebuildIndex,
+  onRebind,
 }: MemoryOverviewTabProps) {
   const project = projects.find((candidate) => candidate.wing === status.wing);
+  const elsewhere = projects.filter(
+    (candidate) => candidate.wing !== status.wing,
+  );
 
   return (
-    <div className="flex min-w-0 flex-col gap-4 p-4 text-sm">
-      <section className="flex min-w-0 items-start justify-between gap-4 rounded-[var(--mdx-panel-radius)] bg-[var(--mdx-card-bg)] p-3">
-        <div className="min-w-0">
-          <div className="font-medium">
-            {status.enabled ? "记忆已启用" : "记忆未启用"}
-          </div>
-          <p className="mt-1 text-xs text-base-content/65">
-            {status.enabled
-              ? "这个工作区的素材与结论存在本机的记忆库里。"
-              : "启用后，这个工作区的素材与结论会存进本机的记忆库。"}
-          </p>
-        </div>
+    <div className="flex min-w-0 flex-col gap-6">
+      {/*
+       * The state as a sentence with its switch beside it, not in a tinted box: it
+       * is the first thing on the page, and a box around the first thing draws a
+       * border where the page has not started yet.
+       */}
+      <section className="flex min-w-0 items-start justify-between gap-6">
+        <PanelText className="min-w-0">
+          {status.enabled
+            ? "记忆已启用。这个工作区的素材与结论存在本机的记忆库里。"
+            : "记忆未启用。启用后，这个工作区的素材与结论会存进本机的记忆库。"}
+        </PanelText>
         <PrimaryTextControlButton
+          className="shrink-0"
           disabled={busy !== null}
           onClick={() => onToggleEnabled(!status.enabled)}
         >
@@ -55,13 +64,16 @@ export function MemoryOverviewTab({
         </PrimaryTextControlButton>
       </section>
 
+      {/*
+       * Tinted, because these two are states rather than content: something the
+       * user has to act on before the rest of the page means anything.
+       */}
       {!status.modelReady ? (
-        <section className="rounded-[var(--mdx-control-radius)] border border-warning/40 bg-warning/10 p-3">
-          <div className="text-xs font-medium">还缺一个嵌入模型</div>
-          <p className="mt-1 text-xs leading-relaxed text-base-content/70">
-            写入与语义检索都要用它，没有它记忆不会退化成关键词模式，而是直接拒绝写入。下载是一次性的，之后完全离线可用。
-          </p>
-          <div className="mt-2">
+        <section className="rounded-[var(--mdx-control-radius)] border border-warning/40 bg-warning/10 p-3.5">
+          <PanelText>
+            还缺一个嵌入模型。写入与语义检索都要用它，没有它记忆不会退化成关键词模式，而是直接拒绝写入。下载是一次性的，之后完全离线可用。
+          </PanelText>
+          <div className="mt-3">
             <TextControlButton
               disabled={busy !== null}
               onClick={onDownloadModel}
@@ -73,71 +85,85 @@ export function MemoryOverviewTab({
       ) : null}
 
       {status.library.error ? (
-        <section className="rounded-[var(--mdx-control-radius)] border border-error/40 bg-error/10 p-3">
-          <div className="text-xs font-medium">记忆库打不开</div>
-          <p className="mt-1 break-words text-xs leading-relaxed text-base-content/70">
-            {status.library.error}
-          </p>
+        <section className="rounded-[var(--mdx-control-radius)] border border-error/40 bg-error/10 p-3.5">
+          <PanelText className="break-words">
+            记忆库打不开：{status.library.error}
+          </PanelText>
         </section>
       ) : null}
 
-      {/*
-       * The label column is as wide as the labels, so a value starts where the
-       * longest label ends. Two equal columns put every value at the halfway
-       * mark of whatever width the window happened to be.
-       */}
-      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 text-xs">
-        <dt className="text-base-content/60">本项目</dt>
-        <dd className="min-w-0 truncate" title={status.wing ?? ""}>
-          {status.wing ?? "尚未绑定"}
-        </dd>
-        <dt className="text-base-content/60">条目</dt>
-        <dd>
-          {project
-            ? `${project.total}（素材 ${project.evidence} · 结论 ${project.knowledge}）`
-            : (status.library.drawerCount ?? 0)}
-        </dd>
-        <dt className="text-base-content/60">库文件</dt>
-        <dd className="min-w-0 truncate" title={status.library.path}>
-          {status.library.path}
-        </dd>
-        <dt className="text-base-content/60">模型</dt>
-        <dd className="min-w-0 truncate">{status.model}</dd>
-      </dl>
+      <FactRows
+        items={[
+          {
+            label: "本项目",
+            value: status.wing ?? "尚未绑定",
+            title: status.wing ?? undefined,
+          },
+          {
+            label: "条目",
+            value: project
+              ? `${project.total}（素材 ${project.evidence} · 结论 ${project.knowledge}）`
+              : (status.library.drawerCount ?? 0),
+          },
+          {
+            label: "库文件",
+            value: status.library.path,
+            title: status.library.path,
+          },
+          { label: "模型", value: status.model },
+        ]}
+      />
 
-      {projects.length > 1 ? (
+      {elsewhere.length > 0 ? (
         <section className="min-w-0">
-          <div className="text-xs font-medium">这台机器上的其它项目</div>
-          <ul className="mt-1 flex flex-col gap-1">
-            {projects
-              .filter((candidate) => candidate.wing !== status.wing)
-              .map((candidate) => (
-                <li
-                  key={candidate.wing}
-                  className="min-w-0 truncate text-xs text-base-content/60"
-                  title={candidate.path ?? candidate.wing}
-                >
-                  {candidate.path ?? candidate.wing} · {candidate.total}
-                </li>
-              ))}
+          {/*
+           * With a button, because moving or renaming a workspace makes it a new
+           * project as far as the library is concerned, and the only advice on
+           * offer was "rebind it manually" — for which there was no control at
+           * all. The command existed; nothing called it.
+           */}
+          <PanelText tone="meta">
+            工作区改名或移动之后会变成一个新项目。如果你的素材在下面某一项里，把这个工作区绑过去。
+          </PanelText>
+          <ul className="mt-2 flex min-w-0 flex-col">
+            {elsewhere.map((candidate) => (
+              <HairlineItem key={candidate.wing}>
+                <div className="flex min-w-0 items-center justify-between gap-4">
+                  <span
+                    className="min-w-0 truncate text-[13.5px] leading-[1.75] text-base-content/85"
+                    title={candidate.path ?? candidate.wing}
+                  >
+                    {candidate.path ?? candidate.wing}
+                    <span className="ml-2 text-[11.5px] text-base-content/45">
+                      {candidate.total}
+                    </span>
+                  </span>
+                  <TextControlButton
+                    className="shrink-0"
+                    disabled={busy !== null}
+                    onClick={() => onRebind(candidate.wing)}
+                  >
+                    绑到这个项目
+                  </TextControlButton>
+                </div>
+              </HairlineItem>
+            ))}
           </ul>
         </section>
       ) : null}
 
-      <section className="flex items-center gap-2">
-        <TextControlButton disabled={busy !== null} onClick={onRebuildIndex}>
+      <section className="flex min-w-0 items-center gap-3">
+        <TextControlButton
+          outlined
+          disabled={busy !== null}
+          onClick={onRebuildIndex}
+        >
           {busy === "reindex" ? "重建中" : "重建索引"}
         </TextControlButton>
-        <span className="text-xs text-base-content/55">
+        <PanelText tone="meta" className="min-w-0">
           换过嵌入模型后需要重建一次。
-        </span>
+        </PanelText>
       </section>
     </div>
   );
-}
-
-/** Small helper so a tab can show a one-line result without a toast system. */
-export function useTransientMessage() {
-  const [message, setMessage] = useState<string | null>(null);
-  return { message, setMessage };
 }
