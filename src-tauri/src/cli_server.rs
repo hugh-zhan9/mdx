@@ -1003,7 +1003,9 @@ fn llm_wiki_lint_response_for_root_with_log_status(root_path: String) -> LlmWiki
     }
 
     let before = log_file_fingerprint(&root_path);
-    match llm_wiki::llm_wiki_lint(root_path.clone(), None) {
+    // The command is async now, so the socket handler calls the synchronous body it
+    // wraps: this side is already on its own thread and has no window to block.
+    match llm_wiki::llm_wiki_lint_with_operation(root_path.clone(), None) {
         Ok(lint_report) => LlmWikiLintCliResult {
             response: CliResponse {
                 ok: true,

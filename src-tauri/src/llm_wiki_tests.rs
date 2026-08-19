@@ -6,7 +6,8 @@ use tempfile::tempdir;
 use crate::llm_wiki::{
     llm_config_get, llm_config_to_public, llm_config_update, llm_wiki_digest_sync,
     llm_wiki_get_config, llm_wiki_get_log, llm_wiki_ingest_mock_output,
-    llm_wiki_ingest_raw_file_sync, llm_wiki_lint, llm_wiki_query_sync, llm_wiki_refresh_graph_sync,
+    llm_wiki_ingest_raw_file_sync, llm_wiki_lint_with_operation, llm_wiki_query_sync,
+    llm_wiki_refresh_graph_sync,
     llm_wiki_rescan_raw_sync, llm_wiki_rescan_raw_sync_with_exclusions,
     llm_wiki_rescan_raw_sync_with_failures, llm_wiki_rescan_raw_sync_with_retry, llm_wiki_search,
     llm_wiki_update_config, parse_file_blocks_with_repair_for_test, related_context_or_log_failure,
@@ -1424,7 +1425,9 @@ fn llm_wiki_lint_records_log_entry() {
     std::fs::create_dir(home.path().join(".loam")).unwrap();
     let _env_guard = LlmConfigEnvGuard::use_home(home.path().canonicalize().unwrap());
 
-    let report = llm_wiki_lint(root.path().to_string_lossy().into_owned(), None).unwrap();
+    let report =
+        llm_wiki_lint_with_operation(root.path().to_string_lossy().into_owned(), None)
+            .unwrap();
 
     assert!(report.contains("无"));
     assert!(report.contains("未配置 LLM，已跳过。"));
@@ -1451,7 +1454,9 @@ fn llm_wiki_lint_does_not_record_log_entry_when_semantic_lint_fails() {
     .unwrap();
     let _env_guard = LlmConfigEnvGuard::use_home(home_path);
 
-    let report = llm_wiki_lint(root.path().to_string_lossy().into_owned(), None).unwrap();
+    let report =
+        llm_wiki_lint_with_operation(root.path().to_string_lossy().into_owned(), None)
+            .unwrap();
 
     assert!(report.contains("## LLM 语义检查"));
     assert!(report.contains("LLM 语义检查失败："));

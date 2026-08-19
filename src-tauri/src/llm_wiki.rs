@@ -936,14 +936,24 @@ pub fn llm_wiki_digest_mock(
     write_digest_page(root, &title, &content)
 }
 
+/// Checks the wiki, off the thread that draws the window.
+///
+/// Synchronous, it walked every raw file and every wiki page on the main thread —
+/// six thousand files on this machine — and the window stopped answering until it
+/// finished. Every other command of this size in this module already went through
+/// `run_blocking`; this one was the exception, and the freeze it caused was
+/// reported as the app hanging rather than as a slow check.
 #[tauri::command]
-pub fn llm_wiki_lint(
+pub async fn llm_wiki_lint(
     root_path: String,
     operation_id: Option<String>,
 ) -> Result<String, WorkspaceError> {
-    let operation = begin_operation(operation_id, "lint")?;
-    let operation_id = operation.operation_id();
-    llm_wiki_lint_with_operation(root_path, operation_id)
+    run_blocking(move || {
+        let operation = begin_operation(operation_id, "lint")?;
+        let operation_id = operation.operation_id();
+        llm_wiki_lint_with_operation(root_path, operation_id)
+    })
+    .await
 }
 
 pub(crate) fn llm_wiki_lint_with_operation(
