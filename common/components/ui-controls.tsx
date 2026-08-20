@@ -387,6 +387,38 @@ export function TextInput({
     );
 }
 
+/**
+ * A value chosen by dragging, for a setting whose right answer is found by eye.
+ *
+ * Here rather than in the feature that wanted it, per the rule that a new kind
+ * of control is added once: the browser's own range input comes with its own
+ * focus ring, and left in place it would have been the only control in the
+ * application not using `focus-visible:ring-2 focus-visible:ring-primary/20`.
+ *
+ * The track and thumb are the platform's — `accent-color` is enough to put them
+ * in the theme's palette, and a hand-drawn track would be a worse version of one
+ * macOS already draws well.
+ */
+export function Slider({
+    className,
+    ...props
+}: InputHTMLAttributes<HTMLInputElement>) {
+    return (
+        <input
+            type="range"
+            className={[
+                "w-full min-w-0 cursor-pointer accent-[var(--color-primary)] disabled:cursor-not-allowed disabled:accent-[var(--color-base-300)]",
+                radiusClass,
+                focusRingClass,
+                className,
+            ]
+                .filter(Boolean)
+                .join(" ")}
+            {...props}
+        />
+    );
+}
+
 /** A multi-line field. Grows by drag, not by content. */
 export function TextArea({
     className,

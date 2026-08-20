@@ -135,6 +135,39 @@ standing cost for that.
 Custom theme ids are prefixed `user:`, so they cannot collide with or shadow a
 built-in theme.
 
+## The background image is not a theme property
+
+A picture behind the document is a **local preference**, not part of this
+contract. Ruled 2026-08-20, when the alternative — `--mdx-theme-bg-image`
+naming a file in the theme directory — was on the table and rejected.
+
+Why it is kept out:
+
+- The contract's central promise is that **a theme cannot load anything**. That
+  is what makes an unfamiliar theme safe to try, and admitting one loadable
+  property would be a promise taken back rather than extended.
+- A theme is one `.css` file: it can be mailed, pasted into an issue, kept in a
+  dotfiles repository. A theme carrying a picture is a folder, and the unit of
+  sharing would change for every theme, including the ones that carry no image.
+- The demand is "a background on my machine", not "a theme I can distribute with
+  a background in it". If the second one ever turns up, adding two properties is
+  still available; taking them back would not be.
+
+How it works instead:
+
+| | |
+|---|---|
+| Chosen in | 外观 panel, below the themes |
+| Stored copy | `~/.loam/background/`, named by content hash, one at a time |
+| Preference | `localStorage`, naming that file plus a strength and a layout |
+| Painted on | `[data-mdx-content-surface]` — the document's pane only. Not the sidebar or the title bar, whose small dense text is the first thing to stop being readable over a picture. A PDF, image, text or HTML tab draws its own solid ground, so the background shows behind Markdown and not behind those |
+| Faded by | A veil of the theme's own `--mdx-content-bg` laid over the image as a second background layer. The text is not in either layer, so its contrast is untouched, and the image fades towards the theme's colour rather than towards white — the same picture darkens on its own under a dark theme |
+| On paper | Suppressed in `@media print`, by overriding the rule rather than the variable: the image is an inline custom property on the root, and an inline style outranks any selector |
+
+A theme still decides everything the background is composited against, so the two
+stay coupled in the one direction that matters: change the theme and the same
+picture reads correctly against it.
+
 ## Licensing
 
 ColaMD is a **behaviour reference only** for this design, consistent with

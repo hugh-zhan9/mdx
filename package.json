@@ -14,7 +14,7 @@
         "build:install": "npm run build:app && npm run install:local",
         "lint": "eslint",
         "test": "vitest run",
-        "test:workspace": "vitest run features/workspace/lib/*.test.ts",
+        "test:workspace": "vitest run features/workspace/lib/*.test.ts*",
         "audit:editor:boundaries": "node scripts/audit-editor-boundaries.mjs",
         "fixtures:editor:perf": "node scripts/generate-editor-perf-fixtures.mjs",
         "fixtures:editor:perf:check": "node scripts/generate-editor-perf-fixtures.mjs --check",

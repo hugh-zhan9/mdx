@@ -299,6 +299,29 @@
     --mdx-selection-bg: color-mix(in srgb, var(--color-primary) 22%, transparent);
 
     /*
+     * The background image, and how much of it shows.
+     *
+     * Not part of the theme contract, on purpose: `docs/loopx/specs/theme.md`
+     * promises a theme cannot load anything, so the picture is a preference of
+     * this machine that `background-preference.ts` writes here as a blob URL.
+     *
+     * The veil is the theme's own background colour laid back over the image,
+     * and it is why the image can be faded without fading the text: the picture
+     * and the veil are two background layers of the same element, so the words
+     * on top keep the contrast the theme gave them, and the image fades towards
+     * the theme's colour rather than towards white. A veil of 100% — the default
+     * — is exactly the theme's background, which is why nothing shows until a
+     * background is actually chosen.
+     */
+    --mdx-bg-image: none;
+    --mdx-bg-veil-strength: 100%;
+    --mdx-bg-veil: color-mix(
+        in srgb,
+        var(--mdx-content-bg) var(--mdx-bg-veil-strength),
+        transparent
+    );
+
+    /*
      * Shape and weight, in one place.
      *
      * These are read by the shared controls in `common/components/ui-controls`
@@ -397,6 +420,35 @@ html[data-mdx-appearance="dark"] {
 
 [data-mdx-editor-column] {
     font-family: var(--mdx-editor-font);
+}
+
+/*
+ * The surface a background image paints on.
+ *
+ * The document's own pane and nothing else. The sidebar and the tab bar keep
+ * their solid colour because they carry small dense text, which is the first
+ * thing to stop being readable over a picture.
+ *
+ * Keyed off `data-mdx-bg` on the root — set to the layout the user chose, and
+ * removed entirely when there is no background, so a window without one paints
+ * no extra layer at all rather than a transparent one.
+ */
+html[data-mdx-bg="cover"] [data-mdx-content-surface],
+html[data-mdx-bg="tile"] [data-mdx-content-surface] {
+    background-image:
+        linear-gradient(var(--mdx-bg-veil), var(--mdx-bg-veil)),
+        var(--mdx-bg-image);
+    background-position: center;
+}
+
+html[data-mdx-bg="cover"] [data-mdx-content-surface] {
+    background-repeat: no-repeat;
+    background-size: auto, cover;
+}
+
+html[data-mdx-bg="tile"] [data-mdx-content-surface] {
+    background-repeat: no-repeat, repeat;
+    background-size: auto, auto;
 }
 
 [data-mdx-markdown-editor] {
@@ -1407,6 +1459,18 @@ html[data-mdx-appearance="dark"] {
         --mdx-code-bg: #f4f4f5;
         --mdx-card-bg: #f4f4f5;
         --mdx-selection-bg: transparent;
+    }
+
+    /*
+     * No background image on paper.
+     *
+     * Overriding the rule rather than the variable: the image is set as an
+     * inline custom property on the root element, and an inline style outranks
+     * every selector including this one's.
+     */
+    html[data-mdx-bg="cover"] [data-mdx-content-surface],
+    html[data-mdx-bg="tile"] [data-mdx-content-surface] {
+        background-image: none;
     }
 
     @page {

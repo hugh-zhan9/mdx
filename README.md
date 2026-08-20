@@ -125,6 +125,17 @@ parser — so a theme made in the app can be edited by hand, and one written by 
 opens in the app. A theme is data: selectors, `@import` and `url()` are never
 extracted from it.
 
+Below the themes you can put a **background image** behind the document. It sits on
+the document's pane only — the sidebar and the title bar keep their solid colour,
+because small dense text is the first thing to stop being readable over a picture —
+and a slider decides how much of it shows. Fading it lays the theme's own background
+colour back over the image rather than fading the text, so body text keeps the
+contrast the theme gave it and the same picture darkens on its own under a dark
+theme. The file is copied into `~/.loam/background/`, so moving or deleting the
+original changes nothing, and it is left off the page when you print. It is
+deliberately **not** a theme property: a theme cannot load anything, which is what
+makes an unfamiliar one safe to try.
+
 ## Where things are kept
 
 | Path | What |
@@ -132,6 +143,7 @@ extracted from it.
 | `~/.loam/state.json` | window size, tabs, panel widths, which folder the tree shows |
 | `~/.loam/drafts/` | unsaved bodies as plaintext, deleted on save, expired after 30 days |
 | `~/.loam/themes/` | your own themes |
+| `~/.loam/background/` | the background image, one at a time |
 | `~/.loam/models/` | the embedding model |
 | `~/.loam/memory/palace.db` | one memory library for every workspace, separated by project |
 | `~/.loam/assets/` | fallback for images with nowhere better to go |

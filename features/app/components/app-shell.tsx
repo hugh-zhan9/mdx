@@ -6,6 +6,7 @@ import { tauriCore } from "@/common/lib/tauri";
 import { DocumentApp } from "@/features/document/components/document-app";
 import { DocumentError } from "@/features/document/components/document-error";
 import { WorkspaceApp } from "@/features/workspace/components/workspace-app";
+import { useBackground } from "@/features/workspace/lib/use-background";
 import { PrimaryTextControlButton } from "../../../common/components/ui-controls";
 import {
     normalizeAppWindowSession,
@@ -14,6 +15,13 @@ import {
 
 export function AppShell() {
     const [session, setSession] = useState<AppWindowSession | null>(null);
+
+    // Called for its effect, and here rather than in the appearance panel: the
+    // background has to be on the window from the moment it opens, and every
+    // window kind renders this component. The palette itself needs no equivalent
+    // — it is a stylesheet, which the pre-hydration script in `app/layout.tsx`
+    // can set before the first paint. An image cannot be read that early.
+    useBackground();
 
     useEffect(() => {
         let cancelled = false;

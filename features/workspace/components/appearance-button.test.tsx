@@ -20,6 +20,27 @@ const spies = vi.hoisted(() => ({
   refresh: vi.fn(async () => {}),
   saveThemeDraft: vi.fn(async () => "/Users/x/.loam/themes/theme.css"),
   revealUserThemesDir: vi.fn(async () => "/Users/x/.loam/themes"),
+  setFit: vi.fn(),
+  setOpacity: vi.fn(),
+}));
+
+/**
+ * A background is set, so the panel shows the controls for one.
+ *
+ * The hook itself reaches the filesystem and the root element; what is under
+ * test here is the section it feeds — in particular that each layout is offered
+ * with something drawn, because the two words alone do not say what they do.
+ */
+vi.mock("../lib/use-background", () => ({
+  useBackground: () => ({
+    setting: { fileName: "abc.png", opacity: 0.24, fit: "cover" },
+    error: null,
+    busy: false,
+    choose: vi.fn(),
+    remove: vi.fn(),
+    setOpacity: spies.setOpacity,
+    setFit: spies.setFit,
+  }),
 }));
 
 vi.mock("../lib/theme-preference", async (importOriginal) => ({
@@ -222,5 +243,55 @@ describe("AppearanceButton", () => {
     press("文件夹");
 
     expect(spies.revealUserThemesDir).toHaveBeenCalledTimes(1);
+  });
+
+  describe("the background section", () => {
+    /** The row for one layout, found by the name it is labelled with. */
+    function fitRow(label: string): HTMLButtonElement {
+      const row = buttons().find(
+        (candidate) => (candidate.textContent ?? "").trim().startsWith(label),
+      );
+
+      if (!row) {
+        throw new Error(`no row for ${label}`);
+      }
+
+      return row;
+    }
+
+    it("draws each layout rather than only naming it", () => {
+      open();
+
+      // "铺满" and "平铺" do not say at what size the picture repeats, which is
+      // the entire difference between them. Each row carries a diagram, and this
+      // is what fails if one is ever reduced to its label again.
+      for (const label of ["铺满", "平铺"]) {
+        expect(fitRow(label).querySelector("svg")).not.toBeNull();
+      }
+    });
+
+    it("shows which layout is in effect and changes it", () => {
+      open();
+
+      expect(fitRow("铺满").getAttribute("aria-pressed")).toBe("true");
+      expect(fitRow("平铺").getAttribute("aria-pressed")).toBe("false");
+
+      act(() => {
+        fitRow("平铺").dispatchEvent(
+          new MouseEvent("click", { bubbles: true }),
+        );
+      });
+
+      expect(spies.setFit).toHaveBeenCalledWith("tile");
+    });
+
+    it("puts the strength on the label, so a drag reads as a number", () => {
+      open();
+
+      expect(panel()?.textContent).toContain("不透明度 24%");
+      expect(
+        panel()?.querySelector<HTMLInputElement>('input[type="range"]')?.value,
+      ).toBe("24");
+    });
   });
 });

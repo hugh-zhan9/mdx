@@ -9,7 +9,7 @@ use tempfile::Builder as TempFileBuilder;
 use crate::models::WorkspaceError;
 use crate::path_guard::canonicalize_workspace_root;
 
-const IMAGE_EXTENSIONS: &[&str] = &[
+pub(crate) const IMAGE_EXTENSIONS: &[&str] = &[
     "png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif", "heic", "tiff",
 ];
 
@@ -382,7 +382,7 @@ fn ensure_global_assets_dir(
     Ok(assets_dir)
 }
 
-fn write_deduped_asset(
+pub(crate) fn write_deduped_asset(
     assets_dir: &Path,
     filename: &str,
     bytes: &[u8],
@@ -442,7 +442,7 @@ fn write_deduped_asset(
     }
 }
 
-fn image_extension(name: &str) -> Result<String, WorkspaceError> {
+pub(crate) fn image_extension(name: &str) -> Result<String, WorkspaceError> {
     let extension = Path::new(name)
         .extension()
         .and_then(|extension| extension.to_str())
@@ -570,7 +570,7 @@ fn path_is_allowed_image_location(
     Ok(image_path.starts_with(global_assets_dir))
 }
 
-fn mime_type_for_extension(extension: &str) -> &'static str {
+pub(crate) fn mime_type_for_extension(extension: &str) -> &'static str {
     match extension {
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
@@ -600,7 +600,7 @@ fn normalize_path_lexically(path: &Path) -> PathBuf {
     normalized
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     let mut hex = String::with_capacity(digest.len() * 2);
     for byte in digest {

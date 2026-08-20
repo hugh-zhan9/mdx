@@ -148,7 +148,10 @@ export function EditorStage({
     });
 
     return (
-      <section className="flex min-h-0 flex-1 items-center justify-center bg-base-100 px-6">
+      <section
+        data-mdx-content-surface=""
+        className="flex min-h-0 flex-1 items-center justify-center bg-base-100 px-6"
+      >
         <EmptyState
           title={emptyState.title}
           description={emptyState.description}
@@ -168,6 +171,7 @@ export function EditorStage({
   return (
     <section
       data-mdx-editor-column=""
+      data-mdx-content-surface=""
       className="flex min-h-0 flex-1 flex-col bg-base-100"
     >
       <div className="min-h-0 flex-1 overflow-hidden">

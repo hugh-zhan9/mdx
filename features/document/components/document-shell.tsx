@@ -1157,6 +1157,7 @@ export function DocumentShell({
           <section
             className="flex min-h-0 min-w-0 overflow-hidden"
             data-document-editor-stage=""
+            data-mdx-content-surface=""
           >
             <MarkdownEditorSurface
               ref={editorSurfaceRef}

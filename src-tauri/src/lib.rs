@@ -14,6 +14,7 @@ use window_sessions::{
 };
 
 mod assets;
+mod background;
 pub mod cli_protocol;
 mod cli_server;
 mod document;
@@ -387,6 +388,8 @@ async fn memory_agent_setup(
 
 #[cfg(test)]
 mod assets_tests;
+#[cfg(test)]
+mod background_tests;
 #[cfg(test)]
 mod cli_protocol_tests;
 #[cfg(test)]
@@ -1068,6 +1071,9 @@ pub fn run() {
             assets::save_image_asset,
             assets::save_document_image_asset,
             assets::load_image_asset,
+            background::save_background_image,
+            background::load_background_image,
+            background::clear_background_image,
             document::read_document_file,
             document::save_document_file,
             document::overwrite_document_file,
