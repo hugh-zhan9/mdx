@@ -357,6 +357,8 @@ enum MemoryAgentCommand {
         loam_cli: Option<String>,
         #[arg(long)]
         loam_mcp: Option<String>,
+        #[arg(long)]
+        claude_cli: Option<String>,
     },
 }
 
@@ -755,6 +757,7 @@ fn execute_memory_agent_headless(
         dry_run,
         loam_cli,
         loam_mcp,
+        claude_cli,
     } = command;
 
     if *hooks && *no_hooks {
@@ -773,6 +776,7 @@ fn execute_memory_agent_headless(
         dry_run: *dry_run,
         loam_cli: loam_cli.clone(),
         loam_mcp: loam_mcp.clone(),
+        claude_cli: claude_cli.clone(),
     };
 
     match loam_lib::memory_agent_setup::memory_agent_setup(root_path.clone(), request) {
@@ -1392,6 +1396,63 @@ mod tests {
     use std::ffi::OsString;
     use std::sync::MutexGuard;
     use tempfile::TempDir;
+
+    // Registering the MCP server is Claude's CLI's job, so the tests need something
+    // to stand in for it: this writes the registry the way `claude mcp add` does,
+    // into the home it is handed.
+    fn claude_cli_stub(dir: &std::path::Path) -> String {
+        let path = dir.join("claude-stub.sh");
+        fs::write(
+            &path,
+            r#"#!/bin/sh
+case "$2" in
+  add)
+    printf '{"mcpServers":{"%s":{"type":"stdio","command":"%s","args":["%s","%s"],"env":{}}}}' \
+      "$3" "$7" "$8" "$9" > "$HOME/.claude.json"
+    ;;
+  remove)
+    printf '{"mcpServers":{}}' > "$HOME/.claude.json"
+    ;;
+  *)
+    exit 64
+    ;;
+esac
+"#,
+        )
+        .unwrap();
+        make_executable(&path);
+        path.to_string_lossy().into_owned()
+    }
+
+    // A stand-in that refuses, for the failure path.
+    fn failing_claude_cli_stub(dir: &std::path::Path) -> String {
+        let path = dir.join("claude-refuses.sh");
+        fs::write(
+            &path,
+            "#!/bin/sh\necho 'no write access to the config' 1>&2\nexit 1\n",
+        )
+        .unwrap();
+        make_executable(&path);
+        path.to_string_lossy().into_owned()
+    }
+
+    // The doctor checks that the binaries an installed integration names are still
+    // on disk, so a test that installs has to have them there.
+    fn fake_binary(dir: &std::path::Path, name: &str) -> String {
+        let path = dir.join(name);
+        fs::write(&path, "").unwrap();
+        path.to_string_lossy().into_owned()
+    }
+
+    fn make_executable(path: &std::path::Path) {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = fs::metadata(path).unwrap().permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(path, permissions).unwrap();
+        }
+    }
 
     struct CodexCaptureEnvGuard {
         _lock: MutexGuard<'static, ()>,
@@ -2182,9 +2243,11 @@ mod tests {
         let root = TempDir::new().unwrap();
         let paths = loam_lib::memory_agent_setup::AgentSetupPaths {
             home: home.path().to_path_buf(),
-            loam_cli: "/tmp/loam-cli".to_string(),
-            loam_mcp: "/tmp/loam-mcp".to_string(),
-            hook_script: home.path().join(".mdx-memory-precompact-hook.mjs"),
+            loam_cli: fake_binary(home.path(), "loam-cli"),
+            loam_mcp: fake_binary(home.path(), "loam-mcp"),
+            claude_cli: Some(claude_cli_stub(home.path())),
+            claude_config_dir: None,
+            hook_script: home.path().join(".loam-memory-precompact-hook.mjs"),
         };
         let targets = loam_lib::memory_agent_setup::AgentSetupTargets {
             codex: true,
@@ -2268,8 +2331,18 @@ mod tests {
         }
         assert!(summary.contains("would_write"));
         assert!(summary.contains(".codex/config.toml"));
-        assert!(summary.contains(".claude/hooks/hooks.json"));
+        assert!(summary.contains(".claude/settings.json"));
         assert!(summary.contains(".cursor/hooks.json"));
+        // The hook goes where Claude reads hooks, and nowhere else.
+        assert!(!summary.contains(".claude/hooks/hooks.json"));
+        // And the MCP server is registered by Claude's own CLI, which is why the
+        // plan carries a command as well as file contents.
+        assert!(
+            summary.contains("would_run") && summary.contains("mcp add loam-memory"),
+            "the plan has to register the MCP server: {summary}"
+        );
+        // The wrapper script nothing invokes is no longer written.
+        assert!(!summary.contains("precompact-hook.mjs"));
         assert!(!home.path().join(".codex/config.toml").exists());
     }
 
@@ -2323,14 +2396,16 @@ mod tests {
     }
 
     #[test]
-    fn memory_agent_setup_writes_cursor_mcp_and_precompact_hook() {
+    fn memory_agent_setup_writes_cursor_mcp_and_a_hook_that_only_captures() {
         let home = TempDir::new().unwrap();
         let root = TempDir::new().unwrap();
         let paths = loam_lib::memory_agent_setup::AgentSetupPaths {
             home: home.path().to_path_buf(),
-            loam_cli: "/tmp/loam-cli".to_string(),
-            loam_mcp: "/tmp/loam-mcp".to_string(),
-            hook_script: home.path().join(".mdx-memory-precompact-hook.mjs"),
+            loam_cli: fake_binary(home.path(), "loam-cli"),
+            loam_mcp: fake_binary(home.path(), "loam-mcp"),
+            claude_cli: Some(claude_cli_stub(home.path())),
+            claude_config_dir: None,
+            hook_script: home.path().join(".loam-memory-precompact-hook.mjs"),
         };
         let targets = loam_lib::memory_agent_setup::AgentSetupTargets {
             codex: false,
@@ -2347,14 +2422,21 @@ mod tests {
         loam_lib::memory_agent_setup::apply_agent_setup_changes(&changes).unwrap();
         let mcp = fs::read_to_string(home.path().join(".cursor/mcp.json")).unwrap();
         assert!(mcp.contains("\"loam-memory\""));
-        assert!(mcp.contains("/tmp/loam-mcp"));
-        let hook = fs::read_to_string(home.path().join(".mdx-memory-precompact-hook.mjs")).unwrap();
-        assert!(hook.contains("\"capture\""));
-        assert!(hook.contains("\"import\""));
-        assert!(hook.contains("\"--path\""));
+        assert!(mcp.contains(&fake_binary(home.path(), "loam-mcp")));
+        let hook = fs::read_to_string(home.path().join(".cursor/hooks.json")).unwrap();
+        assert!(hook.contains("\"preCompact\""));
+        assert!(hook.contains("\"hook\""));
+        assert!(hook.contains("\"cursor\""));
         // The hook must not decide what a compressed conversation meant.
-        assert!(!hook.contains("\"distill\""));
-        assert!(!hook.contains("\"--accept\""));
+        assert!(!hook.contains("distill"));
+        assert!(!hook.contains("--accept"));
+        // The wrapper script this used to assert against is gone: `loam-cli hook`
+        // reads the payload and stores the transcript itself, and nothing ever
+        // invoked the script.
+        assert!(!home
+            .path()
+            .join(".loam-memory-precompact-hook.mjs")
+            .exists());
     }
 
     #[test]
@@ -2376,9 +2458,11 @@ mod tests {
 
         let paths = loam_lib::memory_agent_setup::AgentSetupPaths {
             home: home.path().to_path_buf(),
-            loam_cli: "/tmp/loam-cli".to_string(),
-            loam_mcp: "/tmp/loam-mcp".to_string(),
-            hook_script: home.path().join(".mdx-memory-precompact-hook.mjs"),
+            loam_cli: fake_binary(home.path(), "loam-cli"),
+            loam_mcp: fake_binary(home.path(), "loam-mcp"),
+            claude_cli: Some(claude_cli_stub(home.path())),
+            claude_config_dir: None,
+            hook_script: home.path().join(".loam-memory-precompact-hook.mjs"),
         };
         let targets = loam_lib::memory_agent_setup::AgentSetupTargets {
             codex: true,
@@ -2441,9 +2525,11 @@ mod tests {
         let root_path = root.path().to_string_lossy().to_string();
         let paths = loam_lib::memory_agent_setup::AgentSetupPaths {
             home: home.path().to_path_buf(),
-            loam_cli: "/tmp/loam-cli".to_string(),
-            loam_mcp: "/tmp/loam-mcp".to_string(),
-            hook_script: home.path().join(".mdx-memory-precompact-hook.mjs"),
+            loam_cli: fake_binary(home.path(), "loam-cli"),
+            loam_mcp: fake_binary(home.path(), "loam-mcp"),
+            claude_cli: Some(claude_cli_stub(home.path())),
+            claude_config_dir: None,
+            hook_script: home.path().join(".loam-memory-precompact-hook.mjs"),
         };
         let targets = loam_lib::memory_agent_setup::AgentSetupTargets {
             codex: true,
@@ -2473,12 +2559,670 @@ mod tests {
             );
         }
         assert!(report.ok, "doctor not ok after install: {report:?}");
-        // And the hook version is read from what was written, rather than guessed.
+        // The hook version is this installer's own constant. It used to be read back
+        // out of the file the installer had just written, which confirmed nothing.
         let claude = report
             .statuses
             .iter()
             .find(|status| status.agent_source == "claude")
             .unwrap();
         assert_eq!(claude.hook_version.as_deref(), Some("1"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn claude_setup_lands_where_claude_reads_and_registers_the_mcp_server() {
+        // The two halves of the Claude integration that were never connected. The
+        // hook went to `~/.claude/hooks/hooks.json`, a plugin bundle's layout that
+        // Claude does not read under a user's own directory, so it never fired. And
+        // the MCP server was never registered at all, while the block written into
+        // CLAUDE.md told the agent to call `memory_recall`.
+        let home = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let root_path = root.path().to_string_lossy().to_string();
+        // Someone else's hooks, which have to survive.
+        fs::create_dir_all(home.path().join(".claude")).unwrap();
+        fs::write(
+            home.path().join(".claude/settings.json"),
+            r#"{
+  "model": "opus",
+  "hooks": {
+    "Stop": [{ "hooks": [{ "type": "command", "command": "notify-me" }] }]
+  }
+}
+"#,
+        )
+        .unwrap();
+        let paths = loam_lib::memory_agent_setup::AgentSetupPaths {
+            home: home.path().to_path_buf(),
+            loam_cli: fake_binary(home.path(), "loam-cli"),
+            loam_mcp: fake_binary(home.path(), "loam-mcp"),
+            claude_cli: Some(claude_cli_stub(home.path())),
+            claude_config_dir: None,
+            hook_script: home.path().join(".loam-memory-precompact-hook.mjs"),
+        };
+        let targets = loam_lib::memory_agent_setup::AgentSetupTargets {
+            codex: false,
+            claude: true,
+            cursor: false,
+            hooks: true,
+        };
+        let apply = || {
+            let changes = loam_lib::memory_agent_setup::plan_memory_agent_setup(
+                &root_path,
+                &targets,
+                &paths,
+            )
+            .unwrap();
+            loam_lib::memory_agent_setup::apply_agent_setup_changes(&changes).unwrap();
+        };
+        apply();
+
+        let settings =
+            fs::read_to_string(home.path().join(".claude/settings.json")).unwrap();
+        let settings: serde_json::Value = serde_json::from_str(&settings).unwrap();
+        let entries = settings["hooks"]["PreCompact"].as_array().unwrap();
+        assert_eq!(entries.len(), 1);
+        let hook = &entries[0]["hooks"][0];
+        assert!(hook["command"].as_str().unwrap().contains("hook claude"));
+        assert!(hook["command"].as_str().unwrap().contains(&root_path));
+        // Only the fields Claude defines for a hook entry.
+        for invented in ["id", "name", "version", "description", "matcher"] {
+            assert!(
+                entries[0].get(invented).is_none(),
+                "the hook entry still carries {invented}, which Claude does not read"
+            );
+        }
+        // Everything else in the settings file is left alone.
+        assert_eq!(settings["model"].as_str(), Some("opus"));
+        assert!(settings["hooks"]["Stop"][0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap()
+            .contains("notify-me"));
+        // Nothing is written to the file Claude does not read.
+        assert!(!home.path().join(".claude/hooks/hooks.json").exists());
+        // And the server is registered.
+        let registry = fs::read_to_string(home.path().join(".claude.json")).unwrap();
+        assert!(registry.contains("loam-memory"));
+        assert!(registry.contains(&paths.loam_mcp));
+        assert!(registry.contains(&root_path));
+
+        // Installing twice leaves one hook entry, and asks Claude's CLI for nothing
+        // it has already done.
+        apply();
+        let again: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(home.path().join(".claude/settings.json")).unwrap())
+                .unwrap();
+        assert_eq!(again["hooks"]["PreCompact"].as_array().unwrap().len(), 1);
+        let changes = loam_lib::memory_agent_setup::plan_memory_agent_setup(
+            &root_path,
+            &targets,
+            &paths,
+        )
+        .unwrap();
+        assert!(
+            !changes.iter().any(|change| matches!(
+                change.action,
+                loam_lib::memory_agent_setup::AgentSetupChangeAction::RunCommand { .. }
+            )),
+            "an already-registered server should plan no command"
+        );
+
+        // Uninstall takes back the entry it wrote, and leaves the rest.
+        let removals =
+            loam_lib::memory_agent_setup::plan_memory_agent_uninstall(Some("claude"), &paths)
+                .unwrap();
+        loam_lib::memory_agent_setup::apply_agent_setup_changes(&removals).unwrap();
+        let after: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(home.path().join(".claude/settings.json")).unwrap())
+                .unwrap();
+        assert!(
+            after["hooks"].get("PreCompact").is_none(),
+            "uninstall left the hook behind: {after}"
+        );
+        assert!(after["hooks"]["Stop"][0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap()
+            .contains("notify-me"));
+        let registry = fs::read_to_string(home.path().join(".claude.json")).unwrap();
+        assert!(!registry.contains("loam-memory"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn claude_is_not_installed_while_the_mcp_server_is_missing() {
+        // What the panel could not say before: every file can be in place and the
+        // integration still be missing the half the instruction block depends on.
+        let home = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let root_path = root.path().to_string_lossy().to_string();
+        let paths = loam_lib::memory_agent_setup::AgentSetupPaths {
+            home: home.path().to_path_buf(),
+            loam_cli: fake_binary(home.path(), "loam-cli"),
+            loam_mcp: fake_binary(home.path(), "loam-mcp"),
+            claude_cli: Some(claude_cli_stub(home.path())),
+            claude_config_dir: None,
+            hook_script: home.path().join(".loam-memory-precompact-hook.mjs"),
+        };
+        let targets = loam_lib::memory_agent_setup::AgentSetupTargets {
+            codex: false,
+            claude: true,
+            cursor: false,
+            hooks: true,
+        };
+        let changes = loam_lib::memory_agent_setup::plan_memory_agent_setup(
+            &root_path,
+            &targets,
+            &paths,
+        )
+        .unwrap();
+        loam_lib::memory_agent_setup::apply_agent_setup_changes(&changes).unwrap();
+        fs::remove_file(home.path().join(".claude.json")).unwrap();
+
+        let report = loam_lib::memory_agent_setup::memory_agent_doctor_for_home(
+            &root_path,
+            home.path(),
+        )
+        .unwrap();
+        let claude = report
+            .statuses
+            .iter()
+            .find(|status| status.agent_source == "claude")
+            .unwrap();
+        assert!(
+            !claude.installed,
+            "claude reported installed with no MCP server registered: {claude:?}"
+        );
+    }
+
+    #[test]
+    fn claude_setup_refuses_when_there_is_no_claude_cli_to_register_with() {
+        // Rather than write an instruction block for tools that will not exist.
+        let home = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let paths = loam_lib::memory_agent_setup::AgentSetupPaths {
+            home: home.path().to_path_buf(),
+            loam_cli: fake_binary(home.path(), "loam-cli"),
+            loam_mcp: fake_binary(home.path(), "loam-mcp"),
+            claude_cli: None,
+            claude_config_dir: None,
+            hook_script: home.path().join(".loam-memory-precompact-hook.mjs"),
+        };
+        let targets = loam_lib::memory_agent_setup::AgentSetupTargets {
+            codex: false,
+            claude: true,
+            cursor: false,
+            hooks: true,
+        };
+        let error = loam_lib::memory_agent_setup::plan_memory_agent_setup(
+            &root.path().to_string_lossy(),
+            &targets,
+            &paths,
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::NotFound);
+        assert!(error.to_string().contains("claude CLI not found"));
+        assert!(!home.path().join(".claude/CLAUDE.md").exists());
+    }
+
+    #[test]
+    fn an_integration_pointing_at_a_binary_that_is_gone_is_not_installed() {
+        // The app bundle moving used to leave every file in place, naming a
+        // `loam-cli` and a `loam-mcp` that are no longer there, with the panel still
+        // reporting 已安装 and nothing on screen suggesting a repair.
+        let home = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let root_path = root.path().to_string_lossy().to_string();
+        let paths = loam_lib::memory_agent_setup::AgentSetupPaths {
+            home: home.path().to_path_buf(),
+            loam_cli: fake_binary(home.path(), "loam-cli"),
+            loam_mcp: fake_binary(home.path(), "loam-mcp"),
+            claude_cli: Some(claude_cli_stub(home.path())),
+            claude_config_dir: None,
+            hook_script: home.path().join(".loam-memory-precompact-hook.mjs"),
+        };
+        let targets = loam_lib::memory_agent_setup::AgentSetupTargets {
+            codex: false,
+            claude: true,
+            cursor: false,
+            hooks: true,
+        };
+        let changes = loam_lib::memory_agent_setup::plan_memory_agent_setup(
+            &root_path,
+            &targets,
+            &paths,
+        )
+        .unwrap();
+        loam_lib::memory_agent_setup::apply_agent_setup_changes(&changes).unwrap();
+
+        let installed = |home: &std::path::Path| {
+            loam_lib::memory_agent_setup::memory_agent_doctor_for_home(&root_path, home)
+                .unwrap()
+                .statuses
+                .into_iter()
+                .find(|status| status.agent_source == "claude")
+                .unwrap()
+                .installed
+        };
+        assert!(installed(home.path()), "not installed right after installing");
+
+        // The MCP server's binary goes.
+        fs::remove_file(&paths.loam_mcp).unwrap();
+        assert!(
+            !installed(home.path()),
+            "reported installed with the MCP binary gone"
+        );
+
+        // And the hook's.
+        fs::write(&paths.loam_mcp, "").unwrap();
+        fs::remove_file(&paths.loam_cli).unwrap();
+        assert!(
+            !installed(home.path()),
+            "reported installed with the hook binary gone"
+        );
+    }
+
+    #[test]
+    fn claude_config_dir_moves_every_file_and_the_registry_with_it() {
+        // The docs say every `~/.claude` path lives under `CLAUDE_CONFIG_DIR`
+        // instead. `~/.claude.json` is not one of those paths — it sits beside the
+        // directory — and where it goes is undocumented, so it was measured: with
+        // the variable set the registry is inside the directory, dot kept. Installing
+        // to `$HOME` while Claude reads somewhere else is how an integration ends up
+        // written where nothing looks for it.
+        let home = tempfile::tempdir().unwrap();
+        let config = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let paths = loam_lib::memory_agent_setup::AgentSetupPaths {
+            home: home.path().to_path_buf(),
+            loam_cli: fake_binary(home.path(), "loam-cli"),
+            loam_mcp: fake_binary(home.path(), "loam-mcp"),
+            claude_cli: Some(claude_cli_stub(home.path())),
+            claude_config_dir: Some(config.path().to_path_buf()),
+            hook_script: home.path().join(".loam-memory-precompact-hook.mjs"),
+        };
+        let targets = loam_lib::memory_agent_setup::AgentSetupTargets {
+            codex: false,
+            claude: true,
+            cursor: false,
+            hooks: true,
+        };
+        let changes = loam_lib::memory_agent_setup::plan_memory_agent_setup(
+            &root.path().to_string_lossy(),
+            &targets,
+            &paths,
+        )
+        .unwrap();
+        let planned: Vec<String> = changes
+            .iter()
+            .map(|change| change.path.to_string_lossy().into_owned())
+            .collect();
+        for expected in [
+            config.path().join("CLAUDE.md"),
+            config.path().join("skills/loam-memory/SKILL.md"),
+            config.path().join("settings.json"),
+            // Inside the directory, dot kept — measured, not guessed.
+            config.path().join(".claude.json"),
+        ] {
+            assert!(
+                planned.contains(&expected.to_string_lossy().into_owned()),
+                "{} is not in the plan: {planned:?}",
+                expected.display()
+            );
+        }
+        // And nothing under the home directory's own `.claude`.
+        assert!(
+            !planned.iter().any(|path| path.contains("/.claude/")),
+            "something was still planned under $HOME/.claude: {planned:?}"
+        );
+    }
+
+    #[test]
+    fn an_uninstall_that_cannot_unregister_says_so() {
+        // The files come out either way, but only Claude's CLI can undo what
+        // Claude's CLI did. A summary listing clean removals over a server that is
+        // still registered is the same kind of lie the doctor used to tell.
+        let home = tempfile::tempdir().unwrap();
+        fs::write(
+            home.path().join(".claude.json"),
+            r#"{"mcpServers":{"loam-memory":{"command":"/somewhere/loam-mcp","args":[]}}}"#,
+        )
+        .unwrap();
+        let with_cli = |claude_cli: Option<String>| loam_lib::memory_agent_setup::AgentSetupPaths {
+            home: home.path().to_path_buf(),
+            loam_cli: fake_binary(home.path(), "loam-cli"),
+            loam_mcp: fake_binary(home.path(), "loam-mcp"),
+            claude_cli,
+            claude_config_dir: None,
+            hook_script: home.path().join(".loam-memory-precompact-hook.mjs"),
+        };
+
+        assert!(
+            loam_lib::memory_agent_setup::claude_mcp_left_registered(
+                Some("claude"),
+                &with_cli(None)
+            )
+            .unwrap(),
+            "a registered server with no CLI to remove it has to be reported"
+        );
+        // With a CLI, the removal happens and there is nothing to report.
+        assert!(!loam_lib::memory_agent_setup::claude_mcp_left_registered(
+            Some("claude"),
+            &with_cli(Some(claude_cli_stub(home.path())))
+        )
+        .unwrap());
+        // Uninstalling another agent says nothing about Claude's server.
+        assert!(!loam_lib::memory_agent_setup::claude_mcp_left_registered(
+            Some("codex"),
+            &with_cli(None)
+        )
+        .unwrap());
+        // And nothing registered is nothing to report.
+        fs::write(home.path().join(".claude.json"), "{}").unwrap();
+        assert!(!loam_lib::memory_agent_setup::claude_mcp_left_registered(
+            Some("claude"),
+            &with_cli(None)
+        )
+        .unwrap());
+    }
+
+    #[test]
+    fn a_dry_run_registers_nothing() {
+        // The new action runs a command, so `--dry-run` has to mean it too.
+        let home = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let _env = CodexCaptureEnvGuard::use_home_and_session_dirs(home.path(), "");
+        let result = loam_lib::memory_agent_setup::memory_agent_setup(
+            root.path().to_string_lossy().into_owned(),
+            loam_lib::memory_agent_setup::MemoryAgentSetupRequest {
+                codex: false,
+                claude: true,
+                cursor: false,
+                hooks: true,
+                dry_run: true,
+                loam_cli: Some("/tmp/loam-cli".to_string()),
+                loam_mcp: Some("/tmp/loam-mcp".to_string()),
+                claude_cli: Some(claude_cli_stub(home.path())),
+            },
+        )
+        .unwrap();
+        assert!(result.dry_run);
+        assert!(
+            result.summary.contains("would_run") && result.summary.contains("mcp add"),
+            "a dry run should still say what it would register: {}",
+            result.summary
+        );
+        assert!(
+            !home.path().join(".claude.json").exists(),
+            "a dry run registered the server for real"
+        );
+        assert!(!home.path().join(".claude/settings.json").exists());
+        assert!(!home.path().join(".claude/CLAUDE.md").exists());
+    }
+
+    #[test]
+    fn a_registration_that_fails_leaves_no_instruction_block_behind() {
+        // Registration goes first for this reason: CLAUDE.md tells the agent to call
+        // `memory_recall`, and writing that while the server could not be registered
+        // is the state this whole change exists to remove.
+        let home = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let paths = loam_lib::memory_agent_setup::AgentSetupPaths {
+            home: home.path().to_path_buf(),
+            loam_cli: fake_binary(home.path(), "loam-cli"),
+            loam_mcp: fake_binary(home.path(), "loam-mcp"),
+            claude_cli: Some(failing_claude_cli_stub(home.path())),
+            claude_config_dir: None,
+            hook_script: home.path().join(".loam-memory-precompact-hook.mjs"),
+        };
+        let targets = loam_lib::memory_agent_setup::AgentSetupTargets {
+            codex: false,
+            claude: true,
+            cursor: false,
+            hooks: true,
+        };
+        let changes = loam_lib::memory_agent_setup::plan_memory_agent_setup(
+            &root.path().to_string_lossy(),
+            &targets,
+            &paths,
+        )
+        .unwrap();
+        let error =
+            loam_lib::memory_agent_setup::apply_agent_setup_changes(&changes).unwrap_err();
+        assert!(
+            error.to_string().contains("no write access to the config"),
+            "the failure has to carry what the command said: {error}"
+        );
+        assert!(error.to_string().contains("mcp add"));
+        assert!(!home.path().join(".claude/CLAUDE.md").exists());
+        assert!(!home.path().join(".claude/settings.json").exists());
+    }
+
+    #[test]
+    fn a_settings_file_shaped_differently_is_not_overwritten() {
+        // `hooks` as something other than an object is not a shape this installer
+        // wrote, and not one to replace either.
+        let home = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir_all(home.path().join(".claude")).unwrap();
+        fs::write(
+            home.path().join(".claude/settings.json"),
+            r#"{ "hooks": "every-hook-i-have" }"#,
+        )
+        .unwrap();
+        let paths = loam_lib::memory_agent_setup::AgentSetupPaths {
+            home: home.path().to_path_buf(),
+            loam_cli: fake_binary(home.path(), "loam-cli"),
+            loam_mcp: fake_binary(home.path(), "loam-mcp"),
+            claude_cli: Some(claude_cli_stub(home.path())),
+            claude_config_dir: None,
+            hook_script: home.path().join(".loam-memory-precompact-hook.mjs"),
+        };
+        let targets = loam_lib::memory_agent_setup::AgentSetupTargets {
+            codex: false,
+            claude: true,
+            cursor: false,
+            hooks: true,
+        };
+        let error = loam_lib::memory_agent_setup::plan_memory_agent_setup(
+            &root.path().to_string_lossy(),
+            &targets,
+            &paths,
+        )
+        .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert!(error.to_string().contains("`hooks` is not an object"));
+        let after = fs::read_to_string(home.path().join(".claude/settings.json")).unwrap();
+        assert!(after.contains("every-hook-i-have"));
+    }
+
+    #[test]
+    fn a_hook_sharing_an_entry_with_ours_survives_uninstall() {
+        // `hooks` is an array, so someone may have put ours in the same entry as
+        // their own. Taking the entry out would take theirs with it.
+        let home = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let root_path = root.path().to_string_lossy().to_string();
+        fs::create_dir_all(home.path().join(".claude")).unwrap();
+        fs::write(
+            home.path().join(".claude/settings.json"),
+            format!(
+                r#"{{
+  "hooks": {{
+    "PreCompact": [
+      {{
+        "hooks": [
+          {{ "type": "command", "command": "/tmp/loam-cli memory --root {root_path} hook claude PreCompact" }},
+          {{ "type": "command", "command": "my-own-archiver" }}
+        ]
+      }},
+      {{
+        "hooks": [{{ "type": "command", "command": "/opt/other-tool memory --root {root_path} hook claude PreCompact" }}]
+      }}
+    ]
+  }}
+}}
+"#
+            ),
+        )
+        .unwrap();
+        let paths = loam_lib::memory_agent_setup::AgentSetupPaths {
+            home: home.path().to_path_buf(),
+            loam_cli: fake_binary(home.path(), "loam-cli"),
+            loam_mcp: fake_binary(home.path(), "loam-mcp"),
+            claude_cli: Some(claude_cli_stub(home.path())),
+            claude_config_dir: None,
+            hook_script: home.path().join(".loam-memory-precompact-hook.mjs"),
+        };
+        let removals =
+            loam_lib::memory_agent_setup::plan_memory_agent_uninstall(Some("claude"), &paths)
+                .unwrap();
+        loam_lib::memory_agent_setup::apply_agent_setup_changes(&removals).unwrap();
+
+        let after: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(home.path().join(".claude/settings.json")).unwrap(),
+        )
+        .unwrap();
+        let entries = after["hooks"]["PreCompact"].as_array().unwrap();
+        let commands: Vec<&str> = entries
+            .iter()
+            .flat_map(|entry| entry["hooks"].as_array().unwrap())
+            .map(|hook| hook["command"].as_str().unwrap())
+            .collect();
+        assert!(
+            commands.contains(&"my-own-archiver"),
+            "uninstall took somebody else's hook out of a shared entry: {commands:?}"
+        );
+        // Another tool's identically shaped hook is not ours to delete either.
+        assert!(commands.iter().any(|command| command.contains("/opt/other-tool")));
+        assert!(
+            !commands.iter().any(|command| command.contains("/tmp/loam-cli")),
+            "our own hook was left behind: {commands:?}"
+        );
+    }
+
+    #[test]
+    fn junk_in_the_file_claude_does_not_read_cannot_block_an_install() {
+        // The install only touches `~/.claude/hooks/hooks.json` to clean the dead
+        // entry out of it. Whatever else is in there must not stop the install.
+        let home = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir_all(home.path().join(".claude/hooks")).unwrap();
+        fs::write(
+            home.path().join(".claude/hooks/hooks.json"),
+            "this was never JSON",
+        )
+        .unwrap();
+        let paths = loam_lib::memory_agent_setup::AgentSetupPaths {
+            home: home.path().to_path_buf(),
+            loam_cli: fake_binary(home.path(), "loam-cli"),
+            loam_mcp: fake_binary(home.path(), "loam-mcp"),
+            claude_cli: Some(claude_cli_stub(home.path())),
+            claude_config_dir: None,
+            hook_script: home.path().join(".loam-memory-precompact-hook.mjs"),
+        };
+        let targets = loam_lib::memory_agent_setup::AgentSetupTargets {
+            codex: false,
+            claude: true,
+            cursor: false,
+            hooks: true,
+        };
+        let changes = loam_lib::memory_agent_setup::plan_memory_agent_setup(
+            &root.path().to_string_lossy(),
+            &targets,
+            &paths,
+        )
+        .unwrap();
+        loam_lib::memory_agent_setup::apply_agent_setup_changes(&changes).unwrap();
+        assert!(home.path().join(".claude/settings.json").exists());
+        // Left exactly as it was, rather than reformatted or emptied.
+        assert_eq!(
+            fs::read_to_string(home.path().join(".claude/hooks/hooks.json")).unwrap(),
+            "this was never JSON"
+        );
+    }
+
+    #[test]
+    fn a_settings_file_keeps_the_order_its_owner_left_it_in() {
+        // This file is maintained by hand and often checked into a dotfiles repo.
+        // Coming back alphabetised would be a diff nobody asked for.
+        let home = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir_all(home.path().join(".claude")).unwrap();
+        fs::write(
+            home.path().join(".claude/settings.json"),
+            r#"{
+  "theme": "light",
+  "model": "opus",
+  "alwaysThinkingEnabled": true
+}
+"#,
+        )
+        .unwrap();
+        let paths = loam_lib::memory_agent_setup::AgentSetupPaths {
+            home: home.path().to_path_buf(),
+            loam_cli: fake_binary(home.path(), "loam-cli"),
+            loam_mcp: fake_binary(home.path(), "loam-mcp"),
+            claude_cli: Some(claude_cli_stub(home.path())),
+            claude_config_dir: None,
+            hook_script: home.path().join(".loam-memory-precompact-hook.mjs"),
+        };
+        let targets = loam_lib::memory_agent_setup::AgentSetupTargets {
+            codex: false,
+            claude: true,
+            cursor: false,
+            hooks: true,
+        };
+        let changes = loam_lib::memory_agent_setup::plan_memory_agent_setup(
+            &root.path().to_string_lossy(),
+            &targets,
+            &paths,
+        )
+        .unwrap();
+        loam_lib::memory_agent_setup::apply_agent_setup_changes(&changes).unwrap();
+        let after = fs::read_to_string(home.path().join(".claude/settings.json")).unwrap();
+        let theme = after.find("\"theme\"").expect("theme kept");
+        let model = after.find("\"model\"").expect("model kept");
+        let thinking = after.find("\"alwaysThinkingEnabled\"").expect("setting kept");
+        assert!(
+            theme < model && model < thinking,
+            "the settings file came back reordered:\n{after}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn installed_skill_describes_the_hook_that_actually_runs() {
+        // The skill told every agent the hook was `~/.mdx-memory-precompact-hook.mjs`
+        // — a name from before the rename, for a script no hook has ever invoked.
+        let home = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let paths = loam_lib::memory_agent_setup::AgentSetupPaths {
+            home: home.path().to_path_buf(),
+            loam_cli: fake_binary(home.path(), "loam-cli"),
+            loam_mcp: fake_binary(home.path(), "loam-mcp"),
+            claude_cli: Some(claude_cli_stub(home.path())),
+            claude_config_dir: None,
+            hook_script: home.path().join(".loam-memory-precompact-hook.mjs"),
+        };
+        let targets = loam_lib::memory_agent_setup::AgentSetupTargets {
+            codex: false,
+            claude: true,
+            cursor: false,
+            hooks: true,
+        };
+        let changes = loam_lib::memory_agent_setup::plan_memory_agent_setup(
+            &root.path().to_string_lossy(),
+            &targets,
+            &paths,
+        )
+        .unwrap();
+        let skill = changes
+            .iter()
+            .find(|change| change.path.ends_with(".claude/skills/loam-memory/SKILL.md"))
+            .expect("claude skill change");
+        assert!(!skill.contents.contains("mdx-memory"));
+        assert!(!skill.contents.contains(".mjs"));
+        assert!(skill.contents.contains("hook <agent> <event>"));
     }
 }
