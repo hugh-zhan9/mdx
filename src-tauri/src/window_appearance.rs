@@ -1,12 +1,31 @@
+//! How a window is built, and what draws its ground.
+//!
+//! AppKit draws it. That is worth stating, because it did not use to: the windows
+//! were built `transparent(true)` with a `Sidebar` vibrancy material behind them,
+//! which on macOS means the private-API path — the webview stops drawing its own
+//! background and an `NSVisualEffectView` sits underneath.
+//!
+//! Two things were wrong with that. The material was never visible, because
+//! `body` paints an opaque `bg-base-100` across the whole window and nothing ever
+//! showed through. And that compositing path is the leading suspect for the blank
+//! window recorded in
+//! `.loopx/issues/issue-llm-wiki-background-white-screen-20260624T095432.md`: a
+//! window still on screen at alpha 1, a live process and event loop, no WebContent
+//! termination in any log, and content painting pure white. That is a layer that
+//! stopped being redrawn rather than a page that died — and a window with no
+//! ground of its own has nothing to show while it is not being redrawn.
+//!
+//! So the ground is now AppKit's `windowBackgroundColor`, which follows the light
+//! or dark appearance the application already sets through `setTheme`. The reload
+//! recovery in `lib.rs` stays where it is: this is the fix being tried, not a
+//! proven one, and taking the net down at the same time would be the wrong order.
+//!
+//! Nothing here needs a test to hold it: `macos-private-api` is off in
+//! `Cargo.toml` and `macOSPrivateApi` is gone from `tauri.conf.json`, which means
+//! `transparent` is not a method that exists on the builder. Putting it back is
+//! three deliberate edits with a compile error in the middle.
+
 use tauri::{AppHandle, TitleBarStyle, WebviewWindowBuilder, Wry};
-
-#[cfg(target_os = "macos")]
-use tauri::window::{Effect, EffectState, EffectsBuilder};
-
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn macos_window_effects_enabled() -> bool {
-    cfg!(target_os = "macos")
-}
 
 pub fn workspace_title_bar_style() -> TitleBarStyle {
     macos_title_bar_style()
@@ -74,24 +93,17 @@ fn macos_hidden_title() -> bool {
 }
 
 #[cfg(target_os = "macos")]
-fn macos_effects() -> tauri::utils::config::WindowEffectsConfig {
-    EffectsBuilder::new()
-        .effect(Effect::Sidebar)
-        .state(EffectState::FollowsWindowActiveState)
-        .build()
-}
-
-#[cfg(target_os = "macos")]
 fn configure_macos_window<'a>(
     builder: WebviewWindowBuilder<'a, Wry, AppHandle>,
     title_bar_style: TitleBarStyle,
     hidden_title: bool,
 ) -> WebviewWindowBuilder<'a, Wry, AppHandle> {
+    // Overlay title bar and hidden title are ordinary `NSWindow` properties —
+    // `titlebarAppearsTransparent` and `fullSizeContentView` — and want nothing
+    // from the private API. The content still runs under the traffic lights.
     builder
         .title_bar_style(title_bar_style)
         .hidden_title(hidden_title)
-        .transparent(true)
-        .effects(macos_effects())
 }
 
 #[cfg(not(target_os = "macos"))]

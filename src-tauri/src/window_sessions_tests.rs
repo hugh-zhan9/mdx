@@ -26,7 +26,6 @@ fn macos_window_appearance_prefers_overlay_titlebar() {
         assert!(crate::window_appearance::workspace_hidden_title());
         assert!(crate::window_appearance::document_hidden_title());
         assert!(crate::window_appearance::document_error_hidden_title());
-        assert!(crate::window_appearance::macos_window_effects_enabled());
     }
 }
 
@@ -49,7 +48,6 @@ fn non_macos_window_appearance_keeps_visible_titlebar_defaults() {
         assert!(!crate::window_appearance::workspace_hidden_title());
         assert!(!crate::window_appearance::document_hidden_title());
         assert!(!crate::window_appearance::document_error_hidden_title());
-        assert!(!crate::window_appearance::macos_window_effects_enabled());
     }
 }
 
