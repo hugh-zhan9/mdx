@@ -120,6 +120,34 @@ describe("MemoryGraphView", () => {
     expect(host.querySelectorAll("circle")).toHaveLength(4);
   });
 
+  it("says what a clicked document holds, and opens a chunk from the card", () => {
+    // A document node has no entry of its own, and its click used to be a dead
+    // end: more dots, no way to read anything. The card is the content path.
+    const onSelect = vi.fn();
+    mount({ onSelect });
+
+    act(() => {
+      host
+        .querySelector("svg g")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const card = host.querySelector("ul");
+
+    if (!card) throw new Error("Expected the selection card to list chunks.");
+
+    const rows = card.querySelectorAll("button");
+
+    expect(rows).toHaveLength(3);
+    expect(rows[0]?.textContent).toContain("素材 ev_1");
+
+    act(() => {
+      rows[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(onSelect).toHaveBeenCalledWith("ev_1");
+  });
+
   it("opens an entry when a chunk is clicked", () => {
     const onSelect = vi.fn();
     // A chunk with no source file is drawn on its own, with no document above it.

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildMemoryGraph, placeGraph } from "./memory-graph";
+import {
+    buildMemoryGraph,
+    motionFrame,
+    placeGraph,
+    type PlacedNode,
+} from "./memory-graph";
 import type { StoredItem } from "./types";
 
 function material(id: string, text: string): StoredItem {
@@ -16,6 +21,19 @@ function material(id: string, text: string): StoredItem {
         supportingRefs: [],
         verificationRefs: [],
         counterexampleRefs: [],
+    };
+}
+
+function placedNode(id: string, x: number, y: number, z = 0): PlacedNode {
+    return {
+        id,
+        kind: "material",
+        label: id,
+        status: null,
+        degree: 0,
+        x,
+        y,
+        z,
     };
 }
 
@@ -203,9 +221,71 @@ describe("the memory relation graph", () => {
             { similar: { ev_1: ["ev_2", "ev_missing"] }, expanded: new Set(["a.md", "b.md"]) },
         );
 
-        expect(graph.edges).toEqual([
+        expect(graph.edges.filter((edge) => edge.kind === "similar")).toEqual([
             { from: "ev_1", to: "ev_2", kind: "similar" },
         ]);
+    });
+
+    it("keeps a single-chunk document when it is opened", () => {
+        // Dropping the document node for a one-chunk source made the clicked
+        // dot vanish and reappear labelled with its chunk's text — the source
+        // and the material swapping identities mid-click.
+        const graph = buildMemoryGraph(
+            [{ ...material("ev_1", "唯一一段"), sourceFile: "notes/solo.md" }],
+            [],
+            { expanded: new Set(["notes/solo.md"]) },
+        );
+
+        expect(graph.nodes.map((node) => node.kind).sort()).toEqual([
+            "document",
+            "material",
+        ]);
+        expect(graph.edges).toEqual([
+            { from: "doc:notes/solo.md", to: "ev_1", kind: "holds" },
+        ]);
+    });
+
+    it("moves a node from where it was drawn to where it now belongs", () => {
+        // A layout change is the same map moving, not a new map: mid-motion the
+        // node is partway along the straight line between the two arrangements.
+        const target: PlacedNode[] = [placedNode("ev_1", 100, 200)];
+        const previous = new Map([["ev_1", { x: 0, y: 0, z: 0 }]]);
+
+        const midway = motionFrame(previous, target, new Map(), 0.5);
+
+        expect(midway).toEqual([placedNode("ev_1", 50, 100)]);
+        expect(motionFrame(previous, target, new Map(), 0)[0]).toMatchObject({
+            x: 0,
+            y: 0,
+        });
+        expect(motionFrame(previous, target, new Map(), 1)[0]).toMatchObject({
+            x: 100,
+            y: 200,
+        });
+    });
+
+    it("blooms an entering chunk out of its document", () => {
+        // A chunk that was not drawn last frame enters from where its document
+        // stood, so expanding is seen as the document opening rather than as
+        // dots popping in at their destinations.
+        const target: PlacedNode[] = [placedNode("ev_1", 300, 300)];
+        const previous = new Map([["doc:notes/one.md", { x: 40, y: 60, z: 0 }]]);
+        const anchors = new Map([["ev_1", "doc:notes/one.md"]]);
+
+        expect(motionFrame(previous, target, anchors, 0)[0]).toMatchObject({
+            x: 40,
+            y: 60,
+        });
+    });
+
+    it("stands a node with no history where it belongs", () => {
+        // Nothing to come from: the first picture is drawn in place.
+        const target: PlacedNode[] = [placedNode("kn_1", 70, 80)];
+
+        expect(motionFrame(new Map(), target, new Map(), 0)[0]).toMatchObject({
+            x: 70,
+            y: 80,
+        });
     });
 
     it("places the same library in the same places twice", () => {
@@ -216,17 +296,90 @@ describe("the memory relation graph", () => {
             [conclusion()],
         );
 
-        const first = placeGraph(graph, 900, 560);
-        const second = placeGraph(graph, 900, 560);
+        const first = placeGraph(graph);
+        const second = placeGraph(graph);
 
         expect(first).toEqual(second);
-        // Every node the graph holds got a place inside the canvas.
+        // Every node the graph holds got a place on the unit sphere.
         expect(first).toHaveLength(graph.nodes.length);
         for (const node of first) {
-            expect(node.x).toBeGreaterThanOrEqual(0);
-            expect(node.x).toBeLessThanOrEqual(900);
-            expect(node.y).toBeGreaterThanOrEqual(0);
-            expect(node.y).toBeLessThanOrEqual(560);
+            expect(Math.hypot(node.x, node.y, node.z)).toBeCloseTo(1, 5);
         }
+    });
+
+    it("opens a document in place: its dot and every other cluster stay put", () => {
+        // The old disc moved an opened document to the middle and pushed the
+        // rest outward — the clicked dot was the one dot that flew away. A
+        // cluster's place is keyed by its source and ordered by its chunk
+        // count, and opening changes neither.
+        const chunks = [
+            { ...material("ev_1", "第一段"), sourceFile: "notes/one.md" },
+            { ...material("ev_2", "第二段"), sourceFile: "notes/one.md" },
+            { ...material("ev_3", "别处"), sourceFile: "notes/two.md" },
+        ];
+        const before = placeGraph(buildMemoryGraph(chunks, []));
+        const after = placeGraph(
+            buildMemoryGraph(chunks, [], { expanded: new Set(["notes/one.md"]) }),
+        );
+        const at = (nodes: PlacedNode[], id: string) => {
+            const node = nodes.find((candidate) => candidate.id === id);
+
+            if (!node) throw new Error(`Expected ${id} to be placed.`);
+
+            return node;
+        };
+
+        for (const id of ["doc:notes/one.md", "doc:notes/two.md"]) {
+            expect(at(after, id)).toMatchObject({
+                x: at(before, id).x,
+                y: at(before, id).y,
+                z: at(before, id).z,
+            });
+        }
+    });
+
+    it("seats a conclusion beside its evidence, not in a privileged centre", () => {
+        // It used to be pulled 35% towards the canvas centre, which stacked
+        // every well-cited conclusion in the middle of the picture.
+        const graph = buildMemoryGraph(
+            [material("ev_1", "决策 A")],
+            [
+                conclusion({
+                    supportingRefs: ["ev_1"],
+                    verificationRefs: [],
+                    counterexampleRefs: [],
+                }),
+            ],
+        );
+        const nodes = placeGraph(graph);
+        const doc = nodes.find((node) => node.id === "doc:notes/ev_1.md")!;
+        const seat = nodes.find((node) => node.id === "kn_1")!;
+        const gap = Math.acos(
+            Math.min(1, doc.x * seat.x + doc.y * seat.y + doc.z * seat.z),
+        );
+
+        // A step aside — off the document's dot, but nowhere near across the ball.
+        expect(gap).toBeGreaterThan(0.02);
+        expect(gap).toBeLessThan(0.3);
+    });
+
+    it("spreads uncited conclusions out instead of stacking them", () => {
+        // Conclusions whose citations are outside the loaded window all sat on
+        // one privileged centre point, on top of each other.
+        const graph = buildMemoryGraph(
+            [],
+            [
+                conclusion({ drawerId: "kn_1", verificationRefs: [] }),
+                conclusion({ drawerId: "kn_2", verificationRefs: [] }),
+            ],
+        );
+        const [first, second] = placeGraph(graph);
+        const apart = Math.hypot(
+            first.x - second.x,
+            first.y - second.y,
+            first.z - second.z,
+        );
+
+        expect(apart).toBeGreaterThan(0.5);
     });
 });

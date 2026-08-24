@@ -28,6 +28,12 @@ export interface GraphNode {
     label: string;
     /** Documents: how many chunks it stands for. One for everything else. */
     weight?: number;
+    /**
+     * Which cluster the node is drawn in: its source file, or its own id when
+     * it stands alone. The layout keys a cluster's place on this, so a document
+     * and its chunks share one place whatever grain they are drawn at.
+     */
+    cluster?: string;
     /** Conclusion status, for the colour that says whether an agent sees it. */
     status: string | null;
     /** How many edges touch it, which decides how large it is drawn. */
@@ -149,6 +155,7 @@ export function buildMemoryGraph(
                 id: item.drawerId,
                 kind: "material",
                 label: label(item),
+                cluster: source.length === 0 ? item.drawerId : source,
                 status: null,
                 degree: 0,
             }));
@@ -166,22 +173,27 @@ export function buildMemoryGraph(
             id: documentId(source),
             kind: "document",
             label: documentLabel(source),
+            cluster: source,
             status: null,
             degree: 0,
             weight: chunks.length,
         }));
     }
 
-    // A document that is expanded still says which chunks belong to it.
+    // A document that is expanded still says which chunks belong to it. Even a
+    // single-chunk source keeps its document node: dropping it made the clicked
+    // dot vanish and reappear labelled with its chunk's text — the source and
+    // the material swapping identities mid-click.
     for (const source of expanded) {
         const chunks = material.filter((item) => item.sourceFile === source);
 
-        if (chunks.length < 2) continue;
+        if (chunks.length === 0) continue;
 
         add(documentId(source), () => ({
             id: documentId(source),
             kind: "document",
             label: documentLabel(source),
+            cluster: source,
             status: null,
             degree: 0,
             weight: chunks.length,
@@ -275,189 +287,229 @@ export function buildMemoryGraph(
 }
 
 export interface PlacedNode extends GraphNode {
+    /** A point on the unit sphere. The view spins the sphere and projects it. */
     x: number;
     y: number;
+    z: number;
+}
+
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+
+/** A direction on the unit sphere. */
+export interface Point {
+    x: number;
+    y: number;
+    z: number;
 }
 
 /**
- * Where each node sits, worked out without a physics loop.
- *
- * A force simulation would land the same library somewhere different on every
- * open, and a map that moves is a map nobody learns. So the arrangement is
- * derived, in three steps, from what the data already groups by:
- *
- * material is placed in clusters, one per source document, because chunks of one
- * file belong together and that is the grouping the reader already has in mind;
- * clusters are spread around the canvas in a stable order — by size, then by name
- * — so adding an entry grows a cluster instead of reshuffling the picture; and a
- * conclusion sits at the centre of gravity of the material it cites, pulled a
- * little towards the middle, which is what makes "several pieces, one conclusion"
- * visible as a shape rather than as a colour.
+ * The i-th of n directions on a Fibonacci sphere: evenly spread, no simulation,
+ * same input same globe.
  */
-export function placeGraph(
-    graph: MemoryGraph,
-    width: number,
-    height: number,
-): PlacedNode[] {
-    const centreX = width / 2;
-    const centreY = height / 2;
+function fibonacciPoint(index: number, total: number): Point {
+    const y = 1 - (2 * (index + 0.5)) / Math.max(total, 1);
+    const ring = Math.sqrt(Math.max(0, 1 - y * y));
+    const angle = index * GOLDEN_ANGLE;
+
+    return { x: ring * Math.cos(angle), y, z: ring * Math.sin(angle) };
+}
+
+/** Two directions at right angles to a point: the plane its cap spreads in. */
+function tangentBasis(point: Point): [Point, Point] {
+    // Any helper not parallel to the point will do; near the poles use east.
+    const helper: Point =
+        Math.abs(point.y) > 0.9 ? { x: 1, y: 0, z: 0 } : { x: 0, y: 1, z: 0 };
+    const u = normalize(cross(helper, point));
+
+    return [u, cross(point, u)];
+}
+
+/** A point `away` radians from `centre`, in the tangent direction `angle`. */
+function capPoint(
+    centre: Point,
+    basis: [Point, Point],
+    angle: number,
+    away: number,
+): Point {
+    const [u, v] = basis;
+    const sin = Math.sin(away);
+
+    return {
+        x: centre.x * Math.cos(away) + (u.x * Math.cos(angle) + v.x * Math.sin(angle)) * sin,
+        y: centre.y * Math.cos(away) + (u.y * Math.cos(angle) + v.y * Math.sin(angle)) * sin,
+        z: centre.z * Math.cos(away) + (u.z * Math.cos(angle) + v.z * Math.sin(angle)) * sin,
+    };
+}
+
+function cross(a: Point, b: Point): Point {
+    return {
+        x: a.y * b.z - a.z * b.y,
+        y: a.z * b.x - a.x * b.z,
+        z: a.x * b.y - a.y * b.x,
+    };
+}
+
+function normalize(point: Point): Point {
+    const length = Math.hypot(point.x, point.y, point.z) || 1;
+
+    return { x: point.x / length, y: point.y / length, z: point.z / length };
+}
+
+/**
+ * Where each node sits on the globe, worked out without a physics loop.
+ *
+ * Deterministic — the same library lands in the same places on every open — and
+ * stable under interaction, which the flat disc was not: it moved an opened
+ * document to the middle and pushed everyone else outward, so the dot that was
+ * just clicked was the one dot that flew away. Here a cluster's place is keyed
+ * by its source file and ordered by its chunk count, neither of which changes
+ * when the document is opened: the clicked dot stays exactly where it is and
+ * its chunks come out in a cap around it.
+ *
+ * Clusters — one per source document — take Fibonacci-sphere directions,
+ * largest first. A conclusion sits beside the centroid of the evidence it
+ * cites, stepped a little aside so it never covers a lone cited document; it is
+ * not pulled anywhere central, because stacking the well-cited conclusions in
+ * the middle of the picture was the old layout's way of saying nothing. A
+ * conclusion with no visible citations takes a Fibonacci direction of its own
+ * rather than a privileged spot.
+ */
+export function placeGraph(graph: MemoryGraph): PlacedNode[] {
     const placed = new Map<string, PlacedNode>();
-    const material = graph.nodes.filter((node) => node.kind !== "conclusion");
+    const satellites = graph.nodes.filter((node) => node.kind !== "conclusion");
     const conclusions = graph.nodes.filter((node) => node.kind === "conclusion");
 
-    // One cluster per document, in a stable order so the map does not reshuffle: an
-    // opened document sits with the chunks it opened into rather than across the
-    // canvas from them.
-    const sameSource = new Map<string, Set<string>>();
-    for (const edge of graph.edges) {
-        if (edge.kind !== "holds") continue;
-        const group =
-            sameSource.get(edge.from) ?? sameSource.get(edge.to) ?? new Set();
-        group.add(edge.from);
-        group.add(edge.to);
-        sameSource.set(edge.from, group);
-        sameSource.set(edge.to, group);
+    // One cluster per source, keyed by the source itself: the key is the same
+    // whether the document is drawn as one dot or as a dot with chunks around it.
+    const groups = new Map<string, GraphNode[]>();
+    for (const node of satellites) {
+        const key = node.cluster ?? node.id;
+        const members = groups.get(key) ?? [];
+        members.push(node);
+        groups.set(key, members);
     }
-    const clusters: string[][] = [];
-    const claimed = new Set<string>();
-    for (const node of material) {
-        if (claimed.has(node.id)) continue;
-        const group = sameSource.get(node.id);
-        const members = group ? [...group] : [node.id];
-        members.forEach((id) => claimed.add(id));
-        clusters.push(members.sort());
-    }
-    // By how much each cluster holds, largest first, so the map has a gradient a
-    // reader can use: the documents this project is mostly made of sit in the middle,
-    // and the one-chunk notes ring the edge. Sorted alphabetically, size was noise.
-    const byNode = new Map(graph.nodes.map((node) => [node.id, node]));
-    const bulk = (members: string[]) =>
-        members.reduce(
-            (sum, id) => sum + (byNode.get(id)?.weight ?? 1),
-            0,
-        );
-    clusters.sort(
+
+    // Ordered by how much the cluster stands for — its document's chunk count,
+    // which opening the document does not change — so expansion cannot reshuffle
+    // the ordering either.
+    const bulk = (members: GraphNode[]) =>
+        members.find((member) => member.kind === "document")?.weight ??
+        members.length;
+    const clusters = [...groups.entries()].sort(
         (left, right) =>
-            bulk(right) - bulk(left) || left[0].localeCompare(right[0]),
+            bulk(right[1]) - bulk(left[1]) || left[0].localeCompare(right[0]),
     );
 
-    // A disc rather than a ring, at both levels. On a ring the picture reads as a
-    // clock face with an empty middle — and at the document grain, where nearly
-    // every cluster is a single dot, that is all a ring can ever produce. The golden
-    // angle is what fills a disc evenly without a simulation: same input, same
-    // picture, every time.
-    const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
-    // Reach is elliptical, one radius per axis: a single radius drew a circle in
-    // the middle of a wide panel and left the sides empty, which looks like the
-    // canvas is smaller than it is.
-    const reachX = Math.max(60, width / 2 - 40);
-    const reachY = Math.max(60, height / 2 - 40);
-    const reach = Math.min(reachX, reachY);
-    // Room enough for an opened document: a hundred chunks in a 70px disc is a
-    // hairball, and looking at one closely is the reason to open it.
-    const spanOf = (members: string[]) =>
-        Math.min(120, 10 + Math.sqrt(members.length) * 14);
+    clusters.forEach(([, members], index) => {
+        const centre = fibonacciPoint(index, clusters.length);
+        // The document is its cluster's fixed point: clicked open, it stays put
+        // and the chunks come out around it.
+        const doc = members.find((member) => member.kind === "document");
 
-    const spread = (members: string[], cx: number, cy: number) => {
-        const radius = spanOf(members);
+        if (doc) placed.set(doc.id, { ...doc, ...centre });
 
-        members.forEach((id, position) => {
-            const node = material.find((candidate) => candidate.id === id);
+        const rest = members
+            .filter((member) => member !== doc)
+            .sort((leftNode, rightNode) => leftNode.id.localeCompare(rightNode.id));
+        // Room enough for an opened document, in radians of cap: wide enough to
+        // read, never so wide it wraps the globe.
+        const cap = Math.min(0.55, 0.1 + Math.sqrt(rest.length) * 0.06);
+        const basis = tangentBasis(centre);
 
-            if (!node) return;
+        rest.forEach((node, position) => {
+            const step = Math.sqrt((position + 0.5) / rest.length);
+            // Never closer than the document's own dot, or the first chunks of a
+            // large file are drawn underneath it.
+            const away = Math.max(0.055, cap * step);
 
-            const step = Math.sqrt((position + 0.5) / members.length);
-            const memberAngle = position * GOLDEN_ANGLE;
-
-            placed.set(id, {
+            placed.set(node.id, {
                 ...node,
-                x: clamp(cx + Math.cos(memberAngle) * radius * step, 12, width - 12),
-                y: clamp(cy + Math.sin(memberAngle) * radius * step, 12, height - 12),
+                ...capPoint(centre, basis, position * GOLDEN_ANGLE, away),
             });
         });
-    };
+    });
 
-    // What is opened owns the middle, and everything still aggregated is pushed
-    // outside it. Placed on the one disc together, an opened document's hundred
-    // chunks landed on top of the other documents' dots, and the picture read as one
-    // smear where it should read as "this file, against the rest".
-    const opened = clusters.filter((members) => members.length > 1);
-    const shut = clusters.filter((members) => members.length === 1);
-    const keepOut = opened.reduce(
-        (widest, members) => Math.max(widest, spanOf(members)),
-        0,
+    // Ordered by id so each conclusion steps to the same side on every open.
+    const ordered = [...conclusions].sort((left, right) =>
+        left.id.localeCompare(right.id),
     );
-    const openedRing = opened.length > 1 ? keepOut * 1.15 : 0;
-
-    opened.forEach((members, index) => {
-        const angle = index * GOLDEN_ANGLE;
-
-        spread(
-            members,
-            centreX + Math.cos(angle) * openedRing,
-            centreY + Math.sin(angle) * openedRing,
-        );
-    });
-
-    const floor = Math.min(0.8, (openedRing + keepOut + 18) / reach);
-    shut.forEach((members, index) => {
-        const away =
-            floor + (1 - floor) * Math.sqrt((index + 0.5) / shut.length);
-        const angle = index * GOLDEN_ANGLE;
-
-        spread(
-            members,
-            centreX + Math.cos(angle) * reachX * away,
-            centreY + Math.sin(angle) * reachY * away,
-        );
-    });
-
-    // A conclusion sits where its evidence is, pulled towards the middle so it
-    // reads as standing over the material rather than as one more dot in it.
-    for (const conclusion of conclusions) {
+    ordered.forEach((conclusion, index) => {
         const cited = graph.edges
             .filter((edge) => edge.from === conclusion.id)
             .map((edge) => placed.get(edge.to))
             .filter((node): node is PlacedNode => node !== undefined);
 
         if (cited.length === 0) {
+            // Nothing to sit beside: a direction of its own, phase-shifted off
+            // the clusters' sequence so two uncited conclusions never stack.
             placed.set(conclusion.id, {
                 ...conclusion,
-                x: centreX,
-                y: centreY,
+                ...fibonacciPoint(index + 0.5, ordered.length + 1),
             });
-            continue;
+            return;
         }
 
-        const x = cited.reduce((sum, node) => sum + node.x, 0) / cited.length;
-        const y = cited.reduce((sum, node) => sum + node.y, 0) / cited.length;
+        const centroid = normalize({
+            x: cited.reduce((sum, node) => sum + node.x, 0),
+            y: cited.reduce((sum, node) => sum + node.y, 0),
+            z: cited.reduce((sum, node) => sum + node.z, 0),
+        });
 
         placed.set(conclusion.id, {
             ...conclusion,
-            x: clamp(x + (centreX - x) * 0.35, 20, width - 20),
-            y: clamp(y + (centreY - y) * 0.35, 20, height - 20),
+            ...capPoint(
+                centroid,
+                tangentBasis(centroid),
+                index * GOLDEN_ANGLE,
+                0.09,
+            ),
         });
-    }
+    });
 
-    // Anything cited but not in the material window — an adoption record, say.
+    // Anything the loops above do not know — nothing today, kept as the net.
+    let leftover = 0;
     for (const node of graph.nodes) {
         if (placed.has(node.id)) continue;
 
-        const anchor = graph.edges
-            .filter((edge) => edge.to === node.id)
-            .map((edge) => placed.get(edge.from))
-            .find((candidate): candidate is PlacedNode => candidate !== undefined);
-
         placed.set(node.id, {
             ...node,
-            x: clamp((anchor?.x ?? centreX) + 34, 12, width - 12),
-            y: clamp((anchor?.y ?? centreY) - 34, 12, height - 12),
+            ...fibonacciPoint(leftover++ + 0.25, graph.nodes.length),
         });
     }
 
     return [...placed.values()];
 }
 
-function clamp(value: number, low: number, high: number): number {
-    return Math.min(high, Math.max(low, value));
+/**
+ * The picture partway between two arrangements.
+ *
+ * A click that expands a document or reflows the layout used to teleport every
+ * dot, which reads as the map being reshuffled rather than the same map moving.
+ * Motion is the statement that these are the same nodes: each one travels from
+ * where it was drawn last frame to where the layout now puts it.
+ *
+ * A node with no previous position enters from its anchor — a chunk from the
+ * document it came out of — so an expansion blooms outward from the dot that was
+ * clicked instead of popping in at its destination. A node with neither history
+ * nor anchor has nowhere to come from and simply stands where it belongs.
+ */
+export function motionFrame(
+    previous: ReadonlyMap<string, Point>,
+    target: PlacedNode[],
+    anchors: ReadonlyMap<string, string>,
+    progress: number,
+): PlacedNode[] {
+    return target.map((node) => {
+        const from =
+            previous.get(node.id) ??
+            previous.get(anchors.get(node.id) ?? "") ??
+            node;
+
+        return {
+            ...node,
+            x: from.x + (node.x - from.x) * progress,
+            y: from.y + (node.y - from.y) * progress,
+            z: from.z + (node.z - from.z) * progress,
+        };
+    });
 }
