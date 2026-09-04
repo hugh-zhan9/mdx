@@ -63,4 +63,5 @@ objc2-foundation = { version = "0.3", features = ["NSDictionary", "NSNotificatio
 
 [dev-dependencies]
 async-trait = "0.1"
+glob = "0.3"
 png = "0.17"

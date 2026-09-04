@@ -391,6 +391,8 @@ mod assets_tests;
 #[cfg(test)]
 mod background_tests;
 #[cfg(test)]
+mod capabilities_tests;
+#[cfg(test)]
 mod cli_protocol_tests;
 #[cfg(test)]
 mod document_tests;
@@ -400,6 +402,8 @@ mod draft_store_tests;
 mod file_watch_tests;
 #[cfg(test)]
 mod llm_wiki_tests;
+#[cfg(test)]
+mod menu_dispatch_tests;
 #[cfg(test)]
 mod state_store_tests;
 #[cfg(test)]
@@ -545,7 +549,11 @@ pub(crate) fn new_document_window(
     display_path: PathBuf,
     real_path: PathBuf,
 ) -> tauri::Result<String> {
-    let requested_label = format!("document-{}", WIN_ID.fetch_add(1, Ordering::SeqCst));
+    let requested_label = format!(
+        "{}{}",
+        window_sessions::DOCUMENT_WINDOW_LABEL_PREFIX,
+        WIN_ID.fetch_add(1, Ordering::SeqCst)
+    );
     let label = {
         let state = app.state::<Mutex<WindowSessionRegistry>>();
         let mut registry = state.lock().unwrap();
@@ -582,7 +590,11 @@ fn new_document_error_window(
     display_path: Option<PathBuf>,
     message: String,
 ) -> tauri::Result<String> {
-    let label = format!("document-error-{}", WIN_ID.fetch_add(1, Ordering::SeqCst));
+    let label = format!(
+        "{}{}",
+        window_sessions::DOCUMENT_ERROR_WINDOW_LABEL_PREFIX,
+        WIN_ID.fetch_add(1, Ordering::SeqCst)
+    );
     {
         let state = app.state::<Mutex<WindowSessionRegistry>>();
         let mut registry = state.lock().unwrap();
@@ -639,7 +651,10 @@ fn focus_or_create_workspace_window_and_open_folder(app: &AppHandle) -> tauri::R
 
     if let Some(window) = app.get_webview_window(&label) {
         let _ = window.set_focus();
-        let _ = window.emit("mdx-menu-open-folder", ());
+        // The workspace window's own label, not a broadcast: a document window
+        // reacts to this event by calling this very command, so broadcasting it
+        // hands that window back its own request, forever.
+        let _ = window.emit_to(&label, "mdx-menu-open-folder", ());
         return Ok(());
     }
 
@@ -829,48 +844,43 @@ fn recover_stale_workspace_frontend(app: &AppHandle, label: &str, trigger: &str)
     }
 }
 
+/// The frontend event a File menu item means, for the window receiving it.
+///
+/// The same item means different things in different windows: 关闭标签页 closes a
+/// tab in a workspace and the whole window in a document, and the items that act
+/// on the folder tree mean nothing in a document window at all.
+fn menu_event_name(role: WindowRole, menu_id: &str) -> Option<&'static str> {
+    match (role, menu_id) {
+        (WindowRole::Workspace, "open-folder") => Some("mdx-menu-open-folder"),
+        (WindowRole::Workspace, "new-folder") => Some("mdx-menu-new-folder"),
+        (WindowRole::Workspace, "new-markdown-file") => Some("mdx-menu-new-markdown-file"),
+        (WindowRole::Workspace, "rename") => Some("mdx-menu-rename"),
+        (WindowRole::Workspace, "trash") => Some("mdx-menu-trash"),
+        (WindowRole::Workspace, "refresh") => Some("mdx-menu-refresh"),
+        (WindowRole::Workspace, "save") => Some("mdx-menu-save"),
+        (WindowRole::Workspace, "close-tab") => Some("mdx-menu-close-tab"),
+        (WindowRole::Workspace, _) => None,
+        (WindowRole::Document, "open-folder") => Some("mdx-menu-open-folder"),
+        (WindowRole::Document, "save") => Some("mdx-menu-save"),
+        (WindowRole::Document, "close-tab") => Some("mdx-menu-close-document"),
+        (WindowRole::Document, _) => None,
+    }
+}
+
 fn dispatch_menu_event(app: &AppHandle, menu_id: &str) {
     let Some((window, role)) = focused_window_with_role(app) else {
         return;
     };
+    let Some(event) = menu_event_name(role, menu_id) else {
+        return;
+    };
 
-    match (role, menu_id) {
-        (WindowRole::Workspace, "open-folder") => {
-            let _ = window.emit("mdx-menu-open-folder", ());
-        }
-        (WindowRole::Workspace, "new-folder") => {
-            let _ = window.emit("mdx-menu-new-folder", ());
-        }
-        (WindowRole::Workspace, "new-markdown-file") => {
-            let _ = window.emit("mdx-menu-new-markdown-file", ());
-        }
-        (WindowRole::Workspace, "rename") => {
-            let _ = window.emit("mdx-menu-rename", ());
-        }
-        (WindowRole::Workspace, "trash") => {
-            let _ = window.emit("mdx-menu-trash", ());
-        }
-        (WindowRole::Workspace, "refresh") => {
-            let _ = window.emit("mdx-menu-refresh", ());
-        }
-        (WindowRole::Workspace, "save") => {
-            let _ = window.emit("mdx-menu-save", ());
-        }
-        (WindowRole::Workspace, "close-tab") => {
-            let _ = window.emit("mdx-menu-close-tab", ());
-        }
-        (WindowRole::Workspace, _) => {}
-        (WindowRole::Document, "open-folder") => {
-            let _ = window.emit("mdx-menu-open-folder", ());
-        }
-        (WindowRole::Document, "save") => {
-            let _ = window.emit("mdx-menu-save", ());
-        }
-        (WindowRole::Document, "close-tab") => {
-            let _ = window.emit("mdx-menu-close-document", ());
-        }
-        (WindowRole::Document, _) => {}
-    }
+    // To this window and to no other. `Emitter::emit` is a broadcast — every
+    // webview receives it — so ⌘S in a document window also told the workspace
+    // window to save whatever tab it had open, and an image preview tab answered
+    // that with a "markdown files must end with .md" error nobody asked for.
+    // A menu keystroke belongs to the window the user is looking at.
+    let _ = window.emit_to(window.label(), event, ());
 }
 
 #[tauri::command]

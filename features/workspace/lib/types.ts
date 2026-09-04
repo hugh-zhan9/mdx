@@ -189,7 +189,16 @@ export interface WorkspaceFileTreeActions {
     refreshTree: () => Promise<void>;
 }
 
-export interface WorkspaceMenuActions extends WorkspaceFileTreeActions {
+/**
+ * What the native File menu can ask this window to do.
+ *
+ * The tree's half is optional because the tree is a panel: it unmounts when the
+ * sidebar is collapsed and in every view that is not the editor. Saving and
+ * closing the active tab are not the tree's work and must not leave with it —
+ * ⌘S means the same thing whether or not a folder list is on screen.
+ */
+export interface WorkspaceMenuActions
+    extends Partial<WorkspaceFileTreeActions> {
     saveActiveTab: () => Promise<void>;
     closeActiveTab: () => Promise<void>;
 }

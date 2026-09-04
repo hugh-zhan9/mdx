@@ -140,8 +140,7 @@ vi.mock("./app-dialogs", () => ({
 }));
 
 vi.mock("./file-tree-panel", () => ({
-  // The shell only publishes its menu actions once the tree has published
-  // its own, so the stub has to do that much for `saveActiveTab` to exist.
+  // The tree's own menu actions, which the shell folds in beside its own.
   FileTreePanel: ({
     onActionsChange,
   }: {

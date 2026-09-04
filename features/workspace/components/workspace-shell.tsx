@@ -1995,17 +1995,14 @@ export function WorkspaceShell({
       await closeTab(tabId);
     }
   }, [closeTab]);
-  const workspaceActions = useMemo<WorkspaceMenuActions | null>(() => {
-    if (!fileTreeActions) {
-      return null;
-    }
-
-    return {
+  const workspaceActions = useMemo<WorkspaceMenuActions>(
+    () => ({
       ...fileTreeActions,
       saveActiveTab,
       closeActiveTab,
-    };
-  }, [closeActiveTab, fileTreeActions, saveActiveTab]);
+    }),
+    [closeActiveTab, fileTreeActions, saveActiveTab],
+  );
 
   useEffect(() => {
     onActionsChange(workspaceActions);

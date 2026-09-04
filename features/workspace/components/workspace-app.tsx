@@ -94,13 +94,19 @@ function WorkspaceAppInner() {
         },
         [],
     );
+    /*
+     * Held in a ref for the same reason the menu actions are: this handler is
+     * rebuilt whenever the workspace state changes — which is on every edit —
+     * and the menu subscription must not be torn down and rebuilt with it.
+     */
+    const chooseWorkspaceRef = useRef(chooseWorkspaceWithGuard);
+    useEffect(() => {
+        chooseWorkspaceRef.current = chooseWorkspaceWithGuard;
+    }, [chooseWorkspaceWithGuard]);
 
     useCliWorkspaceSync(workspace);
     useWorkspaceFrontendHeartbeat(workspace);
-    useWorkspaceMenuEvents(
-        workspaceActionsRef,
-        chooseWorkspaceWithGuard,
-    );
+    useWorkspaceMenuEvents(workspaceActionsRef, chooseWorkspaceRef);
     useWorkspaceOpenFolderStartupAction(chooseWorkspaceWithGuard);
     useWorkspaceCloseGuard(workspaceRef, dialogs, persistCurrentWindowSize);
 
@@ -134,9 +140,19 @@ function WorkspaceAppInner() {
     );
 }
 
+/**
+ * Subscribes the window to its native File menu, once.
+ *
+ * Everything it needs arrives through a ref, so the effect has no reason to
+ * re-run: `listen` is an IPC round trip, and re-subscribing means a window with
+ * no listeners at all until it comes back. This used to depend on the
+ * choose-workspace handler, which is rebuilt on every workspace state change —
+ * so every keystroke dropped the menu on the floor and re-registered it, and
+ * ⌘S pressed in that gap did nothing.
+ */
 function useWorkspaceMenuEvents(
     workspaceActionsRef: RefObject<WorkspaceMenuActions | null>,
-    chooseWorkspace: () => Promise<void>,
+    chooseWorkspaceRef: RefObject<() => Promise<void>>,
 ) {
     useEffect(() => {
         if (!isTauriRuntime()) {
@@ -158,7 +174,7 @@ function useWorkspaceMenuEvents(
 
             const nextUnlisteners = await Promise.all([
                 currentWindow.listen("mdx-menu-open-folder", () => {
-                    runAction(chooseWorkspace);
+                    runAction(() => chooseWorkspaceRef.current());
                 }),
                 currentWindow.listen("mdx-menu-new-folder", () => {
                     runAction(
@@ -217,7 +233,7 @@ function useWorkspaceMenuEvents(
             disposed = true;
             unlisteners.forEach(stopListening);
         };
-    }, [chooseWorkspace, workspaceActionsRef]);
+    }, [chooseWorkspaceRef, workspaceActionsRef]);
 }
 
 function useWorkspaceCloseGuard(

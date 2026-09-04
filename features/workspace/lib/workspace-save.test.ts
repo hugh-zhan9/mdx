@@ -463,6 +463,41 @@ describe("workspace save coordination", () => {
     });
 });
 
+describe("saving a tab that is only a preview", () => {
+    it("does nothing, and says nothing", async () => {
+        const workspace = withTab(
+            createWorkspaceState("/tmp/ws"),
+            createTab({
+                path: "/tmp/ws/.assets/diagram.png",
+                title: "diagram.png",
+                dirty: false,
+                markdown: undefined,
+            }),
+        );
+        const commands: string[] = [];
+        const alerts: string[] = [];
+
+        const saved = await performSaveTab("tab-1", {
+            getWorkspace: () => workspace,
+            dispatch: vi.fn(),
+            invoke: createInvoke((command) => {
+                commands.push(command);
+            }),
+            promptName: async () => null,
+            alert: (message) => {
+                alerts.push(message);
+            },
+            warn: vi.fn(),
+            refreshTree: async () => {},
+        });
+
+        expect(saved).toBe(false);
+        // Not even a read: a preview tab has nothing the save path wants.
+        expect(commands).toEqual([]);
+        expect(alerts).toEqual([]);
+    });
+});
+
 function createTab(patch: Partial<WorkspaceTab> = {}): WorkspaceTab {
     return {
         tabId: "tab-1",

@@ -1,6 +1,6 @@
 import { planFirstSave } from "../../editor/lib/tab-save";
 import { documentFingerprint } from "../../file-watch/lib/external-change";
-import { normalizeWorkspacePath } from "./path";
+import { isMarkdownFilePath, normalizeWorkspacePath } from "./path";
 import type {
     FileTreeNode,
     PathChangeResult,
@@ -82,6 +82,14 @@ export async function performSaveTab(
         const initialTab = initialWorkspace.tabs[tabId];
 
         if (!initialTab) {
+            return false;
+        }
+
+        // A preview tab is not a document. An image or a PDF opens read-only,
+        // has no Markdown to write and cannot be edited, so asking to save it is
+        // asking for nothing — and the writer, which only accepts `.md` and
+        // `.markdown`, used to answer that with an error the user never caused.
+        if (!isMarkdownFilePath(initialTab.path)) {
             return false;
         }
 

@@ -9,7 +9,7 @@
         "dev": "next dev",
         "build": "next build",
         "build:sidecars": "NODE_ENV=production node scripts/prepare-tauri-sidecars.mjs",
-        "build:app": "npx tauri build",
+        "build:app": "npx tauri build --bundles app",
         "install:local": "node scripts/install-local-app.mjs",
         "build:install": "npm run build:app && npm run install:local",
         "lint": "eslint",

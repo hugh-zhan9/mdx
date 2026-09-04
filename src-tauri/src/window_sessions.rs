@@ -4,6 +4,10 @@ use std::path::{Path, PathBuf};
 use tauri::Url;
 
 pub const WORKSPACE_WINDOW_LABEL: &str = "workspace-main";
+/// Every window label this app builds by counter, so one place says what the
+/// capability file has to cover.
+pub const DOCUMENT_WINDOW_LABEL_PREFIX: &str = "document-";
+pub const DOCUMENT_ERROR_WINDOW_LABEL_PREFIX: &str = "document-error-";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowRole {

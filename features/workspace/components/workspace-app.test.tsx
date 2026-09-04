@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act } from "react";
+import { act, useEffect } from "react";
 import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,7 +11,12 @@ import { WorkspaceApp } from "./workspace-app";
   .IS_REACT_ACT_ENVIRONMENT = true;
 
 const onCloseRequested = vi.fn();
-const listen = vi.fn(async () => () => {});
+const unlisten = vi.fn();
+// Typed like the real `listen` so a test can read back the handler a
+// subscription registered.
+const listen = vi.fn<
+    (event: string, handler: () => void) => Promise<() => void>
+>(async () => unlisten);
 const close = vi.fn(async () => {});
 const confirm = vi.fn(async () => true);
 const alertDialog = vi.fn(async () => {});
@@ -63,8 +68,26 @@ vi.mock("./settings-button", () => ({
 }));
 
 vi.mock("./workspace-shell", () => ({
-  WorkspaceShell: () => <div data-testid="workspace-shell" />,
+  // The real shell publishes the window's menu actions while it is mounted,
+  // which is how the File menu reaches the active tab at all.
+  WorkspaceShell: ({
+    onActionsChange,
+  }: {
+    onActionsChange: (actions: typeof menuActions | null) => void;
+  }) => {
+    useEffect(() => {
+      onActionsChange(menuActions);
+
+      return () => onActionsChange(null);
+    }, [onActionsChange]);
+    return <div data-testid="workspace-shell" />;
+  },
 }));
+
+const menuActions = {
+  saveActiveTab: vi.fn(async () => {}),
+  closeActiveTab: vi.fn(async () => {}),
+};
 
 describe("WorkspaceApp window close", () => {
   let host: HTMLDivElement;
@@ -242,6 +265,98 @@ describe("WorkspaceApp window close", () => {
     expect(alertDialog).toHaveBeenCalledWith(
       expect.objectContaining({ title: "关闭窗口" }),
     );
+  });
+});
+
+describe("WorkspaceApp native menu events", () => {
+  let host: HTMLDivElement;
+  let root: ReturnType<typeof createRoot>;
+
+  /*
+   * The real bootstrap hook rebuilds its choose-workspace handler whenever the
+   * workspace state changes, so an edit hands the component both a new state and
+   * a new handler identity. That is what this returns.
+   */
+  function bootstrapValue(markdown: string) {
+    return {
+      status: "ready",
+      workspace: workspaceReducer(createWorkspaceState("/tmp/ws"), {
+        type: "tab/opened",
+        tab: {
+          tabId: "tab-1",
+          path: "/tmp/ws/note.md",
+          title: "note.md",
+          dirty: true,
+          needsRenameOnFirstSave: false,
+          markdown,
+          baseFingerprint: "disk",
+        },
+      }),
+      dispatch: vi.fn(),
+      chooseWorkspace: vi.fn(async () => {}),
+      canChooseWorkspace: true,
+      message: null,
+      preferences: {
+        fileTreeExcludeDirs: [],
+        fileWatchEnabled: true,
+        searchMaxFileBytes: 1048576,
+        searchMaxResults: 100,
+        searchMaxMatchesPerFile: 20,
+      },
+      updatePreferences: vi.fn(),
+      persistCurrentWindowSize,
+    };
+  }
+
+  function saveSubscriptions() {
+    return listen.mock.calls.filter(([event]) => event === "mdx-menu-save");
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.defineProperty(window, "__TAURI_INTERNALS__", {
+      configurable: true,
+      value: {},
+    });
+    useWorkspaceBootstrap.mockReturnValue(bootstrapValue("# Draft"));
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    host.remove();
+    Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
+  });
+
+  it("keeps its one File menu subscription across an edit", async () => {
+    await act(async () => {
+      root.render(<WorkspaceApp />);
+      await flushPromises();
+    });
+
+    expect(saveSubscriptions()).toHaveLength(1);
+
+    // The edit. `listen` is an IPC round trip, so a window that re-subscribes
+    // here has no menu listeners at all until it returns — and ⌘S pressed in
+    // that gap does nothing, silently.
+    useWorkspaceBootstrap.mockReturnValue(bootstrapValue("# Draft edited"));
+    await act(async () => {
+      root.render(<WorkspaceApp />);
+      await flushPromises();
+    });
+
+    expect(saveSubscriptions()).toHaveLength(1);
+    expect(unlisten).not.toHaveBeenCalled();
+
+    const handler = saveSubscriptions()[0]?.[1];
+    await act(async () => {
+      handler?.();
+      await flushPromises();
+    });
+
+    expect(menuActions.saveActiveTab).toHaveBeenCalledOnce();
   });
 });
 
